@@ -8,28 +8,6 @@ This project is an enhanced version of the **[3X-UI](https://github.com/MHSanaei
 
 ![Overview](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
-## New Protocols
-
-- PPTP
-- L2TP (RAW)
-- L2TP/IPsec
-- OpenVPN
-- OpenConnect (cisco)
-- SSTP
-- IKEv2
-- WireGuard (C)
-- AmneziaWG (obfuscated WireGuard)
-- GRE (site-to-site router tunnels, optionally over IPsec)
-- MTProto Proxy (Telegram)
-- SSH
-
-Plus three protocols added to the patched Xray-core itself, so they are served by
-the core rather than by a daemon, and they work as **inbounds and outbounds**:
-
-- AnyTLS
-- TUIC (v5)
-- NaiveProxy
-
 ## New Features
 
 - **Multi-Admin** with per-inbound access, so each admin only sees the inbounds you assign it
@@ -52,6 +30,28 @@ the core rather than by a daemon, and they work as **inbounds and outbounds**:
     * Bulk delete of accounts
     * Bulk delete of Inbounds
     * Bulk **Freeze/Un-Freeze** of accounts
+
+## New Protocols
+
+- PPTP
+- L2TP (RAW)
+- L2TP/IPsec
+- OpenVPN
+- OpenConnect (cisco)
+- SSTP
+- IKEv2
+- WireGuard (C)
+- AmneziaWG (obfuscated WireGuard)
+- GRE (site-to-site router tunnels, optionally over IPsec)
+- MTProto Proxy (Telegram)
+- SSH
+
+Plus three protocols added to the patched Xray-core itself, so they are served by
+the core rather than by a daemon, and they work as **inbounds and outbounds**:
+
+- AnyTLS
+- TUIC (v5)
+- NaiveProxy
 
 ## Tested Operating Systems
 

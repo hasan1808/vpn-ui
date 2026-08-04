@@ -8,21 +8,6 @@
 
 ![نمای کلی](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
-## پروتکل‌های جدید
-
-- PPTP
-- L2TP (RAW)
-- L2TP/IPsec
-- OpenVPN
-- OpenConnect (cisco)
-- SSTP
-- IKEv2
-- WireGuard (C)
-- AmneziaWG (نسخه‌ی مبهم‌سازی‌شده‌ی WireGuard)
-- GRE (تونل‌های site-to-site بین روترها، در صورت نیاز روی IPsec)
-- MTProto Proxy (Telegram)
-- SSH
-
 ## امکانات جدید
 
 - **چند مدیره** با دسترسی جداگانه به هر Inbound، هر مدیر فقط Inbound هایی را می‌بیند که به او داده‌اید
@@ -44,6 +29,27 @@
     * حذف گروهی اکانت ها
     * حذف گروهی Inbound ها
     * قابلیت Freez/Un-Freez کردن گروهی اکانت ها
+
+## پروتکل‌های جدید
+
+- PPTP
+- L2TP (RAW)
+- L2TP/IPsec
+- OpenVPN
+- OpenConnect (cisco)
+- SSTP
+- IKEv2
+- WireGuard (C)
+- AmneziaWG (نسخه‌ی مبهم‌سازی‌شده‌ی WireGuard)
+- GRE (تونل‌های site-to-site بین روترها، در صورت نیاز روی IPsec)
+- MTProto Proxy (Telegram)
+- SSH
+
+سه پروتکل دیگر نیز به خودِ هسته‌ی Xray-core پچ‌شده اضافه شده‌اند و توسط هسته سرو می‌شوند (نه توسط دیمون) و به‌صورت **inbound و outbound** عمل می‌کنند:
+
+- AnyTLS
+- TUIC (v5)
+- NaiveProxy
 
 ## سیستم‌عامل‌های تست شده
 

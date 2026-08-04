@@ -8,21 +8,6 @@
 
 ![总览](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
-## 新增协议
-
-- PPTP
-- L2TP (RAW)
-- L2TP/IPsec
-- OpenVPN
-- OpenConnect (cisco)
-- SSTP
-- IKEv2
-- WireGuard (C)
-- AmneziaWG（混淆版 WireGuard）
-- GRE（路由器之间的站点到站点隧道，可选择通过 IPsec 加密）
-- MTProto Proxy (Telegram)
-- SSH
-
 ## 新增功能
 
 - **多管理员**，按 Inbound 授权，每个管理员只能看到分配给他的 Inbound
@@ -43,6 +28,27 @@
     * 批量删除账户
     * 批量删除 Inbound
     * 批量**冻结/解冻**账户
+
+## 新增协议
+
+- PPTP
+- L2TP (RAW)
+- L2TP/IPsec
+- OpenVPN
+- OpenConnect (cisco)
+- SSTP
+- IKEv2
+- WireGuard (C)
+- AmneziaWG（混淆版 WireGuard）
+- GRE（路由器之间的站点到站点隧道，可选择通过 IPsec 加密）
+- MTProto Proxy (Telegram)
+- SSH
+
+另有三个协议直接添加到了补丁版 Xray-core 内核本身，因此由核心而非守护进程提供服务，并作为 **inbound 和 outbound** 工作：
+
+- AnyTLS
+- TUIC (v5)
+- NaiveProxy
 
 ## 已测试的操作系统
 

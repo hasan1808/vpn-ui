@@ -8,21 +8,6 @@
 
 ![Общий вид](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
-## Новые протоколы
-
-- PPTP
-- L2TP (RAW)
-- L2TP/IPsec
-- OpenVPN
-- OpenConnect (cisco)
-- SSTP
-- IKEv2
-- WireGuard (C)
-- AmneziaWG (обфусцированный WireGuard)
-- GRE (туннели site-to-site между роутерами, при желании поверх IPsec)
-- MTProto Proxy (Telegram)
-- SSH
-
 ## Новые возможности
 
 - **Мультиадмин** с доступом к отдельным Inbound: каждый администратор видит только назначенные ему
@@ -43,6 +28,27 @@
     * Групповое удаление аккаунтов
     * Групповое удаление Inbound
     * Групповая **заморозка/разморозка** аккаунтов
+
+## Новые протоколы
+
+- PPTP
+- L2TP (RAW)
+- L2TP/IPsec
+- OpenVPN
+- OpenConnect (cisco)
+- SSTP
+- IKEv2
+- WireGuard (C)
+- AmneziaWG (обфусцированный WireGuard)
+- GRE (туннели site-to-site между роутерами, при желании поверх IPsec)
+- MTProto Proxy (Telegram)
+- SSH
+
+Три протокола добавлены непосредственно в пропатченное ядро Xray-core, поэтому они обслуживаются ядром, а не демоном, и работают как **inbounds и outbounds**:
+
+- AnyTLS
+- TUIC (v5)
+- NaiveProxy
 
 ## Протестированные операционные системы
 

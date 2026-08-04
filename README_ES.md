@@ -8,21 +8,6 @@ Este proyecto es una versión mejorada del panel **[3X-UI](https://github.com/MH
 
 ![Vista general](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
-## Nuevos protocolos
-
-- PPTP
-- L2TP (RAW)
-- L2TP/IPsec
-- OpenVPN
-- OpenConnect (cisco)
-- SSTP
-- IKEv2
-- WireGuard (C)
-- AmneziaWG (WireGuard ofuscado)
-- GRE (túneles site-to-site entre routers, opcionalmente sobre IPsec)
-- MTProto Proxy (Telegram)
-- SSH
-
 ## Nuevas funcionalidades
 
 - **Multiadministrador** con acceso por Inbound: cada administrador solo ve los Inbounds que le asignes
@@ -43,6 +28,27 @@ Este proyecto es una versión mejorada del panel **[3X-UI](https://github.com/MH
     * Eliminación grupal de cuentas
     * Eliminación grupal de Inbounds
     * **Congelar/Descongelar** cuentas de forma grupal
+
+## Nuevos protocolos
+
+- PPTP
+- L2TP (RAW)
+- L2TP/IPsec
+- OpenVPN
+- OpenConnect (cisco)
+- SSTP
+- IKEv2
+- WireGuard (C)
+- AmneziaWG (WireGuard ofuscado)
+- GRE (túneles site-to-site entre routers, opcionalmente sobre IPsec)
+- MTProto Proxy (Telegram)
+- SSH
+
+Tres protocolos añadidos al propio Xray-core parcheado, por lo que son servidos por el núcleo en lugar de por un demonio, y funcionan como **inbounds y outbounds**:
+
+- AnyTLS
+- TUIC (v5)
+- NaiveProxy
 
 ## Sistemas operativos probados
 

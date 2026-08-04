@@ -8,21 +8,6 @@
 
 ![نظرة عامة](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
-## البروتوكولات الجديدة
-
-- PPTP
-- L2TP (RAW)
-- L2TP/IPsec
-- OpenVPN
-- OpenConnect (cisco)
-- SSTP
-- IKEv2
-- WireGuard (C)
-- AmneziaWG (WireGuard مموّه)
-- GRE (أنفاق site-to-site بين الراوترات، مع إمكانية تشغيلها فوق IPsec)
-- MTProto Proxy (Telegram)
-- SSH
-
 ## الميزات الجديدة
 
 - **تعدد المشرفين** بصلاحية لكل Inbound، فكل مشرف ما يشوفش غير الـ Inbounds اللي خصصتهالوه
@@ -43,6 +28,27 @@
     * حذف الحسابات بشكل جماعي
     * حذف الـ Inbound بشكل جماعي
     * **تجميد/إلغاء تجميد (Freeze/Un-Freeze)** الحسابات بشكل جماعي
+
+## البروتوكولات الجديدة
+
+- PPTP
+- L2TP (RAW)
+- L2TP/IPsec
+- OpenVPN
+- OpenConnect (cisco)
+- SSTP
+- IKEv2
+- WireGuard (C)
+- AmneziaWG (WireGuard مموّه)
+- GRE (أنفاق site-to-site بين الراوترات، مع إمكانية تشغيلها فوق IPsec)
+- MTProto Proxy (Telegram)
+- SSH
+
+ثلاثة بروتوكولات أخرى أُضيفت إلى نواة Xray-core المُعدَّلة نفسها، لذا تُقدَّم بواسطة النواة وليس بواسطة守护 (daemon)، وتعمل كـ **inbounds و outbounds**:
+
+- AnyTLS
+- TUIC (v5)
+- NaiveProxy
 
 ## أنظمة التشغيل المُختبَرة
 

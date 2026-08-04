@@ -8,21 +8,6 @@ Bu proje, **[3X-UI](https://github.com/MHSanaei/3x-ui)** panelinin (2.9.3 sürü
 
 ![Genel Görünüm](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
-## Yeni Protokoller
-
-- PPTP
-- L2TP (RAW)
-- L2TP/IPsec
-- OpenVPN
-- OpenConnect (cisco)
-- SSTP
-- IKEv2
-- WireGuard (C)
-- AmneziaWG (gizlenmiş WireGuard)
-- GRE (yönlendiriciler arası site-to-site tüneller, isteğe bağlı olarak IPsec üzerinden)
-- MTProto Proxy (Telegram)
-- SSH
-
 ## Yeni Özellikler
 
 - Inbound bazlı erişimle **Çoklu Yönetici**: her yönetici yalnızca kendisine atadığınız Inbound'ları görür
@@ -43,6 +28,27 @@ Bu proje, **[3X-UI](https://github.com/MHSanaei/3x-ui)** panelinin (2.9.3 sürü
     * Hesapları toplu silme
     * Inbound'ları toplu silme
     * Hesapları toplu **dondurma/çözme (Freeze/Un-Freeze)**
+
+## Yeni Protokoller
+
+- PPTP
+- L2TP (RAW)
+- L2TP/IPsec
+- OpenVPN
+- OpenConnect (cisco)
+- SSTP
+- IKEv2
+- WireGuard (C)
+- AmneziaWG (gizlenmiş WireGuard)
+- GRE (yönlendiriciler arası site-to-site tüneller, isteğe bağlı olarak IPsec üzerinden)
+- MTProto Proxy (Telegram)
+- SSH
+
+Yamalanmış Xray-core'a üç protokol daha eklendi; bunlar bir daemon tarafından değil doğrudan çekirdek tarafından sunulur ve **inbounds ile outbounds** olarak çalışır:
+
+- AnyTLS
+- TUIC (v5)
+- NaiveProxy
 
 ## Test Edilen İşletim Sistemleri
 
