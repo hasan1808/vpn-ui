@@ -79,7 +79,6 @@ the core rather than by a daemon, and they work as **inbounds and outbounds**:
 - **Session cookie** — uses `config.GetName()` instead of hardcoded name
 - **LocalizerWeb race** — added `sync.RWMutex` to prevent translation map races
 - **i18n fixes** — Vietnamese diacritics, zh_TW cross-locale leak, Arabic missing sections, Persian missing sections
-- **Windows support** — added `sys_windows.go` stub for TCP/UDP/CPU functions
 
 ## Tested Operating Systems
 

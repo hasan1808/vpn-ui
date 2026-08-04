@@ -76,7 +76,6 @@ Yamalanmış Xray-core'a üç protokol daha eklendi; bunlar bir daemon tarafınd
 - **Oturum çerezi** — hardcoded yerine `config.GetName()` kullanılıyor
 - **LocalizerWeb yarışması** — çeviri haritası yarışlarını önlemek için `sync.RWMutex` eklendi
 - **i18n düzeltmeleri** — Vietnamca aksanları, zh_TW diller arası sızma, Arapça eksik bölümler, Farsça eksik bölümler
-- **Windows desteği** — TCP/UDP/CPU fonksiyonları için `sys_windows.go` eklendi
 
 ## Test Edilen İşletim Sistemleri
 

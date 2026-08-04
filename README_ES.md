@@ -76,7 +76,6 @@ Tres protocolos añadidos al propio Xray-core parcheado, por lo que son servidos
 - **Cookie de sesión** — usa `config.GetName()` en lugar de nombre hardcodeado
 - **Carrera en LocalizerWeb** — añadido `sync.RWMutex` para prevenir carreras en el mapa de traducción
 - **Correcciones i18n** — diacriticos vietnamitas, fuga entre idiomas en zh_TW, secciones faltantes en árabe, secciones faltantes en persa
-- **Soporte de Windows** — añadido `sys_windows.go` para funciones TCP/UDP/CPU
 
 ## Sistemas operativos probados
 

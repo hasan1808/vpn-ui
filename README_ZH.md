@@ -76,7 +76,6 @@
 - **会话 Cookie** — 使用 `config.GetName()` 而非硬编码名称
 - **LocalizerWeb 竞争** — 添加 `sync.RWMutex` 防止翻译映射竞争
 - **i18n 修复** — 越南语音标、zh_TW 跨语言泄漏、阿拉伯语缺失部分、波斯语缺失部分
-- **Windows 支持** — 添加了 `sys_windows.go` 用于 TCP/UDP/CPU 函数
 
 ## 已测试的操作系统
 
