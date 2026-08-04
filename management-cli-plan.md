@@ -130,7 +130,7 @@ are NOT on disk. If a "core logs" menu item is ever wanted, it needs the socket.
 - `CheckPanelUpdate()` `:64` -> current vs latest tag (GitHub API)
 - `UpdatePanel()` `:221` -> download, ELF+arch validate, swap, restart
 - `restartPanel()` `:476` -> handles BOTH systemd and manual (setsid/re-exec)
-- Same asset `deploy.sh` uses: `Sir-MmD/vpn-ui` / `vpn-ui-amd64`
+- Same asset `deploy.sh` uses: `hasan1808/vpn-ui` / `vpn-ui-amd64`
 
 Do NOT have the CLI call `UpdatePanel()` directly. `restartPanel()` ends in
 `syscall.Exec(exe, os.Args, ...)` when there is no systemd, which from a CLI

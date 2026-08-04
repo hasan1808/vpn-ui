@@ -1,12 +1,12 @@
 [English](/README.md) | [فارسی](/README_FA.md) | [العربية](/README_AR.md) | [中文](/README_ZH.md) | [Español](/README_ES.md) | [Русский](/README_RU.md) | [Türkçe](/README_TR.md)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
+  <img src="https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
 </p>
 
 Este proyecto es una versión mejorada del panel **[3X-UI](https://github.com/MHSanaei/3x-ui)** (versión 2.9.3). El objetivo de este proyecto es agregar diversos protocolos y ofrecerlo como un panel integral con soporte para las funciones de **Xray-core**.
 
-![Vista general](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/overview.png)
+![Vista general](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
 ## Nuevos protocolos
 
@@ -69,7 +69,7 @@ Este proyecto es una versión mejorada del panel **[3X-UI](https://github.com/MH
 ## Instalación del panel
 
 ```bash
-curl -Ls https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/deploy.sh | sudo bash
+curl -Ls https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/deploy.sh | sudo bash
 ```
 
 ## Desinstalación del panel
@@ -200,13 +200,13 @@ flowchart TB
 ## Compilación desde el código fuente
 
 ```bash
-git clone https://github.com/Sir-MmD/vpn-ui.git && cd vpn-ui
+git clone https://github.com/hasan1808/vpn-ui.git && cd vpn-ui
 ./build.sh
 ```
 
 ## Prueba E2E
 
-![Prueba E2E](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/test_unit.png)
+![Prueba E2E](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/test_unit.png)
 
 Se ha diseñado para este proyecto una prueba **E2E** completa en Python dentro de la carpeta `test_unit`, que puedes utilizar. Los pasos son los siguientes:
 

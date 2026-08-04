@@ -1,12 +1,12 @@
 [English](/README.md) | [فارسی](/README_FA.md) | [العربية](/README_AR.md) | [中文](/README_ZH.md) | [Español](/README_ES.md) | [Русский](/README_RU.md) | [Türkçe](/README_TR.md)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
+  <img src="https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
 </p>
 
 هذا المشروع هو نسخة مُطوّرة من لوحة **[3X-UI](https://github.com/MHSanaei/3x-ui)** (الإصدار 2.9.3). يهدف هذا المشروع إلى إضافة بروتوكولات مختلفة وتقديمه كلوحة شاملة مع دعم إمكانيات **Xray-core**.
 
-![نظرة عامة](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/overview.png)
+![نظرة عامة](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
 ## البروتوكولات الجديدة
 
@@ -69,7 +69,7 @@
 ## تثبيت اللوحة
 
 ```bash
-curl -Ls https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/deploy.sh | sudo bash
+curl -Ls https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/deploy.sh | sudo bash
 ```
 
 ## إزالة اللوحة
@@ -200,13 +200,13 @@ flowchart TB
 ## البناء من المصدر
 
 ```bash
-git clone https://github.com/Sir-MmD/vpn-ui.git && cd vpn-ui
+git clone https://github.com/hasan1808/vpn-ui.git && cd vpn-ui
 ./build.sh
 ```
 
 ## اختبار E2E
 
-![اختبار E2E](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/test_unit.png)
+![اختبار E2E](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/test_unit.png)
 
 صُمِّم لهذا المشروع اختبار **E2E** كامل بلغة Python داخل مجلد `test_unit` يمكنك استخدامه. وخطواته كالتالي:
 

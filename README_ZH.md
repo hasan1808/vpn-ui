@@ -1,12 +1,12 @@
 [English](/README.md) | [فارسی](/README_FA.md) | [العربية](/README_AR.md) | [中文](/README_ZH.md) | [Español](/README_ES.md) | [Русский](/README_RU.md) | [Türkçe](/README_TR.md)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
+  <img src="https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
 </p>
 
 本项目是 **[3X-UI](https://github.com/MHSanaei/3x-ui)** 面板（2.9.3 版本）的增强版。本项目旨在添加多种协议，并将其打造成一个支持 **Xray-core** 各项功能的综合性面板。
 
-![总览](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/overview.png)
+![总览](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
 ## 新增协议
 
@@ -69,7 +69,7 @@
 ## 安装面板
 
 ```bash
-curl -Ls https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/deploy.sh | sudo bash
+curl -Ls https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/deploy.sh | sudo bash
 ```
 
 ## 卸载面板
@@ -200,13 +200,13 @@ flowchart TB
 ## 从源码编译
 
 ```bash
-git clone https://github.com/Sir-MmD/vpn-ui.git && cd vpn-ui
+git clone https://github.com/hasan1808/vpn-ui.git && cd vpn-ui
 ./build.sh
 ```
 
 ## E2E 测试
 
-![E2E 测试](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/test_unit.png)
+![E2E 测试](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/test_unit.png)
 
 本项目在 `test_unit` 文件夹中设计了一套完整的、使用 Python 编写的 **E2E** 测试，您可以直接使用它。步骤如下：
 

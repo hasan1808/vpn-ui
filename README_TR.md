@@ -1,12 +1,12 @@
 [English](/README.md) | [فارسی](/README_FA.md) | [العربية](/README_AR.md) | [中文](/README_ZH.md) | [Español](/README_ES.md) | [Русский](/README_RU.md) | [Türkçe](/README_TR.md)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
+  <img src="https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
 </p>
 
 Bu proje, **[3X-UI](https://github.com/MHSanaei/3x-ui)** panelinin (2.9.3 sürümü) geliştirilmiş bir versiyonudur. Projenin amacı; çeşitli protokoller eklemek ve **Xray-core** özelliklerini destekleyen kapsamlı bir panel olarak hayata geçirmektir.
 
-![Genel Görünüm](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/overview.png)
+![Genel Görünüm](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
 ## Yeni Protokoller
 
@@ -69,7 +69,7 @@ Bu proje, **[3X-UI](https://github.com/MHSanaei/3x-ui)** panelinin (2.9.3 sürü
 ## Panel Kurulumu
 
 ```bash
-curl -Ls https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/deploy.sh | sudo bash
+curl -Ls https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/deploy.sh | sudo bash
 ```
 
 ## Panel Kaldırma
@@ -200,13 +200,13 @@ flowchart TB
 ## Kaynaktan Derleme
 
 ```bash
-git clone https://github.com/Sir-MmD/vpn-ui.git && cd vpn-ui
+git clone https://github.com/hasan1808/vpn-ui.git && cd vpn-ui
 ./build.sh
 ```
 
 ## E2E Testi
 
-![E2E Testi](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/test_unit.png)
+![E2E Testi](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/test_unit.png)
 
 Bu proje için `test_unit` klasörü içinde Python ile tam bir **E2E** testi tasarlandı; bunu kullanabilirsiniz. Adımları şöyledir:
 

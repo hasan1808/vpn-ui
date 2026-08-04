@@ -1,12 +1,12 @@
 [English](/README.md) | [فارسی](/README_FA.md) | [العربية](/README_AR.md) | [中文](/README_ZH.md) | [Español](/README_ES.md) | [Русский](/README_RU.md) | [Türkçe](/README_TR.md)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
+  <img src="https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/logo.png" alt="VPN-UI Logo" width="260">
 </p>
 
 این پروژه، یک نسخه‌ی ارتقایافته از پنل **[3X-UI](https://github.com/MHSanaei/3x-ui)** (نسخه‌ی 2.9.3) هستش.  هدف این پروژه اضافه کردن پروتکل های مختلف و راه اندازی بصورت یک پنل جامعه با پشتیبانی از قابلیت های **Xray-core**  هستش
 
-![نمای کلی](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/overview.png)
+![نمای کلی](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
 
 ## پروتکل‌های جدید
 
@@ -70,7 +70,7 @@
 ## نصب پنل
 
 ```bash
-curl -Ls https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/deploy.sh | sudo bash
+curl -Ls https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/deploy.sh | sudo bash
 ```
 
 ## حذف پنل
@@ -199,13 +199,13 @@ flowchart TB
 ## کامپایل از سورس
 
 ```bash
-git clone https://github.com/Sir-MmD/vpn-ui.git && cd vpn-ui
+git clone https://github.com/hasan1808/vpn-ui.git && cd vpn-ui
 ./build.sh
 ```
 
 ## تست E2E
 
-![تست E2E](https://raw.githubusercontent.com/Sir-MmD/vpn-ui/refs/heads/main/media/test_unit.png)
+![تست E2E](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/test_unit.png)
 
 یک تست **E2E** کامل با Python داخل فولدر `test_unit` برای این پروژه طراحی شده که می‌تونید ازش استفاده کنید. مراحلش این‌طوریه:
 

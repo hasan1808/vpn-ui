@@ -52,7 +52,7 @@ var (
 // syscall.Exec's os.Args back into itself. That is harmless for the panel, but from
 // a CLI process it would re-exec the CLI with its own `update` arguments, in a loop.
 const (
-	panelRepo      = "Sir-MmD/vpn-ui"
+	panelRepo      = "hasan1808/vpn-ui"
 	PanelAsset     = "vpn-ui-amd64"
 	panelLatestAPI = "https://api.github.com/repos/" + panelRepo + "/releases/latest"
 	// PanelDownloadURL is the release asset both the in-panel updater and the CLI
