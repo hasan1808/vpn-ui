@@ -255,6 +255,17 @@ func (p *managedProc) terminateLocked() {
 }
 
 // Stop terminates the named daemon and disables auto-restart.
+//
+// It WAITS for the process to actually go, escalating to SIGKILL, rather than
+// signalling and returning. terminateLocked only sends SIGTERM, and a daemon that is
+// mid-retry can sit on it: a pppd dialling with `persist` outlived Stop by twelve
+// minutes on a failed SSTP dial, respawning its pty child the whole time and taking
+// its netdev up and down, while the driver's Down had already deleted every file it
+// wrote. Nothing was left holding a reference to it, so only a kill -9 by hand or a
+// reboot cleared it.
+//
+// Bounded at ~3s by waitProcessExit, which is the same escalation Start already
+// performs before relaunching, so a wedged daemon cannot stall a teardown either.
 func (m *ProcManager) Stop(name string) error {
 	p := m.get(name)
 	if p == nil {
@@ -264,7 +275,14 @@ func (m *ProcManager) Stop(name string) error {
 	defer p.mu.Unlock()
 	p.stopped = true
 	p.gen++
+	var pid int
+	if p.cmd != nil && p.cmd.Process != nil {
+		pid = p.cmd.Process.Pid
+	}
 	p.terminateLocked()
+	if pid > 0 {
+		waitProcessExit(pid)
+	}
 	return nil
 }
 

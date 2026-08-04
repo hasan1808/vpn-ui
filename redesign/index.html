@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Overview redesign, local preview</title>
+<style>
+  :root{ --bg:#f4f6f8; --card:#fff; --border:#e4e9ee; --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2; --accent:#008771; --accent-weak:#e2f2ee; }
+  @media (prefers-color-scheme:dark){ :root{ --bg:#0a1222; --card:#151f31; --border:#2c3950; --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.6); --text-3:rgba(255,255,255,.4); --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); } }
+  *{box-sizing:border-box} html,body{margin:0;min-height:100vh}
+  body{ background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif; padding:48px 24px; }
+  .wrap{ max-width:960px; margin:0 auto; }
+  h1{ font-size:26px; font-weight:600; margin:0 0 6px; letter-spacing:-.01em; }
+  .sub{ color:var(--text-2); font-size:14px; margin:0 0 32px; }
+  .eyebrow{ font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--text-3); margin:0 0 12px; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; margin-bottom:34px; }
+  a.card{ display:block; text-decoration:none; color:inherit; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px; transition:transform .15s, border-color .15s; }
+  a.card:hover{ transform:translateY(-3px); border-color:var(--accent); }
+  .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:700; color:var(--accent); background:var(--accent-weak); padding:3px 10px; border-radius:999px; }
+  .distro{ font-size:11px; color:var(--text-3); font-weight:500; }
+  .card h2{ font-size:16px; margin:0 0 6px; }
+  .card p{ font-size:13px; color:var(--text-2); margin:0; line-height:1.45; }
+  .foot{ font-size:12px; color:var(--text-3); border-top:1px solid var(--border); padding-top:18px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>vpn-ui Overview redesign</h1>
+    <p class="sub">Seven directions. Each page has a light/dark toggle (top-right, defaults to your OS theme) and shows the server's OS distro + logo.</p>
+
+    <p class="eyebrow">New directions</p>
+    <div class="grid">
+      <a class="card" href="bento.html"><div class="row"><span class="tag">Bento</span><span class="distro">Ubuntu</span></div><h2>Asymmetric tiles</h2><p>Varied-size bento grid with a large feature graph tile.</p></a>
+      <a class="card" href="nebula.html"><div class="row"><span class="tag">Nebula</span><span class="distro">Debian</span></div><h2>Graph-backed cards</h2><p>A live area sparkline sits behind every metric card.</p></a>
+      <a class="card" href="pulse.html"><div class="row"><span class="tag">Pulse</span><span class="distro">CentOS Stream</span></div><h2>Live hero graph</h2><p>Full-width throughput chart plus a one-row service LED strip.</p></a>
+      <a class="card" href="orbit.html"><div class="row"><span class="tag">Orbit</span><span class="distro">Fedora</span></div><h2>Radial ring gauges</h2><p>Big rings as the hero, each with an inner sparkline.</p></a>
+      <a class="card" href="slate.html"><div class="row"><span class="tag">Slate</span><span class="distro">Rocky Linux</span></div><h2>Premium identity</h2><p>Branded hero, and a mini-graph inside every card.</p></a>
+    </div>
+
+    <p class="eyebrow">Liked baseline</p>
+    <div class="grid">
+      <a class="card" href="aurora.html"><div class="row"><span class="tag">Aurora</span></div><h2>Refined card grid</h2><p>The original you liked, radial vitals gauges.</p></a>
+      <a class="card" href="console.html"><div class="row"><span class="tag">Console</span></div><h2>Dense ops console</h2><p>The original you liked, meters, sparklines, service LEDs.</p></a>
+    </div>
+
+    <p class="eyebrow">Clients page</p>
+    <div class="grid">
+      <a class="card" href="clients/gallery.html"><div class="row"><span class="tag">All five</span></div><h2>Five ways to list accounts</h2><p>Ledger, Roster, Workbench, Cards, Triage. One switcher, the same twelve accounts, each with its cost stated.</p></a>
+    </div>
+
+    <p class="eyebrow">Login page</p>
+    <div class="grid">
+      <a class="card" href="login/gallery.html"><div class="row"><span class="tag">All five</span></div><h2>Side by side</h2><p>Every direction below, live, with theme and width controls.</p></a>
+      <a class="card" href="login/gateway.html"><div class="row"><span class="tag">Gateway</span></div><h2>First tile of the dashboard</h2><p>Bento cluster. Form in the dominant tile, honest satellites.</p></a>
+      <a class="card" href="login/console.html"><div class="row"><span class="tag">Console</span></div><h2>Authenticating is a command</h2><p>Terminal chrome, prompt lines, deploy.sh's own voice.</p></a>
+      <a class="card" href="login/tunnel.html"><div class="row"><span class="tag">Tunnel</span></div><h2>Ambient traffic field</h2><p>Canvas ground, quiet high-contrast plate over it.</p></a>
+      <a class="card" href="login/aurora.html"><div class="row"><span class="tag">Aurora</span></div><h2>One plate in teal light</h2><p>Extends the aurora treatment, hairline elevation.</p></a>
+      <a class="card" href="login/keyplate.html"><div class="row"><span class="tag">Keyplate</span></div><h2>Maximum restraint</h2><p>Wordmark, two ruled fields, one accent gesture.</p></a>
+    </div>
+
+    <p class="foot">Design mockups for the vpn-ui Overview and login page. Sample data only.</p>
+  </div>
+</body>
+</html>

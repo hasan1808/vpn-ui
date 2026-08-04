@@ -709,6 +709,10 @@ func TestRefundDeletedMeasuresConsumptionFromBeforeTheDelete(t *testing.T) {
 		// Charged 10, and 4 of them moved since the charge (base 2, all-time 6).
 		bulkAccount{email: "sold-one", total: 10 * gb, enable: true, allTime: 6 * gb,
 			owned: true, charged: 10 * gb, base: 2 * gb},
+		// A second account so the delete below can really take the first one out of
+		// the settings blob: an inbound may not be emptied, and the refund now turns
+		// on the account having no membership left anywhere.
+		bulkAccount{email: "admins-client", total: gb, enable: true},
 	)
 	req := &BulkClientUpdateRequest{Op: "delete", Targets: f.targets("sold-one")}
 	usage, err := f.rs.BulkUsageSnapshot(req.Targets)
@@ -719,10 +723,21 @@ func TestRefundDeletedMeasuresConsumptionFromBeforeTheDelete(t *testing.T) {
 		t.Fatalf("snapshot = %d; want the account's all-time %d", got, 6*gb)
 	}
 
-	// The delete, including the row the refund would otherwise have read.
-	if err := database.GetDB().Where("email = ?", "sold-one").
-		Delete(&xray.ClientTraffic{}).Error; err != nil {
-		t.Fatalf("delete traffic row: %v", err)
+	// The real delete path, which takes BOTH halves: the settings entry and the
+	// traffic row the refund would otherwise have read. Both matter now. The traffic
+	// row is what makes consumption unreadable after the fact, and the settings entry
+	// is what a refund is conditional on, because an account still listed on an
+	// inbound still has a membership, is still selling, and must not be refunded.
+	if _, _, err := f.svc.BulkUpdateClients(*req); err != nil {
+		t.Fatalf("BulkUpdateClients: %v", err)
+	}
+	var left int64
+	if err := database.GetDB().Model(&xray.ClientTraffic{}).
+		Where("email = ?", "sold-one").Count(&left).Error; err != nil {
+		t.Fatalf("count traffic rows: %v", err)
+	}
+	if left != 0 {
+		t.Fatalf("the delete left the traffic row behind; this test is not testing what it says")
 	}
 	if err := f.rs.RefundDeleted("sold-one", usage["sold-one"], true); err != nil {
 		t.Fatalf("RefundDeleted: %v", err)

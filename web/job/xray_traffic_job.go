@@ -65,6 +65,25 @@ func NewXrayTrafficJob(rs *service.RadiusService) *XrayTrafficJob {
 }
 
 // appendUnrecorded appends each fallback record whose email has no record in `existing`
+// stampSourceInbound names the inbound each relay record's bytes came from, so
+// the traffic multiplier bills them at that inbound's rate rather than at
+// whichever inbound the account's single client_traffics row happens to name.
+// An account missing from the map (or ambiguous, which the map reports as 0) is
+// left at 0, which the billing reads as "unknown" and handles by taking the max
+// across the account's memberships.
+func stampSourceInbound(records []*xray.ClientTraffic, idByEmail map[string]int) []*xray.ClientTraffic {
+	if len(records) == 0 || len(idByEmail) == 0 {
+		return records
+	}
+	for _, record := range records {
+		if record.InboundId != 0 {
+			continue
+		}
+		record.InboundId = idByEmail[service.AccountKeyOf(record.Email)]
+	}
+	return records
+}
+
 // yet, and returns the extended slice. It is the de-duplication guard for the relay
 // protocols: see the call site in Run for why presence, not byte count, is the predicate.
 func appendUnrecorded(existing, fallback []*xray.ClientTraffic) []*xray.ClientTraffic {
@@ -148,7 +167,29 @@ func (j *XrayTrafficJob) Run() {
 		"awg":         j.radiusService.GetSessions("awg"),
 		"gre":         j.radiusService.GetSessions("gre"),
 	}
-	clientTraffics = append(clientTraffics, j.nftService.CollectAndResetTraffic(vpnSessions)...)
+	// Which inbound each tunnel address belongs to, so every collected record names
+	// the SOURCE of its bytes. The traffic multiplier bills at the rate of the
+	// inbound the traffic actually came from, and one account can now be served on
+	// several inbounds with different rates; without this it would fall back to the
+	// max across the account's memberships and over-bill the cheaper ones.
+	vpnInbounds := make(map[string]map[string]int, len(vpnSessions))
+	for protocol, ipToEmail := range vpnSessions {
+		if len(ipToEmail) == 0 {
+			continue
+		}
+		idByEmail := j.inboundService.SingleInboundIdByEmail(protocol)
+		if len(idByEmail) == 0 {
+			continue
+		}
+		byIP := make(map[string]int, len(ipToEmail))
+		for ip, email := range ipToEmail {
+			if id := idByEmail[service.AccountKeyOf(email)]; id != 0 {
+				byIP[ip] = id
+			}
+		}
+		vpnInbounds[protocol] = byIP
+	}
+	clientTraffics = append(clientTraffics, j.nftService.CollectAndResetTraffic(vpnSessions, vpnInbounds)...)
 
 	// MTProto and SSH are userspace relays: no client ever gets a tunnel IP, so neither
 	// can use the nft per-IP path above. Each keeps its own per-account byte counters
@@ -174,8 +215,16 @@ func (j *XrayTrafficJob) Run() {
 	//
 	// The relay counters remain a real fallback for an account Xray does not track at all
 	// (no socks user, so no record in any tick), which is what those tallies exist for.
-	clientTraffics = appendUnrecorded(clientTraffics,
-		append(j.mtprotoService.CollectTraffic(), j.sshService.CollectTraffic()...))
+	//
+	// Both relays report per account with no inbound, so their records are stamped
+	// with the source inbound here for the traffic multiplier, the same way the nft
+	// path is above. Neither can be ambiguous in practice (one account is served by
+	// one relay inbound per protocol), and SingleInboundIdByEmail returns 0 if it
+	// somehow is, which falls back to the max across memberships.
+	clientTraffics = appendUnrecorded(clientTraffics, stampSourceInbound(
+		j.mtprotoService.CollectTraffic(), j.inboundService.SingleInboundIdByEmail("mtproto")))
+	clientTraffics = appendUnrecorded(clientTraffics, stampSourceInbound(
+		j.sshService.CollectTraffic(), j.inboundService.SingleInboundIdByEmail("ssh")))
 
 	// Level-triggered enforcement: disconnect any STILL-connected client that is no
 	// longer allowed (quota/expiry hit, or disabled in settings). The edge-triggered

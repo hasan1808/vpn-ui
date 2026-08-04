@@ -341,10 +341,12 @@ func (s *Server) Start() (err error) {
 	}
 
 	if certFile != "" || keyFile != "" {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		certReloader, err := network.NewCertReloader(certFile, keyFile)
 		if err == nil {
 			c := &tls.Config{
-				Certificates: []tls.Certificate{cert},
+				// Same reason as the panel listener: renewals must not need a
+				// restart. See network.CertReloader.
+				GetCertificate: certReloader.GetCertificate,
 			}
 			listener = network.NewAutoHttpsListener(listener)
 			listener = tls.NewListener(listener, c)

@@ -45,19 +45,30 @@ func (a *APIController) initRouter(g *gin.RouterGroup, customGeo *service.Custom
 	inbounds := api.Group("/inbounds")
 	a.inboundController = NewInboundController(inbounds)
 
+	// Clients API: the account-centric read model behind the Clients page. Same
+	// claim as the inbounds group because it shows the same accounts from the other
+	// side; the rows are narrowed per caller inside the service.
+	clients := api.Group("/clients")
+	clients.Use(requirePerm(model.PermAccessInbounds))
+	NewClientsController(clients)
+
 	// Server API
 	server := api.Group("/server")
 	a.serverController = NewServerController(server)
 
-	// Custom geo sources feed Xray routing, so they follow the Xray permission.
+	// Custom geo sources feed Xray routing, so they follow the Xray permission. They
+	// are ALSO read by the overview's geofiles dialog, which is why the group takes
+	// either claim: the Xray bit alone left the dialog unreachable for anyone whose
+	// only claim on it is the overview, which is every reseller. The writes inside
+	// still ask for the overview bit specifically.
 	customGeoGroup := api.Group("/custom-geo")
-	customGeoGroup.Use(requirePerm(model.PermXraySettings))
+	customGeoGroup.Use(requireXrayOrOverviewManage())
 	NewCustomGeoController(customGeoGroup, customGeo)
 
 	// Extra routes
 	// Mails the entire SQLite DB (every admin's inbounds, client credentials, and
 	// the users table with its bcrypt hashes) to a Telegram chat: escalation-class.
-	api.GET("/backuptotgbot", requireSuperAdmin(), a.BackuptoTgbot)
+	api.GET("/backuptotgbot", requireOverviewManage(), a.BackuptoTgbot)
 }
 
 // BackuptoTgbot sends a backup of the panel data to Telegram bot admins.

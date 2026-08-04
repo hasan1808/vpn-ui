@@ -47,10 +47,18 @@
         <div class="bo-ident-name">
           <div class="bo-ident-nameline">
             <p class="bo-ident-os">[[ serverLabel ]]</p>
+            <!-- The rename relabels the panel for every admin and is offered
+                 nowhere but here, so it answers to the bit that lets this page act.
+                 It used to AND the panel-settings bit on top; that is gone because a
+                 reseller's derived mask carries no settings bit, so the AND made
+                 their AllowOverviewManage column inert. Without the bit the label is
+                 still shown, just not editable. -->
+            {{ if .perms.manageOverview }}
             <button type="button" class="bo-ident-edit" @click="openRenameServer"
               title='{{ i18n "edit" }}' aria-label='{{ i18n "edit" }}'>
               <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-pencil"></use></svg>
             </button>
+            {{ end }}
           </div>
           <p class="bo-ident-sub" v-if="status.osName">[[ status.osName ]] [[ status.osVersion ]]</p>
         </div>
@@ -358,7 +366,7 @@
              button used to open the ACCESS log instead, which the shipped template
              disables ("access": "none"), so the one button on the Xray tile answered
              with an empty modal on every default install. -->
-        {{ if .perms.accessCoreSettings }}
+        {{ if .perms.manageOverview }}
         <button type="button" class="bo-icon-btn" @click="openCoreLogs('xray')">
           <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
         </button>
@@ -366,11 +374,20 @@
         <!-- The access log is a different thing: per-connection rows with Direct /
              Blocked filters. Gated on whether that file is actually being written,
              not on ipLimitEnable, which is now an unconditional true. -->
-        {{ if .perms.superAdmin }}
+        {{ if .perms.manageOverview }}
         <button type="button" class="bo-icon-btn" v-if="xrayAccessLogEnable" @click="openXrayLogs()">
           <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-file"></use></svg>{{ i18n "pages.xray.accessLog" }}
         </button>
         {{ end }}
+        <!-- Stopping Xray drops every client on the panel and the geofiles dialog
+             rewrites what routing resolves against, so both answer to the bit that
+             says this overview may act. Without it the tile still reports Xray's
+             state; it just cannot change it. The Xray permission is no longer ANDed
+             on top: that made the controls unreachable for a reseller, whose derived
+             mask never carries a settings bit. Note the same two Xray actions are
+             also offered on the Xray settings page under the Xray bit alone, so this
+             gate scopes THIS page, not the capability. -->
+        {{ if .perms.manageOverview }}
         <button type="button" class="bo-icon-btn bo-icon-btn--danger" @click="stopXrayService">
           <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-stop"></use></svg>{{ i18n "pages.index.stopXray" }}
         </button>
@@ -380,10 +397,23 @@
         <button type="button" class="bo-icon-btn" @click="openGeofiles()">
           <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-globe"></use></svg>{{ i18n "pages.index.geofiles" }}
         </button>
+        {{ end }}
       </div>
     </article>
 
     <!-- ===== manage ===== -->
+    <!-- Every button here is escalation-class: the logs name other admins'
+         inbounds, clients and IPs; config.json carries every inbound's secrets;
+         backup and restore are the whole database, users table and bcrypt hashes
+         included. It used to answer only to the super admin role for exactly that
+         reason.
+
+         The operator chose otherwise on 2026-07-31, with the consequence stated:
+         manageOverview now opens this tile, so whoever holds that bit can take the
+         panel. It is a deliberate delegation, not an oversight. The server agrees
+         (requireOverviewManage on each route), so this gate hides what the caller
+         cannot do rather than being the only thing stopping them. -->
+    {{ if .perms.manageOverview }}
     <article class="bo-tile bo-t-manage" aria-label='{{ i18n "menu.link" }}'>
       <div class="bo-tile-head"><h3 class="bo-tile-title">{{ i18n "menu.link" }}</h3></div>
       <div class="bo-btn-row bo-btn-row--compact">
@@ -401,6 +431,7 @@
         </button>
       </div>
     </article>
+    {{ end }}
 
     <!-- ===== VPN-UI panel + updater ===== -->
     <article class="bo-tile bo-t-vpnui" aria-label="VPN-UI">
@@ -448,12 +479,14 @@
               <!-- Only the DOWNLOAD is abortable: once the binary swap starts
                    there is nothing safe to undo, so the button retires itself
                    rather than offering a cancel the server would refuse. -->
+              {{ if .perms.manageOverview }}
               <button type="button" class="bo-icon-btn bo-icon-btn--danger bo-update-cancel"
                 v-if="panelUpdate.phase === 'downloading'"
                 :disabled="panelUpdate.cancelling" @click="cancelPanelUpdate">
                 <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-stop"></use></svg>
                 [[ panelUpdate.cancelling ? '{{ i18n "pages.index.updateCancelling" }}' : '{{ i18n "pages.index.updateCancel" }}' ]]
               </button>
+              {{ end }}
             </div>
           </div>
         </div>
@@ -462,18 +495,25 @@
              notes first, so the operator reads what is about to replace the
              running binary before agreeing to it. -->
         <div class="bo-btn-row">
+          {{ if .perms.manageOverview }}
           <button type="button" class="bo-btn bo-btn--primary"
             v-if="panelUpdate.available && !panelUpdate.updating"
             @click="openUpdateModal">{{ i18n "pages.index.updateNow" }}</button>
-          <!-- Update from a local file. Offered whether or not the release check
-               found anything: its whole point is the box that cannot reach GitHub,
-               where the check is exactly what fails. The input is hidden and driven
-               by the button so the tile keeps its own styling. -->
-          {{ if .perms.superAdmin }}
+          {{ end }}
+          <!-- Manual update: a binary the operator names themselves. Offered whether
+               or not the release check found anything, because its whole point is the
+               box that cannot reach GitHub, where the check is exactly what fails.
+               The two sources are kept behind one button so the tile leads with the
+               ordinary path, and picking it opens a dialog rather than swapping in two
+               more buttons: which END does the transfer is not guessable from the
+               labels, and the sentence that says so does not fit on a tile button.
+               The file input is hidden and driven by that dialog so the tile keeps
+               its own styling. -->
+          {{ if .perms.manageOverview }}
           <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
-            v-if="!panelUpdate.updating" @click="pickPanelBinary">
+            v-if="!panelUpdate.updating" @click="manualModal.visible = true">
             <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-download"></use></svg>
-            {{ i18n "pages.index.updateFromFile" }}
+            {{ i18n "pages.index.manualUpdate" }}
           </button>
           <input type="file" ref="panelBinaryInput" :style="{ display: 'none' }"
             @change="onPanelBinaryPicked">
@@ -520,12 +560,77 @@
     </p>
   </a-modal>
 
-  <!-- Update-from-file confirmation. Opens only after the server has read the
-       uploaded binary, so both versions here came out of the file rather than off
-       its name. A DOWNGRADE has to be typed out before OK arms, and then confirmed
-       once more: two deliberate acts, not the same click twice. -->
+  <!-- Manual-update source picker. Nothing here installs or even stages anything:
+       it only decides which end of the wire carries the binary, and the two are not
+       interchangeable on the box this feature exists for. "From URL" is the PANEL
+       downloading, which is exactly what a host that cannot reach GitHub cannot do,
+       and "from file" is the browser uploading, which is the way out of that. Each
+       choice carries that sentence because neither label says it, and picking wrong
+       costs a transfer that fails minutes later. Ungated like the two dialogs below
+       it: the gate is on the button in the tile that opens this. -->
+  <a-modal id="panel-manual-modal" v-model="manualModal.visible"
+    title='{{ i18n "pages.index.manualUpdate" }}' :closable="true"
+    :class="themeSwitcher.currentTheme" :width="isMobile ? '95%' : 520"
+    cancel-text='{{ i18n "close" }}'
+    :ok-button-props="{ style: { display: 'none' } }"
+    @cancel="() => manualModal.visible = false">
+    <p :style="{ color: 'var(--text-3)' }">{{ i18n "pages.index.manualUpdateIntro" }}</p>
+    <div :style="{ display: 'flex', flexDirection: 'column', gap: '10px' }">
+      <button type="button" class="bo-icon-btn" @click="chooseManualUpdate('url')"
+        :style="{ width: '100%', alignItems: 'flex-start', textAlign: 'left', padding: '12px 14px', gap: '10px' }">
+        <svg class="bo-icon bo-icon-16" aria-hidden="true" :style="{ flex: 'none', marginTop: '2px' }">
+          <use href="#bo-i-link"></use>
+        </svg>
+        <span>
+          <span :style="{ display: 'block' }">{{ i18n "pages.index.updateFromUrl" }}</span>
+          <span :style="{ display: 'block', marginTop: '3px', fontWeight: 'normal', color: 'var(--text-3)', whiteSpace: 'normal' }">
+            {{ i18n "pages.index.updateFromUrlDesc" }}
+          </span>
+        </span>
+      </button>
+      <button type="button" class="bo-icon-btn" @click="chooseManualUpdate('file')"
+        :style="{ width: '100%', alignItems: 'flex-start', textAlign: 'left', padding: '12px 14px', gap: '10px' }">
+        <svg class="bo-icon bo-icon-16" aria-hidden="true" :style="{ flex: 'none', marginTop: '2px' }">
+          <use href="#bo-i-file"></use>
+        </svg>
+        <span>
+          <span :style="{ display: 'block' }">{{ i18n "pages.index.updateFromFile" }}</span>
+          <span :style="{ display: 'block', marginTop: '3px', fontWeight: 'normal', color: 'var(--text-3)', whiteSpace: 'normal' }">
+            {{ i18n "pages.index.updateFromFileDesc" }}
+          </span>
+        </span>
+      </button>
+    </div>
+  </a-modal>
+
+  <!-- Update-from-URL address prompt. The panel does this download, not the browser,
+       so what is typed here has to be reachable from the SERVER: that is the whole
+       point on a box whose operator can reach GitHub but whose host cannot. Nothing
+       is staged until it answers, and the confirmation below is still what installs,
+       because an address says nothing about what is at the end of it. -->
+  <a-modal id="panel-url-modal" v-model="urlModal.visible"
+    title='{{ i18n "pages.index.updateFromUrl" }}' :closable="!urlModal.fetching"
+    :class="themeSwitcher.currentTheme" :width="isMobile ? '95%' : 520"
+    ok-text='{{ i18n "pages.index.updateFetch" }}' cancel-text='{{ i18n "cancel" }}'
+    :mask-closable="!urlModal.fetching"
+    :ok-button-props="{ props: { disabled: !urlModal.url.trim(), loading: urlModal.fetching } }"
+    :cancel-button-props="{ props: { disabled: urlModal.fetching } }"
+    @ok="fetchPanelBinaryFromUrl">
+    <p :style="{ color: 'var(--text-3)' }">{{ i18n "pages.index.updateFromUrlIntro" }}</p>
+    <a-input v-model="urlModal.url" :disabled="urlModal.fetching"
+      placeholder="https://example.com/vpn-ui-amd64"
+      @pressEnter="urlModal.url.trim() && !urlModal.fetching && fetchPanelBinaryFromUrl()"></a-input>
+  </a-modal>
+
+  <!-- Manual-update confirmation, shared by both sources. Opens only after the server
+       has read the binary it now holds, so both versions here came out of the file
+       rather than off its name or its address. A DOWNGRADE has to be typed out before
+       OK arms, and then confirmed once more: two deliberate acts, not the same click
+       twice. -->
   <a-modal id="panel-upload-modal" v-model="uploadModal.visible"
-    title='{{ i18n "pages.index.updateFromFile" }}' :closable="true"
+    :title='uploadModal.source === "url"
+      ? "{{ i18n "pages.index.updateFromUrl" }}"
+      : "{{ i18n "pages.index.updateFromFile" }}"' :closable="true"
     :class="themeSwitcher.currentTheme"
     :ok-text='uploadModal.info.direction === "downgrade"
       ? "{{ i18n "pages.index.updateDowngradeNow" }}"
@@ -656,7 +761,7 @@
           </template>
           <template slot="lastUpdatedAt" slot-scope="text, record">
             <span v-if="record.lastUpdatedAt">[[ customGeoFormatTime(record.lastUpdatedAt) ]]</span>
-            <span v-else>—</span>
+            <span v-else>-</span>
           </template>
           <template slot="action" slot-scope="text, record">
             <a-space size="small">
@@ -716,7 +821,7 @@
           </template>
           <template slot="lastUpdatedAt" slot-scope="text, record">
             <span v-if="record.lastUpdatedAt">[[ customGeoFormatTime(record.lastUpdatedAt) ]]</span>
-            <span v-else>—</span>
+            <span v-else>-</span>
           </template>
           <template slot="action" slot-scope="text, record">
             <a-space size="small">
@@ -1004,7 +1109,7 @@
       // the vitals rows are 24px tall: after the paddings that is 20px of drawing
       // space for the whole 0..100 range, i.e. one pixel per 5 percentage points.
       // A server idling between 1% and 4% put every sample on the same pixel row
-      // and drew a dead-straight line — the chart was not broken, it had no
+      // and drew a dead-straight line - the chart was not broken, it had no
       // resolution left. Fitting the window restores it.
       fit: { type: Boolean, default: false },
       // Floor on the fitted window's height, in data units. Without it a series
@@ -1615,10 +1720,19 @@
       },
       coreStatuses: [],
       panelUpdate: { checking: false, checked: false, available: false, latest: '', current: '', notes: '', publishedAt: '', url: '', updating: false, cancelling: false, error: '', percent: 0, phase: '', speed: 0, bytes: 0, total: 0 },
-      // Update from a local file. `info` is what the SERVER read out of the uploaded
-      // binary, never anything derived from the filename; `typed` is the downgrade
-      // confirmation the operator has to spell out.
-      uploadModal: { visible: false, typed: '', info: { token: '', current: '', new: '', direction: '', size: 0 } },
+      // The dialog that asks which of the two manual-update sources to use. It holds
+      // nothing else: whichever is picked hands straight over to that source's own
+      // flow, which owns everything from there.
+      manualModal: { visible: false },
+      // The address prompt for a manual update the SERVER downloads. `fetching` holds
+      // the dialog open and disarmed for the length of that download, which on the
+      // links this exists for is minutes rather than seconds.
+      urlModal: { visible: false, url: '', fetching: false },
+      // Manual-update confirmation, shared by both sources. `info` is what the SERVER
+      // read out of the binary it is holding, never anything derived from a filename
+      // or a URL; `typed` is the downgrade confirmation the operator has to spell
+      // out; `source` only picks the dialog's title.
+      uploadModal: { visible: false, typed: '', source: 'file', info: { token: '', current: '', new: '', direction: '', size: 0 } },
       // Panel egress location, checked when the overview opens (see
       // fetchPanelLocation). `checked` is what lets the row distinguish "still
       // looking" from "looked and failed".
@@ -1634,7 +1748,7 @@
       donateModal: { visible: false, copied: -1 },
       // Rendered from web/controller/donate.go, which a test pins to README.md's
       // Donate section. Emitted here as JS rather than as markup so each address
-      // lands in a JS string context, where html/template escapes it correctly —
+      // lands in a JS string context, where html/template escapes it correctly -
       // interpolating one into a Vue attribute expression instead would leave the
       // escaping to whatever context the attribute happened to be classified as.
       donateList: [{{ range .donate }}{ chain: '{{ .Chain }}', addr: '{{ .Address }}' },{{ end }}],
@@ -1954,6 +2068,14 @@
         }[state] || 'off';
       },
       openCore(name) {
+        // The three Xray-served protocols have no card on the Core Settings page
+        // to anchor to - there is nothing to install, start or stop - so their
+        // chips lead where they can actually be acted on instead of to a dead
+        // anchor on a page that has never heard of them.
+        if (['anytls', 'tuic', 'naive'].includes(name)) {
+          location.href = basePath + 'panel/inbounds';
+          return;
+        }
         location.href = basePath + 'panel/core#' + encodeURIComponent(name);
       },
       // Preserves the dot/colon shape so a masked address still reads as an
@@ -2142,7 +2264,7 @@
       // HttpUtil so a plain admin's overview does not get a permission toast for
       // asking. Every failure is silent: this is good news or nothing.
       async announceUpdateResult() {
-        if (!PERMS.superAdmin) return;
+        if (!PERMS.manageOverview) return;
         try {
           const resp = await axios.get('/panel/api/server/updateResult');
           const obj = resp && resp.data ? resp.data.obj : null;
@@ -2170,7 +2292,7 @@
             this.panelUpdate.publishedAt = msg.obj.publishedAt || '';
             this.panelUpdate.url = msg.obj.url || '';
             // Only a manual check marks "checked" (drives the "Up to date" tag). The
-            // auto-check stays silent when there's no update or the check failed —
+            // auto-check stays silent when there's no update or the check failed -
             // an available update still surfaces via the alert below regardless.
             if (manual) this.panelUpdate.checked = true;
           } else if (manual) {
@@ -2230,7 +2352,7 @@
         this.panelUpdate.total = 0;
         // Poll the server for live download/install progress while the (blocking)
         // update request runs. Once it succeeds the panel restarts and these polls
-        // start failing — harmless, they're ignored — until the page reloads.
+        // start failing - harmless, they're ignored - until the page reloads.
         // A terminal phase left over from a previous attempt is ignored: this run
         // hasn't reached the server yet, so only forward progress is adopted.
         const poll = setInterval(async () => {
@@ -2245,7 +2367,7 @@
               if (typeof p.obj.bytes === 'number') this.panelUpdate.bytes = p.obj.bytes;
               if (typeof p.obj.total === 'number') this.panelUpdate.total = p.obj.total;
             }
-          } catch (e) { /* panel restarting — ignore */ }
+          } catch (e) { /* panel restarting - ignore */ }
         }, 700);
         try {
           const msg = await HttpUtil.post('/panel/api/server/updatePanel');
@@ -2298,7 +2420,94 @@
         this.panelUpdate.bytes = 0;
         this.panelUpdate.total = 0;
       },
-      // --- update from a local file -------------------------------------
+      // --- manual update: which source ----------------------------------
+      // The picker closes on the way through rather than staying behind whatever it
+      // opened: both destinations are themselves dialogs, and the second mask over
+      // the first dims the progress bar in the tile that both flows write to.
+      //
+      // The file chooser is opened synchronously from this click so it still counts
+      // as the user gesture that permits it; deferring it past the modal's close
+      // animation is what gets it suppressed.
+      chooseManualUpdate(source) {
+        this.manualModal.visible = false;
+        if (source === 'url') {
+          this.openPanelUrlModal();
+          return;
+        }
+        this.pickPanelBinary();
+      },
+      // --- manual update: from a URL the SERVER downloads ---------------
+      openPanelUrlModal() {
+        this.urlModal.url = '';
+        this.urlModal.fetching = false;
+        this.urlModal.visible = true;
+      },
+      // Download and INSPECT. Installs nothing: the answer is the pair of versions the
+      // confirmation is built on, exactly as the upload path produces them.
+      //
+      // The dialog stays open on failure. A rejected URL is nearly always a typo or a
+      // page-instead-of-file link, and the fix is to edit what was just typed rather
+      // than to reopen an empty box and start again.
+      async fetchPanelBinaryFromUrl() {
+        const url = (this.urlModal.url || '').trim();
+        if (!url || this.urlModal.fetching) return;
+        this.urlModal.fetching = true;
+        this.panelUpdate.updating = true;
+        this.panelUpdate.cancelling = false;
+        this.panelUpdate.error = '';
+        this.panelUpdate.percent = 0;
+        this.panelUpdate.phase = 'downloading';
+        this.panelUpdate.speed = 0;
+        this.panelUpdate.bytes = 0;
+        this.panelUpdate.total = 0;
+        // The transfer is the panel's, not the browser's, so progress has to be
+        // polled rather than measured here the way the upload measures itself. Same
+        // poll the GitHub updater uses, and the same reason for ignoring a terminal
+        // phase: it belongs to an attempt that is already over.
+        const poll = setInterval(async () => {
+          try {
+            const p = await HttpUtil.get('/panel/api/server/updateProgress');
+            if (p && p.success && p.obj) {
+              const phase = p.obj.phase;
+              if (phase === 'error' || phase === 'cancelled') return;
+              if (typeof p.obj.percent === 'number') this.panelUpdate.percent = p.obj.percent;
+              if (phase) this.panelUpdate.phase = phase;
+              if (typeof p.obj.speed === 'number') this.panelUpdate.speed = p.obj.speed;
+              if (typeof p.obj.bytes === 'number') this.panelUpdate.bytes = p.obj.bytes;
+              if (typeof p.obj.total === 'number') this.panelUpdate.total = p.obj.total;
+            }
+          } catch (e) { /* ignore a poll that raced the fetch */ }
+        }, 700);
+        // Raw axios: a failed fetch is reported once, next to the field being fixed,
+        // rather than as a toast on top of a dialog that is still open.
+        try {
+          const res = await axios.post('/panel/api/server/fetchPanelBinary', { url });
+          clearInterval(poll);
+          const msg = res && res.data;
+          this.urlModal.fetching = false;
+          if (!msg || !msg.success) {
+            this.resetPanelUpdate();
+            this.$message.error((msg && msg.msg) || 'download failed');
+            return;
+          }
+          this.urlModal.visible = false;
+          this.uploadModal.source = 'url';
+          this.uploadModal.info = msg.obj || { token: '', current: '', new: '', direction: '' };
+          this.uploadModal.typed = '';
+          this.uploadModal.visible = true;
+          // The bar stays up behind the dialog: the file IS on the server now, and
+          // backing out is what removes it again.
+          this.panelUpdate.percent = 100;
+          this.panelUpdate.speed = 0;
+          this.panelUpdate.phase = 'staged';
+        } catch (e) {
+          clearInterval(poll);
+          this.urlModal.fetching = false;
+          this.resetPanelUpdate();
+          this.$message.error('' + e);
+        }
+      },
+      // --- manual update: from a local file -----------------------------
       pickPanelBinary() {
         const el = this.$refs.panelBinaryInput;
         if (!el) return;
@@ -2316,6 +2525,10 @@
       // Upload and INSPECT. Nothing is installed here: the answer is the pair of
       // versions the confirmation is built on.
       async uploadPanelBinary(file) {
+        // Set every time, not just left at its initial value: the URL flow moves it
+        // to 'url' and never moves it back, so a file picked after a URL attempt in
+        // the same page would open a confirmation titled "Update from URL".
+        this.uploadModal.source = 'file';
         this.panelUpdate.updating = true;
         this.panelUpdate.cancelling = false;
         this.panelUpdate.error = '';
@@ -2472,7 +2685,7 @@
           this.distroModal.pretty = msg.obj.pretty || 'This system';
           this.distroModal.tested = msg.obj.tested || '';
           this.distroModal.visible = true;
-        } catch (e) { /* best-effort — never block the dashboard */ }
+        } catch (e) { /* best-effort - never block the dashboard */ }
       },
       dismissDistroWarning(forever) {
         if (forever) {
@@ -2486,14 +2699,33 @@
         SecAlertDismissal.dismiss();
         this.showAlert = false;
       },
+      // Xray leads because everything below it routes through it, and the three
+      // protocols it serves directly follow it. Those three have no daemon and no
+      // core of their own - one Xray process serves all of them - so they are
+      // derived here from its status rather than fetched, which is also why the
+      // Core Settings page does not grow start/stop cards for them.
       vpnCoreStatuses() {
-        const order = ['l2tp', 'ipsec', 'pptp', 'openvpn', 'openconnect', 'sstp', 'ikev2', 'wgc', 'awg', 'gre', 'mtproto', 'ssh', 'radius'];
+        const order = ['xray', 'l2tp', 'ipsec', 'pptp', 'openvpn', 'openconnect', 'sstp', 'ikev2', 'wgc', 'awg', 'gre', 'mtproto', 'ssh', 'radius'];
         const byName = {};
         (this.coreStatuses || []).forEach(c => { byName[c.name] = c; });
-        return order.map(n => byName[n] || { name: n, state: 'unknown' });
+        const rows = order.map(n => byName[n] || { name: n, state: 'unknown' });
+        const xray = byName['xray'];
+        const counts = (xray && xray.extra && xray.extra.protocolInbounds) || {};
+        // Inserted right after Xray, not appended: they read as what they are, a
+        // group served by the core above them.
+        const served = ['anytls', 'tuic', 'naive'].map(p => ({
+          name: p,
+          // Idle means "available, nothing configured" everywhere else on this
+          // card, and that is exactly the state a protocol with no inbound is in.
+          // With inbounds it can only be as healthy as the core serving it.
+          state: !Number(counts[p]) ? 'idle' : (xray ? xray.state : 'unknown'),
+          inbounds: Number(counts[p]) || 0,
+        }));
+        rows.splice(1, 0, ...served);
+        return rows;
       },
       coreLabel(name) {
-        return { l2tp: 'L2TP', ipsec: 'IPsec', pptp: 'PPTP', openvpn: 'OpenVPN', openconnect: 'OpenConnect (cisco)', sstp: 'SSTP', ikev2: 'IKEv2', wgc: 'WireGuard (C)', awg: 'AmneziaWG', gre: 'GRE', mtproto: 'MTProto Proxy', ssh: 'SSH', radius: 'RADIUS' }[name] || name;
+        return { xray: 'Xray', anytls: 'AnyTLS', tuic: 'TUIC', naive: 'NaiveProxy', l2tp: 'L2TP', ipsec: 'IPsec', pptp: 'PPTP', openvpn: 'OpenVPN', openconnect: 'OpenConnect (cisco)', sstp: 'SSTP', ikev2: 'IKEv2', wgc: 'WireGuard (C)', awg: 'AmneziaWG', gre: 'GRE', mtproto: 'MTProto Proxy', ssh: 'SSH', radius: 'RADIUS' }[name] || name;
       },
       coreStateColor(state) {
         return { running: '#52c41a', idle: '#1890ff', stopped: '#faad14', not_installed: '#8c8c8c', error: '#f5222d' }[state] || '#8c8c8c';

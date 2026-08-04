@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Overview: Pulse</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<div class="ps-root">
+<style>
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --centos-brand:#5b5fd6;
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+    --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+    --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+    --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+    --centos-brand:#6f74e0;
+    --shadow-sm:none; --shadow-md:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+  --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+  --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+  --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+  --centos-brand:#6f74e0;
+  --shadow-sm:none; --shadow-md:none;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --centos-brand:#5b5fd6;
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+}
+
+.ps-root, .ps-root *, .ps-root *::before, .ps-root *::after{ box-sizing:border-box; }
+.ps-root{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--bg); color:var(--text);
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden; min-height:100vh;
+}
+.ps-root .num{ font-variant-numeric:tabular-nums; }
+.ps-root svg{ display:block; }
+.ps-root button{ font-family:inherit; }
+.ps-root ul, .ps-root p, .ps-root h1, .ps-root h2, .ps-root h3{ margin:0; padding:0; }
+.ps-mono{ font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; }
+
+@media (prefers-reduced-motion: reduce){
+  .ps-root *{ transition-duration:.001ms !important; animation-duration:.001ms !important; }
+}
+.ps-root button:focus-visible, .ps-root [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;
+}
+
+.ps-icon{ width:18px; height:18px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.ps-icon-14{ width:14px; height:14px; }
+.ps-icon-16{ width:16px; height:16px; }
+.ps-icon-20{ width:20px; height:20px; }
+
+.ps-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; background:var(--off); }
+.ps-dot--ok{ background:var(--ok); }
+
+/* ===== shell / layout ===== */
+.ps-shell{ display:flex; min-height:100vh; }
+.ps-rail{
+  flex:0 0 84px; width:84px; align-self:flex-start; position:sticky; top:0; height:100vh;
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center;
+  padding:20px 0; gap:28px; overflow-y:auto;
+}
+.ps-rail-brand{ display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--accent); }
+.ps-rail-brand span{ font-size:12px; font-weight:700; color:var(--text); letter-spacing:.01em; }
+.ps-rail-nav{ display:flex; flex-direction:column; gap:6px; width:100%; align-items:center; }
+.ps-rail-item{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  width:68px; padding:8px 4px 7px; border-radius:10px; border:none; background:transparent; color:var(--text-3);
+  cursor:pointer; transition:background .15s ease,color .15s ease;
+}
+.ps-rail-item span{ font-size:10px; font-weight:600; letter-spacing:.01em; }
+.ps-rail-item:hover{ color:var(--text-2); background:var(--surface-2); }
+.ps-rail-item.is-active{ background:var(--accent-weak); color:var(--accent); }
+
+.ps-main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.ps-topbar{ background:var(--surface); border-bottom:1px solid var(--border); }
+.ps-topbar-inner{
+  max-width:1240px; margin:0 auto; padding:14px 28px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+.ps-topbar-left{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-width:0; }
+.ps-host-chip, .ps-health-pill{
+  display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600;
+  padding:6px 12px; border-radius:999px; white-space:nowrap;
+}
+.ps-host-chip{ background:var(--surface-2); color:var(--text-2); }
+.ps-host-chip .ps-icon{ color:var(--text-3); }
+.ps-health-pill{ background:var(--ok-weak); color:var(--ok); }
+
+.ps-theme-toggle{
+  width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:0 0 auto;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.ps-theme-toggle:hover{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+.ps-theme-toggle .ps-i-moon{ display:none; }
+:root[data-theme="dark"] .ps-theme-toggle .ps-i-sun{ display:none; }
+:root[data-theme="dark"] .ps-theme-toggle .ps-i-moon{ display:block; }
+
+.ps-content{ max-width:1240px; width:100%; margin:0 auto; padding:26px 28px 48px; }
+.ps-page-head{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:22px; }
+.ps-page-title{ font-size:24px; font-weight:600; text-wrap:balance; }
+.ps-page-sub{ font-size:13px; color:var(--text-3); }
+
+.ps-section{ margin-bottom:30px; }
+.ps-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:0 0 12px; }
+.ps-section-title{ font-size:14px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-2); }
+.ps-section-meta{ font-size:12px; color:var(--text-3); }
+
+/* ===== hero throughput ===== */
+.ps-hero{
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  box-shadow:var(--shadow-md); padding:20px 22px 18px; margin-bottom:28px;
+}
+.ps-hero-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+.ps-hero-title-wrap{ display:flex; align-items:center; gap:10px; }
+.ps-hero-title{ font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-2); }
+.ps-live-chip{
+  display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--ok); background:var(--ok-weak); padding:4px 9px 4px 7px; border-radius:999px;
+}
+.ps-live-dot{ width:6px; height:6px; border-radius:50%; background:var(--ok); animation:ps-breathe-sm 1.8s ease-in-out infinite; }
+.ps-hero-caption{ font-size:12px; color:var(--text-3); }
+
+.ps-hero-values{ display:flex; gap:36px; flex-wrap:wrap; margin-bottom:14px; }
+.ps-hero-value{ display:flex; flex-direction:column; gap:4px; }
+.ps-hero-value-label{ display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.ps-hero-value-num{ font-size:34px; font-weight:700; letter-spacing:-.01em; }
+.ps-hero-value-num .unit{ font-size:14px; font-weight:600; color:var(--text-3); margin-left:3px; }
+.ps-hero-value--up .ps-hero-value-num{ color:var(--accent); }
+.ps-hero-value--up .ps-hero-value-label svg{ color:var(--accent); }
+.ps-hero-value--down .ps-hero-value-num{ color:var(--info); }
+.ps-hero-value--down .ps-hero-value-label svg{ color:var(--info); }
+
+.ps-hero-chart{ width:100%; height:260px; }
+.ps-hero-chart svg{ display:block; width:100%; height:100%; }
+
+.ps-hero-foot{ display:flex; gap:28px; flex-wrap:wrap; margin-top:14px; padding-top:14px; border-top:1px solid var(--border); }
+.ps-hero-foot-item{ font-size:12.5px; color:var(--text-2); }
+.ps-hero-foot-item b{ color:var(--text); font-size:13.5px; font-weight:700; margin-left:5px; }
+
+@media (max-width:640px){
+  .ps-hero-chart{ height:190px; }
+  .ps-hero-value-num{ font-size:26px; }
+  .ps-hero-values{ gap:24px; }
+}
+
+@keyframes ps-breathe-sm{
+  0%,100%{ opacity:1; transform:scale(1); }
+  50%{ opacity:.45; transform:scale(1.3); }
+}
+
+/* ===== service LED strip ===== */
+.ps-ledstrip{
+  display:flex; flex-wrap:wrap; gap:1px; background:var(--border);
+  border:1px solid var(--border); border-radius:12px; overflow:hidden;
+}
+.ps-led-item{
+  flex:1 1 108px; min-width:104px; background:var(--surface);
+  display:flex; align-items:center; gap:9px; padding:12px 14px;
+}
+.ps-led-dot{ width:10px; height:10px; border-radius:50%; flex:0 0 auto; background:var(--off); box-shadow:0 0 0 3px var(--off-weak); }
+.ps-led-item[data-state="ok"] .ps-led-dot{ background:var(--ok); animation:ps-breathe 2.6s ease-in-out infinite; }
+.ps-led-item[data-state="info"] .ps-led-dot{ background:var(--info); box-shadow:0 0 0 3px var(--info-weak); }
+.ps-led-item[data-state="warn"] .ps-led-dot{ background:var(--warn); box-shadow:0 0 0 3px var(--warn-weak); }
+.ps-led-text{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+.ps-led-name{ font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ps-led-state{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-3); }
+.ps-led-item[data-state="ok"] .ps-led-state{ color:var(--ok); }
+.ps-led-item[data-state="info"] .ps-led-state{ color:var(--info); }
+.ps-led-item[data-state="warn"] .ps-led-state{ color:var(--warn); }
+
+@keyframes ps-breathe{
+  0%,100%{ box-shadow:0 0 0 3px var(--ok-weak); }
+  50%{ box-shadow:0 0 0 6px var(--ok-weak); }
+}
+
+/* ===== vitals: gauge + sparkline cards ===== */
+.ps-vitals{ display:grid; grid-template-columns:1fr; gap:14px; }
+@media (min-width:520px){ .ps-vitals{ grid-template-columns:repeat(2,1fr); } }
+@media (min-width:860px){ .ps-vitals{ grid-template-columns:repeat(3,1fr); gap:16px; } }
+@media (min-width:1180px){ .ps-vitals{ grid-template-columns:repeat(5,1fr); gap:16px; } }
+
+.ps-vital-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:16px 18px; box-shadow:var(--shadow-md);
+  display:flex; flex-direction:column; justify-content:space-between; gap:14px;
+  transition:transform .15s ease, border-color .15s ease;
+}
+.ps-vital-card:hover{ transform:translateY(-2px); border-color:var(--border-strong); }
+.ps-vital-top{ display:flex; align-items:center; gap:12px; }
+.ps-vital-gauge-wrap{ position:relative; width:52px; height:52px; flex:0 0 auto; }
+.ps-vital-gauge{ width:100%; height:100%; transform:rotate(-90deg); }
+.ps-vital-gauge-track{ fill:none; stroke:var(--border); stroke-width:6; }
+.ps-vital-gauge-progress{ fill:none; stroke-width:6; stroke-linecap:round; transition:stroke-dashoffset .8s cubic-bezier(.22,1,.36,1); }
+.ps-vital-gauge-value{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:var(--text); }
+.ps-vital-gauge-value .ps-pct{ font-size:10px; font-weight:600; color:var(--text-3); margin-left:1px; }
+.ps-vital-info{ min-width:0; }
+.ps-vital-name{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.ps-vital-main{ font-size:12.5px; font-weight:600; color:var(--text-2); margin-top:3px; }
+.ps-vital-spark{ width:100%; height:26px; }
+.ps-vital-spark svg{ display:block; width:100%; height:100%; }
+
+.ps-load-badge{
+  width:52px; height:52px; flex:0 0 auto; border-radius:50%; background:var(--accent-weak); color:var(--accent);
+  display:flex; align-items:center; justify-content:center;
+}
+.ps-load-rows{ display:flex; flex-direction:column; gap:6px; }
+.ps-load-row{ display:flex; align-items:center; gap:8px; }
+.ps-load-label{ font-size:10.5px; color:var(--text-3); width:22px; flex:0 0 22px; }
+.ps-load-bar{ flex:1; height:4px; border-radius:2px; background:var(--border); overflow:hidden; display:block; }
+.ps-load-bar > span{ display:block; height:100%; width:0; border-radius:2px; background:var(--ok); transition:width .7s cubic-bezier(.22,1,.36,1); }
+.ps-load-val{ font-size:12px; font-weight:600; color:var(--text); width:34px; flex:0 0 34px; text-align:right; }
+
+/* ===== card grid ===== */
+.ps-card-grid{ display:grid; grid-template-columns:1fr; gap:16px; }
+@media (min-width:640px){
+  .ps-card-grid{ grid-template-columns:repeat(12,1fr); }
+  .ps-span-3, .ps-span-4{ grid-column:span 6; }
+  .ps-span-5, .ps-span-12{ grid-column:span 12; }
+}
+@media (min-width:1024px){
+  .ps-span-3{ grid-column:span 3; }
+  .ps-span-4{ grid-column:span 4; }
+  .ps-span-5{ grid-column:span 5; }
+  .ps-span-12{ grid-column:span 12; }
+}
+
+.ps-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:18px 20px; box-shadow:var(--shadow-md);
+  transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.ps-card:hover{ transform:translateY(-2px); border-color:var(--border-strong); }
+.ps-card--flex{ display:flex; flex-direction:column; height:100%; }
+.ps-card-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+.ps-card-title{ font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-2); }
+.ps-card-body--flex{ display:flex; flex-direction:column; justify-content:space-between; gap:16px; flex:1; }
+
+.ps-status-pill{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px 4px 8px; border-radius:999px; }
+.ps-status-pill--ok{ background:var(--ok-weak); color:var(--ok); }
+
+.ps-metric-lg{ font-size:24px; font-weight:700; color:var(--text); }
+.ps-status-line{ display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; margin-top:8px; }
+.ps-status-line--ok{ color:var(--ok); }
+
+.ps-stat-row{ display:flex; flex-direction:column; }
+.ps-stat{ display:flex; align-items:center; gap:9px; padding:9px 0; }
+.ps-stat + .ps-stat{ border-top:1px solid var(--border); }
+.ps-stat-icon{ color:var(--text-3); }
+.ps-stat-label{ flex:1; font-size:12.5px; font-weight:500; color:var(--text-2); min-width:0; }
+.ps-stat-value{ font-size:14.5px; font-weight:600; color:var(--text); text-align:right; }
+
+.ps-group-label{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); margin:10px 0 8px; }
+.ps-divider{ height:1px; background:var(--border); margin:2px 0; }
+
+.ps-os-body{ display:flex; align-items:center; gap:14px; }
+.ps-os-icon{ width:46px; height:46px; flex:0 0 auto; color:var(--centos-brand); display:flex; align-items:center; justify-content:center; background:var(--surface-2); border-radius:12px; padding:9px; }
+.ps-os-icon svg{ width:100%; height:100%; }
+.ps-os-name{ font-size:15px; font-weight:700; color:var(--text); }
+.ps-os-kernel{ font-size:12px; color:var(--text-2); margin-top:4px; }
+
+.ps-card-body--split{ display:flex; }
+.ps-big-stat{ flex:1; display:flex; flex-direction:column; gap:6px; padding:2px 18px; }
+.ps-big-stat:first-child{ padding-left:0; border-right:1px solid var(--border); }
+.ps-big-stat:last-child{ padding-right:0; }
+.ps-big-stat-label{ font-size:12px; font-weight:500; color:var(--text-2); }
+.ps-big-stat-value{ font-size:26px; font-weight:700; color:var(--text); }
+
+.ps-ip-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.ps-ip-block{ display:flex; flex-direction:column; gap:5px; padding:2px 0; }
+.ps-ip-label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.ps-ip-value{ font-size:16px; font-weight:600; color:var(--text); overflow-wrap:anywhere; }
+@media (min-width:561px){ .ps-ip-block + .ps-ip-block{ border-left:1px solid var(--border); padding-left:20px; } }
+@media (max-width:560px){
+  .ps-ip-grid{ grid-template-columns:1fr; }
+  .ps-ip-block + .ps-ip-block{ border-top:1px solid var(--border); padding-top:12px; }
+}
+
+/* ===== buttons ===== */
+.ps-action-row{ display:flex; flex-wrap:wrap; gap:8px; }
+.ps-icon-btn{
+  display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600;
+  color:var(--text-2); background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+  padding:7px 12px; cursor:pointer; transition:background .15s ease,color .15s ease,border-color .15s ease,transform .15s ease;
+}
+.ps-icon-btn:hover{ background:var(--accent-weak); color:var(--accent); border-color:var(--accent); transform:translateY(-1px); }
+.ps-icon-btn--danger:hover{ background:var(--error-weak); color:var(--error); border-color:var(--error); }
+.ps-icon-btn--ghost{ background:transparent; padding:5px 10px; }
+
+.ps-btn{ font-size:13.5px; font-weight:600; border-radius:9px; padding:10px 16px; cursor:pointer; border:1px solid transparent; transition:filter .15s ease, transform .15s ease; }
+.ps-btn--primary{ background:var(--accent); color:var(--on-accent); align-self:flex-start; }
+.ps-btn--primary:hover{ filter:brightness(1.06); transform:translateY(-1px); }
+
+.ps-foot{ margin-top:38px; padding-top:16px; border-top:1px solid var(--border); font-size:11.5px; color:var(--text-3); text-align:left; }
+
+@media (max-width:520px){
+  .ps-rail{ flex-basis:60px; width:60px; padding:16px 0; gap:22px; }
+  .ps-rail-item{ width:52px; }
+  .ps-rail-item span, .ps-rail-brand span{ display:none; }
+}
+</style>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+<symbol id="ps-i-shield" viewBox="0 0 24 24"><path d="M12 3 19 6v5c0 4.8-3.2 8.6-7 10-3.8-1.4-7-5.2-7-10V6l7-3z"/></symbol>
+<symbol id="ps-i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></symbol>
+<symbol id="ps-i-list" viewBox="0 0 24 24"><circle cx="4.5" cy="6" r="1.3"/><line x1="8.5" y1="6" x2="20.5" y2="6"/><circle cx="4.5" cy="12" r="1.3"/><line x1="8.5" y1="12" x2="20.5" y2="12"/><circle cx="4.5" cy="18" r="1.3"/><line x1="8.5" y1="18" x2="20.5" y2="18"/></symbol>
+<symbol id="ps-i-sliders" viewBox="0 0 24 24"><line x1="5" y1="21" x2="5" y2="14"/><line x1="5" y1="10" x2="5" y2="3"/><circle cx="5" cy="12" r="2.1"/><line x1="12" y1="21" x2="12" y2="12.5"/><line x1="12" y1="8.5" x2="12" y2="3"/><circle cx="12" cy="10.5" r="2.1"/><line x1="19" y1="21" x2="19" y2="16"/><line x1="19" y1="12" x2="19" y2="3"/><circle cx="19" cy="14" r="2.1"/></symbol>
+<symbol id="ps-i-zap" viewBox="0 0 24 24"><polygon points="13 2 4.5 13.5 11 13.5 10 22 19.5 10 13 10 13 2"/></symbol>
+<symbol id="ps-i-file" viewBox="0 0 24 24"><path d="M7 3h6.5L18 7.5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M13.5 3v4.5H18"/><line x1="9" y1="12.5" x2="15" y2="12.5"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></symbol>
+<symbol id="ps-i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6.5" rx="1.6"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.6"/><line x1="7" y1="7.25" x2="7.01" y2="7.25"/><line x1="7" y1="16.75" x2="7.01" y2="16.75"/></symbol>
+<symbol id="ps-i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3"/><line x1="12" y1="2" x2="12" y2="4.6"/><line x1="12" y1="19.4" x2="12" y2="22"/><line x1="2" y1="12" x2="4.6" y2="12"/><line x1="19.4" y1="12" x2="22" y2="12"/><line x1="4.7" y1="4.7" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.3" y2="19.3"/><line x1="4.7" y1="19.3" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.3" y2="4.7"/></symbol>
+<symbol id="ps-i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7.3 7.3 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ps-i-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1.1"/></symbol>
+<symbol id="ps-i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3.1-6.3"/><polyline points="20.5 3 20 8 15 7.3"/></symbol>
+<symbol id="ps-i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c2.4 2.5 3.8 5.7 3.8 9s-1.4 6.5-3.8 9c-2.4-2.5-3.8-5.7-3.8-9s1.4-6.5 3.8-9z"/></symbol>
+<symbol id="ps-i-tag" viewBox="0 0 24 24"><path d="M11.4 3H5a1 1 0 0 0-1 1v6.4a1 1 0 0 0 .3.7l9.1 9.1a1 1 0 0 0 1.4 0l6.4-6.4a1 1 0 0 0 0-1.4l-9.1-9.1a1 1 0 0 0-.7-.3z"/><circle cx="7.8" cy="7.8" r="1.4"/></symbol>
+<symbol id="ps-i-code" viewBox="0 0 24 24"><polyline points="8.5 5 3 12 8.5 19"/><polyline points="15.5 5 21 12 15.5 19"/></symbol>
+<symbol id="ps-i-download" viewBox="0 0 24 24"><path d="M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><polyline points="7.5 10 12 14.5 16.5 10"/><line x1="12" y1="3" x2="12" y2="14.5"/></symbol>
+<symbol id="ps-i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.3 10.4 15.2 16.5 9"/></symbol>
+<symbol id="ps-i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12.3 15.8 14.3"/></symbol>
+<symbol id="ps-i-pulse" viewBox="0 0 24 24"><polyline points="2 12 6.5 12 8.5 6 11 18 13 9 14.5 14 16 12 22 12"/></symbol>
+<symbol id="ps-i-arrow-up" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5.5"/><polyline points="6.5 11 12 5.5 17.5 11"/></symbol>
+<symbol id="ps-i-arrow-down" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="18.5"/><polyline points="6.5 13 12 18.5 17.5 13"/></symbol>
+<symbol id="ps-i-eye" viewBox="0 0 24 24"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="ps-i-eye-off" viewBox="0 0 24 24"><path d="M3.3 3.3l17.4 17.4"/><path d="M10.6 5.2A10.5 10.5 0 0 1 12 5c6.2 0 10 7 10 7a17.6 17.6 0 0 1-3.9 4.8"/><path d="M6.5 6.7C3.8 8.6 2 12 2 12s3.8 7 10 7c1.4 0 2.7-.3 3.9-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+</defs>
+</svg>
+
+<div class="ps-shell">
+  <aside class="ps-rail">
+    <div class="ps-rail-brand">
+      <svg class="ps-icon ps-icon-20"><use href="#ps-i-shield"></use></svg>
+      <span>vpn-ui</span>
+    </div>
+    <nav class="ps-rail-nav" aria-label="Primary">
+      <button type="button" class="ps-rail-item is-active" aria-current="page">
+        <svg class="ps-icon ps-icon-20"><use href="#ps-i-grid"></use></svg>
+        <span>Overview</span>
+      </button>
+      <button type="button" class="ps-rail-item">
+        <svg class="ps-icon ps-icon-20"><use href="#ps-i-list"></use></svg>
+        <span>Inbounds</span>
+      </button>
+      <button type="button" class="ps-rail-item">
+        <svg class="ps-icon ps-icon-20"><use href="#ps-i-sliders"></use></svg>
+        <span>Settings</span>
+      </button>
+      <button type="button" class="ps-rail-item">
+        <svg class="ps-icon ps-icon-20"><use href="#ps-i-zap"></use></svg>
+        <span>Xray</span>
+      </button>
+      <button type="button" class="ps-rail-item">
+        <svg class="ps-icon ps-icon-20"><use href="#ps-i-file"></use></svg>
+        <span>Logs</span>
+      </button>
+    </nav>
+  </aside>
+
+  <div class="ps-main">
+    <header class="ps-topbar">
+      <div class="ps-topbar-inner">
+        <div class="ps-topbar-left">
+          <span class="ps-host-chip">
+            <svg class="ps-icon ps-icon-16"><use href="#ps-i-server"></use></svg>
+            srv-fra-01
+          </span>
+          <span class="ps-health-pill">
+            <span class="ps-dot ps-dot--ok"></span>
+            7/10 services running
+          </span>
+        </div>
+        <button type="button" class="ps-theme-toggle" id="psThemeToggle" aria-label="Toggle color theme">
+          <svg class="ps-icon ps-i-sun"><use href="#ps-i-sun"></use></svg>
+          <svg class="ps-icon ps-i-moon"><use href="#ps-i-moon"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="ps-content">
+      <div class="ps-page-head">
+        <h1 class="ps-page-title">Overview</h1>
+        <span class="ps-page-sub">Real-time status for srv-fra-01</span>
+      </div>
+
+      <section class="ps-hero" aria-label="Live throughput">
+        <div class="ps-hero-head">
+          <div class="ps-hero-title-wrap">
+            <span class="ps-hero-title">Live Throughput</span>
+            <span class="ps-live-chip"><span class="ps-live-dot"></span>Live</span>
+          </div>
+          <span class="ps-hero-caption">Aggregate across all 10 protocols</span>
+        </div>
+
+        <div class="ps-hero-values">
+          <div class="ps-hero-value ps-hero-value--up">
+            <span class="ps-hero-value-label"><svg class="ps-icon ps-icon-14"><use href="#ps-i-arrow-up"></use></svg>Upload</span>
+            <span class="ps-hero-value-num num">2.4<span class="unit">MB/s</span></span>
+          </div>
+          <div class="ps-hero-value ps-hero-value--down">
+            <span class="ps-hero-value-label"><svg class="ps-icon ps-icon-14"><use href="#ps-i-arrow-down"></use></svg>Download</span>
+            <span class="ps-hero-value-num num">8.1<span class="unit">MB/s</span></span>
+          </div>
+        </div>
+
+        <div class="ps-hero-chart" id="psHeroChart"></div>
+
+        <div class="ps-hero-foot">
+          <span class="ps-hero-foot-item">Sent<b class="num">1.24 TB</b></span>
+          <span class="ps-hero-foot-item">Received<b class="num">4.68 TB</b></span>
+        </div>
+      </section>
+
+      <section class="ps-section" aria-label="VPN services">
+        <div class="ps-section-head">
+          <h2 class="ps-section-title">Services</h2>
+          <span class="ps-section-meta">7 running &middot; 2 idle &middot; 1 stopped</span>
+        </div>
+        <div class="ps-ledstrip">
+          <div class="ps-led-item" data-state="ok"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">Xray</span><span class="ps-led-state">Running</span></span></div>
+          <div class="ps-led-item" data-state="ok"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">OpenVPN</span><span class="ps-led-state">Running</span></span></div>
+          <div class="ps-led-item" data-state="ok"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">WireGuard</span><span class="ps-led-state">Running</span></span></div>
+          <div class="ps-led-item" data-state="ok"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">L2TP/IPsec</span><span class="ps-led-state">Running</span></span></div>
+          <div class="ps-led-item" data-state="ok"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">IKEv2</span><span class="ps-led-state">Running</span></span></div>
+          <div class="ps-led-item" data-state="ok"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">OpenConnect</span><span class="ps-led-state">Running</span></span></div>
+          <div class="ps-led-item" data-state="ok"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">MTProto</span><span class="ps-led-state">Running</span></span></div>
+          <div class="ps-led-item" data-state="info"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">SSTP</span><span class="ps-led-state">Idle</span></span></div>
+          <div class="ps-led-item" data-state="info"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">SSH</span><span class="ps-led-state">Idle</span></span></div>
+          <div class="ps-led-item" data-state="warn"><span class="ps-led-dot"></span><span class="ps-led-text"><span class="ps-led-name">PPTP</span><span class="ps-led-state">Stopped</span></span></div>
+        </div>
+      </section>
+
+      <section class="ps-section" aria-label="System vitals">
+        <div class="ps-section-head">
+          <h2 class="ps-section-title">System Vitals</h2>
+        </div>
+        <div class="ps-vitals">
+
+          <div class="ps-vital-card">
+            <div class="ps-vital-top">
+              <div class="ps-vital-gauge-wrap">
+                <svg class="ps-vital-gauge" viewBox="0 0 80 80" aria-hidden="true">
+                  <circle class="ps-vital-gauge-track" cx="40" cy="40" r="32"></circle>
+                  <circle class="ps-vital-gauge-progress" data-pct="34" cx="40" cy="40" r="32"></circle>
+                </svg>
+                <div class="ps-vital-gauge-value"><span class="num">34</span><span class="ps-pct">%</span></div>
+              </div>
+              <div class="ps-vital-info">
+                <div class="ps-vital-name">CPU</div>
+                <div class="ps-vital-main">8 cores &middot; 3.40 GHz</div>
+              </div>
+            </div>
+            <div class="ps-vital-spark" data-spark="cpu"></div>
+          </div>
+
+          <div class="ps-vital-card">
+            <div class="ps-vital-top">
+              <div class="ps-vital-gauge-wrap">
+                <svg class="ps-vital-gauge" viewBox="0 0 80 80" aria-hidden="true">
+                  <circle class="ps-vital-gauge-track" cx="40" cy="40" r="32"></circle>
+                  <circle class="ps-vital-gauge-progress" data-pct="33" cx="40" cy="40" r="32"></circle>
+                </svg>
+                <div class="ps-vital-gauge-value"><span class="num">33</span><span class="ps-pct">%</span></div>
+              </div>
+              <div class="ps-vital-info">
+                <div class="ps-vital-name">RAM</div>
+                <div class="ps-vital-main">5.2 GB / 16 GB</div>
+              </div>
+            </div>
+            <div class="ps-vital-spark" data-spark="ram"></div>
+          </div>
+
+          <div class="ps-vital-card">
+            <div class="ps-vital-top">
+              <div class="ps-vital-gauge-wrap">
+                <svg class="ps-vital-gauge" viewBox="0 0 80 80" aria-hidden="true">
+                  <circle class="ps-vital-gauge-track" cx="40" cy="40" r="32"></circle>
+                  <circle class="ps-vital-gauge-progress" data-pct="7" cx="40" cy="40" r="32"></circle>
+                </svg>
+                <div class="ps-vital-gauge-value"><span class="num">7</span><span class="ps-pct">%</span></div>
+              </div>
+              <div class="ps-vital-info">
+                <div class="ps-vital-name">Swap</div>
+                <div class="ps-vital-main">0.3 GB / 4.0 GB</div>
+              </div>
+            </div>
+            <div class="ps-vital-spark" data-spark="swap"></div>
+          </div>
+
+          <div class="ps-vital-card">
+            <div class="ps-vital-top">
+              <div class="ps-vital-gauge-wrap">
+                <svg class="ps-vital-gauge" viewBox="0 0 80 80" aria-hidden="true">
+                  <circle class="ps-vital-gauge-track" cx="40" cy="40" r="32"></circle>
+                  <circle class="ps-vital-gauge-progress" data-pct="51" cx="40" cy="40" r="32"></circle>
+                </svg>
+                <div class="ps-vital-gauge-value"><span class="num">51</span><span class="ps-pct">%</span></div>
+              </div>
+              <div class="ps-vital-info">
+                <div class="ps-vital-name">Storage</div>
+                <div class="ps-vital-main">82 GB / 160 GB</div>
+              </div>
+            </div>
+            <div class="ps-vital-spark" data-spark="storage"></div>
+          </div>
+
+          <div class="ps-vital-card">
+            <div class="ps-vital-top">
+              <div class="ps-load-badge">
+                <svg class="ps-icon ps-icon-20"><use href="#ps-i-pulse"></use></svg>
+              </div>
+              <div class="ps-vital-info">
+                <div class="ps-vital-name">Load Average</div>
+                <div class="ps-vital-main">8 cores, low load</div>
+              </div>
+            </div>
+            <div class="ps-load-rows">
+              <div class="ps-load-row"><span class="ps-load-label">1m</span><span class="ps-load-bar"><span data-load="0.42"></span></span><span class="ps-load-val num">0.42</span></div>
+              <div class="ps-load-row"><span class="ps-load-label">5m</span><span class="ps-load-bar"><span data-load="0.55"></span></span><span class="ps-load-val num">0.55</span></div>
+              <div class="ps-load-row"><span class="ps-load-label">15m</span><span class="ps-load-bar"><span data-load="0.48"></span></span><span class="ps-load-val num">0.48</span></div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <section class="ps-section" aria-label="System">
+        <div class="ps-section-head">
+          <h2 class="ps-section-title">System</h2>
+        </div>
+        <div class="ps-card-grid">
+
+          <div class="ps-card ps-span-5">
+            <div class="ps-card-head">
+              <h3 class="ps-card-title">Xray Core</h3>
+              <span class="ps-status-pill ps-status-pill--ok"><span class="ps-dot ps-dot--ok"></span>Running</span>
+            </div>
+            <div class="ps-stat-row">
+              <div class="ps-stat"><span class="ps-stat-label">Version</span><span class="ps-stat-value num ps-mono">v25.3.6</span></div>
+              <div class="ps-stat"><span class="ps-stat-label">Uptime</span><span class="ps-stat-value num">12d 4h</span></div>
+            </div>
+            <div class="ps-divider"></div>
+            <p class="ps-group-label">Actions</p>
+            <div class="ps-action-row">
+              <button type="button" class="ps-icon-btn"><svg class="ps-icon ps-icon-16"><use href="#ps-i-file"></use></svg>Logs</button>
+              <button type="button" class="ps-icon-btn ps-icon-btn--danger"><svg class="ps-icon ps-icon-16"><use href="#ps-i-stop"></use></svg>Stop</button>
+              <button type="button" class="ps-icon-btn"><svg class="ps-icon ps-icon-16"><use href="#ps-i-refresh"></use></svg>Restart</button>
+              <button type="button" class="ps-icon-btn"><svg class="ps-icon ps-icon-16"><use href="#ps-i-globe"></use></svg>Geofiles</button>
+              <button type="button" class="ps-icon-btn"><svg class="ps-icon ps-icon-16"><use href="#ps-i-tag"></use></svg>Version</button>
+            </div>
+            <div class="ps-divider"></div>
+            <p class="ps-group-label">Manage</p>
+            <div class="ps-action-row">
+              <button type="button" class="ps-icon-btn"><svg class="ps-icon ps-icon-16"><use href="#ps-i-file"></use></svg>Logs</button>
+              <button type="button" class="ps-icon-btn"><svg class="ps-icon ps-icon-16"><use href="#ps-i-code"></use></svg>Config</button>
+              <button type="button" class="ps-icon-btn"><svg class="ps-icon ps-icon-16"><use href="#ps-i-download"></use></svg>Backup</button>
+            </div>
+          </div>
+
+          <div class="ps-card ps-span-3 ps-card--flex">
+            <div class="ps-card-head"><h3 class="ps-card-title">VPN-UI</h3></div>
+            <div class="ps-card-body--flex">
+              <div>
+                <div class="ps-metric-lg num ps-mono">v1.7.6</div>
+                <p class="ps-status-line ps-status-line--ok">
+                  <svg class="ps-icon ps-icon-16"><use href="#ps-i-check-circle"></use></svg>
+                  Up to date
+                </p>
+              </div>
+              <button type="button" class="ps-btn ps-btn--primary">Check for Update</button>
+            </div>
+          </div>
+
+          <div class="ps-card ps-span-4">
+            <div class="ps-card-head"><h3 class="ps-card-title">Operating System</h3></div>
+            <div class="ps-os-body">
+              <span class="ps-os-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.076.066L8.883 3.28H3.348v5.434L0 12.01l3.349 3.298v5.39h5.374l3.285 3.236 3.285-3.236h5.43v-5.374L24 12.026l-3.232-3.252V3.321H15.31zm0 .749l2.49 2.506h-1.69v6.441l-.8.805-.81-.815V3.28H9.627zm-8.2 2.991h4.483L6.485 5.692l4.253 4.279v.654H9.94L5.674 6.423l-1.798 1.77zm5.227 0h1.635v5.415l-3.509-3.53zm4.302.043h1.687l1.83 1.842-3.517 3.539zm2.431 0h4.404v4.394l-1.83-1.842-4.241 4.267h-.764v-.69l4.261-4.287zm2.574 3.3l1.83 1.843v1.676h-5.327zm-12.735.013l3.515 3.462H3.876v-1.69zM3.348 9.454v1.697h6.377l.871.858-.782.77H3.35v1.786L.753 12.01zm17.42.068l2.488 2.503-2.533 2.55v-1.796h-6.41l-.75-.754.825-.83h6.38zm-9.502.978l.81.815.186-.188.614-.618v.686h.768l-.825.83.75.754h-.719v.808l-.842-.83-.741.73v-.707h-.7l.781-.77-.188-.186-.682-.672h.788zm-7.39 2.807h5.402l-3.603 3.55-1.798-1.772zm6.154 0h.708v.7l-4.404 4.338 1.852 1.824h-4.31v-4.342l1.798 1.77zm3.348 0h.715l4.317 4.343.186-.187 1.599-1.61v4.316h-4.366l1.853-1.825-.188-.185-4.116-4.054zm1.46 0h5.357v1.798l-1.785 1.796zm-2.83.191l.842.829v6.37h1.691l-2.532 2.495-2.533-2.495h1.79V14.23zm-1.27 1.251v5.42H8.939l-1.852-1.823zm2.64.097l3.552 3.499-1.853 1.825h-1.7z"/></svg></span>
+              <div>
+                <div class="ps-os-name">CentOS Stream 10</div>
+                <div class="ps-os-kernel ps-mono num">Kernel 6.12.0-55.el10</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ps-card ps-span-4">
+            <div class="ps-card-head"><h3 class="ps-card-title">Uptime</h3></div>
+            <div class="ps-stat-row">
+              <div class="ps-stat">
+                <svg class="ps-icon ps-icon-16 ps-stat-icon"><use href="#ps-i-clock"></use></svg>
+                <span class="ps-stat-label">Xray</span>
+                <span class="ps-stat-value num">12d 4h</span>
+              </div>
+              <div class="ps-stat">
+                <svg class="ps-icon ps-icon-16 ps-stat-icon"><use href="#ps-i-clock"></use></svg>
+                <span class="ps-stat-label">OS</span>
+                <span class="ps-stat-value num">47d 9h</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ps-card ps-span-4">
+            <div class="ps-card-head"><h3 class="ps-card-title">Usage</h3></div>
+            <div class="ps-stat-row">
+              <div class="ps-stat">
+                <svg class="ps-icon ps-icon-16 ps-stat-icon"><use href="#ps-i-pulse"></use></svg>
+                <span class="ps-stat-label">RAM</span>
+                <span class="ps-stat-value num">84 MB</span>
+              </div>
+              <div class="ps-stat">
+                <svg class="ps-icon ps-icon-16 ps-stat-icon"><use href="#ps-i-pulse"></use></svg>
+                <span class="ps-stat-label">Threads</span>
+                <span class="ps-stat-value num">23</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ps-card ps-span-4">
+            <div class="ps-card-head"><h3 class="ps-card-title">Connections</h3></div>
+            <div class="ps-card-body--split">
+              <div class="ps-big-stat"><span class="ps-big-stat-label">TCP</span><span class="ps-big-stat-value num">1,284</span></div>
+              <div class="ps-big-stat"><span class="ps-big-stat-label">UDP</span><span class="ps-big-stat-value num">462</span></div>
+            </div>
+          </div>
+
+          <div class="ps-card ps-span-12">
+            <div class="ps-card-head">
+              <h3 class="ps-card-title">IP Addresses</h3>
+              <button type="button" class="ps-icon-btn ps-icon-btn--ghost" id="psIpToggle" aria-label="Hide IP addresses">
+                <svg class="ps-icon ps-icon-16 ps-i-eye"><use href="#ps-i-eye"></use></svg>
+                <svg class="ps-icon ps-icon-16 ps-i-eye-off" style="display:none"><use href="#ps-i-eye-off"></use></svg>
+                <span id="psIpToggleLabel">Hide</span>
+              </button>
+            </div>
+            <div class="ps-ip-grid">
+              <div class="ps-ip-block"><span class="ps-ip-label">IPv4</span><span class="ps-ip-value num" data-full="203.0.113.7">203.0.113.7</span></div>
+              <div class="ps-ip-block"><span class="ps-ip-label">IPv6</span><span class="ps-ip-value num" data-full="2a01:4f8:1c1c:abcd::1">2a01:4f8:1c1c:abcd::1</span></div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <footer class="ps-foot">Design mockup, vpn-ui Overview, Pulse</footer>
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root = document.querySelector('.ps-root');
+  if(!root) return;
+  var docEl = document.documentElement;
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* theme toggle - stamps data-theme on the document root, same attribute the
+     Artifact viewer's own theme control uses, so the two stay in sync */
+  var themeBtn = document.getElementById('psThemeToggle');
+  function effectiveTheme(){
+    var attr = docEl.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function applyTheme(t){
+    docEl.setAttribute('data-theme', t);
+    if(themeBtn) themeBtn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+  }
+  applyTheme(effectiveTheme());
+  if(themeBtn){
+    themeBtn.addEventListener('click', function(){
+      applyTheme(effectiveTheme() === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  /* deterministic pseudo-random series (Park-Miller LCG) so reloads stay stable */
+  function prng(seed){
+    var s = seed % 2147483647;
+    if (s <= 0) s += 2147483646;
+    return function(){
+      s = (s * 16807) % 2147483647;
+      return (s - 1) / 2147483646;
+    };
+  }
+  function synthSeries(seed, n, min, max, endValue){
+    var rand = prng(seed);
+    var span = max - min;
+    var v = min + span * 0.5;
+    var out = [];
+    for(var i = 0; i < n; i++){
+      v += (rand() - 0.5) * span * 0.5;
+      if(v < min) v = min + (min - v) * 0.4;
+      if(v > max) v = max - (v - max) * 0.4;
+      out.push(v);
+    }
+    if(endValue !== undefined) out[out.length - 1] = endValue;
+    return out;
+  }
+
+  var SPARK_N = 24, HERO_N = 56;
+  var DATA = {
+    cpu:      synthSeries(101, SPARK_N, 28, 42, 34),
+    ram:      synthSeries(202, SPARK_N, 30, 36, 33),
+    swap:     synthSeries(303, SPARK_N, 4,  9,  7),
+    storage:  synthSeries(404, SPARK_N, 49.3, 51.2, 51),
+    heroUp:   synthSeries(505, HERO_N, 1.5, 3, 2.4),
+    heroDown: synthSeries(606, HERO_N, 5, 11, 8.1)
+  };
+
+  /* ---------- shared curve geometry ---------- */
+  function scalePoints(values, w, h, pad){
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    var span = (max - min) || 1, n = values.length;
+    var innerW = w - pad * 2, innerH = h - pad * 2;
+    return values.map(function(v, i){
+      var x = pad + (n === 1 ? 0 : (i / (n - 1)) * innerW);
+      var y = pad + (1 - (v - min) / span) * innerH;
+      return [x, y];
+    });
+  }
+  function smoothLine(pts){
+    if(pts.length < 2) return '';
+    var d = 'M' + pts[0][0].toFixed(1) + ',' + pts[0][1].toFixed(1);
+    for(var i = 0; i < pts.length - 1; i++){
+      var p0 = pts[i > 0 ? i - 1 : 0], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+      var c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      var c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += ' C' + c1x.toFixed(1) + ',' + c1y.toFixed(1) + ' ' + c2x.toFixed(1) + ',' + c2y.toFixed(1) + ' ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1);
+    }
+    return d;
+  }
+  function tierOf(pct){ return pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : 'ok'; }
+  function tierVar(tier){ return tier === 'crit' ? 'var(--error)' : tier === 'warn' ? 'var(--warn)' : 'var(--ok)'; }
+
+  /* ---------- mini vital sparklines ---------- */
+  function miniSpark(values, w, h){
+    var pad = 2;
+    var pts = scalePoints(values, w, h, pad);
+    var color = tierVar(tierOf(values[values.length - 1]));
+    var line = smoothLine(pts);
+    var base = (h - pad).toFixed(1);
+    var area = line + ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + base + ' L' + pts[0][0].toFixed(1) + ',' + base + ' Z';
+    var last = pts[pts.length - 1];
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-hidden="true">' +
+      '<path d="' + area + '" style="fill:' + color + ';opacity:.16" stroke="none"/>' +
+      '<path d="' + line + '" fill="none" style="stroke:' + color + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="2.2" style="fill:' + color + '"/>' +
+      '</svg>';
+  }
+
+  /* ---------- hero dual-area throughput chart ---------- */
+  function buildHeroChart(upValues, downValues, w, h){
+    var padL = 36, padR = 8, padT = 12, padB = 10;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    var rawMax = Math.max.apply(null, upValues.concat(downValues));
+    var topMax = Math.ceil((rawMax * 1.25) / 2) * 2;
+    var baseY = (padT + innerH).toFixed(1);
+
+    function toPts(values){
+      return values.map(function(v, i){
+        var x = padL + (i / (values.length - 1)) * innerW;
+        var y = padT + (1 - v / topMax) * innerH;
+        return [x, y];
+      });
+    }
+    function areaPath(pts){
+      var line = smoothLine(pts);
+      var last = pts[pts.length - 1], first = pts[0];
+      return line + ' L' + last[0].toFixed(1) + ',' + baseY + ' L' + first[0].toFixed(1) + ',' + baseY + ' Z';
+    }
+
+    var upPts = toPts(upValues), downPts = toPts(downValues);
+    var s = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-label="Upload and download throughput over time">';
+
+    [0, 0.5, 1].forEach(function(f){
+      var y = padT + innerH * (1 - f);
+      s += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (w - padR) + '" y2="' + y.toFixed(1) + '" style="stroke:var(--border)" stroke-width="1" stroke-dasharray="3,4" opacity=".8"/>';
+      s += '<text x="' + (padL - 8) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end" font-size="10" style="fill:var(--text-3)">' + Math.round(topMax * f) + '</text>';
+    });
+    var vLines = 6;
+    for(var i = 1; i < vLines; i++){
+      var x = padL + (innerW / vLines) * i;
+      s += '<line x1="' + x.toFixed(1) + '" y1="' + padT + '" x2="' + x.toFixed(1) + '" y2="' + baseY + '" style="stroke:var(--border)" stroke-width="1" opacity=".4"/>';
+    }
+
+    s += '<path d="' + areaPath(downPts) + '" style="fill:var(--info);opacity:.14" stroke="none"/>';
+    s += '<path d="' + smoothLine(downPts) + '" fill="none" style="stroke:var(--info)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>';
+    s += '<path d="' + areaPath(upPts) + '" style="fill:var(--accent);opacity:.2" stroke="none"/>';
+    s += '<path d="' + smoothLine(upPts) + '" fill="none" style="stroke:var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>';
+
+    var lastX = upPts[upPts.length - 1][0].toFixed(1);
+    s += '<line x1="' + lastX + '" y1="' + padT + '" x2="' + lastX + '" y2="' + baseY + '" style="stroke:var(--text-3)" stroke-width="1" stroke-dasharray="2,3" opacity=".5"/>';
+
+    var dl = downPts[downPts.length - 1], ul = upPts[upPts.length - 1];
+    s += '<circle cx="' + dl[0].toFixed(1) + '" cy="' + dl[1].toFixed(1) + '" r="5" style="fill:var(--info)" opacity=".18"/>';
+    s += '<circle cx="' + dl[0].toFixed(1) + '" cy="' + dl[1].toFixed(1) + '" r="2.6" style="fill:var(--info)"/>';
+    s += '<circle cx="' + ul[0].toFixed(1) + '" cy="' + ul[1].toFixed(1) + '" r="5" style="fill:var(--accent)" opacity=".2"/>';
+    s += '<circle cx="' + ul[0].toFixed(1) + '" cy="' + ul[1].toFixed(1) + '" r="2.6" style="fill:var(--accent)"/>';
+
+    s += '</svg>';
+    return s;
+  }
+
+  function renderCharts(){
+    var heroEl = document.getElementById('psHeroChart');
+    if(heroEl){
+      var hw = Math.round(heroEl.clientWidth) || 800;
+      var hh = Math.round(heroEl.clientHeight) || 260;
+      heroEl.innerHTML = buildHeroChart(DATA.heroUp, DATA.heroDown, hw, hh);
+    }
+    root.querySelectorAll('.ps-vital-spark').forEach(function(el){
+      var key = el.getAttribute('data-spark');
+      var values = DATA[key];
+      if(!values) return;
+      var w = Math.round(el.clientWidth) || 140;
+      var h = Math.round(el.clientHeight) || 26;
+      el.innerHTML = miniSpark(values, w, h);
+    });
+  }
+  renderCharts();
+  var resizeTimer;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderCharts, 150);
+  });
+
+  /* ---------- radial gauge fill-in ---------- */
+  var GAUGE_C = 2 * Math.PI * 32;
+  root.querySelectorAll('.ps-vital-gauge-progress').forEach(function(el){
+    var pct = Math.min(100, parseFloat(el.getAttribute('data-pct') || '0'));
+    el.style.stroke = tierVar(tierOf(pct));
+    el.style.strokeDasharray = GAUGE_C.toFixed(2);
+    var offset = GAUGE_C * (1 - pct / 100);
+    if(reduceMotion){ el.style.strokeDashoffset = offset.toFixed(2); return; }
+    el.style.strokeDashoffset = GAUGE_C.toFixed(2);
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){ el.style.strokeDashoffset = offset.toFixed(2); });
+    });
+  });
+
+  /* ---------- load average bars ---------- */
+  var LOAD_MAX = 8; /* scale reference = core count */
+  root.querySelectorAll('[data-load]').forEach(function(el){
+    var val = parseFloat(el.getAttribute('data-load') || '0');
+    var pct = Math.min(100, (val / LOAD_MAX) * 100);
+    if(reduceMotion){ el.style.width = pct.toFixed(1) + '%'; return; }
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){ el.style.width = pct.toFixed(1) + '%'; });
+    });
+  });
+
+  /* ---------- IP show / hide ---------- */
+  var ipBtn = document.getElementById('psIpToggle');
+  var ipLabel = document.getElementById('psIpToggleLabel');
+  var ipValues = root.querySelectorAll('.ps-ip-value');
+  var ipVisible = true;
+  function maskValue(v){ return v.replace(/[^:.]/g, '•'); }
+  function renderIp(){
+    ipValues.forEach(function(el){
+      var full = el.getAttribute('data-full') || el.textContent;
+      el.textContent = ipVisible ? full : maskValue(full);
+    });
+    if(ipBtn){
+      var eye = ipBtn.querySelector('.ps-i-eye');
+      var eyeOff = ipBtn.querySelector('.ps-i-eye-off');
+      if(eye) eye.style.display = ipVisible ? 'none' : '';
+      if(eyeOff) eyeOff.style.display = ipVisible ? '' : 'none';
+      ipBtn.setAttribute('aria-label', ipVisible ? 'Hide IP addresses' : 'Show IP addresses');
+    }
+    if(ipLabel) ipLabel.textContent = ipVisible ? 'Hide' : 'Show';
+  }
+  if(ipBtn){
+    ipBtn.addEventListener('click', function(){
+      ipVisible = !ipVisible;
+      renderIp();
+    });
+  }
+})();
+</script>
+</div>
+</body>
+</html>

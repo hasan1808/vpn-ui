@@ -45,6 +45,9 @@ type resellerForm struct {
 	// AllowOverview hands this reseller the panel overview, which is off by
 	// default because it is a host dashboard and none of it is theirs to act on.
 	AllowOverview bool `json:"allowOverview" form:"allowOverview"`
+	// AllowOverviewManage turns that overview from a showcase into a page that can
+	// act. No effect unless AllowOverview is on.
+	AllowOverviewManage bool `json:"allowOverviewManage" form:"allowOverviewManage"`
 
 	// InboundIds arrives as repeated `inboundIds` keys (Qs arrayFormat:'repeat').
 	// A blank entry is how the UI sends "none": an omitted field would bind as nil
@@ -70,18 +73,19 @@ func (f *resellerForm) inboundIds() []int {
 // spec maps the wire form onto the service's shape.
 func (f *resellerForm) spec() service.ResellerSpec {
 	return service.ResellerSpec{
-		Username:           f.Username,
-		Password:           f.Password,
-		Nickname:           f.Nickname,
-		Enable:             f.Enable,
-		AllowanceGB:        f.AllowanceGB,
-		Unlimited:          f.Unlimited,
-		DaysPerGB:          f.DaysPerGB,
-		MinCreateGB:        f.MinCreateGB,
-		MinAddGB:           f.MinAddGB,
-		AllowExternalProxy: f.AllowExternalProxy,
-		AllowOverview:      f.AllowOverview,
-		InboundIds:         f.inboundIds(),
+		Username:            f.Username,
+		Password:            f.Password,
+		Nickname:            f.Nickname,
+		Enable:              f.Enable,
+		AllowanceGB:         f.AllowanceGB,
+		Unlimited:           f.Unlimited,
+		DaysPerGB:           f.DaysPerGB,
+		MinCreateGB:         f.MinCreateGB,
+		MinAddGB:            f.MinAddGB,
+		AllowExternalProxy:  f.AllowExternalProxy,
+		AllowOverview:       f.AllowOverview,
+		AllowOverviewManage: f.AllowOverviewManage,
+		InboundIds:          f.inboundIds(),
 	}
 }
 

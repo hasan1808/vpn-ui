@@ -368,27 +368,73 @@ func (s *ResellerService) RenameClient(oldEmail, newEmail string) error {
 		Where("email = ?", oldEmail).Update("email", newEmail).Error
 }
 
-// DropInbound removes every ownership row for a deleted inbound, the mirror of
-// AdminService.RevokeInboundEverywhere. Without it the rows linger and a
-// recycled inbound id silently inherits the old ownership.
+// DropInbound settles the ledger after an inbound has been deleted. It removes a
+// MEMBERSHIP, never an account.
 //
-// The reseller is refunded for what those accounts had LEFT: an admin deleting
-// the inbound out from under them is not a sale they chose to unwind, but the
-// bytes their customers already moved are still spent.
+// The distinction is the whole function. An account is one identity on N inbounds
+// with ONE quota and ONE charge, so deleting one inbound it sits on does not end
+// the sale: the other memberships keep serving it against the same charge. Keying
+// this on ResellerClient.InboundId got both halves wrong at once. Delete inbound B
+// while the row named A and nothing was refunded, the client vanished from B and
+// the ledger kept charging; delete A and the whole charge came back while the
+// account carried on selling on B and C.
 //
-// usage is UsageSnapshot taken BEFORE the inbound was deleted. It is a parameter
-// and not a lookup because the client_traffics rows are gone by now, and reading
-// them here would price every account as untouched and refund the lot.
-func (s *ResellerService) DropInbound(inboundId int, usage map[string]int64) error {
-	var rows []model.ResellerClient
+// emails is the reseller-owned accounts that were SERVED BY that inbound and usage
+// is UsageSnapshot over them. Both are parameters because both are unanswerable by
+// now: the inbound's settings and its client_traffics rows went with it, and
+// pricing from that wreckage reads every account as untouched and refunds the lot.
+//
+// Only the LAST membership going is a delete, and that one is refunded for what the
+// account had left: an admin deleting the inbound out from under a reseller is not
+// a sale they chose to unwind, but the bytes their customers already moved are
+// still spent.
+func (s *ResellerService) DropInbound(inboundId int, emails []string, usage map[string]int64) error {
 	db := database.GetDB()
+
+	// Two sets. The accounts the inbound served are the sale to settle; the rows
+	// whose HOME pointer named it are only a column to repair, and are usually a
+	// subset of the first.
+	candidates := make([]string, 0, len(emails))
+	seen := map[string]bool{}
+	add := func(email string) {
+		key := emailKey(email)
+		if key == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		candidates = append(candidates, email)
+	}
+	for _, email := range emails {
+		add(email)
+	}
+	var homed []string
 	if err := db.Model(&model.ResellerClient{}).
-		Where("inbound_id = ?", inboundId).Find(&rows).Error; err != nil {
+		Where("inbound_id = ?", inboundId).Pluck("email", &homed).Error; err != nil {
 		return err
 	}
-	for _, rc := range rows {
-		used, known := usage[emailKey(rc.Email)]
-		if err := s.RefundDeleted(rc.Email, used, known); err != nil {
+	for _, email := range homed {
+		add(email)
+	}
+
+	for _, email := range candidates {
+		ids, err := servingInboundIds(db, email)
+		if err != nil {
+			return err
+		}
+		if len(ids) > 0 {
+			// Still served elsewhere: the account survives the inbound, so the charge
+			// stands and the row stays. All that moves is the home pointer, and only
+			// when it named the inbound that just went, so the column keeps naming an
+			// inbound the account is really on.
+			if err := db.Model(&model.ResellerClient{}).
+				Where("email = ? AND inbound_id = ?", email, inboundId).
+				Update("inbound_id", ids[0]).Error; err != nil {
+				return err
+			}
+			continue
+		}
+		used, known := usage[emailKey(email)]
+		if err := s.RefundDeleted(email, used, known); err != nil {
 			return err
 		}
 	}
@@ -767,6 +813,15 @@ func (s *ResellerService) reserve(t ChargeTicket) error {
 				AllTimeBase:  base,
 			}).Error
 		}
+		// charged_bytes alone, and InboundId deliberately left where the create put
+		// it: it is the HOME inbound, a display value, and an edit does not move an
+		// account's home. There is nothing to keep in step here because nothing
+		// decides by that column any more; the questions it used to answer ("which
+		// inbound is this on") are resolved from the memberships instead, since one
+		// account is served on N of them and this row can only hold one. Writing the
+		// edited inbound here would be strictly worse than leaving it: the value
+		// would swing to whichever membership was edited last while still describing
+		// only one of them.
 		return tx.Model(&model.ResellerClient{}).Where("email = ?", t.Email).
 			Update("charged_bytes", t.Quote.NewCharged).Error
 	})
@@ -829,12 +884,34 @@ func (s *ResellerService) UsageOf(email string) (int64, bool, error) {
 	return used, known, nil
 }
 
-// OwnedEmailsOnInbound lists the reseller-owned accounts on one inbound, so a
-// caller about to delete that inbound can snapshot their usage first.
+// OwnedEmailsOnInbound lists the reseller-owned accounts one inbound SERVES, so a
+// caller about to delete that inbound can snapshot their usage first and hand both
+// to DropInbound.
+//
+// Resolved from what the inbound actually holds and not from
+// ResellerClient.InboundId: that column names the account's home inbound, exactly
+// one of the N it may be on, so keying on it both missed accounts really served
+// here (their home is elsewhere, so their usage was never snapshotted and their
+// refund was silently withheld) and listed accounts that are not.
+//
+// Returns the LEDGER's spelling of each email, because that is what ClientOwner and
+// the refund path match on.
 func (s *ResellerService) OwnedEmailsOnInbound(inboundId int) ([]string, error) {
+	db := database.GetDB()
+	served, err := inboundAccountEmails(db, inboundId)
+	if err != nil {
+		return nil, err
+	}
+	if len(served) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, 0, len(served))
+	for _, email := range served {
+		keys = append(keys, emailKey(email))
+	}
 	var emails []string
-	err := database.GetDB().Model(&model.ResellerClient{}).
-		Where("inbound_id = ?", inboundId).Pluck("email", &emails).Error
+	err = db.Model(&model.ResellerClient{}).
+		Where("LOWER(TRIM(email)) IN (?)", keys).Pluck("email", &emails).Error
 	return emails, err
 }
 
@@ -922,11 +999,12 @@ type ResellerView struct {
 	AvailableBytes int64 `json:"availableBytes"`
 	Unlimited      bool  `json:"unlimited"`
 
-	DaysPerGB          int  `json:"daysPerGb"`
-	MinCreateGB        int  `json:"minCreateGb"`
-	MinAddGB           int  `json:"minAddGb"`
-	AllowExternalProxy bool `json:"allowExternalProxy"`
-	AllowOverview      bool `json:"allowOverview"`
+	DaysPerGB           int  `json:"daysPerGb"`
+	MinCreateGB         int  `json:"minCreateGb"`
+	MinAddGB            int  `json:"minAddGb"`
+	AllowExternalProxy  bool `json:"allowExternalProxy"`
+	AllowOverview       bool `json:"allowOverview"`
+	AllowOverviewManage bool `json:"allowOverviewManage"`
 
 	InboundIds  []int `json:"inboundIds"`
 	ClientCount int64 `json:"clientCount"`
@@ -948,11 +1026,12 @@ type ResellerSpec struct {
 	AllowanceGB int
 	Unlimited   bool
 
-	DaysPerGB          int
-	MinCreateGB        int
-	MinAddGB           int
-	AllowExternalProxy bool
-	AllowOverview      bool
+	DaysPerGB           int
+	MinCreateGB         int
+	MinAddGB            int
+	AllowExternalProxy  bool
+	AllowOverview       bool
+	AllowOverviewManage bool
 
 	// InboundIds is the exact set this reseller may sell on. Replaces whatever
 	// they had; empty means none, which is a legitimate state.
@@ -1028,23 +1107,24 @@ func (s *ResellerService) GetResellers(caller *model.User) ([]ResellerView, erro
 			available = 0
 		}
 		out = append(out, ResellerView{
-			Id:                 u.Id,
-			Username:           u.Username,
-			Nickname:           u.Nickname,
-			Enable:             u.Enable,
-			TwoFactorEnable:    u.TwoFactorEnable,
-			AllowanceBytes:     p.AllowanceBytes,
-			SpentBytes:         p.SpentBytes,
-			AvailableBytes:     available,
-			Unlimited:          p.Unlimited,
-			DaysPerGB:          p.DaysPerGB,
-			MinCreateGB:        p.MinCreateGB,
-			MinAddGB:           p.MinAddGB,
-			AllowExternalProxy: p.AllowExternalProxy,
-			AllowOverview:      p.AllowOverview,
-			InboundIds:         gs,
-			ClientCount:        countBy[u.Id],
-			CreatedBy:          p.CreatedBy,
+			Id:                  u.Id,
+			Username:            u.Username,
+			Nickname:            u.Nickname,
+			Enable:              u.Enable,
+			TwoFactorEnable:     u.TwoFactorEnable,
+			AllowanceBytes:      p.AllowanceBytes,
+			SpentBytes:          p.SpentBytes,
+			AvailableBytes:      available,
+			Unlimited:           p.Unlimited,
+			DaysPerGB:           p.DaysPerGB,
+			MinCreateGB:         p.MinCreateGB,
+			MinAddGB:            p.MinAddGB,
+			AllowExternalProxy:  p.AllowExternalProxy,
+			AllowOverview:       p.AllowOverview,
+			AllowOverviewManage: p.AllowOverviewManage,
+			InboundIds:          gs,
+			ClientCount:         countBy[u.Id],
+			CreatedBy:           p.CreatedBy,
 		})
 	}
 	return out, nil
@@ -1159,15 +1239,16 @@ func (s *ResellerService) AddReseller(caller *model.User, spec ResellerSpec) (*m
 			}
 		}
 		return tx.Create(&model.ResellerProfile{
-			UserId:             user.Id,
-			AllowanceBytes:     gbToBytes(spec.AllowanceGB),
-			Unlimited:          spec.Unlimited,
-			DaysPerGB:          spec.DaysPerGB,
-			MinCreateGB:        spec.MinCreateGB,
-			MinAddGB:           spec.MinAddGB,
-			AllowExternalProxy: spec.AllowExternalProxy,
-			AllowOverview:      spec.AllowOverview,
-			CreatedBy:          caller.Id,
+			UserId:              user.Id,
+			AllowanceBytes:      gbToBytes(spec.AllowanceGB),
+			Unlimited:           spec.Unlimited,
+			DaysPerGB:           spec.DaysPerGB,
+			MinCreateGB:         spec.MinCreateGB,
+			MinAddGB:            spec.MinAddGB,
+			AllowExternalProxy:  spec.AllowExternalProxy,
+			AllowOverview:       spec.AllowOverview,
+			AllowOverviewManage: spec.AllowOverviewManage,
+			CreatedBy:           caller.Id,
 		}).Error
 	})
 	if err != nil {
@@ -1252,12 +1333,13 @@ func (s *ResellerService) UpdateReseller(caller *model.User, id int, spec Resell
 		}
 		return tx.Model(&model.ResellerProfile{}).Where("user_id = ?", user.Id).
 			Updates(map[string]any{
-				"unlimited":            spec.Unlimited,
-				"days_per_gb":          spec.DaysPerGB,
-				"min_create_gb":        spec.MinCreateGB,
-				"min_add_gb":           spec.MinAddGB,
-				"allow_external_proxy": spec.AllowExternalProxy,
-				"allow_overview":       spec.AllowOverview,
+				"unlimited":             spec.Unlimited,
+				"days_per_gb":           spec.DaysPerGB,
+				"min_create_gb":         spec.MinCreateGB,
+				"min_add_gb":            spec.MinAddGB,
+				"allow_external_proxy":  spec.AllowExternalProxy,
+				"allow_overview":        spec.AllowOverview,
+				"allow_overview_manage": spec.AllowOverviewManage,
 			}).Error
 	})
 	if err != nil {
@@ -1359,9 +1441,18 @@ func (s *ResellerService) dropReseller(userId int) error {
 // removal, live Xray RemoveUser) and drops each ledger row. It returns the set
 // of daemon protocols it touched so the caller can regenerate their configs.
 //
-// Two accounts are handed to the house instead of deleted: the last client on an
-// admin's inbound (which may not be emptied, and is not ours to destroy) and a
-// row whose account is already gone (stale ledger). Neither aborts the cascade.
+// EVERY membership of each account, not the one its ledger row names. An account
+// is one identity on N inbounds, and deleting it from the single inbound recorded
+// in ResellerClient.InboundId left N-1 live memberships behind with no ledger row,
+// which by this table's own rule means the house owns them: a working account,
+// serving traffic, that nobody is billed for and no reseller page shows.
+//
+// Two accounts are handed to the house instead of deleted: one whose last client on
+// an admin's inbound cannot be removed (an inbound may not be emptied, and is not
+// ours to destroy) and one that is already gone (stale ledger). Neither aborts the
+// cascade, and the ledger row goes either way, because the reseller it belongs to
+// is being deleted and a charge against a user that no longer exists can never be
+// settled.
 func (s *ResellerService) cascadeClients(rows []model.ResellerClient) (DeleteResult, error) {
 	res := DeleteResult{Protocols: map[model.Protocol]bool{}}
 	db := database.GetDB()
@@ -1370,42 +1461,60 @@ func (s *ResellerService) cascadeClients(rows []model.ResellerClient) (DeleteRes
 		return db.Where("email = ?", email).Delete(&model.ResellerClient{}).Error
 	}
 	for _, rc := range rows {
-		inbound, err := inboundService.GetInbound(rc.InboundId)
-		if err != nil || inbound == nil {
-			// Inbound already gone; the account went with it. Drop the stale row.
-			if derr := dropLedger(rc.Email); derr != nil {
-				return res, derr
-			}
-			res.Kept++
-			continue
-		}
-		needRestart, err := inboundService.DelInboundClientByEmail(rc.InboundId, rc.Email)
+		ids, err := servingInboundIds(db, rc.Email)
 		if err != nil {
-			msg := err.Error()
-			switch {
-			case strings.Contains(msg, "no client remained"):
-				// Last client on the inbound: reassign to the house rather than
-				// destroy the admin's inbound.
-				if derr := dropLedger(rc.Email); derr != nil {
-					return res, derr
-				}
-				res.Kept++
-			case strings.Contains(msg, "not found"):
-				// Already gone: drop the stale ledger row and move on.
-				if derr := dropLedger(rc.Email); derr != nil {
-					return res, derr
-				}
-				res.Kept++
-			default:
-				return res, err
+			return res, err
+		}
+		removed, survived := 0, 0
+		for _, id := range ids {
+			inbound, err := inboundService.GetInbound(id)
+			if err != nil || inbound == nil {
+				continue // gone between resolving and now: nothing left to remove
 			}
-			continue
+			// The settings' own spelling of the email, not the ledger's. Identity is
+			// case-insensitive across the panel and these two tables are written by
+			// different paths, but DelInboundClientByEmail matches the settings entry
+			// EXACTLY: handed the ledger's spelling of an account stored mixed-case, it
+			// reports "not found" and the account survives the cascade as a live,
+			// unbilled client.
+			email := rc.Email
+			if clients, cerr := inboundService.GetClients(inbound); cerr == nil {
+				for _, c := range clients {
+					if accountKey(c.Email) == accountKey(rc.Email) {
+						email = c.Email
+						break
+					}
+				}
+			}
+			needRestart, err := inboundService.DelInboundClientByEmail(id, email)
+			if err != nil {
+				msg := err.Error()
+				switch {
+				case strings.Contains(msg, "no client remained"):
+					// Last client on the inbound: the account keeps this membership
+					// rather than the admin's inbound being destroyed under it.
+					survived++
+				case strings.Contains(msg, "not found"):
+					// Already gone from this one. Neither a delete nor a survivor.
+				default:
+					return res, err
+				}
+				continue
+			}
+			res.Protocols[inbound.Protocol] = true
+			res.NeedXrayRestart = res.NeedXrayRestart || needRestart
+			removed++
 		}
 		if derr := dropLedger(rc.Email); derr != nil {
 			return res, derr
 		}
-		res.Protocols[inbound.Protocol] = true
-		res.NeedXrayRestart = res.NeedXrayRestart || needRestart
+		// Reported by what became of the ACCOUNT, not by how many memberships moved:
+		// one that still serves anywhere was handed to the house, whatever else the
+		// cascade managed to remove.
+		if survived > 0 || removed == 0 {
+			res.Kept++
+			continue
+		}
 		res.Deleted++
 	}
 	return res, nil

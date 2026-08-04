@@ -101,6 +101,16 @@ func (x *XrayAPI) Close() {
 
 // AddInbound adds a new inbound configuration to the Xray core via gRPC.
 func (x *XrayAPI) AddInbound(inbound []byte) error {
+	// Init is allowed to fail (Xray not running, API port 0, dial refused) and
+	// every caller in web/service ignores that error, so this can be reached with
+	// no client at all. Dereferencing a nil *HandlerServiceClient here does not
+	// return an error, it panics, and it panics on the request goroutine: the
+	// whole PANEL process dies. That is reachable in the exact situation an
+	// operator is most likely to be clicking around in, namely a core that
+	// refused its config and is not up. Report it instead.
+	if x.HandlerServiceClient == nil {
+		return fmt.Errorf("xray api is not connected")
+	}
 	client := *x.HandlerServiceClient
 
 	conf := new(conf.InboundDetourConfig)
@@ -123,6 +133,9 @@ func (x *XrayAPI) AddInbound(inbound []byte) error {
 
 // DelInbound removes an inbound configuration from the Xray core by tag.
 func (x *XrayAPI) DelInbound(tag string) error {
+	if x.HandlerServiceClient == nil {
+		return fmt.Errorf("xray api is not connected")
+	}
 	client := *x.HandlerServiceClient
 	_, err := client.RemoveInbound(context.Background(), &command.RemoveInboundRequest{
 		Tag: tag,
@@ -130,8 +143,86 @@ func (x *XrayAPI) DelInbound(tag string) error {
 	return err
 }
 
+// Proto FULL NAMES of the account messages carried by anytls/tuic/naive. These are the
+// type URLs the running core resolves through serial.GetInstance, so they must match the
+// `package` + `message` of the core's own .proto byte for byte. See forkAccount.
+const (
+	anytlsAccountType = "xray.proxy.anytls.Account"
+	tuicAccountType   = "xray.proxy.tuic.Account"
+	naiveAccountType  = "xray.proxy.naive.Account"
+)
+
+// Field numbers in xray.proxy.naive.Account. Named because they are the one part of
+// this encoder that fails SILENTLY when it drifts (a renumbered field lands in
+// unknownFields and the account authenticates with an empty value), and naming them
+// lets TestNaiveAccountFieldNumbersMatchTheCore read the core's generated tags and
+// compare, rather than a human having to notice.
+const (
+	naiveAccountPasswordField = 1
+	naiveAccountUsernameField = 2
+)
+
+type protoStringField struct {
+	number int
+	value  string
+}
+
+// forkAccount builds the same *serial.TypedMessage that serial.ToTypedMessage would,
+// for an account message the panel cannot import.
+//
+// anytls/tuic/naive live only in the PATCHED core (third_party/Xray-core), which the
+// panel does not link: go.mod pins the published github.com/xtls/xray-core and the fork
+// is compiled separately into the embedded xray binary. So there is no
+// proxy/anytls.Account type to hand to serial.ToTypedMessage the way vmess/trojan do,
+// and the message has to be encoded here.
+//
+// That is safe because a TypedMessage is only a type URL plus the message's proto3
+// bytes, and all three of these accounts are strings and nothing else. Neither half
+// fails to compile if the core moves, so it is worth knowing how each one breaks:
+//
+//   - A renamed proto package is LOUD. AddUserOperation.ApplyInbound calls
+//     User.ToMemoryUser, which resolves the type URL through the proto registry and
+//     returns "failed to parse user" for a name it does not know, so AlterInbound
+//     surfaces a gRPC error.
+//   - A RENUMBERED field is silent. proto.Unmarshal files an unrecognised field number
+//     under unknownFields and leaves the credential at its zero value, so the account
+//     is accepted with an empty password and simply never authenticates.
+//
+// Change these in lockstep with the core's .proto.
+func forkAccount(messageType string, fields ...protoStringField) *serial.TypedMessage {
+	var value []byte
+	for _, f := range fields {
+		value = appendProtoStringField(value, f.number, f.value)
+	}
+	return &serial.TypedMessage{Type: messageType, Value: value}
+}
+
+// appendProtoStringField appends one proto3 string field: a varint tag of
+// (number<<3 | 2 /* length-delimited */), a varint byte count, then the bytes. An empty
+// value is skipped, which is exactly what protoc-gen-go emits for a proto3 scalar
+// sitting at its zero value.
+func appendProtoStringField(buf []byte, number int, value string) []byte {
+	if value == "" {
+		return buf
+	}
+	buf = appendProtoVarint(buf, uint64(number)<<3|2)
+	buf = appendProtoVarint(buf, uint64(len(value)))
+	return append(buf, value...)
+}
+
+func appendProtoVarint(buf []byte, v uint64) []byte {
+	for v >= 0x80 {
+		buf = append(buf, byte(v)|0x80)
+		v >>= 7
+	}
+	return append(buf, byte(v))
+}
+
 // AddUser adds a user to an inbound in the Xray core using the specified protocol and user data.
 func (x *XrayAPI) AddUser(Protocol string, inboundTag string, user map[string]any) error {
+	if x.HandlerServiceClient == nil {
+		return fmt.Errorf("xray api is not connected")
+	}
 	userEmail, err := getRequiredUserString(user, "email")
 	if err != nil {
 		return err
@@ -236,6 +327,48 @@ func (x *XrayAPI) AddUser(Protocol string, inboundTag string, user map[string]an
 		account = serial.ToTypedMessage(&hysteriaAccount.Account{
 			Auth: auth,
 		})
+	case "anytls":
+		password, err := getRequiredUserString(user, "password")
+		if err != nil {
+			return err
+		}
+
+		account = forkAccount(anytlsAccountType, protoStringField{1, password})
+	case "tuic":
+		userID, err := getRequiredUserString(user, "id")
+		if err != nil {
+			return err
+		}
+
+		password, err := getRequiredUserString(user, "password")
+		if err != nil {
+			return err
+		}
+
+		account = forkAccount(tuicAccountType,
+			protoStringField{1, userID},
+			protoStringField{2, password},
+		)
+	case "naive":
+		password, err := getRequiredUserString(user, "password")
+		if err != nil {
+			return err
+		}
+
+		// Optional, and the empty case is not a degenerate one: the core falls back to
+		// protocol.User.Email, which is what every account created before naive had a
+		// username field authenticates with. appendProtoStringField skips an empty
+		// value, so the wire bytes for such an account are byte-identical to what this
+		// emitted before the field existed.
+		username, err := getOptionalUserString(user, "username")
+		if err != nil {
+			return err
+		}
+
+		account = forkAccount(naiveAccountType,
+			protoStringField{naiveAccountPasswordField, password},
+			protoStringField{naiveAccountUsernameField, username},
+		)
 	default:
 		return nil
 	}
@@ -256,6 +389,9 @@ func (x *XrayAPI) AddUser(Protocol string, inboundTag string, user map[string]an
 
 // RemoveUser removes a user from an inbound in the Xray core by email.
 func (x *XrayAPI) RemoveUser(inboundTag, email string) error {
+	if x.HandlerServiceClient == nil {
+		return fmt.Errorf("xray api is not connected")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -279,7 +415,6 @@ func (x *XrayAPI) GetTraffic(reset bool) ([]*Traffic, []*ClientTraffic, error) {
 		return nil, nil, common.NewError("xray api is not initialized")
 	}
 
-	trafficRegex := regexp.MustCompile(`(inbound|outbound)>>>([^>]+)>>>traffic>>>(downlink|uplink)`)
 	clientTrafficRegex := regexp.MustCompile(`user>>>([^>]+)>>>traffic>>>(downlink|uplink)`)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -299,7 +434,7 @@ func (x *XrayAPI) GetTraffic(reset bool) ([]*Traffic, []*ClientTraffic, error) {
 	emailTrafficMap := make(map[string]*ClientTraffic)
 
 	for _, stat := range resp.GetStat() {
-		if matches := trafficRegex.FindStringSubmatch(stat.Name); len(matches) == 4 {
+		if matches := trafficStatRegex.FindStringSubmatch(stat.Name); len(matches) == 4 {
 			processTraffic(matches, stat.Value, tagTrafficMap)
 		} else if matches := clientTrafficRegex.FindStringSubmatch(stat.Name); len(matches) == 3 {
 			processClientTraffic(matches, stat.Value, emailTrafficMap)
@@ -307,6 +442,10 @@ func (x *XrayAPI) GetTraffic(reset bool) ([]*Traffic, []*ClientTraffic, error) {
 	}
 	return mapToSlice(tagTrafficMap), mapToSlice(emailTrafficMap), nil
 }
+
+// trafficStatRegex splits an Xray traffic stat name into direction, tag and link.
+// Package level so the parser and its tests cannot drift apart.
+var trafficStatRegex = regexp.MustCompile(`(inbound|outbound)>>>([^>]+)>>>traffic>>>(downlink|uplink)`)
 
 // processTraffic aggregates a traffic stat into trafficMap using regex matches and value.
 func processTraffic(matches []string, value int64, trafficMap map[string]*Traffic) {
@@ -318,14 +457,22 @@ func processTraffic(matches []string, value int64, trafficMap map[string]*Traffi
 		return
 	}
 
-	traffic, ok := trafficMap[tag]
+	// Keyed by DIRECTION and tag, not by tag alone. Nothing stops an inbound and an
+	// outbound sharing a name (the panel's uniqueness check spans outbounds and
+	// tunnels, not inbounds), and one key for both meant the first stat the map
+	// iteration happened to reach decided the direction for the pair while their bytes
+	// were summed into a single record: an inbound's traffic then appeared in the
+	// outbounds table, or a tunnel's egress was billed to an inbound.
+	key := matches[1] + ">>>" + tag
+
+	traffic, ok := trafficMap[key]
 	if !ok {
 		traffic = &Traffic{
 			IsInbound:  isInbound,
 			IsOutbound: !isInbound,
 			Tag:        tag,
 		}
-		trafficMap[tag] = traffic
+		trafficMap[key] = traffic
 	}
 
 	if isDown {

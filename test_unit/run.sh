@@ -80,6 +80,21 @@ Tests (ids mirror harness/model.py:ALL_PHASES; always run in this fixed order):
   ssh             full tunnel suite MINUS client-to-client + cross-inbound (SSH relay via
                   ssh -D dynamic SOCKS + badvpn-tun2socks); also selects ssh-udp below
   ssh-udp         UDP over the badvpn-udpgw path through the SSH tunnel (+notcp DNS + accounting)
+  anytls          full suite MINUS client-to-client + cross-inbound, over an XRAY-NATIVE
+                  inbound (the client is xray too: local socks + badvpn-tun2socks on
+                  tun0). UDP rides UoT inside the TLS stream and is asserted as such
+  tuic            same suite over TUIC (QUIC, TLS+ALPN h3), plus a UDP subtest against
+                  BOTH relay carriers (udpRelayMode native = QUIC datagrams, quic = UDP
+                  over a QUIC stream) since they are separate code paths on both ends
+  naive           same suite over NaiveProxy (HTTP/2 over TLS; the inbound also serves
+                  h3). Proxies no UDP by design, so DNS goes over TCP through the proxy
+                  and the UDP subtests are recorded N/A with that reason
+  multi-inbound   ONE account on an inbound of EVERY account-bearing protocol (18 of
+                  them, incl. vmess/vless/trojan/shadowsocks, which no other phase
+                  dials): connectivity on every projected credential, all traffic
+                  billed to ONE email, per-inbound traffic multiplier, one account
+                  quota, one IP limit counted across inbounds, and suspend/resume
+                  reaching every membership
   bulk-ops        bulk client add/sub/enable/disable + TXT/PDF export via API
   backup-restore  DB export + import round-trip
   subscription    sub links / JSON / Clash + remaining-days/traffic stats, every protocol

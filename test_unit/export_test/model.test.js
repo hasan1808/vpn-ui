@@ -78,6 +78,41 @@ for (const { name, cls, stored } of CASES) {
      `${name}: newly constructed client has id === email`);
 }
 
+// ---- naive: the username is a SEPARATE field from the email --------------
+// naive is not email-identity, so it is not in the loop above, but it has the same
+// class of trap. Its username sits between `password` and the inherited ClientBase
+// arguments in the constructor, so a fromJson that is not updated in lockstep shifts
+// every later argument by one and the account's EMAIL silently lands in `username`.
+// Nothing throws; the client table looks right; the link authenticates as the wrong
+// name. An empty username is meaningful and must survive: it means "use the email",
+// which is what every account created before the field relies on.
+console.log("");
+console.log("model: naive username round-trips and never eats the email");
+
+const NAIVE_CASES = [
+  { label: "username set", stored: { email: "alice@t", username: "alice-login", password: "pw", enable: true }, wantUser: "alice-login" },
+  { label: "username absent", stored: { email: "bob@t", password: "pw", enable: true }, wantUser: "" },
+  { label: "username empty", stored: { email: "carol@t", username: "", password: "pw", enable: true }, wantUser: "" },
+];
+
+for (const { label, stored, wantUser } of NAIVE_CASES) {
+  const live = Inbound.NaiveSettings.Naive.fromJson(stored);
+  ok(live.email === stored.email,
+     `naive (${label}): email survives fromJson (got ${JSON.stringify(live.email)})`);
+  ok(live.username === wantUser,
+     `naive (${label}): username is ${JSON.stringify(wantUser)} (got ${JSON.stringify(live.username)})`);
+  ok(live.password === stored.password,
+     `naive (${label}): password survives fromJson`);
+  const round = Inbound.NaiveSettings.Naive.fromJson(live.toJson());
+  ok(round.email === stored.email && round.username === wantUser,
+     `naive (${label}): survives a toJson/fromJson round trip`);
+}
+
+// A freshly added client has no username, so it authenticates as its email exactly as
+// it did before the field existed.
+ok(new Inbound.NaiveSettings.Naive().username === "",
+   "naive: a newly constructed client defaults to no username");
+
 // ---- verdict ------------------------------------------------------------
 console.log("");
 if (failures.length) {

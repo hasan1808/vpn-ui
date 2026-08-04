@@ -11,8 +11,10 @@
                     @click="showWarp()">WARP</a-button>
                 <a-button type="primary" icon="api"
                     @click="showNord()">NordVPN</a-button>
-                <a-button type="primary" icon="link"
-                    @click="showSshOutbound()">SSH</a-button>
+                <!-- No SSH or VPN Tunnel button: both are protocols in the Add
+                     Outbound picker now, which is where an operator looks for
+                     one. WARP and NordVPN stay because neither is a protocol,
+                     they are account setup flows for a specific provider. -->
             </a-space>
         </a-col>
         <a-col :xs="12" :sm="12" :lg="12" :style="{ textAlign: 'right' }">
@@ -73,12 +75,39 @@
         </template>
         <template slot="protocol" slot-scope="text, outbound, index">
             <!-- Label, not the stored protocol: an SSH tunnel is a socks outbound
-                 in the config and has to stay one, but showing "socks" hides what
-                 the operator actually created. -->
+                 in the config and has to stay one, and a VPN tunnel is a freedom
+                 one, but showing "socks"/"freedom" hides what the operator
+                 actually created. -->
             <a-tag :style="{ margin: '0' }" color="purple">[[
                 outboundProtocolLabel(outbound) ]]</a-tag>
+            <!-- Whether the tunnel behind a VPN row is actually carrying traffic.
+                 Only rendered once a probe has answered for it: an outbound with
+                 no state yet shows nothing rather than claiming to be down. -->
+            <a-tooltip
+                v-if="vpnOutboundStatus[outbound.tag]"
+                :title="vpnOutboundStatus[outbound.tag].detail">
+                <a-tag :style="{ margin: '0' }"
+                    :color="vpnOutboundStatus[outbound.tag].up ? 'green' : 'orange'">[[
+                    vpnOutboundStatus[outbound.tag].up ? '{{ i18n
+                    "pages.xray.outbound.vpnOutUp" }}' : '{{ i18n
+                    "pages.xray.outbound.vpnOutDown" }}' ]]</a-tag>
+            </a-tooltip>
+            <!-- anytls, tuic and naive are here for the same reason as the four
+                 above: all three carry a real streamSettings and the transport is
+                 the thing that has to match the far side, so it belongs on the
+                 row rather than only inside the edit dialog. TUIC's always reads
+                 "tuic", which is the point: it says the row is on the QUIC
+                 transport and not on some tcp stream a hand-edited config left
+                 behind. naive's is the one worth reading at a glance, because it
+                 is the only row here where the tag distinguishes two different
+                 stacks: "tcp" is HTTP/2 and "naive" is HTTP/3.
+
+                 `outbound.streamSettings &&` guards the whole block: this table
+                 renders the config VERBATIM, and a hand-written outbound with no
+                 streamSettings would otherwise throw on .network mid-render and
+                 leave the page blank behind v-cloak. -->
             <template
-                v-if="[Protocols.VMess, Protocols.VLESS, Protocols.Trojan, Protocols.Shadowsocks].includes(outbound.protocol)">
+                v-if="outbound.streamSettings && [Protocols.VMess, Protocols.VLESS, Protocols.Trojan, Protocols.Shadowsocks, Protocols.AnyTLS, Protocols.Tuic, Protocols.Naive].includes(outbound.protocol)">
                 <a-tag :style="{ margin: '0' }" color="blue">[[
                     outbound.streamSettings.network ]]</a-tag>
                 <a-tag :style="{ margin: '0' }"
@@ -90,7 +119,18 @@
             </template>
         </template>
         <template slot="traffic" slot-scope="text, outbound, index">
-            <a-tag color="green">[[ findOutboundTraffic(outbound) ]]</a-tag>
+            <!-- Green says MEASURED, and a measured zero keeps it. With both
+                 outbound stats switches off the core registers no counter at
+                 all, so an outbound with no row has not moved zero bytes, it has
+                 not been counted: that gets a neutral tag and a tooltip naming
+                 the switch that starts the counting. -->
+            <a-tooltip v-if="!outboundTrafficMeasured(outbound)"
+                title='{{ i18n "pages.xray.outbound.trafficUnmeasuredDesc" }}'>
+                <a-tag :style="{ margin: '0' }">[[
+                    findOutboundTraffic(outbound) ]]</a-tag>
+            </a-tooltip>
+            <a-tag v-else color="green">[[ findOutboundTraffic(outbound)
+                ]]</a-tag>
         </template>
         <template slot="test" slot-scope="text, outbound, index">
             <a-tooltip>

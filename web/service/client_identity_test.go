@@ -37,18 +37,26 @@ func TestClientIdentityKeyPerProtocol(t *testing.T) {
 		model.SSTP:        "password",
 		model.IKEV2:       "password",
 
+		// Password-credential native Xray protocols: anytls authenticates on the
+		// password alone; naive carries a Basic username too, but it is optional and
+		// renameable, so the password stays the addressable field.
+		model.ANYTLS: "password",
+		model.NAIVE:  "password",
+
 		model.Shadowsocks: "email",
 		model.Hysteria:    "auth",
 		model.Hysteria2:   "auth",
 
 		// UUID-identity and email-identity protocols both key on "id"; the latter
-		// store id=email in their settings JSON.
+		// store id=email in their settings JSON. tuic carries a uuid AND a password
+		// and is keyed on the uuid.
 		model.VMESS:   "id",
 		model.VLESS:   "id",
 		model.WGC:     "id",
 		model.AWG:     "id",
 		model.MTPROTO: "id",
 		model.SSH:     "id",
+		model.TUIC:    "id",
 	}
 	for protocol, want := range cases {
 		if got := clientIdentityKey(protocol); got != want {

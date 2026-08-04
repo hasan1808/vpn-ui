@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"io/fs"
 	"log"
 	"os"
 	"path"
@@ -36,6 +35,11 @@ func initModels() error {
 		&model.InboundAccess{},
 		&model.ResellerProfile{},
 		&model.ResellerClient{},
+		// The accounts layer. Creating these is purely additive: an old binary rolled
+		// back onto a migrated database ignores both tables (AutoMigrate never drops
+		// what it does not know) and keeps reading settings.clients exactly as before.
+		&model.Account{},
+		&model.AccountInbound{},
 		&model.OutboundTraffics{},
 		&model.Setting{},
 		&model.InboundClientIps{},
@@ -252,7 +256,7 @@ func migrateInboundAccess() {
 func runSeeders(isUsersEmpty bool) error {
 	empty, err := isTableEmpty("history_of_seeders")
 	if err != nil {
-		log.Printf("Error checking if users table is empty: %v", err)
+		log.Printf("Error checking if history_of_seeders table is empty: %v", err)
 		return err
 	}
 
@@ -377,7 +381,7 @@ func copyFile(src, dst string) error {
 
 func InitDB(dbPath string) error {
 	dir := path.Dir(dbPath)
-	err := os.MkdirAll(dir, fs.ModePerm)
+	err := os.MkdirAll(dir, 0750)
 	if err != nil {
 		return err
 	}

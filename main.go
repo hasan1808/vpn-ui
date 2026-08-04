@@ -24,7 +24,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	_ "unsafe"
 
 	"github.com/mhsanaei/3x-ui/v2/backend"
 	"github.com/mhsanaei/3x-ui/v2/config"
@@ -200,6 +199,22 @@ func runWebServer() {
 	// every later one, moving live sessions onto other accounts' addresses and breaking
 	// installed WireGuard configs outright.
 	inboundMigrations.MigrationAccountSlots()
+	// Backfill the accounts layer from settings.clients. Ordered AFTER the two
+	// above on purpose: every account must already carry its subId and its slot
+	// before anything reads them onto a membership row.
+	//
+	// ADDITIVE ONLY (see MigrationAccounts): it inserts into accounts and
+	// account_inbounds and writes nothing else, so a failure at any point leaves
+	// the database exactly as it was and the panel keeps serving on the legacy
+	// client model. Never blocks startup.
+	accountMigrations := &service.AccountService{}
+	accountMigrations.MigrationAccounts()
+	// Same reason again: hand the admins who predate the overview permission the bit
+	// that now gates the page they could always open, so an upgrade does not quietly
+	// take the panel's home page away from every non-super admin. One shot, guarded by
+	// a setting so a later revoke stays revoked (see MigrationOverviewAccess).
+	adminMigrations := &service.AdminService{}
+	adminMigrations.MigrationOverviewAccess()
 
 	// Extract the pinned Xray core + base geo files baked into the panel. The
 	// core is overwritten on every start so the bundled (patched) fork is always
@@ -267,7 +282,6 @@ func runWebServer() {
 	err = server.Start()
 	if err != nil {
 		log.Fatalf("Error starting web server: %v", err)
-		return
 	}
 
 	var subServer *sub.Server
@@ -276,7 +290,6 @@ func runWebServer() {
 	err = subServer.Start()
 	if err != nil {
 		log.Fatalf("Error starting sub server: %v", err)
-		return
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -306,8 +319,7 @@ func runWebServer() {
 			global.SetWebServer(server)
 			err = server.Start()
 			if err != nil {
-				log.Fatalf("Error restarting web server: %v", err)
-				return
+			log.Fatalf("Error restarting web server: %v", err)
 			}
 			log.Println("Web server restarted successfully.")
 
@@ -316,7 +328,6 @@ func runWebServer() {
 			err = subServer.Start()
 			if err != nil {
 				log.Fatalf("Error restarting sub server: %v", err)
-				return
 			}
 			log.Println("Sub server restarted successfully.")
 		case sys.SIGUSR1:
@@ -537,7 +548,7 @@ func randomizeSetting() error {
 	fmt.Printf("  IP:       %s\n", ip)
 	fmt.Printf("  URL:      %s\n", url)
 	if ip == "N/A" {
-		fmt.Println("  (could not detect public IP — substitute the server's address in the URL)")
+		fmt.Println("  (could not detect public IP, substitute the server's address in the URL)")
 	}
 
 	// Bring the panel back up on the new settings (only if we stopped it above; on a
@@ -576,7 +587,7 @@ func applyExplicitSetting(username, password string, port int, webBasePath strin
 	userService := service.UserService{}
 
 	if port > 0 {
-		if port > 65535 {
+		if port < 1 || port > 65535 {
 			fmt.Println("Ignoring invalid port (must be 1-65535):", port)
 		} else if err := settingService.SetPort(port); err != nil {
 			fmt.Println("Failed to set port:", err)
@@ -613,7 +624,7 @@ func applyExplicitSetting(username, password string, port int, webBasePath strin
 	fmt.Printf("  IP:       %s\n", ip)
 	fmt.Printf("  URL:      %s\n", url)
 	if ip == "N/A" {
-		fmt.Println("  (could not detect public IP — substitute the server's address in the URL)")
+		fmt.Println("  (could not detect public IP, substitute the server's address in the URL)")
 	}
 
 	if panelWasActive {
@@ -647,7 +658,10 @@ func panelAccessURL(settingService *service.SettingService, port int, normPath s
 			host = h
 		}
 	}
-	return ip, fmt.Sprintf("%s://%s:%d%s", scheme, host, port, normPath)
+	// JoinHostPort, not "%s:%d": an IPv6 host has to be bracketed or the URL is
+	// malformed (https://2001:db8::1:2083/ names no port a browser can find). A
+	// certificate naming a bare IPv6 address reaches here through certHost.
+	return ip, fmt.Sprintf("%s://%s%s", scheme, net.JoinHostPort(host, strconv.Itoa(port)), normPath)
 }
 
 // certHost returns the host a browser should use to reach a panel serving certFile:
@@ -820,13 +834,12 @@ func collectPanelInfo(resolvePublicIP bool) panelInfo {
 // SystemdService.GetServiceName) is gorm-backed, and calling one before InitDB
 // nil-derefs gorm and SIGSEGVs. The legacy `setting -show` path only survives
 // because updateSetting happens to run InitDB first in the same invocation.
-func runInfo(args []string) {
+func runInfo(args []string) error {
 	// Services here log through the logger package (xray.GetAccessLogPath warns when
 	// the Xray config is unreadable), which panics on a nil logger.
 	initLogger()
 	if err := database.InitDB(config.GetDBPath()); err != nil {
-		fmt.Fprintln(os.Stderr, "Database initialization failed:", err)
-		os.Exit(1)
+		return fmt.Errorf("database initialization failed: %w", err)
 	}
 
 	asJSON, field := false, ""
@@ -847,46 +860,42 @@ func runInfo(args []string) {
 				field = args[i]
 			}
 		default:
-			fmt.Fprintf(os.Stderr, "unknown argument for info: %q (use --json or --get <field>)\n", args[i])
-			os.Exit(2)
+			return fmt.Errorf("unknown argument for info: %q (use --json or --get <field>)", args[i])
 		}
 	}
 
 	if field != "" {
-		emitInfoField(field)
-		return
+		return emitInfoField(field)
 	}
 	info := collectPanelInfo(true)
 	if asJSON {
 		out, err := json.MarshalIndent(info, "", "  ")
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "encoding info failed:", err)
-			os.Exit(1)
+			return fmt.Errorf("encoding info failed: %w", err)
 		}
 		fmt.Println(string(out))
-		return
+		return nil
 	}
 	printPanelInfo(info)
+	return nil
 }
 
 // emitInfoField prints ONE field's raw value, so a shell can branch on it without
 // jq and without ever parsing prose. The lookup goes through the marshalled JSON
 // rather than a hand-written switch, which is what guarantees `--get` accepts
 // exactly the keys `--json` emits, forever.
-func emitInfoField(field string) {
+func emitInfoField(field string) error {
 	// Only the two fields that need it pay for the public-IP lookup.
 	info := collectPanelInfo(field == "ip" || field == "url")
 	raw, err := json.Marshal(info)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "encoding info failed:", err)
-		os.Exit(1)
+		return fmt.Errorf("encoding info failed: %w", err)
 	}
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.UseNumber() // keep Port an integer instead of float64's "8443" -> "8443.000000"
 	var m map[string]any
 	if err := dec.Decode(&m); err != nil {
-		fmt.Fprintln(os.Stderr, "decoding info failed:", err)
-		os.Exit(1)
+		return fmt.Errorf("decoding info failed: %w", err)
 	}
 	v, ok := m[field]
 	if !ok {
@@ -895,10 +904,10 @@ func emitInfoField(field string) {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		fmt.Fprintf(os.Stderr, "unknown info field %q\nknown fields: %s\n", field, strings.Join(keys, ", "))
-		os.Exit(1)
+		return fmt.Errorf("unknown info field %q\nknown fields: %s", field, strings.Join(keys, ", "))
 	}
 	fmt.Println(v)
+	return nil
 }
 
 // printPanelInfo renders the human view, in the same shape as --random's printout.
@@ -998,7 +1007,7 @@ func ctlPing() bool {
 // the entire point: Xray and the daemons are children of the live panel tracked by
 // its in-process state, so a local fallback would report a running Xray as stopped
 // and "restart" it into a second, port-colliding copy (see web/service/control.go).
-func runCtl(args []string) {
+func runCtl(args []string) error {
 	asJSON := false
 	var cmd string
 	for _, a := range args {
@@ -1010,29 +1019,25 @@ func runCtl(args []string) {
 			cmd = a
 			continue
 		}
-		fmt.Fprintf(os.Stderr, "unexpected argument: %q\n", a)
-		os.Exit(2)
+		return fmt.Errorf("unexpected argument: %q", a)
 	}
 	if cmd == "" {
-		fmt.Fprintf(os.Stderr, "usage: vpn-ui ctl <command> [--json]\ncommands: %s\n",
+		return fmt.Errorf("usage: vpn-ui ctl <command> [--json]\ncommands: %s",
 			strings.Join(service.ControlCommands, ", "))
-		os.Exit(2)
 	}
 
 	conn, err := ctlDial()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "the vpn-ui panel is not running: no answer on %s (%v)\n",
+		return fmt.Errorf("the vpn-ui panel is not running: no answer on %s (%v)\n"+
+			"Xray and the VPN daemons are children of the running panel, so they can only\n"+
+			"be controlled through it. Start the panel first, then retry.",
 			service.ControlSocketPath(), err)
-		fmt.Fprintln(os.Stderr, "Xray and the VPN daemons are children of the running panel, so they can only")
-		fmt.Fprintln(os.Stderr, "be controlled through it. Start the panel first, then retry.")
-		os.Exit(1)
 	}
 	defer conn.Close()
 
 	resp, err := ctlSend(conn, cmd)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "control socket error:", err)
-		os.Exit(1)
+		return fmt.Errorf("control socket error: %w", err)
 	}
 	if asJSON {
 		out, _ := json.MarshalIndent(resp, "", "  ")
@@ -1046,8 +1051,9 @@ func runCtl(args []string) {
 		printCoreStatus(resp.Cores)
 	}
 	if !resp.OK {
-		os.Exit(1)
+		return fmt.Errorf("ctl command failed: %s", resp.Error)
 	}
+	return nil
 }
 
 // printCoreStatus renders `ctl cores.status` as an aligned table.
@@ -1073,33 +1079,28 @@ func printCoreStatus(cores []service.CoreStatus) {
 // would re-exec the CLI with its own `update` arguments and loop. So this reuses
 // the pieces (DownloadPanelBinary, IsCompatibleBinary, the same release asset) and
 // owns the ordering itself: DB backup, swap, restart.
-func runUpdate() {
+func runUpdate() error {
 	initLogger()
 	if err := database.InitDB(config.GetDBPath()); err != nil {
-		fmt.Fprintln(os.Stderr, "Database initialization failed:", err)
-		os.Exit(1)
+		return fmt.Errorf("database initialization failed: %w", err)
 	}
 
 	var serverService service.ServerService
 	fmt.Println(ansiVpnUI())
 	upd, err := serverService.CheckPanelUpdate()
 	if err != nil {
-		// Refuse rather than guess: without the latest tag there is nothing to compare
-		// against, and downloading blind could reinstall the same build for no reason.
-		fmt.Fprintln(os.Stderr, "Could not check for updates:", err)
-		os.Exit(1)
+		return fmt.Errorf("could not check for updates: %w", err)
 	}
 	fmt.Printf("  Current: %s\n", upd.Current)
 	fmt.Printf("  Latest:  %s\n", upd.Latest)
 	if !upd.Available {
 		fmt.Println("Already up to date, nothing to do.")
-		return
+		return nil
 	}
 
 	exe, err := os.Executable()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Cannot resolve own path:", err)
-		os.Exit(1)
+		return fmt.Errorf("cannot resolve own path: %w", err)
 	}
 	if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
 		exe = resolved
@@ -1109,54 +1110,37 @@ func runUpdate() {
 	fmt.Printf("Downloading %s ...\n", service.PanelDownloadURL)
 	if err := service.DownloadPanelBinary(context.Background(), tmp, service.PanelDownloadURL); err != nil {
 		_ = os.Remove(tmp)
-		fmt.Fprintln(os.Stderr, "Download failed:", err)
-		os.Exit(1)
+		return fmt.Errorf("download failed: %w", err)
 	}
-	// An HTML 404 page, a truncated transfer or a wrong-arch asset would otherwise be
-	// renamed over the running binary and brick the panel on its next start.
 	if !service.IsCompatibleBinary(tmp) {
 		_ = os.Remove(tmp)
-		fmt.Fprintf(os.Stderr, "Downloaded file is not a %s Linux binary (no valid '%s' asset?)\n",
+		return fmt.Errorf("downloaded file is not a %s Linux binary (no valid '%s' asset?)",
 			runtime.GOARCH, service.PanelAsset)
-		os.Exit(1)
 	}
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		_ = os.Remove(tmp)
-		fmt.Fprintln(os.Stderr, "Could not make the downloaded binary executable:", err)
-		os.Exit(1)
+		return fmt.Errorf("could not make the downloaded binary executable: %w", err)
 	}
 
-	// The DB comes FIRST, before the swap, so the restore point predates any
-	// migration the new binary may run on its first start.
 	backup, err := backupPanelDBForUpdate(upd.Current)
 	if err != nil {
 		_ = os.Remove(tmp)
-		fmt.Fprintln(os.Stderr, "DB backup failed:", err)
-		fmt.Fprintln(os.Stderr, "Aborting before replacing the binary: an update without a good backup is not worth it.")
-		os.Exit(1)
+		return fmt.Errorf("DB backup failed: %w\nAborting before replacing the binary: an update without a good backup is not worth it.", err)
 	}
 	fmt.Printf("Backed up DB -> %s\n", backup)
 
-	// Keep the outgoing binary next to the new one: once renamed over, its inode is
-	// gone, and this is the only way back from a bad release (mv the .bak over it).
 	if err := service.CopyFile(exe, exe+".bak"); err == nil {
 		_ = os.Chmod(exe+".bak", 0o755)
 	} else {
-		fmt.Fprintln(os.Stderr, "warning: could not keep a backup of the current binary:", err)
+		fmt.Fprintf(os.Stderr, "warning: could not keep a backup of the current binary: %v\n", err)
 	}
 
 	if err := os.Rename(tmp, exe); err != nil {
 		_ = os.Remove(tmp)
-		fmt.Fprintln(os.Stderr, "Replacing the binary failed:", err)
-		os.Exit(1)
+		return fmt.Errorf("replacing the binary failed: %w", err)
 	}
 	fmt.Printf("Installed %s -> %s\n", upd.Latest, exe)
 
-	// Refresh /usr/bin/vpn-ui from the NEW binary, not from this (outgoing) one: the
-	// menu script ships inside the binary precisely so the two always match, and a
-	// menu from the old release driving the new binary is the version skew this
-	// design exists to prevent. Best-effort: a failed menu refresh must not make a
-	// successful binary update look failed.
 	if err := exec.Command(exe, "install-menu").Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not refresh the %s menu script: %v\n", service.MenuScriptPath, err)
 	}
@@ -1166,16 +1150,12 @@ func runUpdate() {
 	if exec.Command("systemctl", "is-active", "--quiet", unit).Run() == nil {
 		fmt.Printf("Restarting %s ...\n", unit)
 		if err := exec.Command("systemctl", "restart", unit).Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Restart failed: %v\nRestart it yourself: systemctl restart %s\n", err, unit)
-			os.Exit(1)
+			return fmt.Errorf("restart failed: %w\nRestart it yourself: systemctl restart %s", err, unit)
 		}
 		fmt.Println("Done. The panel now runs the new binary.")
-		return
+		return nil
 	}
 
-	// No active unit. Do not pretend the update took effect: the swapped file only
-	// runs on the next start, and on a box where the panel was launched by hand
-	// (setsid ./vpn-ui-amd64 &) the OLD binary keeps serving until someone kills it.
 	fmt.Printf("The new binary is installed, but the unit %q is not active, so nothing was restarted.\n", unit)
 	if ctlPing() {
 		fmt.Println("A panel IS running outside systemd (its control socket answers): it keeps serving")
@@ -1183,6 +1163,8 @@ func runUpdate() {
 	} else {
 		fmt.Printf("Start the panel when ready: systemctl start %s\n", unit)
 	}
+	return nil
+}
 }
 
 // backupPanelDBForUpdate snapshots the DB next to itself, timestamped and tagged
@@ -1304,23 +1286,20 @@ func installAcmeScript(args []string) {
 // The token is read from CF_Token in the environment, NEVER from argv: a command
 // line is world-readable through /proc/<pid>/cmdline, an environment is not. It is
 // also the variable name acme.sh itself expects, so the menu exports it once.
-func runCloudflare(args []string) {
+func runCloudflare(args []string) error {
 	if len(args) == 0 || args[0] == "" {
-		fmt.Fprintln(os.Stderr, "usage: CF_Token=... vpn-ui cf {verify|zones}")
-		os.Exit(2)
+		return fmt.Errorf("usage: CF_Token=... vpn-ui cf {verify|zones}")
 	}
 	token := os.Getenv("CF_Token")
 	if strings.TrimSpace(token) == "" {
-		fmt.Fprintln(os.Stderr, "CF_Token is not set in the environment.")
-		os.Exit(1)
+		return fmt.Errorf("CF_Token is not set in the environment")
 	}
 
 	switch args[0] {
 	case "verify":
 		status, err := service.VerifyCloudflareToken(token)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Cloudflare rejected the API token:", err)
-			os.Exit(1)
+			return fmt.Errorf("Cloudflare rejected the API token: %w", err)
 		}
 		if status == "" {
 			status = "active"
@@ -1329,20 +1308,18 @@ func runCloudflare(args []string) {
 	case "zones":
 		zones, err := service.ListCloudflareZones(token)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Cloudflare zone lookup failed:", err)
-			os.Exit(1)
+			return fmt.Errorf("Cloudflare zone lookup failed: %w", err)
 		}
 		if len(zones) == 0 {
-			fmt.Fprintln(os.Stderr, "The token is valid but can see no zones.")
-			os.Exit(1)
+			return fmt.Errorf("the token is valid but can see no zones")
 		}
 		for _, zone := range zones {
 			fmt.Printf("%s\t%s\n", zone.Name, zone.Status)
 		}
 	default:
-		fmt.Fprintf(os.Stderr, "unknown argument for cf: %q (use verify or zones)\n", args[0])
-		os.Exit(2)
+		return fmt.Errorf("unknown argument for cf: %q (use verify or zones)", args[0])
 	}
+	return nil
 }
 
 // installMenuScript implements `vpn-ui install-menu [path]`: write the embedded
@@ -1703,6 +1680,32 @@ func GetListenIP(getListen bool) {
 }
 
 // migrateDb performs database migration operations for the vpn-ui panel.
+// revertAccounts is the operator's way out of the accounts layer.
+//
+// Safe by construction for the panels that would want it: settings.clients is
+// still the truth, so on a panel where every account is on ONE inbound this is
+// exactly a no-op for the data plane. Every account keeps its entry, its
+// credentials and its tunnel address; only the two index tables and the migrated
+// flag go, and the next start simply rebuilds them (or does not, if the operator
+// stays on an older binary).
+//
+// It refuses while any account is on SEVERAL inbounds, because there is no
+// non-destructive answer for those. See AccountService.RevertAccounts.
+func revertAccounts() {
+	if err := database.InitDB(config.GetDBPath()); err != nil {
+		log.Fatal(err)
+	}
+	accountService := service.AccountService{}
+	accounts, memberships, err := accountService.RevertAccounts()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	fmt.Printf("Reverted: removed %d account(s) and %d membership(s).\n", accounts, memberships)
+	fmt.Println("settings.clients was not touched, so every account keeps its entry, credentials and address.")
+	fmt.Println("Restart the panel to continue on the legacy client model.")
+}
+
 func migrateDb() {
 	inboundService := service.InboundService{}
 
@@ -2649,6 +2652,10 @@ func main() {
 		fmt.Println("                   work-safe like --random (stops the unit, applies,")
 		fmt.Println("                   restarts it); combinable with --systemd, e.g.")
 		fmt.Println("                   --user u --pass p --port 8443 --path panel --systemd")
+		fmt.Println("    revert-accounts")
+		fmt.Println("                   drop the accounts layer and go back to the legacy")
+		fmt.Println("                   one-client-per-inbound model (refuses while any")
+		fmt.Println("                   account is on more than one inbound)")
 		fmt.Println("    --uninstall    remove the panel: systemd unit, daemons, firewall,")
 		fmt.Println("                   routing, /etc configs, bundles, logs, DB and the binary")
 		fmt.Println("                   (--yes to skip the confirmation prompt)")
@@ -2670,6 +2677,8 @@ func main() {
 		runWebServer()
 	case "migrate":
 		migrateDb()
+	case "revert-accounts":
+		revertAccounts()
 	case "import":
 		importDb()
 	case "setting":
@@ -2716,11 +2725,20 @@ func main() {
 			updateCert(webCertFile, webKeyFile)
 		}
 	case "info":
-		runInfo(os.Args[2:])
+		if err := runInfo(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "ctl":
-		runCtl(os.Args[2:])
+		if err := runCtl(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "update":
-		runUpdate()
+		if err := runUpdate(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "install-menu":
 		installMenuScript(os.Args[2:])
 	case "install-acme":
@@ -2728,7 +2746,10 @@ func main() {
 	case "acme-deps":
 		fmt.Println(service.EnsureAcmeDeps())
 	case "cf":
-		runCloudflare(os.Args[2:])
+		if err := runCloudflare(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "openvpn-auth":
 		openvpnAuth()
 	case "openvpn-connect":

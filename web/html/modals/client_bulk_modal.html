@@ -1,396 +1,654 @@
 {{define "modals/clientsBulkModal"}}
-<a-modal
-    id="client-bulk-modal"
-    v-model="clientsBulkModal.visible"
-    :title="clientsBulkModal.title"
-    @ok="clientsBulkModal.ok"
-    :confirm-loading="clientsBulkModal.confirmLoading"
-    :closable="true"
-    :mask-closable="false"
-    :ok-text="clientsBulkModal.okText"
-    cancel-text='{{ i18n "close" }}'
-    :class="themeSwitcher.currentTheme"
->
-    <a-form
-        :colon="false"
-        :label-col="{ md: {span:8} }"
-        :wrapper-col="{ md: {span:14} }"
-    >
-        <a-form-item label='{{ i18n "pages.client.method" }}'>
-            <a-select
-                v-model="clientsBulkModal.emailMethod"
-                buttonStyle="solid"
-                :dropdown-class-name="themeSwitcher.currentTheme"
-            >
-                <a-select-option :value="0">Random</a-select-option>
-                <a-select-option :value="1">Random+Prefix</a-select-option>
-                <a-select-option :value="2">Random+Prefix+Num</a-select-option>
-                <a-select-option :value="3"
-                    >Random+Prefix+Num+Postfix</a-select-option
-                >
-                <a-select-option :value="4">Prefix+Num+Postfix</a-select-option>
-            </a-select>
-        </a-form-item>
-        <a-form-item
-            label='{{ i18n "pages.client.first" }}'
-            v-if="clientsBulkModal.emailMethod>1"
-        >
-            <a-input-number
-                v-model.number="clientsBulkModal.firstNum"
-                :min="1"
-            ></a-input-number>
-        </a-form-item>
-        <a-form-item
-            label='{{ i18n "pages.client.last" }}'
-            v-if="clientsBulkModal.emailMethod>1"
-        >
-            <a-input-number
-                v-model.number="clientsBulkModal.lastNum"
-                :min="clientsBulkModal.firstNum"
-            ></a-input-number>
-        </a-form-item>
-        <a-form-item
-            label='{{ i18n "pages.client.prefix" }}'
-            v-if="clientsBulkModal.emailMethod>0"
-        >
-            <a-input v-model.trim="clientsBulkModal.emailPrefix"></a-input>
-        </a-form-item>
-        <a-form-item
-            label='{{ i18n "pages.client.postfix" }}'
-            v-if="clientsBulkModal.emailMethod>2"
-        >
-            <a-input v-model.trim="clientsBulkModal.emailPostfix"></a-input>
-        </a-form-item>
-        <a-form-item
-            label='{{ i18n "pages.client.clientCount" }}'
-            v-if="clientsBulkModal.emailMethod < 2"
-        >
-            <a-input-number
-                v-model.number="clientsBulkModal.quantity"
-                :min="1"
-                :max="500"
-            ></a-input-number>
-        </a-form-item>
-        <a-form-item
-            label='{{ i18n "security" }}'
-            v-if="inbound.protocol === Protocols.VMESS"
-        >
-            <a-select
-                v-model="clientsBulkModal.security"
-                :dropdown-class-name="themeSwitcher.currentTheme"
-            >
-                <a-select-option v-for="key in USERS_SECURITY" :value="key"
-                    >[[ key ]]</a-select-option
-                >
-            </a-select>
-        </a-form-item>
-        <a-form-item
-            label="Flow"
-            v-if="clientsBulkModal.inbound.canEnableTlsFlow()"
-        >
-            <a-select
-                v-model="clientsBulkModal.flow"
-                :dropdown-class-name="themeSwitcher.currentTheme"
-            >
-                <a-select-option value="" selected
-                    >{{ i18n "none" }}</a-select-option
-                >
-                <a-select-option v-for="key in TLS_FLOW_CONTROL" :value="key"
-                    >[[ key ]]</a-select-option
-                >
-            </a-select>
-        </a-form-item>
-        <a-form-item v-if="app.subSettings?.enable">
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        <span
-                            >{{ i18n "pages.inbounds.subscriptionDesc" }}</span
-                        >
-                    </template>
-                    Subscription
-                    <a-icon
-                        @click="clientsBulkModal.subId = RandomUtil.randomLowerAndNum(16)"
-                        type="sync"
-                    ></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input v-model.trim="clientsBulkModal.subId"></a-input>
-        </a-form-item>
-        <a-form-item v-if="app.tgBotEnable">
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        <span>{{ i18n "pages.inbounds.telegramDesc" }}</span>
-                    </template>
-                    Telegram ChatID
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                :style="{ width: '50%' }"
-                v-model.number="clientsBulkModal.tgId"
-                min="0"
-            ></a-input-number>
-        </a-form-item>
-        <a-form-item v-if="app.ipLimitEnable">
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        <span>{{ i18n "pages.inbounds.IPLimitDesc" }}</span>
-                    </template>
-                    <span>{{ i18n "pages.inbounds.IPLimit" }} </span>
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                v-model.number="clientsBulkModal.limitIp"
-                min="0"
-            ></a-input-number>
-        </a-form-item>
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        0 <span>{{ i18n "pages.inbounds.meansNoLimit" }}</span>
-                    </template>
-                    {{ i18n "pages.inbounds.totalFlow" }}
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                v-model.number="clientsBulkModal.totalGB"
-                :min="0"
-            ></a-input-number>
-        </a-form-item>
-        <a-form-item label='{{ i18n "pages.client.delayedStart" }}'>
-            <a-switch
-                v-model="clientsBulkModal.delayedStart"
-                @click="clientsBulkModal.expiryTime=0"
-            ></a-switch>
-        </a-form-item>
-        <a-form-item
-            label='{{ i18n "pages.client.expireDays" }}'
-            v-if="clientsBulkModal.delayedStart"
-        >
-            <a-input-number
-                v-model.number="delayedExpireDays"
-                :min="0"
-            ></a-input-number>
-        </a-form-item>
-        <a-form-item v-else>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        <span
-                            >{{ i18n "pages.inbounds.leaveBlankToNeverExpire"
-                            }}</span
-                        >
-                    </template>
-                    {{ i18n "pages.inbounds.expireDate" }}
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-date-picker
-                v-if="datepicker == 'gregorian'"
-                :show-time="{ format: 'HH:mm:ss' }"
-                format="YYYY-MM-DD HH:mm:ss"
-                :dropdown-class-name="themeSwitcher.currentTheme"
-                v-model="clientsBulkModal.expiryTime"
-            ></a-date-picker>
-            <a-persian-datepicker
-                v-else
-                placeholder='{{ i18n "pages.settings.datepickerPlaceholder" }}'
-                value="clientsBulkModal.expiryTime"
-                v-model="clientsBulkModal.expiryTime"
-            >
-            </a-persian-datepicker>
-        </a-form-item>
-        <a-form-item v-if="clientsBulkModal.expiryTime != 0">
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        <span>{{ i18n "pages.client.renewDesc" }}</span>
-                    </template>
-                    {{ i18n "pages.client.renew" }}
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                v-model.number="clientsBulkModal.reset"
-                :min="0"
-            ></a-input-number>
-        </a-form-item>
-    </a-form>
-</a-modal>
-<script>
-    const clientsBulkModal = {
-        visible: false,
-        confirmLoading: false,
-        title: "",
-        okText: "",
-        confirm: null,
-        dbInbound: new DBInbound(),
-        inbound: new Inbound(),
-        quantity: 1,
-        totalGB: 0,
-        limitIp: 0,
-        expiryTime: "",
-        emailMethod: 0,
-        firstNum: 1,
-        lastNum: 1,
-        emailPrefix: "",
-        emailPostfix: "",
-        subId: "",
-        tgId: "",
-        security: "auto",
-        flow: "",
-        delayedStart: false,
-        reset: 0,
-        ok() {
-            clients = [];
-            method = clientsBulkModal.emailMethod;
-            if (method > 1) {
-                start = clientsBulkModal.firstNum;
-                end = clientsBulkModal.lastNum + 1;
-            } else {
-                start = 0;
-                end = clientsBulkModal.quantity;
-            }
-            prefix =
-                method > 0 && clientsBulkModal.emailPrefix.length > 0
-                    ? clientsBulkModal.emailPrefix
-                    : "";
-            useNum = method > 1;
-            postfix =
-                method > 2 && clientsBulkModal.emailPostfix.length > 0
-                    ? clientsBulkModal.emailPostfix
-                    : "";
-            for (let i = start; i < end; i++) {
-                newClient = clientsBulkModal.newClient(
-                    clientsBulkModal.dbInbound.protocol,
-                );
-                if (method == 4) newClient.email = "";
-                newClient.email += useNum
-                    ? prefix + i.toString() + postfix
-                    : prefix + postfix;
-                if (clientsBulkModal.subId.length > 0)
-                    newClient.subId = clientsBulkModal.subId;
-                newClient.tgId = clientsBulkModal.tgId;
-                newClient.security = clientsBulkModal.security;
-                newClient.limitIp = clientsBulkModal.limitIp;
-                newClient._totalGB = clientsBulkModal.totalGB;
-                newClient._expiryTime = clientsBulkModal.expiryTime;
-                if (clientsBulkModal.inbound.canEnableTlsFlow()) {
-                    newClient.flow = clientsBulkModal.flow;
-                }
-                newClient.reset = clientsBulkModal.reset;
-                clients.push(newClient);
-            }
-            ObjectUtil.execute(
-                clientsBulkModal.confirm,
-                clients,
-                clientsBulkModal.dbInbound.id,
-            );
-        },
-        show({
-            title = "",
-            okText = '{{ i18n "sure" }}',
-            dbInbound = null,
-            confirm = (inbound, dbInbound) => {},
-        }) {
-            this.visible = true;
-            this.title = title;
-            this.okText = okText;
-            this.confirm = confirm;
-            this.quantity = 1;
-            this.totalGB = 0;
-            this.expiryTime = 0;
-            this.emailMethod = 0;
-            this.limitIp = 0;
-            this.firstNum = 1;
-            this.lastNum = 1;
-            this.emailPrefix = "";
-            this.emailPostfix = "";
-            this.subId = "";
-            this.tgId = "";
-            this.security = "auto";
-            this.flow = "";
-            this.dbInbound = new DBInbound(dbInbound);
-            this.inbound = Inbound.fromJson(dbInbound.toInbound().toJson());
-            this.delayedStart = false;
-            this.reset = 0;
-        },
-        newClient(protocol) {
-            switch (protocol) {
-                case Protocols.VMESS:
-                    return new Inbound.VmessSettings.VMESS();
-                case Protocols.VLESS:
-                    return new Inbound.VLESSSettings.VLESS();
-                case Protocols.TROJAN:
-                    return new Inbound.TrojanSettings.Trojan();
-                case Protocols.SHADOWSOCKS:
-                    return new Inbound.ShadowsocksSettings.Shadowsocks(
-                        clientsBulkModal.inbound.settings.shadowsockses[0]
-                            .method,
-                    );
-                case Protocols.HYSTERIA:
-                    return new Inbound.HysteriaSettings.Hysteria();
-                case Protocols.L2TP:
-                    return new Inbound.L2tpSettings.L2tpUser();
-                case Protocols.PPTP:
-                    return new Inbound.PptpSettings.PptpUser();
-                case Protocols.OPENVPN:
-                    return new Inbound.OpenvpnSettings.OpenvpnUser();
-                case Protocols.OPENCONNECT:
-                    return new Inbound.OcservSettings.OcservUser();
-                case Protocols.SSTP:
-                    return new Inbound.SstpSettings.SstpUser();
-                case Protocols.IKEV2:
-                    return new Inbound.Ikev2Settings.Ikev2User();
-                case Protocols.WGC:
-                    return new Inbound.WgcSettings.WgUser();
-                case Protocols.AWG:
-                    return new Inbound.AwgSettings.AwgUser();
-                case Protocols.GRE:
-                    return new Inbound.GreSettings.GreUser();
-                case Protocols.MTPROTO:
-                    return new Inbound.MtprotoSettings.MtprotoUser();
-                case Protocols.SSH:
-                    return new Inbound.SshSettings.SshUser();
-                default:
-                    return null;
-            }
-        },
-        close() {
-            clientsBulkModal.visible = false;
-            clientsBulkModal.loading(false);
-        },
-        loading(loading = true) {
-            clientsBulkModal.confirmLoading = loading;
-        },
-    };
+<!-- @cancel is what Close, the X and Escape all arrive as, and it is here because
+     the modal is not the only thing on screen: the calendar's dropdown is a portal
+     on <body>, so closing the modal with it open left it floating over the page
+     with nothing to dismiss it. close() unmounts the picker with the modal. -->
+<a-modal id="client-bulk-modal" v-model="clientsBulkModal.visible"
+  :title="clientsBulkModal.title" @ok="() => clientsBulkModal.ok()"
+  @cancel="() => clientsBulkModal.close()"
+  :confirm-loading="clientsBulkModal.confirmLoading" :closable="true" :mask-closable="false"
+  :ok-text="clientsBulkModal.okText" cancel-text='{{ i18n "close" }}'
+  :width="820" :class="themeSwitcher.currentTheme" wrap-class-name="bo-client-modal">
 
-    const clientsBulkModalApp = new Vue({
-        delimiters: ["[[", "]]"],
-        el: "#client-bulk-modal",
-        data: {
-            clientsBulkModal,
-            get inbound() {
-                return this.clientsBulkModal.inbound;
-            },
-            get delayedExpireDays() {
-                return this.clientsBulkModal.expiryTime < 0
-                    ? this.clientsBulkModal.expiryTime / -86400000
-                    : 0;
-            },
-            get datepicker() {
-                return app.datepicker;
-            },
-            set delayedExpireDays(days) {
-                this.clientsBulkModal.expiryTime = -86400000 * days;
-            },
-        },
-    });
+  <div class="bo-cf">
+    <!-- The same shell as the single-client form, because it is the same act done
+         many times over, and the same content-driven height. The rail summarises
+         the BATCH - nothing exists yet, so every figure on it previews what the
+         current settings would create. -->
+    <div class="bo-cf-rail">
+      <div class="bo-cf-summary">
+        <div class="bo-cf-who">
+          [[ clientsBulkModal.count ]] {{ i18n "clients" }}
+        </div>
+        <!-- The shape of the generated names, first and last. Eight x's stand for
+             the random stem every account is given, which is why the preview cannot
+             be exact anywhere except method 4. -->
+        <div class="bo-cf-sub bo-cf-shape">[[ clientsBulkModal.shapeText ]]</div>
+
+        <div class="bo-cf-kv">
+          <span>{{ i18n "pages.clients.quota" }}</span>
+          <b>[[ clientsBulkModal.quotaText ]]</b>
+        </div>
+        <div class="bo-cf-kv">
+          <span>{{ i18n "pages.clients.summaryExpires" }}</span>
+          <b>[[ clientsBulkModal.expiresText ]]</b>
+        </div>
+        <div class="bo-cf-kv">
+          <span>{{ i18n "pages.clients.inbounds" }}</span>
+          <b>[[ clientsBulkModal.selected.length ]]</b>
+        </div>
+      </div>
+
+      <div class="bo-cf-tabs" role="tablist">
+        <button v-for="t in clientsBulkModal.tabs" :key="t.key"
+          class="bo-cf-tab" type="button" role="tab"
+          :aria-selected="clientsBulkModal.tab === t.key"
+          @click="clientsBulkModal.tab = t.key">
+          <a-icon :type="t.icon"></a-icon>
+          <span>[[ t.label ]]</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="bo-cf-pane">
+      <!-- Identity: how the batch is named, and what every account in it is
+           allowed. Same shape and same order as the single form, so an operator
+           who knows one knows the other. -->
+      <template v-if="clientsBulkModal.tab === 'identity'">
+        <div class="bo-cf-field">
+          <label>{{ i18n "pages.client.method" }}</label>
+          <a-select v-model="clientsBulkModal.emailMethod" :style="{ width: '100%' }"
+            :dropdown-class-name="themeSwitcher.currentTheme">
+            <a-select-option :value="0">Random</a-select-option>
+            <a-select-option :value="1">Random+Prefix</a-select-option>
+            <a-select-option :value="2">Random+Prefix+Num</a-select-option>
+            <a-select-option :value="3">Random+Prefix+Num+Postfix</a-select-option>
+            <a-select-option :value="4">Prefix+Num+Postfix</a-select-option>
+          </a-select>
+        </div>
+
+        <!-- A count, or a range of numbers to run through. Which of the two a
+             method wants is the only reason these swap. -->
+        <a-row :gutter="12" v-if="clientsBulkModal.usesNum">
+          <a-col :span="12">
+            <div class="bo-cf-field">
+              <label>{{ i18n "pages.client.first" }}</label>
+              <a-input-number v-model.number="clientsBulkModal.firstNum" :min="1"
+                :style="{ width: '100%' }"></a-input-number>
+            </div>
+          </a-col>
+          <a-col :span="12">
+            <div class="bo-cf-field">
+              <label>{{ i18n "pages.client.last" }}</label>
+              <a-input-number v-model.number="clientsBulkModal.lastNum"
+                :min="clientsBulkModal.firstNum" :style="{ width: '100%' }"></a-input-number>
+            </div>
+          </a-col>
+        </a-row>
+        <div class="bo-cf-field" v-else>
+          <label>{{ i18n "pages.client.clientCount" }}</label>
+          <a-input-number v-model.number="clientsBulkModal.quantity" :min="1" :max="500"
+            :style="{ width: '100%' }"></a-input-number>
+        </div>
+
+        <a-row :gutter="12" v-if="clientsBulkModal.emailMethod > 0">
+          <a-col :span="12">
+            <div class="bo-cf-field">
+              <label>{{ i18n "pages.client.prefix" }}</label>
+              <a-input v-model.trim="clientsBulkModal.emailPrefix"></a-input>
+            </div>
+          </a-col>
+          <a-col :span="12" v-if="clientsBulkModal.emailMethod > 2">
+            <div class="bo-cf-field">
+              <label>{{ i18n "pages.client.postfix" }}</label>
+              <a-input v-model.trim="clientsBulkModal.emailPostfix"></a-input>
+            </div>
+          </a-col>
+        </a-row>
+
+        <div class="bo-cf-field">
+          <label>{{ i18n "comment" }}</label>
+          <a-input v-model="clientsBulkModal.comment"></a-input>
+          <div class="bo-cf-hint">{{ i18n "pages.clients.bulkCommentHint" }}</div>
+        </div>
+
+        <!-- No subscription field. Every account in a batch gets its own
+             subscription id, minted per account, and there is nothing here for an
+             operator to decide. A field that only ever OVERRODE that (to put the
+             whole batch on one shared /sub/ URL) read as something that had to be
+             filled in, so it is gone rather than explained. -->
+        <div class="bo-cf-field" v-if="app.tgBotEnable">
+          <label>{{ i18n "pages.clients.telegramId" }}</label>
+          <a-input-number v-model.number="clientsBulkModal.tgId" :min="0"
+            placeholder='{{ i18n "pages.clients.telegramNotLinked" }}'
+            :style="{ width: '100%' }"></a-input-number>
+        </div>
+
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <div class="bo-cf-field">
+              <label>{{ i18n "pages.inbounds.totalFlow" }}</label>
+              <a-input-number v-model="clientsBulkModal.totalGb" :min="0"
+                :style="{ width: '100%' }"></a-input-number>
+              <div class="bo-cf-hint">{{ i18n "pages.clients.zeroUnlimited" }}</div>
+            </div>
+          </a-col>
+          <a-col :span="12">
+            <!-- Days-per-GB derives the duration from the traffic, so a reseller on
+                 that plan gets no expiry control: the backend overwrites whatever
+                 is posted. Same rule as the single form. -->
+            <div class="bo-cf-field" v-if="clientsBulkModal.resellerForcedDays">
+              <label>{{ i18n "pages.resellers.daysPerGb" }}</label>
+              <div><a-tag color="blue">[[ clientsBulkModal.resellerForcedDaysText ]]</a-tag></div>
+            </div>
+            <div class="bo-cf-field" v-else>
+              <label>{{ i18n "pages.client.expireDays" }}</label>
+              <!-- Two ways into ONE stored value, exactly as the single form does
+                   it: a duration is what someone selling a 30-day plan knows, a
+                   date is what someone matching an invoice knows. -->
+              <div class="bo-cf-withicon">
+                <a-input-number v-if="!clientsBulkModal.dateMode"
+                  v-model="clientsBulkModal.days" :min="0"
+                  :style="{ width: '100%' }"></a-input-number>
+                <!-- Uncontrolled open state, for the reason spelled out in
+                     modals/clientMembershipModal: `@openChange` is unreachable in a
+                     template compiled from the DOM, so a controlled calendar could
+                     never be closed and it covers the footer. -->
+                <a-date-picker v-else
+                  format="YYYY-MM-DD"
+                  :dropdown-class-name="themeSwitcher.currentTheme"
+                  :value="clientsBulkModal.expiryMoment"
+                  :disabled-date="d => clientsBulkModal.isPastDate(d)"
+                  @change="d => clientsBulkModal.setExpiryDate(d)"
+                  :style="{ width: '100%' }"></a-date-picker>
+                <!-- Hidden while the deadline is a delay rather than a date: with
+                     Start After First Use on, the stored value counts from a
+                     connection that has not happened yet, so no calendar day can
+                     name it. -->
+                <a-tooltip v-if="!clientsBulkModal.delayedStart">
+                  <template slot="title">
+                    [[ clientsBulkModal.pickDate
+                       ? '{{ i18n "pages.clients.useDuration" }}'
+                       : '{{ i18n "pages.clients.usePickDate" }}' ]]
+                  </template>
+                  <button type="button" class="bo-cf-iconbtn"
+                    @click="clientsBulkModal.toggleDatePicker()">
+                    <a-icon :type="clientsBulkModal.pickDate ? 'field-time' : 'calendar'"></a-icon>
+                  </button>
+                </a-tooltip>
+              </div>
+              <div class="bo-cf-hint">{{ i18n "pages.clients.zeroNoExpiry" }}</div>
+            </div>
+          </a-col>
+        </a-row>
+
+        <div class="bo-cf-switch" v-if="!clientsBulkModal.resellerForcedDays">
+          <div>
+            <div class="bo-cf-t">{{ i18n "pages.client.delayedStart" }}</div>
+            <div class="bo-cf-d">{{ i18n "pages.clients.delayedStartDesc" }}</div>
+          </div>
+          <a-switch :checked="clientsBulkModal.delayedStart"
+            @change="v => clientsBulkModal.setDelayedStart(v)"></a-switch>
+        </div>
+        <div class="bo-cf-switch">
+          <div>
+            <div class="bo-cf-t">{{ i18n "pages.clients.renewEvery" }}</div>
+            <div class="bo-cf-d">{{ i18n "pages.clients.renewDesc" }}</div>
+          </div>
+          <a-input-number v-model="clientsBulkModal.reset" :min="0"
+            :style="{ width: '96px' }"></a-input-number>
+        </div>
+      </template>
+
+      <!-- Inbounds: the same checklist the single form uses, for the same reason.
+           A batch is not a per-inbound act any more than one account is: pick the
+           set here and every generated account lands on all of it. -->
+      <template v-if="clientsBulkModal.tab === 'inbounds'">
+        <div :style="{ marginBottom: '8px' }">
+          <a-checkbox
+            :checked="clientsBulkModal.allChecked"
+            :indeterminate="clientsBulkModal.someChecked"
+            @change="e => clientsBulkModal.toggleAll(e)">
+            {{ i18n "pages.clients.selectAll" }}
+          </a-checkbox>
+        </div>
+        <a-checkbox-group v-model="clientsBulkModal.selected" :style="{ width: '100%' }">
+          <div class="bo-cf-ib" v-for="ib in clientsBulkModal.assignable" :key="ib.inboundId"
+            :class="{ on: clientsBulkModal.selected.includes(ib.inboundId) }">
+            <a-checkbox :value="ib.inboundId">
+              [[ ib.remark || ('#' + ib.inboundId) ]]
+              <a-tag>[[ ib.protocol ]]</a-tag>
+              <span class="bo-dim">:[[ ib.port ]]</span>
+            </a-checkbox>
+          </div>
+        </a-checkbox-group>
+        <a-alert v-if="clientsBulkModal.protocolClash" type="error" show-icon
+          :style="{ marginTop: '12px' }"
+          message='{{ i18n "pages.clients.sameProtocolRefused" }}'></a-alert>
+        <a-alert v-else type="info" show-icon :style="{ marginTop: '12px' }"
+          message='{{ i18n "pages.clients.bulkCredentialsHint" }}'></a-alert>
+      </template>
+
+      <!-- Preview: the names this batch would create, before it creates them. A
+           single email already in use fails the WHOLE request server-side
+           (AddInboundClient checks every posted client first), so a collision has
+           to be visible here or the operator learns of it as one opaque failure
+           after the fact. -->
+      <template v-if="clientsBulkModal.tab === 'preview'">
+        <a-alert v-if="clientsBulkModal.clashCount" type="error" show-icon
+          :style="{ marginBottom: '12px' }">
+          <template slot="message">
+            [[ clientsBulkModal.clashCount ]] {{ i18n "pages.clients.nameTakenAlert" }}
+          </template>
+        </a-alert>
+        <a-alert v-if="!clientsBulkModal.count" type="warning" show-icon
+          message='{{ i18n "pages.clients.previewEmpty" }}'></a-alert>
+        <a-alert v-if="!clientsBulkModal.selected.length" type="warning" show-icon
+          :style="{ marginTop: '8px' }"
+          message='{{ i18n "pages.clients.bulkNoInbound" }}'></a-alert>
+
+        <div class="bo-cf-hint" v-if="clientsBulkModal.hasStem && clientsBulkModal.count"
+          :style="{ marginBottom: '8px' }">
+          {{ i18n "pages.clients.randomStemHint" }}
+        </div>
+
+        <div class="bo-cf-list" v-if="clientsBulkModal.previewNames.length">
+          <div class="bo-cf-row" v-for="n in clientsBulkModal.previewNames" :key="n.key"
+            :class="{ clash: n.clash }">
+            <span><span class="bo-cf-stem" v-if="n.stem">[[ n.stem ]]</span>[[ n.text ]]</span>
+            <a-tag v-if="n.clash" color="red">{{ i18n "pages.clients.nameTaken" }}</a-tag>
+            <span v-else-if="n.times > 1" class="bo-cf-stem">&times; [[ n.times ]]</span>
+          </div>
+        </div>
+        <div class="bo-cf-hint" v-if="clientsBulkModal.previewMore > 0">
+          + [[ clientsBulkModal.previewMore ]] {{ i18n "pages.clients.previewMore" }}
+        </div>
+      </template>
+    </div>
+  </div>
+</a-modal>
+
+<script>
+  // Eight x's, matching the RandomUtil.randomLowerAndNum(8) stem every generated
+  // name carries, so the part in front of what was typed cannot be previewed
+  // exactly. Only method 4 drops the stem, and only there can a generated name
+  // collide with an existing one.
+  const BULK_STEM = 'xxxxxxxx';
+  // Rows the preview renders before it stops and counts the rest.
+  const BULK_PREVIEW_ROWS = 200;
+  // How far the collision scan walks. Well past any realistic batch, and bounded
+  // because getters on this object are re-evaluated on every render.
+  const BULK_CLASH_SCAN = 2000;
+
+  const clientsBulkModal = {
+    visible: false,
+    confirmLoading: false,
+    title: '',
+    okText: '',
+    tab: 'identity',
+    // Identity first because it is the whole point of a bulk add; inbounds second
+    // because the answer decides what each generated account is built from;
+    // preview last because it is the check you run before committing.
+    tabs: [
+      { key: 'identity', icon: 'user',            label: '{{ i18n "pages.clients.tabIdentity" }}' },
+      { key: 'inbounds', icon: 'cluster',         label: '{{ i18n "pages.clients.inbounds" }}' },
+      { key: 'preview',  icon: 'unordered-list',  label: '{{ i18n "pages.clients.tabPreview" }}' },
+    ],
+
+    assignable: [],
+    selected: [],
+    quantity: 1,
+    emailMethod: 0,
+    firstNum: 1,
+    lastNum: 1,
+    emailPrefix: '',
+    emailPostfix: '',
+    comment: '',
+    tgId: '',
+    totalGb: 0,
+    days: 0,
+    // A negative expiryTime means "N days from first use" and the clock has not
+    // started, which is what this switch writes.
+    delayedStart: false,
+    pickDate: false,
+    // Where toggleDatePicker looks for the picker it just revealed.
+    pickerRoot: '#client-bulk-modal',
+    reset: 0,
+    // Every email already in use panel-wide, handed in by the page as a map. Only
+    // method 4 produces names that could hit one, because every other method puts
+    // eight random characters in front.
+    existing: {},
+    onDone: null,
+
+    // Only these three cannot tell two of their own inbounds apart (bare
+    // NAS-Identifier), which is exactly the set the server refuses.
+    ambiguous: ['l2tp', 'pptp', 'ikev2'],
+
+    // --- the inbound checklist ----------------------------------------------
+    get allChecked() {
+      return this.assignable.length > 0 && this.selected.length === this.assignable.length;
+    },
+    get someChecked() {
+      return this.selected.length > 0 && this.selected.length < this.assignable.length;
+    },
+    get protocolClash() {
+      const seen = {};
+      for (const id of this.selected) {
+        const ib = this.assignable.find(x => x.inboundId === id);
+        if (!ib || this.ambiguous.indexOf(ib.protocol) === -1) continue;
+        if (seen[ib.protocol]) return true;
+        seen[ib.protocol] = true;
+      }
+      return false;
+    },
+    toggleAll(e) {
+      this.selected = e.target.checked ? this.assignable.map(i => i.inboundId) : [];
+    },
+
+    // --- the batch, as the settings currently describe it -------------------
+    get usesNum() { return this.emailMethod > 1; },
+    get hasStem() { return this.emailMethod < 4; },
+    get count() {
+      if (this.usesNum) {
+        return Math.max(0, (Number(this.lastNum) || 0) - (Number(this.firstNum) || 0) + 1);
+      }
+      return Math.max(0, Number(this.quantity) || 0);
+    },
+    // The part of a generated name that was typed rather than minted. Same rules
+    // the form has always used: the prefix from method 1 up, the number from 2 up,
+    // the postfix from 3 up.
+    typedPart(n) {
+      const prefix = this.emailMethod > 0 ? (this.emailPrefix || '') : '';
+      const postfix = this.emailMethod > 2 ? (this.emailPostfix || '') : '';
+      return prefix + (this.usesNum ? String(n) : '') + postfix;
+    },
+    nameAt(n) { return (this.hasStem ? BULK_STEM : '') + this.typedPart(n); },
+    get firstIndex() { return this.usesNum ? (Number(this.firstNum) || 0) : 0; },
+
+    // --- the summary rail ---------------------------------------------------
+    get quotaText() {
+      if (!this.totalGb) return '{{ i18n "pages.clients.summaryUnlimited" }}';
+      return SizeFormatter.sizeFormat(this.totalGb * 1073741824);
+    },
+    get expiresText() {
+      if (!this.days) return '{{ i18n "pages.clients.summaryNever" }}';
+      return this.days + ' {{ i18n "pages.clients.summaryDays" }}';
+    },
+    get shapeText() {
+      if (!this.count) return '';
+      const head = this.nameAt(this.firstIndex);
+      if (!this.usesNum || this.count === 1) return head;
+      return head + ' … ' + this.nameAt(this.firstIndex + this.count - 1);
+    },
+
+    // --- the preview --------------------------------------------------------
+    // Without a number in the name every account differs only by its random stem,
+    // so the list would be N identical rows; it collapses to one row and a count.
+    get previewNames() {
+      if (!this.count) return [];
+      const stem = this.hasStem ? BULK_STEM : '';
+      if (!this.usesNum) {
+        return [{ key: 0, stem, text: this.typedPart(0), times: this.count }];
+      }
+      const rows = [];
+      const shown = Math.min(this.count, BULK_PREVIEW_ROWS);
+      for (let i = 0; i < shown; i++) {
+        const n = this.firstIndex + i;
+        const text = this.typedPart(n);
+        rows.push({ key: n, stem, text, clash: !stem && this.isTaken(text) });
+      }
+      return rows;
+    },
+    get previewMore() {
+      if (!this.usesNum) return 0;
+      return Math.max(0, this.count - BULK_PREVIEW_ROWS);
+    },
+    // hasOwnProperty rather than a truthiness test: a batch named "constructor"
+    // would otherwise read as taken against Object.prototype.
+    isTaken(email) {
+      return Object.prototype.hasOwnProperty.call(this.existing || {}, email);
+    },
+    get clashCount() {
+      if (this.hasStem) return 0;
+      const n = Math.min(this.count, BULK_CLASH_SCAN);
+      let hits = 0;
+      for (let i = 0; i < n; i++) {
+        if (this.isTaken(this.typedPart(this.firstIndex + i))) hits++;
+      }
+      return hits;
+    },
+
+    // --- the deadline -------------------------------------------------------
+    // A reseller on a days-per-GB plan does not pick a duration: the backend
+    // derives it from the traffic and overwrites anything posted.
+    get resellerForcedDays() {
+      return !!(RESELLER.isReseller && RESELLER.daysPerGb > 0);
+    },
+    get resellerForcedDaysText() {
+      const days = NumberFormatter.toFixed((this.totalGb || 0) * RESELLER.daysPerGb, 1);
+      return days + ' ' + '{{ i18n "pages.client.expireDays" }}';
+    },
+    // The calendar is only offered while the deadline IS a date. With a delayed
+    // start the number is days-from-first-connection, and showing a calendar for
+    // it would let an operator pick the 1st and store "expires 29 days after they
+    // first connect", which is not what was clicked.
+    get dateMode() { return this.pickDate && !this.delayedStart; },
+    get expiryMoment() {
+      if (!this.days || this.delayedStart) return null;
+      return moment(Date.now() + this.days * 86400000);
+    },
+    setDelayedStart(v) {
+      this.delayedStart = v;
+      if (v) this.pickDate = false;
+    },
+    toggleDatePicker() {
+      this.pickDate = !this.pickDate;
+      if (!this.pickDate) return;
+      // Opened on the same click that revealed it, by clicking the input the way
+      // an operator would. A real click rather than an `open` prop, because that
+      // prop is what made the calendar impossible to close (see the template).
+      // Deferred a tick: the picker does not exist yet when this runs.
+      Vue.nextTick(() => {
+        const input = document.querySelector(this.pickerRoot + ' .ant-calendar-picker input');
+        if (input) input.click();
+      });
+    },
+    // Today rounds to zero days, which this form stores as "never expires", so it
+    // is refused rather than silently meaning the opposite of what was clicked.
+    // Compared at day granularity: an end-of-day comparison leaves TODAY pickable
+    // right up to midnight.
+    isPastDate(d) {
+      return !!d && d.clone().startOf('day').valueOf() <= moment().startOf('day').valueOf();
+    },
+    setExpiryDate(d) {
+      if (!d) { this.days = 0; return; }
+      this.days = Math.max(0, d.clone().startOf('day').diff(moment().startOf('day'), 'days'));
+    },
+
+    // --- credentials --------------------------------------------------------
+    // The key length a ticked shadowsocks-2022 inbound demands, or 0. Only that
+    // family constrains the shared password: it must be base64 of exactly 16 or 32
+    // bytes. Everything else takes any string, so generating in the strict shape
+    // when one is present satisfies all of them at once.
+    get strictSsBytes() {
+      for (const id of this.selected) {
+        const ib = this.assignable.find(x => x.inboundId === id);
+        if (!ib || ib.protocol !== 'shadowsocks') continue;
+        const method = (ib.method || '').toLowerCase().trim();
+        if (method === '2022-blake3-aes-128-gcm') return 16;
+        if (method === '2022-blake3-aes-256-gcm' || method === '2022-blake3-chacha20-poly1305') return 32;
+      }
+      return 0;
+    },
+    mintPassword() {
+      const n = this.strictSsBytes;
+      if (!n) return RandomUtil.randomSeq(10);
+      const buf = new Uint8Array(n);
+      window.crypto.getRandomValues(buf);
+      return btoa(String.fromCharCode(...buf));
+    },
+    // One account's whole credential set, minted here rather than left to the
+    // server so every inbound in the set is handed the SAME values. The account
+    // holds one uuid, one password and one VPN username however many protocols
+    // read them (see model.Account), so generating per inbound would mean the
+    // second write overwrote the first and broke the first one's subscribers.
+    buildAccounts() {
+      const out = [];
+      for (let i = 0; i < this.count; i++) {
+        out.push({
+          email: (this.hasStem ? RandomUtil.randomLowerAndNum(8) : '')
+            + this.typedPart(this.firstIndex + i),
+          id: RandomUtil.randomUUID(),
+          password: this.mintPassword(),
+          vpnUsername: RandomUtil.randomLowerAndNum(8),
+          auth: RandomUtil.randomSeq(10),
+          secret: RandomUtil.randomSeq(32, { type: 'hex' }),
+          // One per account, always. The server generates no subId on any create
+          // path - every one in this panel is minted in the browser - so leaving
+          // this out would hand out accounts with no subscription link at all.
+          subId: RandomUtil.randomLowerAndNum(16),
+        });
+      }
+      return out;
+    },
+
+    // One account's entry in the shape the ADDRESSED inbound's protocol expects.
+    // Mirrors entryFor in modals/client_membership_modal.html: the account's
+    // fields are mapped onto the protocol the write is addressed to, and the whole
+    // set is carried alongside for the accounts layer to lift
+    // (overwriteAccountCredential), which is what lets one request reach inbounds
+    // of completely different families.
+    entryFor(protocol, acc, expiryTime) {
+      const base = {
+        email: acc.email,
+        enable: true,
+        limitIp: 0,
+        comment: this.comment || '',
+        subId: acc.subId,
+        reset: Number(this.reset) || 0,
+        tgId: Number(this.tgId) || 0,
+        totalGB: (this.totalGb || 0) * 1073741824,
+        expiryTime,
+        vpnUsername: acc.vpnUsername,
+        auth: acc.auth,
+        secret: acc.secret,
+        naiveUsername: '',
+        // Carried on EVERY entry, not only the ones addressed by them: the batch
+        // is written to ONE anchor inbound, so with a vless anchor the password
+        // would never reach the account and with a trojan one the uuid would not.
+        // The uuid needs its own key because "id" already means the login name on
+        // l2tp and the email on wg-c.
+        password: acc.password,
+        uuid: acc.id,
+      };
+      switch (protocol) {
+        case 'vmess':
+          return Object.assign(base, { id: acc.id, security: 'auto' });
+        case 'vless':
+          return Object.assign(base, { id: acc.id });
+        case 'tuic':
+          return Object.assign(base, { id: acc.id, password: acc.password });
+        case 'trojan': case 'shadowsocks': case 'anytls':
+          return Object.assign(base, { password: acc.password });
+        case 'naive':
+          return Object.assign(base, { password: acc.password, username: '' });
+        case 'hysteria': case 'hysteria2':
+          return Object.assign(base, { auth: acc.auth });
+        case 'l2tp': case 'pptp': case 'openvpn': case 'openconnect':
+        case 'sstp': case 'ikev2': case 'ssh':
+          return Object.assign(base, { id: acc.vpnUsername, password: acc.password });
+        // Identity IS the email for these, so "id" carries it rather than a uuid.
+        case 'wg-c': case 'awg': case 'gre':
+          return Object.assign(base, { id: acc.email });
+        case 'mtproto':
+          return Object.assign(base, { id: acc.email, secret: acc.secret });
+        default:
+          return Object.assign(base, { id: acc.id });
+      }
+    },
+
+    async ok() {
+      // Each of these would otherwise leave the operator clicking a button that
+      // does nothing, so the pane holding the reason is brought forward instead.
+      // Deliberately not a dialog: this object is not a Vue instance so it has no
+      // $message, and window.alert() wedges the whole renderer under headless
+      // chromium, where nothing ever dismisses it.
+      if (!this.count || this.clashCount) { this.tab = 'preview'; return; }
+      if (!this.selected.length || this.protocolClash) { this.tab = 'inbounds'; return; }
+
+      // A NEGATIVE expiry is not a date. It is "this many days from first use",
+      // and the server starts the clock on the first connection.
+      const expiryTime = !this.days ? 0
+        : this.delayedStart ? -(this.days * 86400000)
+        : Date.now() + this.days * 86400000;
+
+      const ids = this.selected.slice().sort((a, b) => a - b);
+      const first = this.assignable.find(x => x.inboundId === ids[0]);
+      const accounts = this.buildAccounts();
+      const clients = accounts.map(a => this.entryFor(first ? first.protocol : '', a, expiryTime));
+
+      // ONE request for the whole batch, addressed to the first inbound and
+      // carrying the rest as the membership set. The server puts every posted
+      // email on all of them and mints whatever each protocol additionally needs
+      // (addInboundClient -> applyClientMemberships). Posting per inbound instead
+      // would charge a reseller once per inbound for one set of accounts, and the
+      // second request would be refused outright for duplicate emails.
+      this.confirmLoading = true;
+      const msg = await HttpUtil.post('/panel/api/inbounds/addClient',
+        { id: ids[0], inboundIds: ids, settings: JSON.stringify({ clients }) });
+      this.confirmLoading = false;
+      if (msg && msg.success) {
+        this.close();
+        if (this.onDone) this.onDone();
+      }
+    },
+
+    show({ title = '', okText = '{{ i18n "sure" }}', assignable = [], existing = {},
+           onDone = null }) {
+      this.title = title;
+      this.okText = okText;
+      this.assignable = assignable;
+      this.existing = existing || {};
+      this.onDone = onDone;
+      this.tab = 'identity';
+      this.quantity = 1;
+      this.emailMethod = 0;
+      this.firstNum = 1;
+      this.lastNum = 1;
+      this.emailPrefix = '';
+      this.emailPostfix = '';
+      this.comment = '';
+      this.tgId = '';
+      this.totalGb = 0;
+      this.days = 0;
+      this.delayedStart = false;
+      this.pickDate = false;
+      this.reset = 0;
+      this.selected = [];
+      this.visible = true;
+    },
+
+    // Every way out of this form goes through here. pickDate is the important
+    // half: it is what the calendar is rendered behind, so clearing it unmounts
+    // the picker and takes its body-level dropdown with it. Left set, the dropdown
+    // survived the modal and sat over the page swallowing clicks.
+    close() {
+      clientsBulkModal.visible = false;
+      clientsBulkModal.pickDate = false;
+      clientsBulkModal.loading(false);
+    },
+    loading(loading = true) {
+      clientsBulkModal.confirmLoading = loading;
+    },
+  };
+
+  const clientsBulkModalApp = new Vue({
+    delimiters: ['[[', ']]'],
+    el: '#client-bulk-modal',
+    data: {
+      clientsBulkModal,
+      themeSwitcher,
+    },
+  });
 </script>
 {{end}}

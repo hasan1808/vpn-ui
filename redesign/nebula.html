@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Overview: Nebula</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<div class="nb-root">
+<style>
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff; --accent-rgb:0,135,113;
+  --surface-rgb:255,255,255;
+  --debian-brand:#A81D33; --debian-rgb:168,29,51;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+    --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16; --accent-rgb:27,191,159;
+    --surface-rgb:21,31,49;
+    --debian-brand:#ff7a92; --debian-rgb:255,122,146;
+    --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+    --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+    --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+    --shadow-sm:none; --shadow-md:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+  --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16; --accent-rgb:27,191,159;
+  --surface-rgb:21,31,49;
+  --debian-brand:#ff7a92; --debian-rgb:255,122,146;
+  --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+  --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+  --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+  --shadow-sm:none; --shadow-md:none;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff; --accent-rgb:0,135,113;
+  --surface-rgb:255,255,255;
+  --debian-brand:#A81D33; --debian-rgb:168,29,51;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+}
+
+.nb-root, .nb-root *, .nb-root *::before, .nb-root *::after{ box-sizing:border-box; }
+.nb-root{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--bg); color:var(--text);
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden; min-height:100vh;
+}
+.nb-root .num{ font-variant-numeric:tabular-nums; }
+.nb-root svg{ display:block; }
+.nb-root button{ font-family:inherit; }
+.nb-root ul, .nb-root p, .nb-root h1, .nb-root h2, .nb-root h3{ margin:0; padding:0; }
+
+@media (prefers-reduced-motion: reduce){
+  .nb-root *{ transition-duration:.001ms !important; animation-duration:.001ms !important; }
+}
+.nb-root button:focus-visible, .nb-root [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;
+}
+
+.nb-icon{ width:16px; height:16px; flex-shrink:0; display:block; }
+.nb-icon-lg{ width:20px; height:20px; }
+.nb-icon-sm{ width:13px; height:13px; }
+
+/* ===== shell / rail ===== */
+.nb-shell{ display:flex; min-height:100vh; }
+.nb-rail{
+  flex:0 0 84px; width:84px; align-self:flex-start; position:sticky; top:0; height:100vh;
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center; padding:20px 0; gap:26px; overflow-y:auto;
+}
+.nb-rail-mark{ display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--accent); }
+.nb-rail-mark span{ font-size:12px; font-weight:700; color:var(--text); letter-spacing:.01em; }
+.nb-rail-nav{ display:flex; flex-direction:column; gap:6px; width:100%; align-items:center; }
+.nb-rail-item{
+  display:flex; flex-direction:column; align-items:center; gap:5px; width:68px; padding:8px 4px 7px;
+  border-radius:10px; border:none; background:transparent; color:var(--text-3); cursor:pointer;
+  transition:background .15s ease,color .15s ease;
+}
+.nb-rail-item span{ font-size:10px; font-weight:600; letter-spacing:.01em; }
+.nb-rail-item:hover{ color:var(--text-2); background:var(--surface-2); }
+.nb-rail-item.is-active{ background:var(--accent-weak); color:var(--accent); box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.18); }
+
+.nb-main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.nb-topbar{ background:var(--surface); border-bottom:1px solid var(--border); }
+.nb-topbar-inner{
+  max-width:1280px; margin:0 auto; padding:14px 28px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+.nb-topbar-left{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-width:0; }
+.nb-host-chip, .nb-health-pill{
+  display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600;
+  padding:6px 12px; border-radius:999px; white-space:nowrap;
+}
+.nb-host-chip{ background:var(--surface-2); color:var(--text-2); }
+.nb-host-chip .nb-icon{ color:var(--text-3); }
+.nb-health-pill{ background:var(--ok-weak); color:var(--ok); }
+
+.nb-theme-toggle{
+  width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:0 0 auto;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.nb-theme-toggle:hover{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+.nb-theme-toggle .nb-i-moon{ display:none; }
+:root[data-theme="dark"] .nb-theme-toggle .nb-i-sun{ display:none; }
+:root[data-theme="dark"] .nb-theme-toggle .nb-i-moon{ display:block; }
+
+.nb-content{ max-width:1280px; width:100%; margin:0 auto; padding:26px 28px 48px; }
+.nb-page-head{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+.nb-page-title{ font-size:23px; font-weight:700; letter-spacing:-.01em; text-wrap:balance; }
+.nb-page-sub{ font-size:13px; color:var(--text-3); }
+
+/* ===== host / debian identity card ===== */
+.nb-host{
+  display:flex; align-items:center; gap:20px; flex-wrap:wrap; padding:20px 24px; margin-bottom:24px;
+  background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow-md);
+}
+.nb-host-badge{
+  width:60px; height:60px; border-radius:50%; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 32% 28%, rgba(var(--debian-rgb),.30), rgba(var(--debian-rgb),.05) 72%);
+  color:var(--debian-brand);
+}
+.nb-host-badge svg{ width:30px; height:30px; }
+.nb-host-id{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+.nb-host-name{ font-size:17px; font-weight:700; color:var(--text); }
+.nb-host-name .code{ color:var(--text-2); font-weight:600; }
+.nb-host-kernel{ font-size:12.5px; color:var(--text-3); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.nb-host-divider{ width:1px; align-self:stretch; background:var(--border); margin:0 4px; }
+.nb-host-facts{ display:flex; gap:30px; flex-wrap:wrap; margin-left:auto; }
+.nb-host-fact{ display:flex; flex-direction:column; gap:3px; }
+.nb-host-fact .k{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.nb-host-fact .v{ font-size:14.5px; font-weight:650; color:var(--text); }
+@media (max-width:640px){ .nb-host{ padding:18px; } .nb-host-divider{ display:none; } .nb-host-facts{ margin-left:0; gap:22px; } }
+
+/* ===== section heads ===== */
+.nb-section{ margin-bottom:28px; }
+.nb-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:0 0 13px; }
+.nb-section-title{ font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); }
+.nb-section-meta{ font-size:12px; color:var(--text-3); }
+
+/* ===== living metric cards (graph-as-background) ===== */
+.nb-vitals{ display:grid; grid-template-columns:1fr; gap:14px; }
+@media (min-width:560px){ .nb-vitals{ grid-template-columns:repeat(2,1fr); } }
+@media (min-width:860px){ .nb-vitals{ grid-template-columns:repeat(3,1fr); } }
+@media (min-width:1200px){ .nb-vitals{ grid-template-columns:repeat(5,1fr); gap:16px; } }
+
+.nb-mcard{
+  position:relative; overflow:hidden; border-radius:14px; border:1px solid var(--border);
+  background:var(--surface); box-shadow:var(--shadow-md); min-height:168px; display:flex;
+  transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.nb-mcard:hover{
+  transform:translateY(-3px); border-color:var(--border-strong);
+  box-shadow:var(--shadow-md), 0 18px 34px -18px rgba(var(--accent-rgb),.35);
+}
+.nb-mcard-graph{ position:absolute; inset:0; z-index:0; opacity:0; transition:opacity .7s ease; }
+.nb-mcard-graph svg{ display:block; width:100%; height:100%; }
+.nb-mcard.is-ready .nb-mcard-graph{ opacity:1; }
+.nb-mcard-scrim{
+  position:absolute; inset:0; z-index:1; pointer-events:none;
+  background:linear-gradient(180deg,
+    rgba(var(--surface-rgb),.97) 0%,
+    rgba(var(--surface-rgb),.92) 40%,
+    rgba(var(--surface-rgb),.48) 62%,
+    rgba(var(--surface-rgb),.06) 85%,
+    rgba(var(--surface-rgb),0) 100%);
+}
+.nb-mcard-content{ position:relative; z-index:2; padding:16px 18px 18px; display:flex; flex-direction:column; gap:5px; width:100%; min-width:0; }
+.nb-mcard-label{ font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); }
+.nb-mcard-label-row{ display:flex; align-items:center; gap:7px; }
+.nb-mcard-label-row .nb-icon{ width:15px; height:15px; }
+.nb-mcard[data-tone="accent"] .nb-mcard-label-row .nb-icon{ color:var(--accent); }
+.nb-mcard[data-tone="info"] .nb-mcard-label-row .nb-icon{ color:var(--info); }
+.nb-mcard-value{ font-size:30px; font-weight:700; color:var(--text); line-height:1.15; margin-top:2px; }
+.nb-mcard-value .unit{ font-size:14px; font-weight:600; color:var(--text-3); margin-left:2px; }
+.nb-mcard-sub{ font-size:12.5px; color:var(--text-2); margin-top:1px; }
+.nb-mcard-triple{ display:flex; gap:18px; margin-top:5px; }
+.nb-mcard-triple-item{ display:flex; flex-direction:column; gap:2px; }
+.nb-mcard-triple-item .v{ font-size:19px; font-weight:700; color:var(--text); }
+.nb-mcard-triple-item .k{ font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.nb-mcard--flow{ min-height:190px; }
+.nb-mcard--flow .nb-mcard-value{ font-size:28px; }
+
+/* ===== services led grid ===== */
+.nb-led-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(188px,1fr)); gap:10px; }
+.nb-led-chip{
+  display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:12px 14px; transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.nb-led-chip:hover{ transform:translateY(-2px); border-color:var(--border-strong); box-shadow:var(--shadow-sm); }
+.nb-led{ width:9px; height:9px; border-radius:50%; background:var(--off); box-shadow:0 0 0 3px var(--off-weak); flex:0 0 auto; }
+.nb-led-chip[data-state="ok"] .nb-led{ background:var(--ok); box-shadow:0 0 0 4px var(--ok-weak), 0 0 10px 1px var(--ok-weak); }
+.nb-led-chip[data-state="info"] .nb-led{ background:var(--info); box-shadow:0 0 0 4px var(--info-weak), 0 0 10px 1px var(--info-weak); }
+.nb-led-chip[data-state="warn"] .nb-led{ background:var(--warn); box-shadow:0 0 0 4px var(--warn-weak), 0 0 10px 1px var(--warn-weak); }
+.nb-led-name{ font-size:13.5px; font-weight:600; color:var(--text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nb-led-state{ font-size:11.5px; font-weight:650; }
+.nb-led-chip[data-state="ok"] .nb-led-state{ color:var(--ok); }
+.nb-led-chip[data-state="info"] .nb-led-state{ color:var(--info); }
+.nb-led-chip[data-state="warn"] .nb-led-state{ color:var(--warn); }
+
+/* ===== lower grid ===== */
+.nb-lower{ display:grid; grid-template-columns:1fr 360px; gap:20px; align-items:start; }
+@media (max-width:980px){ .nb-lower{ grid-template-columns:1fr; } }
+.nb-lower-main, .nb-lower-rail{ display:flex; flex-direction:column; gap:20px; min-width:0; }
+
+.nb-flow-pair{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width:480px){ .nb-flow-pair{ grid-template-columns:1fr; } }
+
+/* ===== panels ===== */
+.nb-panel{ background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow-md); }
+.nb-panel-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:15px 20px; border-bottom:1px solid var(--border); }
+.nb-panel-title{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); }
+.nb-panel-caption{ font-size:12px; color:var(--text-3); }
+.nb-panel-body{ padding:18px 20px; }
+
+.nb-pill{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:650; padding:4px 10px 4px 8px; border-radius:999px; }
+.nb-pill.ok{ background:var(--ok-weak); color:var(--ok); }
+
+.nb-stat-row{ display:flex; flex-direction:column; }
+.nb-stat{ display:flex; align-items:center; gap:9px; padding:8px 0; }
+.nb-stat + .nb-stat{ border-top:1px solid var(--border); }
+.nb-stat-label{ flex:1; font-size:12.5px; font-weight:500; color:var(--text-2); min-width:0; }
+.nb-stat-value{ font-size:14.5px; font-weight:600; color:var(--text); text-align:right; }
+
+.nb-action-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.nb-icon-btn{
+  display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--text-2);
+  background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:7px 12px; cursor:pointer;
+  transition:background .15s ease,color .15s ease,border-color .15s ease,transform .15s ease;
+}
+.nb-icon-btn:hover{ background:var(--accent-weak); color:var(--accent); border-color:var(--accent); transform:translateY(-1px); }
+.nb-icon-btn.danger:hover{ background:var(--error-weak); color:var(--error); border-color:var(--error); }
+.nb-icon-btn.full{ width:100%; justify-content:center; padding:9px 12px; }
+
+.nb-btn-primary{
+  display:inline-flex; align-items:center; justify-content:center; gap:7px; font-size:13.5px; font-weight:650;
+  border-radius:9px; padding:10px 16px; cursor:pointer; border:1px solid transparent; background:var(--accent);
+  color:var(--on-accent); width:100%; transition:filter .15s ease, transform .15s ease;
+}
+.nb-btn-primary:hover{ filter:brightness(1.07); transform:translateY(-1px); }
+
+.nb-stat-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:9px; overflow:hidden; margin-top:16px; }
+.nb-stat-cell{ background:var(--surface); padding:12px 14px; display:flex; flex-direction:column; gap:4px; }
+.nb-stat-cell .k{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.nb-stat-cell .v{ font-size:15.5px; font-weight:650; color:var(--text); }
+@media (max-width:520px){ .nb-stat-strip{ grid-template-columns:repeat(2,1fr); } }
+
+.nb-sub-label{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-3); margin:2px 0 4px; }
+.nb-rail-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; }
+.nb-rail-row .k{ font-size:12.5px; color:var(--text-2); }
+.nb-rail-row .v{ font-size:13.5px; font-weight:650; color:var(--text); }
+.nb-rail-divider{ height:1px; background:var(--border); margin:12px 0; border:none; }
+.nb-panel-title-row{ display:flex; align-items:center; justify-content:space-between; }
+.nb-eye-btn{ background:none; border:none; color:var(--text-3); cursor:pointer; padding:4px; display:flex; border-radius:6px; transition:color .15s ease; }
+.nb-eye-btn:hover{ color:var(--accent); }
+.nb-eye-btn svg{ width:16px; height:16px; }
+.nb-ip-value{ font-size:12.5px; word-break:break-all; text-align:right; max-width:190px; }
+
+.nb-foot{ margin-top:32px; padding-top:16px; border-top:1px solid var(--border); font-size:11.5px; color:var(--text-3); text-align:left; }
+
+@media (max-width:520px){
+  .nb-rail{ flex-basis:60px; width:60px; padding:16px 0; gap:20px; }
+  .nb-rail-item{ width:52px; }
+  .nb-rail-item span, .nb-rail-mark span{ display:none; }
+}
+</style>
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+<symbol id="nb-i-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.2c0 5-3.1 8.7-7 10-3.9-1.3-7-5-7-10V6l7-3z"/></symbol>
+<symbol id="nb-i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></symbol>
+<symbol id="nb-i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="3.4" height="3.4" rx=".7" fill="currentColor" stroke="none"/><line x1="9.5" y1="5.7" x2="21" y2="5.7"/><rect x="3" y="10.3" width="3.4" height="3.4" rx=".7" fill="currentColor" stroke="none"/><line x1="9.5" y1="12" x2="21" y2="12"/><rect x="3" y="16.6" width="3.4" height="3.4" rx=".7" fill="currentColor" stroke="none"/><line x1="9.5" y1="18.3" x2="21" y2="18.3"/></symbol>
+<symbol id="nb-i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="21" x2="5" y2="14"/><line x1="5" y1="10" x2="5" y2="3"/><circle cx="5" cy="12" r="2.1"/><line x1="12" y1="21" x2="12" y2="12.5"/><line x1="12" y1="8.5" x2="12" y2="3"/><circle cx="12" cy="10.5" r="2.1"/><line x1="19" y1="21" x2="19" y2="16"/><line x1="19" y1="12" x2="19" y2="3"/><circle cx="19" cy="14" r="2.1"/></symbol>
+<symbol id="nb-i-zap" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="13,2 5,13 11,13 10,22 19,11 13,11"/></symbol>
+<symbol id="nb-i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h6l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M13 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></symbol>
+<symbol id="nb-i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6.5" rx="1.6"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.6"/><circle cx="7" cy="7.25" r=".9" fill="currentColor" stroke="none"/><circle cx="7" cy="16.75" r=".9" fill="currentColor" stroke="none"/></symbol>
+<symbol id="nb-i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.3"/><line x1="12" y1="2" x2="12" y2="4.6"/><line x1="12" y1="19.4" x2="12" y2="22"/><line x1="2" y1="12" x2="4.6" y2="12"/><line x1="19.4" y1="12" x2="22" y2="12"/><line x1="4.7" y1="4.7" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.3" y2="19.3"/><line x1="4.7" y1="19.3" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.3" y2="4.7"/></symbol>
+<symbol id="nb-i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7.3 7.3 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="nb-i-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.3 10.4 15.2 16.5 9"/></symbol>
+<symbol id="nb-i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1.1"/></symbol>
+<symbol id="nb-i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12a7 7 0 1 1-2.1-5"/><path d="M19 4v4.3h-4.3"/></symbol>
+<symbol id="nb-i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c2.5 2.6 4 5.8 4 9s-1.5 6.4-4 9c-2.5-2.6-4-5.8-4-9s1.5-6.4 4-9z"/></symbol>
+<symbol id="nb-i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3H4v7l10 10 7-7L11 3z"/><circle cx="7.5" cy="7.5" r="1.4" fill="currentColor" stroke="none"/></symbol>
+<symbol id="nb-i-brackets" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 3 12 9 18"/><polyline points="15 6 21 12 15 18"/></symbol>
+<symbol id="nb-i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/><polyline points="8 11 12 15 16 11"/><line x1="12" y1="4" x2="12" y2="15"/></symbol>
+<symbol id="nb-i-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/></symbol>
+<symbol id="nb-i-arrow-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="6 13 12 19 18 13"/></symbol>
+<symbol id="nb-i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.8-7.5 10-7.5S22 12 22 12s-3.8 7.5-10 7.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="nb-i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.2 0 10 7 10 7a17.7 17.7 0 0 1-4 4.9"/><path d="M6.3 6.8C3.7 8.6 2 12 2 12s3.8 7 10 7c1.4 0 2.7-.3 3.9-.8"/><path d="M9.9 10a3 3 0 0 0 4.2 4.2"/></symbol>
+<symbol id="nb-i-debian" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M13.88 12.685c-.4 0 .08.2.601.28.14-.1.27-.22.39-.33a3.001 3.001 0 01-.99.05m2.14-.53c.23-.33.4-.69.47-1.06-.06.27-.2.5-.33.73-.75.47-.07-.27 0-.56-.8 1.01-.11.6-.14.89m.781-2.05c.05-.721-.14-.501-.2-.221.07.04.13.5.2.22M12.38.31c.2.04.45.07.42.12.23-.05.28-.1-.43-.12m.43.12l-.15.03.14-.01V.43m6.633 9.944c.02.64-.2.95-.38 1.5l-.35.181c-.28.54.03.35-.17.78-.44.39-1.34 1.22-1.62 1.301-.201 0 .14-.25.19-.34-.591.4-.481.6-1.371.85l-.03-.06c-2.221 1.04-5.303-1.02-5.253-3.842-.03.17-.07.13-.12.2a3.551 3.552 0 012.001-3.501 3.361 3.362 0 013.732.48 3.341 3.342 0 00-2.721-1.3c-1.18.01-2.281.76-2.651 1.57-.6.38-.67 1.47-.93 1.661-.361 2.601.66 3.722 2.38 5.042.27.19.08.21.12.35a4.702 4.702 0 01-1.53-1.16c.23.33.47.66.8.91-.55-.18-1.27-1.3-1.48-1.35.93 1.66 3.78 2.921 5.261 2.3a6.203 6.203 0 01-2.33-.28c-.33-.16-.77-.51-.7-.57a5.802 5.803 0 005.902-.84c.44-.35.93-.94 1.07-.95-.2.32.04.16-.12.44.44-.72-.2-.3.46-1.24l.24.33c-.09-.6.74-1.321.66-2.262.19-.3.2.3 0 .97.29-.74.08-.85.15-1.46.08.2.18.42.23.63-.18-.7.2-1.2.28-1.6-.09-.05-.28.3-.32-.53 0-.37.1-.2.14-.28-.08-.05-.26-.32-.38-.861.08-.13.22.33.34.34-.08-.42-.2-.75-.2-1.08-.34-.68-.12.1-.4-.3-.34-1.091.3-.25.34-.74.54.77.84 1.96.981 2.46-.1-.6-.28-1.2-.49-1.76.16.07-.26-1.241.21-.37A7.823 7.824 0 0017.702 1.6c.18.17.42.39.33.42-.75-.45-.62-.48-.73-.67-.61-.25-.65.02-1.06 0C15.082.73 14.862.8 13.8.4l.05.23c-.77-.25-.9.1-1.73 0-.05-.04.27-.14.53-.18-.741.1-.701-.14-1.431.03.17-.13.36-.21.55-.32-.6.04-1.44.35-1.18.07C9.6.68 7.847 1.3 6.867 2.22L6.838 2c-.45.54-1.96 1.611-2.08 2.311l-.131.03c-.23.4-.38.85-.57 1.261-.3.52-.45.2-.4.28-.6 1.22-.9 2.251-1.16 3.102.18.27 0 1.65.07 2.76-.3 5.463 3.84 10.776 8.363 12.006.67.23 1.65.23 2.49.25-.99-.28-1.12-.15-2.08-.49-.7-.32-.85-.7-1.34-1.13l.2.35c-.971-.34-.57-.42-1.361-.67l.21-.27c-.31-.03-.83-.53-.97-.81l-.34.01c-.41-.501-.63-.871-.61-1.161l-.111.2c-.13-.21-1.52-1.901-.8-1.511-.13-.12-.31-.2-.5-.55l.14-.17c-.35-.44-.64-1.02-.62-1.2.2.24.32.3.45.33-.88-2.172-.93-.12-1.601-2.202l.15-.02c-.1-.16-.18-.34-.26-.51l.06-.6c-.63-.74-.18-3.102-.09-4.402.07-.54.53-1.1.88-1.981l-.21-.04c.4-.71 2.341-2.872 3.241-2.761.43-.55-.09 0-.18-.14.96-.991 1.26-.7 1.901-.88.7-.401-.6.16-.27-.151 1.2-.3.85-.7 2.421-.85.16.1-.39.14-.52.26 1-.49 3.151-.37 4.562.27 1.63.77 3.461 3.011 3.531 5.132l.08.02c-.04.85.13 1.821-.17 2.711l.2-.42M9.54 13.236l-.05.28c.26.35.47.73.8 1.01-.24-.47-.42-.66-.75-1.3m.62-.02c-.14-.15-.22-.34-.31-.52.08.32.26.6.43.88l-.12-.36m10.945-2.382l-.07.15c-.1.76-.34 1.511-.69 2.212.4-.73.65-1.541.75-2.362M12.45.12c.27-.1.66-.05.95-.12-.37.03-.74.05-1.1.1l.15.02M3.006 5.142c.07.57-.43.8.11.42.3-.66-.11-.18-.1-.42m-.64 2.661c.12-.39.15-.62.2-.84-.35.44-.17.53-.2.83"/></symbol>
+</defs>
+</svg>
+<div class="nb-shell">
+  <aside class="nb-rail">
+    <div class="nb-rail-mark">
+      <svg class="nb-icon nb-icon-lg"><use href="#nb-i-mark"></use></svg>
+      <span>vpn-ui</span>
+    </div>
+    <nav class="nb-rail-nav" aria-label="Primary">
+      <button type="button" class="nb-rail-item is-active" aria-current="page">
+        <svg class="nb-icon nb-icon-lg"><use href="#nb-i-grid"></use></svg>
+        <span>Overview</span>
+      </button>
+      <button type="button" class="nb-rail-item">
+        <svg class="nb-icon nb-icon-lg"><use href="#nb-i-list"></use></svg>
+        <span>Inbounds</span>
+      </button>
+      <button type="button" class="nb-rail-item">
+        <svg class="nb-icon nb-icon-lg"><use href="#nb-i-sliders"></use></svg>
+        <span>Settings</span>
+      </button>
+      <button type="button" class="nb-rail-item">
+        <svg class="nb-icon nb-icon-lg"><use href="#nb-i-zap"></use></svg>
+        <span>Xray</span>
+      </button>
+      <button type="button" class="nb-rail-item">
+        <svg class="nb-icon nb-icon-lg"><use href="#nb-i-file"></use></svg>
+        <span>Logs</span>
+      </button>
+    </nav>
+  </aside>
+
+  <div class="nb-main">
+    <header class="nb-topbar">
+      <div class="nb-topbar-inner">
+        <div class="nb-topbar-left">
+          <span class="nb-host-chip">
+            <svg class="nb-icon"><use href="#nb-i-server"></use></svg>
+            srv-fra-01
+          </span>
+          <span class="nb-health-pill">
+            <svg class="nb-icon nb-icon-sm"><use href="#nb-i-check-circle"></use></svg>
+            All systems operational
+          </span>
+        </div>
+        <button type="button" class="nb-theme-toggle" id="nbThemeToggle" aria-label="Toggle color theme">
+          <svg class="nb-icon nb-i-sun"><use href="#nb-i-sun"></use></svg>
+          <svg class="nb-icon nb-i-moon"><use href="#nb-i-moon"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="nb-content">
+      <div class="nb-page-head">
+        <h1 class="nb-page-title">Overview</h1>
+        <span class="nb-page-sub">Live status for srv-fra-01</span>
+      </div>
+
+      <section class="nb-host" aria-label="Host identity">
+        <div class="nb-host-badge">
+          <svg class="nb-icon" style="width:30px;height:30px"><use href="#nb-i-debian"></use></svg>
+        </div>
+        <div class="nb-host-id">
+          <div class="nb-host-name">Debian 13 <span class="code">(Trixie)</span></div>
+          <div class="nb-host-kernel">Linux kernel 6.12.9-amd64</div>
+        </div>
+        <div class="nb-host-divider"></div>
+        <div class="nb-host-facts">
+          <div class="nb-host-fact"><span class="k">Host</span><span class="v">srv-fra-01</span></div>
+          <div class="nb-host-fact"><span class="k">OS Uptime</span><span class="v num">47d 9h</span></div>
+        </div>
+      </section>
+
+      <section class="nb-section" aria-label="System vitals">
+        <div class="nb-section-head">
+          <h2 class="nb-section-title">System Vitals</h2>
+        </div>
+        <div class="nb-vitals">
+
+          <div class="nb-mcard" data-tone="accent">
+            <div class="nb-mcard-graph" data-graph="cpu" data-band="0.55"></div>
+            <div class="nb-mcard-scrim"></div>
+            <div class="nb-mcard-content">
+              <span class="nb-mcard-label">CPU</span>
+              <span class="nb-mcard-value"><span class="num">34</span><span class="unit">%</span></span>
+              <span class="nb-mcard-sub">8 cores &middot; 3.40 GHz</span>
+            </div>
+          </div>
+
+          <div class="nb-mcard" data-tone="accent">
+            <div class="nb-mcard-graph" data-graph="ram" data-band="0.55"></div>
+            <div class="nb-mcard-scrim"></div>
+            <div class="nb-mcard-content">
+              <span class="nb-mcard-label">RAM</span>
+              <span class="nb-mcard-value"><span class="num">33</span><span class="unit">%</span></span>
+              <span class="nb-mcard-sub">5.2 GB / 16 GB</span>
+            </div>
+          </div>
+
+          <div class="nb-mcard" data-tone="accent">
+            <div class="nb-mcard-graph" data-graph="swap" data-band="0.55"></div>
+            <div class="nb-mcard-scrim"></div>
+            <div class="nb-mcard-content">
+              <span class="nb-mcard-label">Swap</span>
+              <span class="nb-mcard-value"><span class="num">7</span><span class="unit">%</span></span>
+              <span class="nb-mcard-sub">0.3 GB / 4.0 GB</span>
+            </div>
+          </div>
+
+          <div class="nb-mcard" data-tone="warn">
+            <div class="nb-mcard-graph" data-graph="storage" data-band="0.55"></div>
+            <div class="nb-mcard-scrim"></div>
+            <div class="nb-mcard-content">
+              <span class="nb-mcard-label">Storage</span>
+              <span class="nb-mcard-value"><span class="num">51</span><span class="unit">%</span></span>
+              <span class="nb-mcard-sub">82 GB / 160 GB</span>
+            </div>
+          </div>
+
+          <div class="nb-mcard" data-tone="accent">
+            <div class="nb-mcard-graph" data-graph="load" data-band="0.58"></div>
+            <div class="nb-mcard-scrim"></div>
+            <div class="nb-mcard-content">
+              <span class="nb-mcard-label">Load Average</span>
+              <div class="nb-mcard-triple">
+                <div class="nb-mcard-triple-item"><span class="v num">0.42</span><span class="k">1m</span></div>
+                <div class="nb-mcard-triple-item"><span class="v num">0.55</span><span class="k">5m</span></div>
+                <div class="nb-mcard-triple-item"><span class="v num">0.48</span><span class="k">15m</span></div>
+              </div>
+              <span class="nb-mcard-sub">8 cores, low load</span>
+            </div>
+          </div>
+
+        </div>
+      </section>
+      <section class="nb-section" aria-label="VPN services">
+        <div class="nb-section-head">
+          <h2 class="nb-section-title">Services</h2>
+          <span class="nb-section-meta">7 running &middot; 2 idle &middot; 1 stopped</span>
+        </div>
+        <div class="nb-led-grid">
+          <div class="nb-led-chip" data-state="ok"><span class="nb-led"></span><span class="nb-led-name">Xray</span><span class="nb-led-state">Running</span></div>
+          <div class="nb-led-chip" data-state="ok"><span class="nb-led"></span><span class="nb-led-name">OpenVPN</span><span class="nb-led-state">Running</span></div>
+          <div class="nb-led-chip" data-state="ok"><span class="nb-led"></span><span class="nb-led-name">WireGuard</span><span class="nb-led-state">Running</span></div>
+          <div class="nb-led-chip" data-state="ok"><span class="nb-led"></span><span class="nb-led-name">L2TP/IPsec</span><span class="nb-led-state">Running</span></div>
+          <div class="nb-led-chip" data-state="ok"><span class="nb-led"></span><span class="nb-led-name">IKEv2</span><span class="nb-led-state">Running</span></div>
+          <div class="nb-led-chip" data-state="ok"><span class="nb-led"></span><span class="nb-led-name">OpenConnect</span><span class="nb-led-state">Running</span></div>
+          <div class="nb-led-chip" data-state="ok"><span class="nb-led"></span><span class="nb-led-name">MTProto</span><span class="nb-led-state">Running</span></div>
+          <div class="nb-led-chip" data-state="info"><span class="nb-led"></span><span class="nb-led-name">SSTP</span><span class="nb-led-state">Idle</span></div>
+          <div class="nb-led-chip" data-state="info"><span class="nb-led"></span><span class="nb-led-name">SSH</span><span class="nb-led-state">Idle</span></div>
+          <div class="nb-led-chip" data-state="warn"><span class="nb-led"></span><span class="nb-led-name">PPTP</span><span class="nb-led-state">Stopped</span></div>
+        </div>
+      </section>
+
+      <div class="nb-lower">
+        <div class="nb-lower-main">
+
+          <section class="nb-panel" aria-label="Network">
+            <div class="nb-panel-head">
+              <h3 class="nb-panel-title">Network</h3>
+              <span class="nb-panel-caption">Aggregate, all protocols</span>
+            </div>
+            <div class="nb-panel-body">
+              <div class="nb-flow-pair">
+                <div class="nb-mcard nb-mcard--flow" data-tone="accent">
+                  <div class="nb-mcard-graph" data-graph="upload" data-band="0.42"></div>
+                  <div class="nb-mcard-scrim"></div>
+                  <div class="nb-mcard-content">
+                    <span class="nb-mcard-label-row"><svg class="nb-icon"><use href="#nb-i-arrow-up"></use></svg><span class="nb-mcard-label">Upload</span></span>
+                    <span class="nb-mcard-value"><span class="num">2.4</span><span class="unit">MB/s</span></span>
+                  </div>
+                </div>
+                <div class="nb-mcard nb-mcard--flow" data-tone="info">
+                  <div class="nb-mcard-graph" data-graph="download" data-band="0.42"></div>
+                  <div class="nb-mcard-scrim"></div>
+                  <div class="nb-mcard-content">
+                    <span class="nb-mcard-label-row"><svg class="nb-icon"><use href="#nb-i-arrow-down"></use></svg><span class="nb-mcard-label">Download</span></span>
+                    <span class="nb-mcard-value"><span class="num">8.1</span><span class="unit">MB/s</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="nb-stat-strip">
+                <div class="nb-stat-cell"><span class="k">Sent</span><span class="v num">1.24 TB</span></div>
+                <div class="nb-stat-cell"><span class="k">Received</span><span class="v num">4.68 TB</span></div>
+                <div class="nb-stat-cell"><span class="k">TCP</span><span class="v num">1,284</span></div>
+                <div class="nb-stat-cell"><span class="k">UDP</span><span class="v num">462</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="nb-panel" aria-label="Xray core control">
+            <div class="nb-panel-head">
+              <h3 class="nb-panel-title">Xray</h3>
+              <span class="nb-pill ok"><svg class="nb-icon nb-icon-sm"><use href="#nb-i-check-circle"></use></svg>Running</span>
+            </div>
+            <div class="nb-panel-body">
+              <div class="nb-stat-row">
+                <div class="nb-stat"><span class="nb-stat-label">Version</span><span class="nb-stat-value num">v25.3.6</span></div>
+                <div class="nb-stat"><span class="nb-stat-label">Uptime</span><span class="nb-stat-value num">12d 4h</span></div>
+              </div>
+              <div class="nb-action-row">
+                <button type="button" class="nb-icon-btn"><svg class="nb-icon"><use href="#nb-i-file"></use></svg>Logs</button>
+                <button type="button" class="nb-icon-btn danger"><svg class="nb-icon"><use href="#nb-i-stop"></use></svg>Stop</button>
+                <button type="button" class="nb-icon-btn"><svg class="nb-icon"><use href="#nb-i-refresh"></use></svg>Restart</button>
+                <button type="button" class="nb-icon-btn"><svg class="nb-icon"><use href="#nb-i-globe"></use></svg>Geofiles</button>
+                <button type="button" class="nb-icon-btn"><svg class="nb-icon"><use href="#nb-i-tag"></use></svg>Version</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="nb-panel" aria-label="Manage">
+            <div class="nb-panel-head"><h3 class="nb-panel-title">Manage</h3></div>
+            <div class="nb-panel-body">
+              <p class="nb-panel-caption">Panel logs, configuration file and database backups.</p>
+              <div class="nb-action-row">
+                <button type="button" class="nb-icon-btn"><svg class="nb-icon"><use href="#nb-i-file"></use></svg>Logs</button>
+                <button type="button" class="nb-icon-btn"><svg class="nb-icon"><use href="#nb-i-brackets"></use></svg>Config</button>
+                <button type="button" class="nb-icon-btn"><svg class="nb-icon"><use href="#nb-i-download"></use></svg>Backup</button>
+              </div>
+            </div>
+          </section>
+
+        </div>
+        <div class="nb-lower-rail">
+
+          <section class="nb-panel" aria-label="VPN-UI update status">
+            <div class="nb-panel-head"><h3 class="nb-panel-title">VPN-UI</h3></div>
+            <div class="nb-panel-body">
+              <div class="nb-rail-row"><span class="k">Version</span><span class="v num">v1.7.6</span></div>
+              <div class="nb-rail-row">
+                <span class="k">Status</span>
+                <span class="nb-pill ok"><svg class="nb-icon nb-icon-sm"><use href="#nb-i-check-circle"></use></svg>Up to date</span>
+              </div>
+              <div class="nb-action-row">
+                <button type="button" class="nb-icon-btn full"><svg class="nb-icon"><use href="#nb-i-refresh"></use></svg>Check for Update</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="nb-panel" aria-label="System">
+            <div class="nb-panel-head"><h3 class="nb-panel-title">System</h3></div>
+            <div class="nb-panel-body">
+              <div class="nb-sub-label">Uptime</div>
+              <div class="nb-rail-row"><span class="k">Xray</span><span class="v num">12d 4h</span></div>
+              <div class="nb-rail-row"><span class="k">OS</span><span class="v num">47d 9h</span></div>
+
+              <hr class="nb-rail-divider"/>
+              <div class="nb-sub-label">Usage</div>
+              <div class="nb-rail-row"><span class="k">RAM</span><span class="v num">84 MB</span></div>
+              <div class="nb-rail-row"><span class="k">Threads</span><span class="v num">23</span></div>
+
+              <hr class="nb-rail-divider"/>
+              <div class="nb-panel-title-row">
+                <span class="nb-sub-label">IP Addresses</span>
+                <button type="button" class="nb-eye-btn" id="nbIpEye" aria-label="Hide IP addresses">
+                  <svg class="nb-icon nb-i-eye"><use href="#nb-i-eye"></use></svg>
+                  <svg class="nb-icon nb-i-eye-off" style="display:none"><use href="#nb-i-eye-off"></use></svg>
+                </button>
+              </div>
+              <div class="nb-rail-row"><span class="k">IPv4</span><span class="v nb-ip-value num" id="nbIp4" data-full="203.0.113.7">203.0.113.7</span></div>
+              <div class="nb-rail-row"><span class="k">IPv6</span><span class="v nb-ip-value num" id="nbIp6" data-full="2a01:4f8:1c1c:abcd::1">2a01:4f8:1c1c:abcd::1</span></div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      <footer class="nb-foot">Design mockup, vpn-ui Overview, Nebula</footer>
+    </main>
+  </div>
+</div>
+<script>
+(function(){
+  var root = document.querySelector('.nb-root');
+  if(!root) return;
+  var docEl = document.documentElement;
+
+  /* theme toggle - stamps data-theme on the document root */
+  var themeBtn = document.getElementById('nbThemeToggle');
+  function effectiveTheme(){
+    var attr = docEl.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function applyTheme(t){
+    docEl.setAttribute('data-theme', t);
+    if(themeBtn) themeBtn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+  }
+  applyTheme(effectiveTheme());
+  if(themeBtn){
+    themeBtn.addEventListener('click', function(){
+      applyTheme(effectiveTheme() === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  /* IP show / hide */
+  var eyeBtn = document.getElementById('nbIpEye');
+  var ip4El = document.getElementById('nbIp4');
+  var ip6El = document.getElementById('nbIp6');
+  var ipVisible = true;
+  function maskValue(v){ return v.replace(/[^:.]/g, String.fromCharCode(8226)); }
+  function renderIp(){
+    [ip4El, ip6El].forEach(function(el){
+      if(!el) return;
+      var full = el.getAttribute('data-full') || el.textContent;
+      el.textContent = ipVisible ? full : maskValue(full);
+    });
+    if(eyeBtn){
+      var eye = eyeBtn.querySelector('.nb-i-eye');
+      var eyeOff = eyeBtn.querySelector('.nb-i-eye-off');
+      if(eye) eye.style.display = ipVisible ? '' : 'none';
+      if(eyeOff) eyeOff.style.display = ipVisible ? 'none' : '';
+      eyeBtn.setAttribute('aria-label', ipVisible ? 'Hide IP addresses' : 'Show IP addresses');
+    }
+  }
+  if(eyeBtn){
+    eyeBtn.addEventListener('click', function(){ ipVisible = !ipVisible; renderIp(); });
+  }
+  renderIp();
+
+  /* deterministic pseudo-random trend synthesis (mulberry32) */
+  function pseudoRandom(seed){
+    var s = seed >>> 0;
+    return function(){
+      s = (s + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function synthTrend(seed, count, min, max, endValue){
+    var rand = pseudoRandom(seed);
+    var range = max - min;
+    var v = min + range * 0.5;
+    var out = [];
+    for(var i = 0; i < count; i++){
+      v += (rand() - 0.5) * range * 0.55;
+      if(v < min) v = min;
+      if(v > max) v = max;
+      out.push(v);
+    }
+    if(endValue !== undefined) out[out.length - 1] = endValue;
+    return out;
+  }
+
+  var METRICS = {
+    cpu:      { values: synthTrend(101, 24, 28,   42,   34),  tone: 'var(--accent)' },
+    ram:      { values: synthTrend(202, 24, 30,   36,   33),  tone: 'var(--accent)' },
+    swap:     { values: synthTrend(303, 24, 4,    9,    7),   tone: 'var(--accent)' },
+    storage:  { values: synthTrend(404, 24, 49.3, 51.2, 51),  tone: 'var(--warn)'   },
+    load:     { values: synthTrend(505, 24, 0.30, 0.60, 0.42),tone: 'var(--accent)' },
+    upload:   { values: synthTrend(606, 24, 1.5,  3,    2.4), tone: 'var(--accent)' },
+    download: { values: synthTrend(707, 24, 5,    11,   8.1), tone: 'var(--info)'   }
+  };
+
+  /* living-card graph: area fill bleeds to the card edges, thin line + endpoint glow on top */
+  function buildLivingGraph(key, values, w, h, tone, topBand){
+    topBand = topBand == null ? 0.5 : topBand;
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    var span = (max - min) || 1;
+    var n = values.length;
+    var yTop = h * topBand;
+    var yBase = h - 1;
+    var lineXPad = 1.5;
+    var lineStepX = (w - lineXPad * 2) / (n - 1);
+
+    var linePts = values.map(function(v, i){
+      var x = lineXPad + i * lineStepX;
+      var y = yTop + (1 - (v - min) / span) * (yBase - yTop);
+      return [x, y];
+    });
+    var areaStepX = w / (n - 1);
+    var areaPts = values.map(function(v, i){
+      var x = i * areaStepX;
+      var y = yTop + (1 - (v - min) / span) * (yBase - yTop);
+      return [x, y];
+    });
+
+    var lineD = linePts.map(function(p, i){ return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+    var areaD = areaPts.map(function(p, i){ return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ')
+      + ' L' + w.toFixed(1) + ',' + h.toFixed(1) + ' L0,' + h.toFixed(1) + ' Z';
+    var last = linePts[linePts.length - 1];
+    var gradId = 'nb-grad-' + key;
+
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-hidden="true">' +
+      '<defs><linearGradient id="' + gradId + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" style="stop-color:' + tone + ';stop-opacity:.32"/>' +
+        '<stop offset="55%" style="stop-color:' + tone + ';stop-opacity:.13"/>' +
+        '<stop offset="100%" style="stop-color:' + tone + ';stop-opacity:.02"/>' +
+      '</linearGradient></defs>' +
+      '<path d="' + areaD + '" style="fill:url(#' + gradId + ')" stroke="none"/>' +
+      '<path d="' + lineD + '" fill="none" style="stroke:' + tone + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="6.5" style="fill:' + tone + ';opacity:.22"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="2.6" style="fill:' + tone + '"/>' +
+      '</svg>';
+  }
+
+  function renderLivingGraphs(){
+    var nodes = root.querySelectorAll('[data-graph]');
+    nodes.forEach(function(el){
+      var key = el.getAttribute('data-graph');
+      var metric = METRICS[key];
+      if(!metric) return;
+      var w = Math.round(el.clientWidth) || 240;
+      var h = Math.round(el.clientHeight) || 160;
+      var band = el.getAttribute('data-band');
+      el.innerHTML = buildLivingGraph(key, metric.values, w, h, metric.tone, band ? parseFloat(band) : undefined);
+    });
+    root.querySelectorAll('.nb-mcard').forEach(function(c){ c.classList.add('is-ready'); });
+  }
+  renderLivingGraphs();
+
+  var resizeTimer;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderLivingGraphs, 150);
+  });
+})();
+</script>
+</div>
+</body>
+</html>

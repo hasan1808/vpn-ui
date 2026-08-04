@@ -1,6 +1,8 @@
 package service
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,5 +207,79 @@ func TestCappedBufferTruncates(t *testing.T) {
 	}
 	if c.buf.Len() != 8 {
 		t.Errorf("buffer grew to %d past its cap", c.buf.Len())
+	}
+}
+
+// A URL is the one manual-update input the operator can get wrong in ways that still
+// "work": a scheme the fetcher cannot speak, or an address with no host, would
+// otherwise surface as a transport error they have to decode.
+func TestValidatePanelBinaryURL(t *testing.T) {
+	for _, tc := range []struct {
+		in      string
+		wantErr string // substring; "" means it must be accepted
+	}{
+		{"https://example.com/vpn-ui-amd64", ""},
+		{"http://10.0.0.5/vpn-ui-amd64", ""}, // a private mirror is the point, not a mistake
+		{"  https://example.com/x  ", ""},    // pasted with whitespace
+		{"", "enter the URL"},
+		{"   ", "enter the URL"},
+		{"example.com/vpn-ui-amd64", "missing its scheme"},
+		{"file:///etc/passwd", "cannot be downloaded from"},
+		{"ftp://example.com/x", "cannot be downloaded from"},
+		{"https://", "has no host"},
+	} {
+		got, err := validatePanelBinaryURL(tc.in)
+		if tc.wantErr == "" {
+			if err != nil {
+				t.Errorf("validate(%q): unexpected error %v", tc.in, err)
+			}
+			if strings.TrimSpace(got) == "" {
+				t.Errorf("validate(%q): accepted but returned an empty URL", tc.in)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("validate(%q): accepted, want error containing %q", tc.in, tc.wantErr)
+			continue
+		}
+		if !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("validate(%q): error %q, want it to contain %q", tc.in, err, tc.wantErr)
+		}
+	}
+}
+
+// The commonest wrong link is a page rather than a file: a release page, a login
+// wall, a "not found" template. All answer 200 with HTML, so without this the
+// operator is told their binary is "not a linux binary", which is true and useless.
+func TestStagePanelBinaryFromURLRejectsAWebPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<!doctype html><title>Releases</title>"))
+	}))
+	defer srv.Close()
+
+	_, err := StagePanelBinaryFromURL(srv.URL)
+	if err == nil {
+		t.Fatal("a text/html body was accepted as a binary")
+	}
+	if !strings.Contains(err.Error(), "served a web page") {
+		t.Errorf("error %q does not name the actual problem", err)
+	}
+}
+
+// A URL that answers anything but 200 has to say so with the status, since that is
+// the whole diagnosis (404 = wrong path, 401/403 = a private asset needing auth).
+func TestStagePanelBinaryFromURLReportsHTTPStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	_, err := StagePanelBinaryFromURL(srv.URL)
+	if err == nil {
+		t.Fatal("a 404 was accepted")
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("error %q does not carry the status code", err)
 	}
 }

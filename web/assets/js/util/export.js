@@ -56,9 +56,17 @@ const AccountExport = {
         const isGre = (proto === Protocols.GRE);
         const isMtproto = (proto === Protocols.MTPROTO);
         const isSsh = (proto === Protocols.SSH);
+        const isNaive = (proto === Protocols.NAIVE);
         // MTProto has no username (identity = email, the wg-c model) and no UUID; its
         // credential is the secret, which is already embedded in each link.
-        const username = vpnUserPass ? (client.id || client.email || '') : (client.email || '');
+        //
+        // naive is the one Xray protocol whose username is not the email: it has its own
+        // field, and an empty one falls back to the email. The exported row has to show
+        // whichever the server will actually match, or the operator hands a subscriber a
+        // credential that cannot log in.
+        const username = vpnUserPass ? (client.id || client.email || '')
+          : isNaive ? (client.username || client.email || '')
+          : (client.email || '');
         const uuid = (!vpnUserPass && !isWgc && !isAwg && !isGre && !isMtproto && client.id
           && client.id !== client.password && client.id !== client.email) ? client.id : '';
 
@@ -250,6 +258,19 @@ const AccountExport = {
       }
       case Protocols.SSH: return 'SSH';
       case Protocols.MTPROTO: return 'MTProto'; // mode appended per-card in buildCards
+      // Xray-native, so _isVpnProto is false and _network still appends the
+      // transport suffix; these cases only replace the uppercased slug
+      // (ANYTLS / TUIC / NAIVE) with the name the clients use.
+      case Protocols.ANYTLS: return 'AnyTLS';
+      case Protocols.TUIC: return 'TUIC';
+      case Protocols.NAIVE: {
+        // The transport is part of the protocol here, not of streamSettings, so it
+        // belongs in the label: h2 over TLS, h3 over QUIC, or both.
+        const net = s.network || 'tcp';
+        if (net === 'udp') return 'NaiveProxy - h3';
+        if (net === 'tcp') return 'NaiveProxy - h2';
+        return 'NaiveProxy - h2/h3';
+      }
       default: return (dbInbound.protocol || '').toUpperCase();
     }
   },

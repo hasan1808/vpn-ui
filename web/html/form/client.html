@@ -41,6 +41,40 @@
         </template>
         <a-input v-model.trim="client.id"></a-input>
     </a-form-item>
+    <!-- naive's own username, deliberately NOT the client.id the block above binds:
+         naive has no id field, and this one may be left blank, in which case the
+         account authenticates with its email exactly as it did before the field
+         existed. The email stays the accounting identity either way.
+
+         The revocation warning in the tooltip is the important half. An account has
+         exactly ONE valid Basic username, so filling this in does not add a second way
+         to log in, it REPLACES the email as the credential, and every device already
+         configured with that account starts getting 407 with nothing to explain it.
+         It goes in the tooltip rather than an alert banner on purpose. -->
+    <a-form-item v-if="inbound.protocol === Protocols.NAIVE">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    <span>The username half of naive's Basic credential. Leave it empty
+                        to keep using the email, which is what accounts created before
+                        this field do. It must be unique within this inbound and cannot
+                        contain a colon.
+                        <b>Setting one on an existing account revokes its email:</b> the
+                        account then logs in only under this username, so every device
+                        already using it gets 407 until you hand out the new link.</span>
+                </template>
+                Username
+                <a-icon
+                    @click="client.username = RandomUtil.randomLowerAndNum(8)"
+                    type="sync"
+                ></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input
+            v-model.trim="client.username"
+            :placeholder="client.email"
+        ></a-input>
+    </a-form-item>
     <!-- MTProto authenticates on a 32-hex secret, not a password: it is the whole
          credential and it is what the tg:// link carries. -->
     <a-form-item v-if="inbound.protocol === Protocols.MTPROTO">
@@ -59,7 +93,7 @@
         <a-input v-model.trim="client.secret"></a-input>
     </a-form-item>
     <a-form-item
-        v-if="inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.SHADOWSOCKS || inbound.protocol === Protocols.L2TP || inbound.protocol === Protocols.PPTP || inbound.protocol === Protocols.OPENVPN || inbound.protocol === Protocols.OPENCONNECT || inbound.protocol === Protocols.SSTP || inbound.protocol === Protocols.SSH || (inbound.protocol === Protocols.IKEV2 && inbound.settings.authMode !== 'eap-tls' && inbound.settings.authMode !== 'psk')"
+        v-if="inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.SHADOWSOCKS || inbound.protocol === Protocols.ANYTLS || inbound.protocol === Protocols.TUIC || inbound.protocol === Protocols.NAIVE || inbound.protocol === Protocols.L2TP || inbound.protocol === Protocols.PPTP || inbound.protocol === Protocols.OPENVPN || inbound.protocol === Protocols.OPENCONNECT || inbound.protocol === Protocols.SSTP || inbound.protocol === Protocols.SSH || (inbound.protocol === Protocols.IKEV2 && inbound.settings.authMode !== 'eap-tls' && inbound.settings.authMode !== 'psk')"
     >
         <template slot="label">
             <a-tooltip>
@@ -73,7 +107,7 @@
                     type="sync"
                 ></a-icon>
                 <a-icon
-                    v-if="inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.L2TP || inbound.protocol === Protocols.PPTP || inbound.protocol === Protocols.OPENVPN || inbound.protocol === Protocols.OPENCONNECT || inbound.protocol === Protocols.SSTP || inbound.protocol === Protocols.IKEV2 || inbound.protocol === Protocols.SSH"
+                    v-if="inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.ANYTLS || inbound.protocol === Protocols.TUIC || inbound.protocol === Protocols.NAIVE || inbound.protocol === Protocols.L2TP || inbound.protocol === Protocols.PPTP || inbound.protocol === Protocols.OPENVPN || inbound.protocol === Protocols.OPENCONNECT || inbound.protocol === Protocols.SSTP || inbound.protocol === Protocols.IKEV2 || inbound.protocol === Protocols.SSH"
                     @click="client.password = RandomUtil.randomSeq(10)"
                     type="sync"
                 >
@@ -97,8 +131,10 @@
         </template>
         <a-input v-model.trim="client.auth"></a-input>
     </a-form-item>
+    <!-- TUIC authenticates on a UUID AND a password, not on one or the other: the
+         UUID names the account inside the QUIC session and the password proves it. -->
     <a-form-item
-        v-if="inbound.protocol === Protocols.VMESS || inbound.protocol === Protocols.VLESS"
+        v-if="inbound.protocol === Protocols.VMESS || inbound.protocol === Protocols.VLESS || inbound.protocol === Protocols.TUIC"
     >
         <template slot="label">
             <a-tooltip>
@@ -327,6 +363,14 @@
         </template>
         <a-input-number v-model.number="client.reset" :min="0"></a-input-number>
     </a-form-item>
+
+    <!-- An inbound-membership checklist used to sit here, for the form's other
+         host: the Clients page's edit modal. That modal is gone and memberships are
+         picked on the Clients page's own account form now
+         (modals/client_membership_modal.html), which is account-shaped rather than
+         inbound-shaped. What is left renders inside the INBOUND modal only, where
+         there is nothing to be a member of yet: the inbound is still being written
+         and has no id. -->
 
     <!-- GRE: the account's peer routers. Per CLIENT because each customer site has its
          own public address, and that address IS how the server tells peers apart (GRE

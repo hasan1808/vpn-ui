@@ -1097,6 +1097,43 @@ style attribute {
   color:var(--dark-color-surface-300);
 }
 
+/* A day the picker refuses. antd plates it in #f5f5f5, which against a dark
+   calendar is a solid WHITE box - so a picker with a disabled-date rule (the
+   client form refuses a deadline in the past) opened onto a row of white blocks
+   where the unavailable days should be. Dimmed instead, which is what "disabled"
+   already means everywhere else in this theme. The hover rule above is beaten by
+   an explicit one because a disabled cell still receives :hover. */
+.dark .ant-calendar-disabled-cell .ant-calendar-date,
+.dark .ant-calendar-disabled-cell .ant-calendar-date:hover {
+  background:transparent;
+  border-color:transparent;
+  color:var(--dark-color-surface-300);
+  cursor:not-allowed;
+}
+/* Today, when today itself is out of range. antd keeps the "today" ring on it and
+   this theme paints that ring in the accent, so without this the one day the form
+   will not accept is the most prominent thing on the calendar. */
+.dark .ant-calendar-disabled-cell.ant-calendar-today .ant-calendar-date {
+  background:transparent;
+  border-color:var(--dark-color-surface-300);
+  color:var(--dark-color-surface-300);
+}
+
+/* Same trap one layer up, and in BOTH themes: a picker opened with no value shows
+   today as the active day, so a refused today came up painted in the accent and
+   looked like the current choice. !important because that is how the selected-day
+   colour is set. */
+.ant-calendar-disabled-cell.ant-calendar-selected-day .ant-calendar-date,
+.dark .ant-calendar-disabled-cell.ant-calendar-selected-day .ant-calendar-date {
+  background-color:transparent!important;
+}
+.ant-calendar-disabled-cell.ant-calendar-selected-day .ant-calendar-date {
+  color:rgb(0 0 0 / .25);
+}
+.dark .ant-calendar-disabled-cell.ant-calendar-selected-day .ant-calendar-date {
+  color:var(--dark-color-surface-300);
+}
+
 .dark .ant-calendar-selected-day .ant-calendar-date {
   background-color:var(--color-primary-100)!important;
   color:#fff;
@@ -1973,18 +2010,20 @@ li.ant-calendar-time-picker-select-option-selected {
   }
 }
 
-.inbounds-page .ant-table:not(.ant-table-expanded-row .ant-table) {
-  outline:1px solid #f0f0f0;
+/* The ring around a page-level table. Drawn in var(--border) rather than a
+   hard-coded pair, so one rule is right in both themes and the Clients page gets
+   the same table as the Inbounds page instead of the near-white ring it inherited
+   from a stray rule in the QR modal. */
+.inbounds-page .ant-table:not(.ant-table-expanded-row .ant-table),
+.clients-page .ant-table:not(.ant-table-expanded-row .ant-table) {
+  outline:1px solid var(--border);
   outline-offset:-1px;
   border-radius:1rem;
   overflow-x:hidden;
 }
 
-.inbounds-page.dark .ant-table:not(.ant-table-expanded-row .ant-table) {
-  outline-color:var(--dark-color-table-ring);
-}
-
-.inbounds-page .ant-table .ant-table-content .ant-table-scroll .ant-table-body {
+.inbounds-page .ant-table .ant-table-content .ant-table-scroll .ant-table-body,
+.clients-page .ant-table .ant-table-content .ant-table-scroll .ant-table-body {
   overflow-y:hidden;
 }
 
@@ -2028,7 +2067,7 @@ li.ant-calendar-time-picker-select-option-selected {
   background-color:var(--dark-color-surface-100);
 }
 
-.inbounds-page .ant-custom-popover-title {
+.ant-custom-popover-title {
   display:flex;
   align-items:center;
   gap:10px;
@@ -2043,20 +2082,25 @@ li.ant-calendar-time-picker-select-option-selected {
   display:none;
 }
 
-.inbounds-page .infinite-tag,
-.inbounds-page~div .infinite-tag {
+/* These are plain utility classes on the client/traffic cells, not page chrome.
+   They were scoped to .inbounds-page (plus a `~div` twin for ant's portaled
+   modals, which mount as siblings of #app), which meant every one of them was
+   DEAD on the Clients page even though it renders the same cells: the infinity
+   glyph, the traffic bar and the client name all fell back to browser defaults
+   there. Unscoped, one definition serves both pages and the portals. */
+.infinite-tag {
   padding:0 5px;
   border-radius:2rem;
   min-width:50px;
   min-height:22px;
 }
 
-.inbounds-page .infinite-bar .ant-progress-inner .ant-progress-bg {
+.infinite-bar .ant-progress-inner .ant-progress-bg {
   background-color:#F2EAF1;
   border:#D5BED2 solid 1px;
 }
 
-.inbounds-page.dark .infinite-bar .ant-progress-inner .ant-progress-bg {
+.dark .infinite-bar .ant-progress-inner .ant-progress-bg {
   background-color:#7a316f!important;
   border:#7a316f solid 1px;
 }
@@ -2065,29 +2109,28 @@ li.ant-calendar-time-picker-select-option-selected {
   margin:5px 0;
 }
 
-.inbounds-page .info-large-tag,
-.inbounds-page~div .info-large-tag {
+.info-large-tag {
   max-width:200px;
   overflow:hidden;
 }
 
-.inbounds-page .client-comment {
+.client-comment {
   font-size:12px;
   opacity:.75;
   cursor:help;
 }
 
-.inbounds-page .client-email {
+.client-email {
   font-weight:500;
 }
 
-.inbounds-page .client-popup-item {
+.client-popup-item {
   display:flex;
   align-items:center;
   gap:5px;
 }
 
-.inbounds-page .online-animation .ant-badge-status-dot {
+.online-animation .ant-badge-status-dot {
   animation:onlineAnimation 1.2s linear infinite;
 }
 
@@ -2104,31 +2147,31 @@ li.ant-calendar-time-picker-select-option-selected {
   }
 }
 
-.inbounds-page .tr-table-box {
+.tr-table-box {
   display:flex;
   gap:4px;
   justify-content:center;
   align-items:center;
 }
 
-.inbounds-page .tr-table-rt {
+.tr-table-rt {
   flex-basis:70px;
   min-width:70px;
   text-align:end;
 }
 
-.inbounds-page .tr-table-lt {
+.tr-table-lt {
   flex-basis:70px;
   min-width:70px;
   text-align:start;
 }
 
-.inbounds-page .tr-table-bar {
+.tr-table-bar {
   flex-basis:160px;
   min-width:60px;
 }
 
-.inbounds-page .tr-infinity-ch {
+.tr-infinity-ch {
   font-size:14pt;
   max-height:24px;
   display:inline-flex;

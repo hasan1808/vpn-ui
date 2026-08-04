@@ -118,6 +118,7 @@ type Server struct {
 	mtprotoService     service.MtprotoService
 	sshService         service.SshService
 	sshOutboundService service.SshOutboundService
+	vpnOutboundService service.VpnOutboundService
 	tgbotService       service.Tgbot
 	customGeoService   *service.CustomGeoService
 
@@ -230,7 +231,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		sessionOptions.MaxAge = sessionMaxAge * 60 // minutes -> seconds
 	}
 	store.Options(sessionOptions)
-	engine.Use(sessions.Sessions("vpn-ui", store))
+	engine.Use(sessions.Sessions(config.GetName(), store))
 	engine.Use(func(c *gin.Context) {
 		c.Set("base_path", basePath)
 	})
@@ -270,11 +271,11 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		engine.StaticFS(basePath+"assets", http.FS(os.DirFS("web/assets")))
 	} else {
 		// for production
-		template, err := s.getHtmlTemplate(funcMap)
+		tmpl, err := s.getHtmlTemplate(funcMap)
 		if err != nil {
 			return nil, err
 		}
-		engine.SetHTMLTemplate(template)
+		engine.SetHTMLTemplate(tmpl)
 		engine.StaticFS(basePath+"assets", http.FS(&wrapAssetsFS{FS: assetsFS}))
 	}
 
@@ -342,6 +343,10 @@ func (s *Server) startTask() {
 	s.mtprotoService.InitMtproto()
 	s.sshService.InitSsh()
 	s.sshOutboundService.InitSshOutbound()
+	// Before RestartXray below, like every Init above it: the synthesized freedom
+	// outbound binds to the netdev the client tunnel brings up, so the tunnel has to
+	// exist by the time the core reads the config.
+	s.vpnOutboundService.InitVpnOutbound()
 
 	s.customGeoService.EnsureOnStartup()
 	// Same crash-safety idea as the orphan reap below: a panel that died between an
@@ -444,7 +449,7 @@ func (s *Server) startTask() {
 			runtime = "@daily"
 		}
 		logger.Infof("Tg notify enabled,run at %s", runtime)
-		_, err = s.cron.AddJob(runtime, job.NewStatsNotifyJob())
+		entry, err = s.cron.AddJob(runtime, job.NewStatsNotifyJob())
 		if err != nil {
 			logger.Warningf("Add NewStatsNotifyJob: failed to schedule runtime %q: %v", runtime, err)
 			return
@@ -458,8 +463,14 @@ func (s *Server) startTask() {
 		if (err == nil) && (cpuThreshold > 0) {
 			s.cron.AddJob("@every 10s", job.NewCheckCpuJob())
 		}
+
+		// Start Telegram bot
+		tgBot := s.tgbotService.NewTgbot()
+		tgBot.Start(i18nFS)
 	} else {
-		s.cron.Remove(entry)
+		if entry != 0 {
+			s.cron.Remove(entry)
+		}
 	}
 }
 
@@ -508,11 +519,14 @@ func (s *Server) Start() (err error) {
 		return err
 	}
 	scheme := "http"
-	if certFile != "" || keyFile != "" {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if certFile != "" && keyFile != "" {
+		certReloader, err := network.NewCertReloader(certFile, keyFile)
 		if err == nil {
 			c := &tls.Config{
-				Certificates: []tls.Certificate{cert},
+				// Looked up per handshake so a renewal is picked up in place.
+				// Restarting to reload would kill every VPN daemon the panel
+				// parents, and short-lived certificates renew every few days.
+				GetCertificate: certReloader.GetCertificate,
 			}
 			listener = network.NewAutoHttpsListener(listener)
 			listener = tls.NewListener(listener, c)
@@ -547,12 +561,6 @@ func (s *Server) Start() (err error) {
 
 	s.startTask()
 
-	isTgbotenabled, err := s.settingService.GetTgbotEnabled()
-	if (err == nil) && (isTgbotenabled) {
-		tgBot := s.tgbotService.NewTgbot()
-		tgBot.Start(i18nFS)
-	}
-
 	return nil
 }
 
@@ -565,6 +573,9 @@ func (s *Server) Stop() error {
 	// SSH is an in-binary listener, not a supervised child, so StopAll does not cover it.
 	s.sshService.StopServices()
 	s.sshOutboundService.StopAll()
+	// Client tunnels are kernel netdevs (and, for some protocols, their own client
+	// daemons), so they outlive the panel unless they are taken down explicitly.
+	s.vpnOutboundService.StopAll()
 	s.radiusService.Stop()
 	s.xrayService.StopXray()
 	if s.cron != nil {
@@ -613,7 +624,7 @@ func (s *Server) getOrCreateRadiusSecret() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		logger.Warning("RADIUS: failed to generate secret:", err)
-		return "default-radius-secret"
+		return ""
 	}
 	secret = fmt.Sprintf("%x", b)
 	if err := s.settingService.SetRadiusSecret(secret); err != nil {

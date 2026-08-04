@@ -114,8 +114,17 @@ var defaultValueMap = map[string]string{
 	// restart and cleared by the first super admin to be told about it. See
 	// SettingService.TakePanelUpdatedFrom.
 	"panelUpdatedFrom": "",
+	// Marks that the one-time grant of PermAccessOverview to the admins who
+	// predate that bit has run. See AdminService.MigrationOverviewAccess.
+	"overviewAccessBackfilled": "false",
 	// Operator-configured SSH egress tunnels (JSON array); see web/service/sshoutbound.go.
 	"sshOutbounds": "",
+	// Operator-configured VPN client tunnels used as egress (JSON array); see
+	// web/service/vpnoutbound.go. Declared here because getString treats a key absent
+	// from this map as an ERROR rather than as "unset": until the first save writes a
+	// row, every read of an undeclared key comes back as a failure, and the reader can
+	// no longer tell "no tunnels configured" from "the settings table is unreadable".
+	"vpnOutbounds": "",
 }
 
 // SettingService provides business logic for application settings management.
@@ -167,7 +176,7 @@ func (s *SettingService) GetAllSetting() (*entity.AllSetting, error) {
 		}
 
 		fieldV := v.FieldByName(field.Name)
-		switch t := fieldV.Interface().(type) {
+		switch fieldV.Interface().(type) {
 		case int:
 			n, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
@@ -179,7 +188,7 @@ func (s *SettingService) GetAllSetting() (*entity.AllSetting, error) {
 		case bool:
 			fieldV.SetBool(value == "true")
 		default:
-			return common.NewErrorf("unknown field %v type %v", key, t)
+			return common.NewErrorf("unknown field %v type %v", key, reflect.TypeOf(fieldV.Interface()))
 		}
 		return
 	}
@@ -212,8 +221,7 @@ func (s *SettingService) ResetSettings() error {
 	if err != nil {
 		return err
 	}
-	return db.Model(model.User{}).
-		Where("1 = 1").Error
+	return db.Where("1 = 1").Delete(model.User{}).Error
 }
 
 func (s *SettingService) getSetting(key string) (*model.Setting, error) {
@@ -396,6 +404,23 @@ func (s *SettingService) SetVpnProvisioned(value bool) error {
 	return s.setBool("vpnProvisioned", value)
 }
 
+// GetOverviewAccessBackfilled reports whether the one-time PermAccessOverview grant
+// has already run on this install. A read error is treated as "already done" so a
+// broken settings table can never re-grant a permission an operator revoked; the
+// backfill exists to preserve the old behaviour once, not to keep restoring it.
+func (s *SettingService) GetOverviewAccessBackfilled() bool {
+	v, err := s.getBool("overviewAccessBackfilled")
+	if err != nil {
+		return true
+	}
+	return v
+}
+
+// SetOverviewAccessBackfilled records that the one-time grant has run.
+func (s *SettingService) SetOverviewAccessBackfilled(value bool) error {
+	return s.setBool("overviewAccessBackfilled", value)
+}
+
 // SetPanelUpdatedFrom records the version an in-panel self-update is replacing.
 // Written immediately before the restart, so the binary that comes up can tell a
 // self-update apart from any other restart and say what it upgraded from.
@@ -549,12 +574,6 @@ func (s *SettingService) GetRemarkModel() (string, error) {
 
 func (s *SettingService) GetSecret() ([]byte, error) {
 	secret, err := s.getString("secret")
-	if secret == defaultValueMap["secret"] {
-		err := s.saveSetting("secret", secret)
-		if err != nil {
-			logger.Warning("save secret failed:", err)
-		}
-	}
 	return []byte(secret), err
 }
 

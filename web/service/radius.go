@@ -479,7 +479,7 @@ func (s *RadiusService) handleAcct(w radius.ResponseWriter, r *radius.Request) {
 			// disconnect (or a rapid reconnect) silently drops that traffic, which
 			// under-counts usage and under-enforces limits.
 			up, down := s.nftService.ReadAndResetClientCounters(sess.protocol, sess.ip)
-			foldClientTraffic(sess.email, up, down)
+			foldClientTraffic(sess.email, sess.protocol, up, down)
 			// Remove nft accounting counters
 			if err := s.nftService.RemoveClientAccounting(sess.protocol, sess.ip); err != nil {
 				logger.Warning("RADIUS: failed to remove nft accounting:", err)
@@ -607,7 +607,7 @@ func (s *RadiusService) handleOcservAcct(statusType rfc2866.AcctStatusType, sess
 		// Fold the bytes counted since the last collection before deleting the counters,
 		// exactly as the l2tp/pptp Acct-Stop path does.
 		up, down := s.nftService.ReadAndResetClientCounters("openconnect", ip)
-		foldClientTraffic(sess.email, up, down)
+		foldClientTraffic(sess.email, sess.protocol, up, down)
 		if err := s.nftService.RemoveClientAccounting("openconnect", ip); err != nil {
 			logger.Warning("RADIUS: failed to remove openconnect nft accounting:", err)
 		}
@@ -680,7 +680,7 @@ func (s *RadiusService) ReconcileLocalSessions(protocol string, desired map[stri
 	// as the Acct-Stop path.
 	for _, g := range gone {
 		up, down := s.nftService.ReadAndResetClientCounters(protocol, g.ip)
-		foldClientTraffic(g.email, up, down)
+		foldClientTraffic(g.email, protocol, up, down)
 		_ = s.nftService.RemoveClientAccounting(protocol, g.ip)
 	}
 	for _, ip := range added {
@@ -962,7 +962,7 @@ func (s *RadiusService) CleanStaleSessions() {
 		// otherwise every session that ends without one (which is every OpenConnect
 		// session that did not report a stop) silently drops its last window of traffic.
 		up, down := s.nftService.ReadAndResetClientCounters(sess.protocol, sess.ip)
-		foldClientTraffic(sess.email, up, down)
+		foldClientTraffic(sess.email, sess.protocol, up, down)
 		s.nftService.RemoveClientAccounting(sess.protocol, sess.ip)
 		logger.Infof("RADIUS: cleaned stale session=%s email=%s ip=%s", sid, sess.email, sess.ip)
 		s.mu.Lock()
@@ -1417,7 +1417,7 @@ func (s *RadiusService) allocateBlockIP(inboundId, accountSlot int, blockIPs []s
 			// ReadAndResetClientCounters zeroes the counter, so the readmit starts from 0.
 			if victim != nil && victim.email != "" {
 				up, down := s.nftService.ReadAndResetClientCounters(protocol, victimIP)
-				foldClientTraffic(victim.email, up, down)
+				foldClientTraffic(victim.email, victim.protocol, up, down)
 			}
 			s.nftService.RemoveClientAccounting(protocol, victimIP)
 			// Force the old device's link down. L2TP/PPTP delete the ppp interface;

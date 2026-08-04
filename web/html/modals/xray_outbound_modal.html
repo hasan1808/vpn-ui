@@ -5,7 +5,105 @@
          :ok-text="outModal.okText" cancel-text='{{ i18n "close" }}' :class="themeSwitcher.currentTheme">
          {{template "form/outbound"}}
 </a-modal>
+<style>
+    /* antd-vue 1.7.8 gives .ant-form-item-label overflow:hidden and
+       white-space:nowrap, so a label wider than its 8-of-24 column is not
+       wrapped, it is cut off and its tail sits under the input beside it
+       ("IPsec Pre-Shared Key" on the L2TP tunnel form is the one that was
+       reported). Letting every label in this form wrap fixes the whole class of
+       them rather than one string, and it is what custom.css already does for
+       the narrow-screen layout. The padding keeps a one-line label lined up with
+       the 32px control it names. */
+    .ob-form .ant-form-item-label,
+    .ob-form .ant-form-item-label > label {
+        overflow: visible;
+        white-space: normal;
+    }
+
+    .ob-form .ant-form-item-label {
+        line-height: 1.5;
+        padding: 6px 8px 0 0;
+    }
+</style>
 <script>
+
+    // Labels for the VPN tunnel fields declared in VPN_OUT_KINDS (outbound.js).
+    // They live here because outbound.js is a static asset that the template
+    // engine never sees, so the i18n helper cannot run in it. Protocol jargon
+    // (MTU, TTL, Jc, H1) carries a literal `plain` label in the table instead and
+    // is not translated: it is the same token in every language.
+    //
+    // Do not write a bare template action in a comment in this file: Go's
+    // html/template parses actions inside JS comments too, and one with no
+    // arguments fails at EXECUTION time, which truncates the page from that byte
+    // on and leaves the panel blank behind v-cloak. The template-parse test still
+    // passes, so nothing catches it before a browser does.
+    const VPN_OUT_LABELS = {
+        vpnOutServer: '{{ i18n "pages.xray.outbound.vpnOutServer" }}',
+        vpnOutEndpoint: '{{ i18n "pages.xray.outbound.vpnOutEndpoint" }}',
+        vpnOutTunAddress: '{{ i18n "pages.xray.outbound.vpnOutTunAddress" }}',
+        vpnOutLocalAddress: '{{ i18n "pages.xray.outbound.vpnOutLocalAddress" }}',
+        vpnOutUsername: '{{ i18n "pages.xray.outbound.vpnOutUsername" }}',
+        vpnOutPassword: '{{ i18n "pages.xray.outbound.vpnOutPassword" }}',
+        vpnOutPrivateKey: '{{ i18n "pages.xray.outbound.vpnOutPrivateKey" }}',
+        vpnOutPeerKey: '{{ i18n "pages.xray.outbound.vpnOutPeerKey" }}',
+        vpnOutPeerAddress: '{{ i18n "pages.xray.outbound.vpnOutPeerAddress" }}',
+        vpnOutPresharedKey: '{{ i18n "pages.xray.outbound.vpnOutPresharedKey" }}',
+        vpnOutKeepAlive: '{{ i18n "pages.xray.outbound.vpnOutKeepAlive" }}',
+        vpnOutPort: '{{ i18n "pages.xray.outbound.vpnOutPort" }}',
+        vpnOutProto: '{{ i18n "pages.xray.outbound.vpnOutProto" }}',
+        vpnOutProfile: '{{ i18n "pages.xray.outbound.vpnOutProfile" }}',
+        vpnOutTlsAuth: '{{ i18n "pages.xray.outbound.vpnOutTlsAuth" }}',
+        vpnOutTlsCrypt: '{{ i18n "pages.xray.outbound.vpnOutTlsCrypt" }}',
+        vpnOutRemoteCertTls: '{{ i18n "pages.xray.outbound.vpnOutRemoteCertTls" }}',
+        vpnOutExtra: '{{ i18n "pages.xray.outbound.vpnOutExtra" }}',
+        vpnOutExtraHelp: '{{ i18n "pages.xray.outbound.vpnOutExtraHelp" }}',
+        vpnOutAuthMode: '{{ i18n "pages.xray.outbound.vpnOutAuthMode" }}',
+        vpnOutAuthProto: '{{ i18n "pages.xray.outbound.vpnOutAuthProto" }}',
+        vpnOutPsk: '{{ i18n "pages.xray.outbound.vpnOutPsk" }}',
+        vpnOutIpsec: '{{ i18n "pages.xray.outbound.vpnOutIpsec" }}',
+        vpnOutIpsecPsk: '{{ i18n "pages.xray.outbound.vpnOutIpsecPsk" }}',
+        vpnOutIpsecPskHelp: '{{ i18n "pages.xray.outbound.vpnOutIpsecPskHelp" }}',
+        vpnOutAwgHeadersHelp: '{{ i18n "pages.xray.outbound.vpnOutAwgHeadersHelp" }}',
+        vpnOutIpsecRemoteId: '{{ i18n "pages.xray.outbound.vpnOutIpsecRemoteId" }}',
+        vpnOutIpsecLocalId: '{{ i18n "pages.xray.outbound.vpnOutIpsecLocalId" }}',
+        vpnOutIkeVersion: '{{ i18n "pages.xray.outbound.vpnOutIkeVersion" }}',
+        vpnOutFou: '{{ i18n "pages.xray.outbound.vpnOutFou" }}',
+        vpnOutFouPort: '{{ i18n "pages.xray.outbound.vpnOutFouPort" }}',
+        vpnOutLocalId: '{{ i18n "pages.xray.outbound.vpnOutLocalId" }}',
+        vpnOutServerId: '{{ i18n "pages.xray.outbound.vpnOutServerId" }}',
+        vpnOutRemoteTs: '{{ i18n "pages.xray.outbound.vpnOutRemoteTs" }}',
+        vpnOutTlsUseFile: '{{ i18n "pages.xray.outbound.vpnOutTlsUseFile" }}',
+        vpnOutCert: '{{ i18n "pages.xray.outbound.vpnOutCert" }}',
+        vpnOutKey: '{{ i18n "pages.xray.outbound.vpnOutKey" }}',
+        vpnOutCaCert: '{{ i18n "pages.xray.outbound.vpnOutCaCert" }}',
+        vpnOutCertFile: '{{ i18n "pages.xray.outbound.vpnOutCertFile" }}',
+        vpnOutKeyFile: '{{ i18n "pages.xray.outbound.vpnOutKeyFile" }}',
+        vpnOutCaCertFile: '{{ i18n "pages.xray.outbound.vpnOutCaCertFile" }}',
+        vpnOutInsecure: '{{ i18n "pages.xray.outbound.vpnOutInsecure" }}',
+        vpnOutProxy: '{{ i18n "pages.xray.outbound.vpnOutProxy" }}',
+        vpnOutMppe: '{{ i18n "pages.xray.outbound.vpnOutMppe" }}',
+        vpnOutMppeHelp: '{{ i18n "pages.xray.outbound.vpnOutMppeHelp" }}',
+        vpnOutAuthGroup: '{{ i18n "pages.xray.outbound.vpnOutAuthGroup" }}',
+        vpnOutTotpSecret: '{{ i18n "pages.xray.outbound.vpnOutTotpSecret" }}',
+        vpnOutKeyPassword: '{{ i18n "pages.xray.outbound.vpnOutKeyPassword" }}',
+        vpnOutNoDtls: '{{ i18n "pages.xray.outbound.vpnOutNoDtls" }}',
+        vpnOutServerCert: '{{ i18n "pages.xray.outbound.vpnOutServerCert" }}',
+        vpnOutOcProtocol: '{{ i18n "pages.xray.outbound.vpnOutOcProtocol" }}',
+    };
+
+    // What the operator is told after handing the panel a config file. Composed
+    // in JS (a key list, a line number) rather than written as whole sentences in
+    // the template, so the same pieces serve every kind that can import.
+    const VPN_OUT_IMPORT_MSG = {
+        done: '{{ i18n "pages.xray.outbound.vpnOutImportDone" }}',
+        empty: '{{ i18n "pages.xray.outbound.vpnOutImportEmpty" }}',
+        unreadable: '{{ i18n "pages.xray.outbound.vpnOutImportUnreadable" }}',
+        malformed: '{{ i18n "pages.xray.outbound.vpnOutImportMalformed" }}',
+        notWireguard: '{{ i18n "pages.xray.outbound.vpnOutImportNotWg" }}',
+        ignored: '{{ i18n "pages.xray.outbound.vpnOutImportIgnored" }}',
+        kept: '{{ i18n "pages.xray.outbound.vpnOutImportKept" }}',
+    };
 
     const outModal = {
         title: '',
@@ -22,6 +120,18 @@
         isValid: true,
         activeKey: '1',
         tags: [],
+        // Live state of the VPN tunnel behind the outbound being edited.
+        vpnStatusText: '',
+        vpnStatusDetail: '',
+        vpnStatusUp: false,
+        vpnStatusLoading: false,
+        // The same for an SSH tunnel, log included. It used to live only in the
+        // SSH manager dialog, which the outbound toolbar no longer opens; without
+        // it a refused key or a wrong host-key pin has nowhere to say so.
+        sshStatusText: '',
+        sshStatusLog: '',
+        sshStatusUp: false,
+        sshStatusLoading: false,
         ok() {
             ObjectUtil.execute(outModal.confirm, outModal.outbound.toJson());
         },
@@ -33,10 +143,59 @@
             this.link = '';
             this.activeKey = '1';
             this.visible = true;
-            this.outbound = isEdit ? Outbound.fromJson(outbound) : new Outbound();
+            // A VPN row is a freedom outbound in the config and an SSH row a socks
+            // one, so neither can be read back into its tunnel form from the config
+            // alone. editOutbound rebuilds them from the panel's own tunnel lists
+            // and passes the finished model, so an already-built Outbound is taken
+            // as-is rather than re-parsed.
+            this.outbound = isEdit
+                ? (outbound instanceof Outbound ? outbound : Outbound.fromJson(outbound))
+                : new Outbound();
             this.isEdit = isEdit;
             this.tags = tags;
+            this.vpnStatusText = '';
+            this.vpnStatusDetail = '';
+            this.vpnStatusUp = false;
+            this.sshStatusText = '';
+            this.sshStatusLog = '';
+            this.sshStatusUp = false;
             this.check()
+            if (isEdit && isVpnProtocol(this.outbound.protocol)) this.refreshVpnStatus();
+            if (isEdit && this.outbound.protocol === Protocols.SSH) this.refreshSshStatus();
+        },
+        // Asks the panel whether this tunnel is carrying traffic. Kept on the modal
+        // object rather than in Vue methods so show() can call it too.
+        async refreshVpnStatus() {
+            const tag = this.outbound?.tag;
+            if (!tag) return;
+            this.vpnStatusLoading = true;
+            const msg = await HttpUtil.post('/panel/xray/vpnoutbound/status', { tag: tag });
+            this.vpnStatusLoading = false;
+            if (!msg || !msg.obj) return;
+            // `running` mirrors the ssh endpoint's key; `up` is what the driver
+            // interface calls it. Accept either so the readout does not depend on
+            // which name the handler settled on.
+            this.vpnStatusUp = !!(msg.obj.running ?? msg.obj.up);
+            this.vpnStatusText = this.vpnStatusUp
+                ? '{{ i18n "pages.xray.outbound.vpnOutUp" }}'
+                : '{{ i18n "pages.xray.outbound.vpnOutDown" }}';
+            this.vpnStatusDetail = msg.obj.detail || msg.obj.log || '';
+        },
+        // The SSH twin of the above. Its `log` is the tunnel's own ring buffer,
+        // which is where "permission denied" and a host-key mismatch appear: the
+        // status flag alone says down and never says why.
+        async refreshSshStatus() {
+            const tag = this.outbound?.tag;
+            if (!tag) return;
+            this.sshStatusLoading = true;
+            const msg = await HttpUtil.post('/panel/xray/sshoutbound/status', { tag: tag });
+            this.sshStatusLoading = false;
+            if (!msg || !msg.obj) return;
+            this.sshStatusUp = !!msg.obj.running;
+            this.sshStatusText = this.sshStatusUp
+                ? '{{ i18n "pages.xray.outbound.sshOutUp" }}'
+                : '{{ i18n "pages.xray.outbound.sshOutDown" }}';
+            this.sshStatusLog = msg.obj.log || '';
         },
         close() {
             outModal.visible = false;
@@ -67,12 +226,14 @@
                     value = editor.getValue();
                     if(this.isJsonString(value)){
                         // An ssh outbound serialises to the socks outbound that
-                        // fronts its tunnel, so reading it back would turn the
-                        // form into a socks one and silently drop the server,
-                        // credentials and key the operator just typed. The JSON
-                        // stays a read-only view of what Xray will get; the ssh
-                        // form above remains the source of truth.
+                        // fronts its tunnel, and a vpn one to the freedom outbound
+                        // pinned to its netdev, so reading either back would turn
+                        // the form into a socks/freedom one and silently drop the
+                        // server, credentials and keys the operator just typed. The
+                        // JSON stays a read-only view of what Xray will get; the
+                        // tunnel form above remains the source of truth.
                         if (this.outbound.protocol === Protocols.SSH) return;
+                        if (isVpnProtocol(this.outbound.protocol)) return;
                         this.outbound = Outbound.fromJson(JSON.parse(value));
                         this.check();
                     }
@@ -107,6 +268,238 @@
             },
         },
         methods: {
+            // Label for one VPN tunnel field: translated when the table names an
+            // i18n key, the literal token when it is protocol jargon, and the raw
+            // field name as a last resort so a field whose key was never added to
+            // the translations still shows something an operator can act on.
+            vpnLabel(f) {
+                if (f.plain) return f.plain;
+                return VPN_OUT_LABELS[f.label] || f.name;
+            },
+            vpnHelp(f) {
+                return f.help ? VPN_OUT_LABELS[f.help] || '' : '';
+            },
+            // What an empty secret box means right now. On an edit the three
+            // states look identical without this: nothing stored, something
+            // stored and kept, or something stored and staged for removal.
+            vpnSecretPlaceholder(f) {
+                if (!outModal.isEdit) return f.placeholder || '';
+                if (outModal.outbound.settings.isCleared(f.name)) {
+                    return '{{ i18n "pages.xray.outbound.vpnOutWillClear" }}';
+                }
+                return '{{ i18n "pages.xray.outbound.vpnOutKeep" }}';
+            },
+            // The tunnel kinds and what is known about each: [{kind, label,
+            // available, why}]. Feeds protocolOptions below, which is what the
+            // Add Outbound picker actually renders.
+            //
+            // Driven by what the server reports rather than by the local table,
+            // because only the host knows whether a protocol's client is actually
+            // present. An unavailable one is kept in the list and disabled, with
+            // its reason shown, so the operator learns what is missing instead of
+            // wondering where the protocol went. A kind the server knows and this
+            // table does not is still listed, where its empty field set is a
+            // visible bug rather than a silently absent protocol.
+            //
+            // Falls back to the whole table when the server could not be asked, so
+            // the form is never empty; an unusable kind then fails at save.
+            vpnKinds() {
+                const label = k => (VPN_OUT_KINDS[k] || {}).label || k;
+                const reported = typeof app !== 'undefined' ? app.vpnOutKindList : null;
+                if (!Array.isArray(reported) || !reported.length) {
+                    return Object.keys(VPN_OUT_KINDS).map(k => ({ kind: k, label: label(k), available: true, why: '' }));
+                }
+                return reported.map(k => ({
+                    kind: k.kind,
+                    label: label(k.kind),
+                    available: !!k.available,
+                    why: k.why || '',
+                }));
+            },
+            // The Add Outbound picker: ONE flat list, Protocols order, so the
+            // tunnels land after the protocols the core speaks.
+            //
+            // The tunnels used to sit under a heading of their own, which existed
+            // for a single reason: Xray has a native `wireguard` outbound and the
+            // panel raises a kernel WireGuard tunnel, and flat that is two rows
+            // reading nearly the same thing. A heading is the wrong place to fix
+            // that, because it is gone the moment the dropdown closes and the
+            // chosen label stands on its own. The labels themselves now say which
+            // is which (see PROTOCOL_LABELS in model/outbound.js), which holds
+            // everywhere the name is shown.
+            //
+            // One entry per protocol: {value, label, disabled, why, coreHref}.
+            //
+            // Built here rather than iterated straight off Protocols in the
+            // template because the tunnel entries carry something the rest do
+            // not: availability. Whether this host can raise an SSTP or an
+            // AmneziaWG tunnel is a runtime fact (a client binary that was never
+            // bundled for this arch, a kernel module nobody has built), so an
+            // unusable one stays in the list, disabled, with the reason attached
+            // rather than vanishing.
+            protocolOptions() {
+                const reported = {};
+                this.vpnKinds().forEach(k => { reported[k.kind] = k; });
+                const out = [];
+                Object.keys(Protocols).forEach(key => {
+                    const value = Protocols[key];
+                    const kind = vpnKindOf(value);
+                    const label = protocolLabel(value, key);
+                    if (!kind) {
+                        out.push({ value: value, label: label, disabled: false, why: '', coreHref: '' });
+                        return;
+                    }
+                    // A kind the server did not report at all has no driver in
+                    // this build, which is the same answer as unavailable.
+                    const k = reported[kind] || { available: false, why: '{{ i18n "pages.xray.outbound.vpnOutNoDriver" }}' };
+                    const why = k.available ? '' : (k.why || '');
+                    out.push({
+                        value: value,
+                        label: label,
+                        disabled: !k.available,
+                        why: why,
+                        coreHref: this.vpnCoreSettingsHref(why),
+                    });
+                });
+                return out;
+            },
+            // The address the tunnel device holds, as the sendThrough
+            // placeholder, or '' when only the far end knows it.
+            //
+            // Read from the FORM rather than from the live tunnel because there
+            // is no client-side source for the second: the status endpoint
+            // answers one human-readable sentence and the tunnel list carries
+            // the device name, not its address. For the kinds whose address is
+            // configured here (WireGuard, AmneziaWG, GRE, and IKEv2 when the
+            // operator pinned one) that value IS what the device carries. The
+            // negotiated kinds (the ppp ones, OpenVPN, OpenConnect) get no
+            // placeholder rather than a guess: their address is handed out by
+            // the gateway at dial time and can change on every redial.
+            //
+            // A placeholder and never a value. This is the field where a stale
+            // address is silently fatal, so anything written in automatically
+            // would be a trap the first time a peer renegotiates.
+            vpnSendThroughPlaceholder() {
+                const s = outModal.outbound.settings;
+                if (!s || !s.params) return '';
+                const raw = s.kind === 'ikev2' ? s.params.localAddr : s.params.address;
+                if (!raw) return '';
+                // First entry of a comma-separated Address line, without its
+                // prefix length: sendThrough takes one bare address, not a CIDR.
+                return String(raw).split(',')[0].trim().split('/')[0].trim();
+            },
+            // Where to send an operator whose tunnel is blocked by something they
+            // can actually install, and '' for everyone else.
+            //
+            // Decided from the SERVER's reason rather than from the kind, because
+            // the two answers differ per HOST for the same protocol: an AmneziaWG
+            // module can be DKMS-built on Debian and Ubuntu and cannot be built at
+            // all on kernel 7.1 or on the RHEL family, and the driver is the only
+            // thing that knows which of those this box is. Every other reason in
+            // the set is a missing bundle contents, which no core install produces.
+            //
+            // The signal is the phrase, by the convention stated in
+            // awgOutUnavailableReason: a driver names "Core Settings" only when
+            // going there is the fix, and the ones that cannot be fixed there name
+            // the package or the build instead. The alternative was a per-kind
+            // table in this file, which cannot see the host and would offer a link
+            // to a page with nothing on it that helps.
+            //
+            // Gated on the permission because Core Settings is gated on it: a
+            // reseller or a limited admin following this link would land on a
+            // redirect, which reads as a broken panel.
+            vpnCoreSettingsHref(why) {
+                if (!why || !/core settings/i.test(why)) return '';
+                if (typeof PERMS === 'undefined' || !PERMS.accessCoreSettings) return '';
+                return basePath + 'panel/core';
+            },
+            // The picker's write path. v-model would do for every other protocol,
+            // but a move between two TUNNEL kinds has to go through setVpnKind:
+            // the protocol setter builds a fresh settings object, and with it a
+            // fresh storedKind, so the warning that an edit is replacing the
+            // stored tunnel rather than adjusting it would never fire.
+            setOutboundProtocol(protocol) {
+                const ob = outModal.outbound;
+                const kind = vpnKindOf(protocol);
+                if (kind && isVpnProtocol(ob.protocol)) {
+                    ob.setVpnKind(kind);
+                    return;
+                }
+                ob.protocol = protocol;
+            },
+            // How a config file is offered for this kind, or undefined when the
+            // panel cannot read one (see VPN_OUT_IMPORT).
+            vpnImportSpec(kind) {
+                return VPN_OUT_IMPORT[kind];
+            },
+            // Reads the chosen file in the BROWSER and fills the form from it.
+            // Returning false is what stops a-upload posting it: the parse is
+            // entirely client-side, there is no upload endpoint, and a .conf full
+            // of private keys has no business making a round trip it does not need.
+            vpnImportFile(file) {
+                const spec = VPN_OUT_IMPORT[outModal.outbound.settings.kind];
+                if (!spec) return false;
+                const reader = new FileReader();
+                reader.onerror = () => this.$message.error(VPN_OUT_IMPORT_MSG.unreadable);
+                reader.onload = e => this.vpnApplyImport(spec, String((e.target && e.target.result) || ''));
+                reader.readAsText(file);
+                return false;
+            },
+            // Applies a read file to the form, all of it or none of it.
+            //
+            // The parser reports before anything is written, because a half-filled
+            // form is the worst outcome available here: it looks valid and saves a
+            // tunnel dialling the previous peer with the new file's keys.
+            vpnApplyImport(spec, text) {
+                const settings = outModal.outbound.settings;
+                const fields = Outbound.VpnSettings.fieldsOf(settings.kind);
+                if (spec.into) {
+                    // One field takes the whole file (OpenVPN's .ovpn). It is a
+                    // secret, so it is also marked touched: an untouched blank is
+                    // what tells the server to keep the stored profile.
+                    if (!text.trim()) {
+                        this.$message.error(VPN_OUT_IMPORT_MSG.empty);
+                        return;
+                    }
+                    settings.params[spec.into] = text;
+                    settings.touch(spec.into);
+                    this.$message.success(VPN_OUT_IMPORT_MSG.done);
+                    return;
+                }
+                const parsed = spec.parse(text, settings.kind);
+                if (parsed.error) {
+                    this.$message.error(parsed.error === 'malformed'
+                        ? VPN_OUT_IMPORT_MSG.malformed + ' ' + parsed.errorLine + '.'
+                        : (VPN_OUT_IMPORT_MSG[parsed.error] || VPN_OUT_IMPORT_MSG.malformed));
+                    return;
+                }
+                const secrets = fields.filter(f => f.secret).map(f => f.name);
+                Object.keys(parsed.values).forEach(name => {
+                    settings.params[name] = parsed.values[name];
+                    // touch() is only read for secrets, and a stray key on that
+                    // object is a property Vue is not watching.
+                    if (secrets.includes(name)) settings.touch(name);
+                });
+                const notes = [];
+                if (parsed.ignored.length) {
+                    notes.push(VPN_OUT_IMPORT_MSG.ignored + ' ' + parsed.ignored.join(', ') + '.');
+                }
+                // On an edit, a secret the file does not carry is KEPT: the form
+                // never held the stored one, and posting a blank would delete it.
+                // Said out loud, because a file from a different peer otherwise
+                // leaves the old preshared key in place and a tunnel handshaking
+                // with the wrong one simply carries nothing.
+                const kept = secrets.filter(n => parsed.values[n] === undefined);
+                if (outModal.isEdit && kept.length) {
+                    const names = kept.map(n => this.vpnLabel(fields.find(f => f.name === n)));
+                    notes.push(VPN_OUT_IMPORT_MSG.kept + ' ' + names.join(', ') + '.');
+                }
+                if (notes.length) {
+                    this.$message.warning(VPN_OUT_IMPORT_MSG.done + ' ' + notes.join(' '), 10);
+                    return;
+                }
+                this.$message.success(VPN_OUT_IMPORT_MSG.done);
+            },
             // Render the whole xhttp settings object as pretty JSON for the
             // textarea. Source of truth is the model; the structured inputs above
             // and this view stay in sync because both read/write the same object.

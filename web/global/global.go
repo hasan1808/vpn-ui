@@ -3,7 +3,6 @@ package global
 
 import (
 	"context"
-	_ "unsafe"
 
 	"github.com/robfig/cron/v3"
 )

@@ -19,6 +19,13 @@ BACKUP_DIR="$DEST_DIR/backups"
 # DEPLOY_DOMAIN / DEPLOY_EMAIL preset these for a non-interactive issuance;
 # otherwise prompted. DEPLOY_CF_TOKEN (+ optional DEPLOY_WILDCARD=1) picks the
 # Cloudflare path, and is read by the sourced obtain_letsencrypt_cert itself.
+#
+# A DEPLOY_DOMAIN holding a public IP rather than a name issues a certificate for
+# that address, for a host with no domain at all. That path needs nothing new here:
+# obtain_letsencrypt_cert recognises the literal and switches itself. Read its
+# caveats before using it in an unattended install. The short version is that such a
+# certificate lasts 160 hours rather than 90 days, so it renews every few days, and
+# TCP :80 has to be reachable each time.
 CERT_DIR="$DEST_DIR/cert"
 DOMAIN="${DEPLOY_DOMAIN:-}"
 EMAIL="${DEPLOY_EMAIL:-}"
@@ -411,7 +418,7 @@ if [[ "$MODE" == "install" ]]; then
             elif [[ -r /dev/tty ]]; then
                 {
                     printf '%s::%s %sPanel access mode%s\n' "$B$BLUE" "$R" "$WHITE" "$R"
-                    printf "    %s1)%s HTTPS  (real cert via Let's Encrypt: Cloudflare token or manual)\n" "$GREEN" "$R"
+                    printf "    %s1)%s HTTPS  (real cert via Let's Encrypt: Cloudflare token, manual, or this server's IP)\n" "$GREEN" "$R"
                     printf '    %s2)%s HTTPS  (self-signed certificate)\n'                "$GREEN" "$R"
                     printf '    %s3)%s HTTP   (no TLS) %s[default]%s\n'                    "$GREEN" "$R" "$D" "$R"
                     printf '  choose [1/2/3]: '

@@ -32,6 +32,13 @@ const (
 	GRE         Protocol = "gre"
 	MTPROTO     Protocol = "mtproto"
 	SSH         Protocol = "ssh"
+	// Native Xray protocols like vmess/vless/trojan: the core terminates them
+	// itself, so they take no dokodemo/socks derivation, no core install and no
+	// address pool. See isVpnProtocol / hasDerivedXrayInbound in
+	// web/service/inbound.go for the three lists they must stay OUT of.
+	ANYTLS Protocol = "anytls"
+	TUIC   Protocol = "tuic"
+	NAIVE  Protocol = "naive"
 	// UI stores Hysteria v1 and v2 both as "hysteria" and uses
 	// settings.version to discriminate. Imports from outside the panel
 	// can carry the literal "hysteria2" string, so IsHysteria below
@@ -150,11 +157,24 @@ type ResellerProfile struct {
 	// the inbound's external-proxy endpoints. Off strips them.
 	AllowExternalProxy bool `json:"allowExternalProxy" gorm:"default:0"`
 
-	// AllowOverview lets this reseller open the panel overview. Off (the default)
-	// hides the nav entry entirely rather than greying it, and the page itself
-	// redirects: the overview is a HOST dashboard (kernel, CPU, disk, public IP)
-	// and none of it is a reseller's to see unless an operator says otherwise.
+	// AllowOverview lets this reseller open the panel overview: the reseller's
+	// counterpart to PermAccessOverview, which their derived mask can never carry.
+	// Off (the default) hides the nav entry entirely rather than greying it, and the
+	// route itself refuses them: the overview is a HOST dashboard (kernel, CPU, disk,
+	// public IP) and none of it is a reseller's to see unless an operator says so.
 	AllowOverview bool `json:"allowOverview" gorm:"default:0"`
+
+	// AllowOverviewManage is the reseller's counterpart to PermOverviewManage: off,
+	// the overview they were let into is a read-only showcase. It has no effect
+	// unless AllowOverview is on, since there is no page to scope otherwise.
+	//
+	// What it can actually reveal is narrow, and narrower than the admin bit. Every
+	// control on that page requires a permission the reseller role does not carry
+	// (resellerPerms holds no Xray, core or panel-settings bit) and the escalation
+	// class is super-admin-only, so today this un-hides nothing a reseller could
+	// then use. It exists so the two roles are configured the same way, and so the
+	// day an action becomes reseller-reachable it is already gated.
+	AllowOverviewManage bool `json:"allowOverviewManage" gorm:"default:0"`
 
 	// CreatedBy is the admin who owns this reseller. A non-super admin holding
 	// PermManageResellers sees and edits only their own: without this, one such
@@ -175,9 +195,22 @@ type ResellerClient struct {
 	// gorm:"unique", and AdminService.CanAccessClientEmail already keys on it, so
 	// this matches the seam that exists rather than inventing a second notion of
 	// "which client".
-	Email     string `json:"email" gorm:"uniqueIndex"`
-	InboundId int    `json:"inboundId" gorm:"index"`
-	UserId    int    `json:"userId" gorm:"index"`
+	Email string `json:"email" gorm:"uniqueIndex"`
+	// InboundId is the HOME inbound: the one this account was first sold on. It is
+	// DISPLAY ONLY, and nothing may decide anything by it.
+	//
+	// One account is served on N inbounds (see AccountInbound), and this column
+	// holds exactly one of them, so every question of the form "which inbound is
+	// this account on" has to be answered by resolving the memberships instead
+	// (service.servingInboundIds). Reading it as THE inbound is what made deleting
+	// a reseller remove one membership of three and leave the rest live and
+	// unbilled, and what made deleting the inbound an account really sits on refund
+	// nothing because the row named a different one.
+	//
+	// It is repointed when the inbound it names is deleted while the account lives
+	// on elsewhere, so it keeps naming something real.
+	InboundId int `json:"inboundId" gorm:"index"`
+	UserId    int `json:"userId" gorm:"index"`
 
 	// ChargedBytes is what this account currently holds against its reseller's
 	// balance: raised on create and top-up, lowered on deduct and delete.
@@ -372,6 +405,32 @@ type Client struct {
 	Comment    string `json:"comment" form:"comment"`       // Client comment
 	Reset      int    `json:"reset" form:"reset"`           // Reset period in days
 
+	// Shadowsocks per-client cipher. Multi-user shadowsocks lets each account carry
+	// its own method, and the inbound-level one is only the default.
+	//
+	// Here for the same reason as Username, Slot, Secret, Peers and the MTProto block
+	// below: AddInbound re-marshals every posted client through THIS struct, so a
+	// field missing here is silently dropped no matter what was sent. The symptom was
+	// narrow enough to hide: creating a multi-user shadowsocks inbound through the API
+	// collapsed every client onto the inbound's cipher, while /addClient and
+	// /updateClient (which splice the raw map) kept it, so the same account worked or
+	// did not depending on which call created it. omitempty so no other protocol's
+	// client JSON grows a byte.
+	Method string `json:"method,omitempty"`
+
+	// naive's HTTP Basic username. Empty means "use Email", which is what every naive
+	// account created before this field existed relies on: nothing backfills them, so
+	// the fallback is the compatibility guarantee, not a convenience.
+	//
+	// It is deliberately NOT the accounting identity. Email still keys client_traffics,
+	// quota, expiry, the speed limit and the IP limit, and the core still hands Email to
+	// the dispatcher; only the credential moved. Same trap as the MTProto block below:
+	// every client posted to the panel is normalized through THIS struct, so without the
+	// field here the UI's username would be silently dropped on the add path and the
+	// account would quietly keep authenticating as its email. omitempty so no other
+	// protocol's client JSON grows a byte.
+	Username string `json:"username,omitempty"`
+
 	// Slot is the account's index into its inbound's address pool: which tunnel
 	// address(es) the data plane gives it. It is stored rather than derived from the
 	// account's position in clients[], because a position moves. Deleting an account
@@ -414,8 +473,38 @@ type Client struct {
 	// slot, and the array's LENGTH is the slot count.
 	Peers []ClientGrePeer `json:"peers,omitempty"`
 
+	// WireGuard (C) / AmneziaWG key material. Same trap as the MTProto and GRE blocks
+	// above, and the one that actually bit: creating an inbound round-trips every client
+	// through THIS struct, so per-device keypairs posted to /panel/api/inbounds/add were
+	// silently dropped. ReconcileKeys then saw an account with no devices, rebuilt device
+	// 0 from the legacy PrivKey mirror and MINTED FRESH KEYS for devices 2..K, so every
+	// config already handed out for those devices stopped authenticating with no error
+	// anywhere. Editing an existing inbound never hit it, because that path mutates the
+	// settings map in place and keeps keys it does not know about.
+	//
+	// The legacy single-keypair trio is here for the same reason: it is what deviceList()
+	// reads for accounts written before per-device keys existed, and ReconcileKeys keeps
+	// it mirroring device 0. All omitempty so no other protocol's client JSON grows a byte.
+	PrivKey string         `json:"privKey,omitempty"`
+	PubKey  string         `json:"pubKey,omitempty"`
+	Psk     string         `json:"psk,omitempty"`
+	Devices []ClientDevice `json:"devices,omitempty"`
+
 	CreatedAt int64 `json:"created_at,omitempty"` // Creation timestamp
 	UpdatedAt int64 `json:"updated_at,omitempty"` // Last update timestamp
+}
+
+// ClientDevice is one wg-c/awg device slot: its own keypair (and optional preshared
+// key) and, from its index, its own /32 out of the account's block. The JSON tags MUST
+// match the service-side wgcDevice/awgDevice, or normalizing a client through Client
+// silently rewrites the key material the data plane loads into the interface.
+//
+// No omitempty inside the entry: the array's own LENGTH is the device-slot count, and a
+// slot whose keys have not been minted yet is a real, meaningful element.
+type ClientDevice struct {
+	PrivKey string `json:"privKey"`
+	PubKey  string `json:"pubKey"`
+	Psk     string `json:"psk"`
 }
 
 // ClientGrePeer is one GRE peer slot. The JSON tags MUST match the service-side grePeer, or
@@ -424,3 +513,134 @@ type ClientGrePeer struct {
 	PeerIp string `json:"peerIp,omitempty"`
 	Remark string `json:"remark,omitempty"`
 }
+
+// Account is one sellable identity, usable across SEVERAL inbounds of different
+// protocols with ONE quota, ONE expiry and ONE subscription. Membership of an
+// inbound is a separate row (AccountInbound).
+//
+// This table sits ABOVE the existing settings JSON rather than replacing it.
+// Inbound.Settings keeps its clients[] array and is maintained as a PROJECTION of
+// the account onto each member inbound (see web/service/accountproject.go). That is
+// what leaves RADIUS, the slot allocator, every daemon config writer and
+// GetXrayConfig working unchanged: all of them parse settings.clients, and none of
+// them need to learn a new source of truth.
+//
+// Email stays the global account identity, exactly as before: it is the unique key
+// of client_traffics, the name RADIUS authenticates, and the selector the
+// per-account routing rules are built from. One email, one traffic row, one quota,
+// now spread over N inbounds instead of forcing N separate accounts.
+type Account struct {
+	Id int `json:"id" gorm:"primaryKey;autoIncrement"`
+
+	// Email is the identity, and is matched case-insensitively after trimming (see
+	// AccountKey). uniqueIndex here mirrors xray.ClientTraffic.Email's own unique
+	// constraint; relaxing either was rejected twice before (see
+	// multi-inbound-client-plan.md section 8b).
+	Email string `json:"email" gorm:"uniqueIndex;not null"`
+
+	// SubID is the subscription key, and is now INDEXED. It was previously free
+	// text with no index, so a typo silently merged an account into someone else's
+	// subscription. ValidateClientSubID rejects that at the write path.
+	SubID string `json:"subId" gorm:"index;column:sub_id"`
+
+	// Credentials are per FIELD, not per inbound: one uuid serves every vmess/vless
+	// membership, one password every trojan membership. The projection picks the
+	// field its member inbound's protocol keys on (see ClientIdentityKey).
+	//
+	// This split is REQUIRED here and is not cosmetic: Client.ID is overloaded in
+	// the legacy shape, holding a UUID for vmess/vless, a login name for the
+	// credential VPNs and ssh, and the email itself for wg-c/awg/mtproto. Storing
+	// one "id" column would make it impossible to say which of those an account
+	// holds without knowing the protocol it is being rendered for.
+	UUID        string `json:"uuid" gorm:"column:uuid"`                // vmess / vless / tuic
+	VpnUsername string `json:"vpnUsername" gorm:"column:vpn_username"` // l2tp/pptp/openvpn/openconnect/sstp/ikev2/ssh login
+	Password    string `json:"password" gorm:"column:password"`        // trojan/shadowsocks/anytls + every credential VPN
+	Auth        string `json:"auth" gorm:"column:auth"`                // hysteria
+	Security    string `json:"security" gorm:"column:security"`        // vmess
+	Secret      string `json:"secret" gorm:"column:secret"`            // mtproto
+	NaiveUser   string `json:"naiveUser" gorm:"column:naive_username"` // naive HTTP Basic username; empty means "use Email"
+
+	// Quota and lifecycle: the entire point of the table. One set of these per
+	// account, however many inbounds it is on.
+	TotalGB    int64 `json:"totalGB" gorm:"column:total_gb"`
+	ExpiryTime int64 `json:"expiryTime" gorm:"column:expiry_time"`
+	// NO gorm default, deliberately. `default:1` makes GORM treat Go's false as
+	// "unset" and write 1 instead, so a DISABLED client migrated to an ENABLED
+	// account. The projection then rendered enable:true over the stored false, the
+	// round-trip verification caught the difference, and the ENTIRE migration
+	// rolled back. That would have hit most real panels: exceeding a quota
+	// disables an account automatically, so a disabled client is the norm and not
+	// an edge case.
+	//
+	// The default buys nothing here. This table is new, so there are no legacy
+	// rows to backfill, and every writer sets the field explicitly.
+	Enable  bool   `json:"enable"`
+	Reset   int    `json:"reset" gorm:"default:0"`
+	LimitIP int    `json:"limitIp" gorm:"column:limit_ip"`
+	TgID    int64  `json:"tgId" gorm:"column:tg_id"`
+	Comment string `json:"comment"`
+
+	CreatedAt int64 `json:"createdAt" gorm:"autoCreateTime:milli"`
+	UpdatedAt int64 `json:"updatedAt" gorm:"autoUpdateTime:milli"`
+}
+
+// TableName pins the table name so it does not collide with anything GORM would
+// infer, and so a future rename of the Go type cannot silently orphan live data.
+func (Account) TableName() string { return "accounts" }
+
+// AccountInbound is ONE membership: this account is served on this inbound.
+// Composite primary key, so the same pair cannot be inserted twice.
+type AccountInbound struct {
+	AccountId int `json:"accountId" gorm:"primaryKey;column:account_id;index"`
+	InboundId int `json:"inboundId" gorm:"primaryKey;column:inbound_id;index"`
+
+	// Slot is per MEMBERSHIP and never per account. It is defined as "the account's
+	// index into THIS inbound's address pool", and one email on N pool inbounds
+	// legitimately consumes N slots at N different addresses. A pointer for the same
+	// reason as Client.Slot: absent must stay distinguishable from slot 0, because
+	// rows predating slots fall back to their list index.
+	Slot *int `json:"slot" gorm:"column:slot"`
+
+	// Flow is a per-membership override (vless only). v3 calls it FlowOverride.
+	// Empty means "whatever the account/protocol default is".
+	Flow string `json:"flow" gorm:"column:flow"`
+
+	// Enable is "is this account served on THIS inbound", which is a different
+	// question from Account.Enable ("is this account live at all"). The projection
+	// renders the AND of the two, so an account switched off here stops being served
+	// on this inbound and keeps working on every other one.
+	//
+	// This column is what makes the Clients page's per-inbound switch honest. It used
+	// to write Account.Enable, which is panel-wide: RADIUS reads it through
+	// client_traffics (radius.go:769) and so does the rbridge sweep (radius.go:701),
+	// so a switch documented as "takes the account off ONE inbound and leaves the rest
+	// serving it" took the customer off ALL of them, while the other memberships'
+	// stored entries were left reading enable:true so the page showed them as fine.
+	//
+	// A POINTER for the same reason Slot is one: every row that predates this column
+	// is NULL, and NULL has to mean "served", not "switched off". A plain bool with
+	// `default:true` is the trap that already cost this table one whole migration:
+	// GORM treats Go's false as unset and writes the default over it, so a membership
+	// the operator disabled would come back enabled on the next save.
+	Enable *bool `json:"enable" gorm:"column:enable"`
+
+	// Extra is the VERBATIM client entry this membership was migrated from, minus
+	// nothing: the whole original JSON object. The projection starts from it and
+	// overlays only the keys the account layer owns, so any field neither Account
+	// nor this struct models survives untouched.
+	//
+	// This is load-bearing, not an optimization. wg-c and awg mint a keypair PER
+	// DEVICE and store them as clients[].devices[]; GRE stores pinned peer slots as
+	// clients[].peers[]. model.Client does not model devices at all. A projection
+	// that rebuilt the entry from modelled fields alone would therefore silently
+	// destroy every WireGuard keypair on the first write, invalidating every
+	// already-installed client config on the box. Keeping the original object and
+	// overlaying onto it makes that class of loss impossible, including for
+	// protocol fields added after this code was written.
+	Extra string `json:"-" gorm:"column:extra"`
+
+	CreatedAt int64 `json:"createdAt" gorm:"autoCreateTime:milli"`
+}
+
+// TableName pins the table name. See Account.TableName.
+func (AccountInbound) TableName() string { return "account_inbounds" }

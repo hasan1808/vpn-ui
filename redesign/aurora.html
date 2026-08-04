@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Overview: Aurora</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<div class="ad-root">
+<style>
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+    --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+    --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+    --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+    --shadow-sm:none; --shadow-md:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+  --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+  --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+  --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+  --shadow-sm:none; --shadow-md:none;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+}
+
+.ad-root *, .ad-root *::before, .ad-root *::after{ box-sizing:border-box; }
+.ad-root{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--bg); color:var(--text);
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden;
+  min-height:100vh;
+}
+.ad-root .num{ font-variant-numeric:tabular-nums; }
+.ad-root svg{ display:block; }
+.ad-root button{ font-family:inherit; }
+.ad-root ul, .ad-root p, .ad-root h1, .ad-root h2, .ad-root h3{ margin:0; padding:0; }
+
+@media (prefers-reduced-motion: reduce){
+  .ad-root *{ transition-duration:.001ms !important; animation-duration:.001ms !important; }
+}
+.ad-root button:focus-visible, .ad-root [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;
+}
+
+/* icon sizing */
+.ad-icon{ width:18px; height:18px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.ad-icon-16{ width:16px; height:16px; }
+.ad-icon-20{ width:20px; height:20px; }
+
+/* status dot */
+.ad-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; background:var(--off); }
+.ad-dot--ok{ background:var(--ok); }
+.ad-dot--info{ background:var(--info); }
+.ad-dot--warn{ background:var(--warn); }
+.ad-dot--error{ background:var(--error); }
+
+/* ===== shell / layout ===== */
+.ad-shell{ display:flex; min-height:100vh; }
+.ad-rail{
+  flex:0 0 84px; width:84px; align-self:flex-start; position:sticky; top:0; height:100vh;
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center;
+  padding:20px 0; gap:28px; overflow-y:auto;
+}
+.ad-rail-brand{ display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--accent); }
+.ad-rail-brand span{ font-size:12px; font-weight:700; color:var(--text); letter-spacing:.01em; }
+.ad-rail-nav{ display:flex; flex-direction:column; gap:6px; width:100%; align-items:center; }
+.ad-rail-item{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  width:68px; padding:8px 4px 7px; border-radius:10px; border:none; background:transparent; color:var(--text-3);
+  cursor:pointer; transition:background .15s ease,color .15s ease;
+}
+.ad-rail-item span{ font-size:10px; font-weight:600; letter-spacing:.01em; }
+.ad-rail-item:hover{ color:var(--text-2); background:var(--surface-2); }
+.ad-rail-item.is-active{ background:var(--accent-weak); color:var(--accent); }
+
+.ad-main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.ad-topbar{ background:var(--surface); border-bottom:1px solid var(--border); }
+.ad-topbar-inner{
+  max-width:1240px; margin:0 auto; padding:14px 28px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+.ad-topbar-left{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-width:0; }
+.ad-host-chip, .ad-health-pill{
+  display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600;
+  padding:6px 12px; border-radius:999px; white-space:nowrap;
+}
+.ad-host-chip{ background:var(--surface-2); color:var(--text-2); }
+.ad-host-chip .ad-icon{ color:var(--text-3); }
+.ad-health-pill{ background:var(--ok-weak); color:var(--ok); }
+
+.ad-theme-toggle{
+  width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:0 0 auto;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.ad-theme-toggle:hover{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+.ad-theme-toggle .ad-i-moon{ display:none; }
+:root[data-theme="dark"] .ad-theme-toggle .ad-i-sun{ display:none; }
+:root[data-theme="dark"] .ad-theme-toggle .ad-i-moon{ display:block; }
+
+.ad-content{ max-width:1240px; width:100%; margin:0 auto; padding:26px 28px 48px; }
+.ad-page-title{ font-size:24px; font-weight:600; margin-bottom:22px; text-wrap:balance; }
+
+.ad-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:0 0 12px; }
+.ad-section-title{ font-size:14px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-2); }
+.ad-section-meta{ font-size:12px; color:var(--text-3); }
+.ad-section{ margin-bottom:30px; }
+
+/* ===== vitals / gauges ===== */
+.ad-vitals{ display:grid; grid-template-columns:1fr; gap:14px; }
+@media (min-width:480px){ .ad-vitals{ grid-template-columns:repeat(2,1fr); } }
+@media (min-width:1024px){ .ad-vitals{ grid-template-columns:repeat(4,1fr); gap:18px; } }
+
+.ad-vital-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:18px 20px; box-shadow:var(--shadow-md);
+  transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.ad-vital-card:hover{ transform:translateY(-2px); border-color:var(--border-strong); }
+.ad-vital-head{ font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-2); margin-bottom:14px; }
+.ad-vital-body{ display:flex; align-items:center; gap:16px; }
+.ad-gauge-wrap{ position:relative; width:96px; height:96px; flex:0 0 auto; }
+.ad-gauge{ width:100%; height:100%; transform:rotate(-90deg); }
+.ad-gauge-track{ fill:none; stroke:var(--border); stroke-width:9; }
+.ad-gauge-progress{ fill:none; stroke-width:9; stroke-linecap:round; stroke-dasharray:314.16; stroke-dashoffset:314.16; transition:stroke-dashoffset .8s cubic-bezier(.22,1,.36,1); }
+.ad-gauge-progress--ok{ stroke:var(--accent); }
+.ad-gauge-progress--warn{ stroke:var(--warn); }
+.ad-gauge-progress--crit{ stroke:var(--error); }
+.ad-gauge-value{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:26px; font-weight:700; color:var(--text);
+}
+.ad-gauge-value .ad-pct{ font-size:14px; font-weight:600; color:var(--text-3); margin-left:1px; }
+.ad-vital-stats{ min-width:0; }
+.ad-vital-main{ font-size:15px; font-weight:600; color:var(--text); }
+.ad-vital-sub{ font-size:12.5px; color:var(--text-2); margin-top:6px; }
+.ad-vital-tiny{ font-size:11px; color:var(--text-3); margin-top:2px; }
+
+/* ===== services chip grid ===== */
+.ad-chip-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:10px; }
+.ad-chip{
+  display:flex; align-items:center; gap:9px; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:11px 13px; transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.ad-chip:hover{ transform:translateY(-1px); border-color:var(--border-strong); box-shadow:var(--shadow-sm); }
+.ad-chip-name{ font-size:13.5px; font-weight:600; color:var(--text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ad-chip-state{ font-size:11.5px; font-weight:600; letter-spacing:.01em; }
+.ad-chip-state--ok{ color:var(--ok); }
+.ad-chip-state--info{ color:var(--info); }
+.ad-chip-state--warn{ color:var(--warn); }
+
+/* ===== card grid ===== */
+.ad-card-grid{ display:grid; grid-template-columns:1fr; gap:14px; }
+@media (min-width:640px){
+  .ad-card-grid{ grid-template-columns:repeat(6,1fr); gap:16px; }
+  .ad-span-5, .ad-span-4, .ad-span-3{ grid-column:span 3; }
+  .ad-span-6{ grid-column:span 6; }
+}
+@media (min-width:1024px){
+  .ad-card-grid{ grid-template-columns:repeat(12,1fr); gap:18px; }
+  .ad-span-5{ grid-column:span 5; }
+  .ad-span-4{ grid-column:span 4; }
+  .ad-span-3{ grid-column:span 3; }
+  .ad-span-6{ grid-column:span 6; }
+}
+
+.ad-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:18px 20px; box-shadow:var(--shadow-md);
+  transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.ad-card:hover{ transform:translateY(-2px); border-color:var(--border-strong); }
+.ad-card--flex{ display:flex; flex-direction:column; height:100%; }
+.ad-card-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+.ad-card-title{ font-size:13px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-2); }
+.ad-card-caption{ font-size:12.5px; color:var(--text-3); margin-bottom:14px; }
+.ad-card-body--flex{ display:flex; flex-direction:column; justify-content:space-between; gap:16px; flex:1; }
+
+.ad-status-pill{
+  display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+  padding:4px 10px 4px 8px; border-radius:999px;
+}
+.ad-status-pill--ok{ background:var(--ok-weak); color:var(--ok); }
+
+.ad-metric-md{ font-size:24px; font-weight:700; color:var(--text); }
+.ad-status-line{ display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; margin-top:8px; }
+.ad-status-line--ok{ color:var(--ok); }
+
+/* stat rows */
+.ad-stat-row{ display:flex; flex-direction:column; }
+.ad-stat{ display:flex; align-items:center; gap:9px; padding:9px 0; }
+.ad-stat + .ad-stat{ border-top:1px solid var(--border); }
+.ad-stat-icon{ color:var(--text-3); }
+.ad-stat-label{ flex:1; font-size:12.5px; font-weight:500; color:var(--text-2); min-width:0; }
+.ad-stat-value{ font-size:14.5px; font-weight:600; color:var(--text); text-align:right; }
+.ad-stat--plain{ padding:9px 0; }
+
+.ad-group-label{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); margin:2px 0 2px; }
+.ad-divider{ height:1px; background:var(--border); margin:12px 0; }
+
+.ad-ip-row{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:9px 0; }
+.ad-ip-row + .ad-ip-row{ border-top:1px solid var(--border); }
+.ad-ip-label{ font-size:12.5px; font-weight:500; color:var(--text-2); flex:0 0 auto; }
+.ad-ip-value{ font-size:14px; font-weight:600; color:var(--text); text-align:right; overflow-wrap:anywhere; }
+@media (max-width:479px){ .ad-ip-row{ flex-direction:column; align-items:flex-start; gap:2px; } .ad-ip-value{ text-align:left; } }
+
+.ad-card-body--split{ display:flex; }
+.ad-big-stat{ flex:1; display:flex; flex-direction:column; gap:6px; padding:2px 20px; }
+.ad-big-stat:first-child{ padding-left:0; border-right:1px solid var(--border); }
+.ad-big-stat:last-child{ padding-right:0; }
+.ad-big-stat-label{ font-size:12px; font-weight:500; color:var(--text-2); }
+.ad-big-stat-value{ font-size:27px; font-weight:700; color:var(--text); }
+
+/* ===== buttons ===== */
+.ad-action-row{ display:flex; flex-wrap:wrap; gap:8px; }
+.ad-icon-btn{
+  display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600;
+  color:var(--text-2); background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+  padding:7px 12px; cursor:pointer; transition:background .15s ease,color .15s ease,border-color .15s ease,transform .15s ease;
+}
+.ad-icon-btn:hover{ background:var(--accent-weak); color:var(--accent); border-color:var(--accent); transform:translateY(-1px); }
+.ad-icon-btn--danger:hover{ background:var(--error-weak); color:var(--error); border-color:var(--error); }
+.ad-icon-btn--ghost{ background:transparent; padding:5px 10px; }
+
+.ad-btn{ font-size:13.5px; font-weight:600; border-radius:9px; padding:10px 16px; cursor:pointer; border:1px solid transparent; transition:filter .15s ease, transform .15s ease, background .15s ease; }
+.ad-btn--primary{ background:var(--accent); color:var(--on-accent); align-self:flex-start; }
+.ad-btn--primary:hover{ filter:brightness(1.06); transform:translateY(-1px); }
+
+.ad-foot{ margin-top:38px; padding-top:16px; border-top:1px solid var(--border); font-size:11.5px; color:var(--text-3); text-align:left; }
+
+@media (max-width:520px){
+  .ad-rail{ flex-basis:60px; width:60px; padding:16px 0; gap:22px; }
+  .ad-rail-item{ width:52px; }
+  .ad-rail-item span, .ad-rail-brand span{ display:none; }
+}
+</style>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+<symbol id="ad-i-shield" viewBox="0 0 24 24"><path d="M12 3 19 6v5c0 4.8-3.2 8.6-7 10-3.8-1.4-7-5.2-7-10V6l7-3z"/></symbol>
+<symbol id="ad-i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></symbol>
+<symbol id="ad-i-list" viewBox="0 0 24 24"><circle cx="4.5" cy="6" r="1.3"/><line x1="8.5" y1="6" x2="20.5" y2="6"/><circle cx="4.5" cy="12" r="1.3"/><line x1="8.5" y1="12" x2="20.5" y2="12"/><circle cx="4.5" cy="18" r="1.3"/><line x1="8.5" y1="18" x2="20.5" y2="18"/></symbol>
+<symbol id="ad-i-sliders" viewBox="0 0 24 24"><line x1="5" y1="21" x2="5" y2="14"/><line x1="5" y1="10" x2="5" y2="3"/><circle cx="5" cy="12" r="2.1"/><line x1="12" y1="21" x2="12" y2="12.5"/><line x1="12" y1="8.5" x2="12" y2="3"/><circle cx="12" cy="10.5" r="2.1"/><line x1="19" y1="21" x2="19" y2="16"/><line x1="19" y1="12" x2="19" y2="3"/><circle cx="19" cy="14" r="2.1"/></symbol>
+<symbol id="ad-i-zap" viewBox="0 0 24 24"><polygon points="13 2 4.5 13.5 11 13.5 10 22 19.5 10 13 10 13 2"/></symbol>
+<symbol id="ad-i-file" viewBox="0 0 24 24"><path d="M7 3h6.5L18 7.5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M13.5 3v4.5H18"/><line x1="9" y1="12.5" x2="15" y2="12.5"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></symbol>
+<symbol id="ad-i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6.5" rx="1.6"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.6"/><line x1="7" y1="7.25" x2="7.01" y2="7.25"/><line x1="7" y1="16.75" x2="7.01" y2="16.75"/></symbol>
+<symbol id="ad-i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3"/><line x1="12" y1="2" x2="12" y2="4.6"/><line x1="12" y1="19.4" x2="12" y2="22"/><line x1="2" y1="12" x2="4.6" y2="12"/><line x1="19.4" y1="12" x2="22" y2="12"/><line x1="4.7" y1="4.7" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.3" y2="19.3"/><line x1="4.7" y1="19.3" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.3" y2="4.7"/></symbol>
+<symbol id="ad-i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7.3 7.3 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ad-i-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1.1"/></symbol>
+<symbol id="ad-i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3.1-6.3"/><polyline points="20.5 3 20 8 15 7.3"/></symbol>
+<symbol id="ad-i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c2.4 2.5 3.8 5.7 3.8 9s-1.4 6.5-3.8 9c-2.4-2.5-3.8-5.7-3.8-9s1.4-6.5 3.8-9z"/></symbol>
+<symbol id="ad-i-tag" viewBox="0 0 24 24"><path d="M11.4 3H5a1 1 0 0 0-1 1v6.4a1 1 0 0 0 .3.7l9.1 9.1a1 1 0 0 0 1.4 0l6.4-6.4a1 1 0 0 0 0-1.4l-9.1-9.1a1 1 0 0 0-.7-.3z"/><circle cx="7.8" cy="7.8" r="1.4"/></symbol>
+<symbol id="ad-i-download" viewBox="0 0 24 24"><path d="M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><polyline points="7.5 10 12 14.5 16.5 10"/><line x1="12" y1="3" x2="12" y2="14.5"/></symbol>
+<symbol id="ad-i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.3 10.4 15.2 16.5 9"/></symbol>
+<symbol id="ad-i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12.3 15.8 14.3"/></symbol>
+<symbol id="ad-i-activity" viewBox="0 0 24 24"><polyline points="3 12 8 12 10 5.5 14 18.5 16 12 21 12"/></symbol>
+<symbol id="ad-i-arrow-up" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5.5"/><polyline points="6.5 11 12 5.5 17.5 11"/></symbol>
+<symbol id="ad-i-arrow-down" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="18.5"/><polyline points="6.5 13 12 18.5 17.5 13"/></symbol>
+<symbol id="ad-i-eye" viewBox="0 0 24 24"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="ad-i-eye-off" viewBox="0 0 24 24"><path d="M3.3 3.3l17.4 17.4"/><path d="M10.6 5.2A10.5 10.5 0 0 1 12 5c6.2 0 10 7 10 7a17.6 17.6 0 0 1-3.9 4.8"/><path d="M6.5 6.7C3.8 8.6 2 12 2 12s3.8 7 10 7c1.4 0 2.7-.3 3.9-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+</defs>
+</svg>
+
+<div class="ad-shell">
+  <aside class="ad-rail">
+    <div class="ad-rail-brand">
+      <svg class="ad-icon ad-icon-20"><use href="#ad-i-shield"></use></svg>
+      <span>vpn-ui</span>
+    </div>
+    <nav class="ad-rail-nav" aria-label="Primary">
+      <button type="button" class="ad-rail-item is-active" aria-current="page">
+        <svg class="ad-icon ad-icon-20"><use href="#ad-i-grid"></use></svg>
+        <span>Overview</span>
+      </button>
+      <button type="button" class="ad-rail-item">
+        <svg class="ad-icon ad-icon-20"><use href="#ad-i-list"></use></svg>
+        <span>Inbounds</span>
+      </button>
+      <button type="button" class="ad-rail-item">
+        <svg class="ad-icon ad-icon-20"><use href="#ad-i-sliders"></use></svg>
+        <span>Settings</span>
+      </button>
+      <button type="button" class="ad-rail-item">
+        <svg class="ad-icon ad-icon-20"><use href="#ad-i-zap"></use></svg>
+        <span>Xray</span>
+      </button>
+      <button type="button" class="ad-rail-item">
+        <svg class="ad-icon ad-icon-20"><use href="#ad-i-file"></use></svg>
+        <span>Logs</span>
+      </button>
+    </nav>
+  </aside>
+
+  <div class="ad-main">
+    <header class="ad-topbar">
+      <div class="ad-topbar-inner">
+        <div class="ad-topbar-left">
+          <span class="ad-host-chip">
+            <svg class="ad-icon ad-icon-16"><use href="#ad-i-server"></use></svg>
+            srv-fra-01
+          </span>
+          <span class="ad-health-pill">
+            <span class="ad-dot ad-dot--ok"></span>
+            All systems operational
+          </span>
+        </div>
+        <button type="button" class="ad-theme-toggle" id="adThemeToggle" aria-label="Toggle color theme">
+          <svg class="ad-icon ad-i-sun"><use href="#ad-i-sun"></use></svg>
+          <svg class="ad-icon ad-i-moon"><use href="#ad-i-moon"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="ad-content">
+      <h1 class="ad-page-title">Overview</h1>
+
+      <section class="ad-section" aria-label="System vitals">
+        <div class="ad-section-head">
+          <h2 class="ad-section-title">System Vitals</h2>
+        </div>
+        <div class="ad-vitals">
+
+          <div class="ad-vital-card">
+            <div class="ad-vital-head">CPU</div>
+            <div class="ad-vital-body">
+              <div class="ad-gauge-wrap">
+                <svg class="ad-gauge" viewBox="0 0 120 120" aria-hidden="true">
+                  <circle class="ad-gauge-track" cx="60" cy="60" r="50"></circle>
+                  <circle class="ad-gauge-progress ad-gauge-progress--ok" data-offset="207.35" cx="60" cy="60" r="50"></circle>
+                </svg>
+                <div class="ad-gauge-value"><span class="num">34</span><span class="ad-pct">%</span></div>
+              </div>
+              <div class="ad-vital-stats">
+                <p class="ad-vital-main">8 cores &middot; 3.40 GHz</p>
+                <p class="ad-vital-sub">Load <span class="num">0.42</span> &middot; <span class="num">0.55</span> &middot; <span class="num">0.48</span></p>
+                <p class="ad-vital-tiny">1m / 5m / 15m avg</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="ad-vital-card">
+            <div class="ad-vital-head">RAM</div>
+            <div class="ad-vital-body">
+              <div class="ad-gauge-wrap">
+                <svg class="ad-gauge" viewBox="0 0 120 120" aria-hidden="true">
+                  <circle class="ad-gauge-track" cx="60" cy="60" r="50"></circle>
+                  <circle class="ad-gauge-progress ad-gauge-progress--ok" data-offset="210.49" cx="60" cy="60" r="50"></circle>
+                </svg>
+                <div class="ad-gauge-value"><span class="num">33</span><span class="ad-pct">%</span></div>
+              </div>
+              <div class="ad-vital-stats">
+                <p class="ad-vital-main">5.2 GB / 16 GB</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="ad-vital-card">
+            <div class="ad-vital-head">Swap</div>
+            <div class="ad-vital-body">
+              <div class="ad-gauge-wrap">
+                <svg class="ad-gauge" viewBox="0 0 120 120" aria-hidden="true">
+                  <circle class="ad-gauge-track" cx="60" cy="60" r="50"></circle>
+                  <circle class="ad-gauge-progress ad-gauge-progress--ok" data-offset="292.17" cx="60" cy="60" r="50"></circle>
+                </svg>
+                <div class="ad-gauge-value"><span class="num">7</span><span class="ad-pct">%</span></div>
+              </div>
+              <div class="ad-vital-stats">
+                <p class="ad-vital-main">0.3 GB / 4.0 GB</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="ad-vital-card">
+            <div class="ad-vital-head">Storage</div>
+            <div class="ad-vital-body">
+              <div class="ad-gauge-wrap">
+                <svg class="ad-gauge" viewBox="0 0 120 120" aria-hidden="true">
+                  <circle class="ad-gauge-track" cx="60" cy="60" r="50"></circle>
+                  <circle class="ad-gauge-progress ad-gauge-progress--warn" data-offset="153.94" cx="60" cy="60" r="50"></circle>
+                </svg>
+                <div class="ad-gauge-value"><span class="num">51</span><span class="ad-pct">%</span></div>
+              </div>
+              <div class="ad-vital-stats">
+                <p class="ad-vital-main">82 GB / 160 GB</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <section class="ad-section" aria-label="VPN Services">
+        <div class="ad-section-head">
+          <h2 class="ad-section-title">VPN Services</h2>
+          <span class="ad-section-meta">10 protocols &middot; 7 running</span>
+        </div>
+        <div class="ad-chip-grid">
+          <div class="ad-chip"><span class="ad-dot ad-dot--ok"></span><span class="ad-chip-name">Xray</span><span class="ad-chip-state ad-chip-state--ok">Running</span></div>
+          <div class="ad-chip"><span class="ad-dot ad-dot--ok"></span><span class="ad-chip-name">OpenVPN</span><span class="ad-chip-state ad-chip-state--ok">Running</span></div>
+          <div class="ad-chip"><span class="ad-dot ad-dot--ok"></span><span class="ad-chip-name">WireGuard</span><span class="ad-chip-state ad-chip-state--ok">Running</span></div>
+          <div class="ad-chip"><span class="ad-dot ad-dot--ok"></span><span class="ad-chip-name">L2TP/IPsec</span><span class="ad-chip-state ad-chip-state--ok">Running</span></div>
+          <div class="ad-chip"><span class="ad-dot ad-dot--ok"></span><span class="ad-chip-name">IKEv2</span><span class="ad-chip-state ad-chip-state--ok">Running</span></div>
+          <div class="ad-chip"><span class="ad-dot ad-dot--ok"></span><span class="ad-chip-name">OpenConnect</span><span class="ad-chip-state ad-chip-state--ok">Running</span></div>
+          <div class="ad-chip"><span class="ad-dot ad-dot--ok"></span><span class="ad-chip-name">MTProto</span><span class="ad-chip-state ad-chip-state--ok">Running</span></div>
+          <div class="ad-chip"><span class="ad-dot ad-dot--info"></span><span class="ad-chip-name">SSTP</span><span class="ad-chip-state ad-chip-state--info">Idle</span></div>
+          <div class="ad-chip"><span class="ad-dot ad-dot--info"></span><span class="ad-chip-name">SSH</span><span class="ad-chip-state ad-chip-state--info">Idle</span></div>
+          <div class="ad-chip"><span class="ad-dot ad-dot--warn"></span><span class="ad-chip-name">PPTP</span><span class="ad-chip-state ad-chip-state--warn">Stopped</span></div>
+        </div>
+      </section>
+
+      <section class="ad-section" aria-label="System">
+        <div class="ad-section-head">
+          <h2 class="ad-section-title">System</h2>
+        </div>
+        <div class="ad-card-grid">
+
+          <div class="ad-card ad-span-5">
+            <div class="ad-card-head">
+              <h3 class="ad-card-title">Xray</h3>
+              <span class="ad-status-pill ad-status-pill--ok"><span class="ad-dot ad-dot--ok"></span>Running</span>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-stat-row">
+                <div class="ad-stat"><span class="ad-stat-label">Version</span><span class="ad-stat-value num">v25.3.6</span></div>
+                <div class="ad-stat"><span class="ad-stat-label">Uptime</span><span class="ad-stat-value num">12d 4h</span></div>
+              </div>
+              <div class="ad-divider"></div>
+              <div class="ad-action-row">
+                <button type="button" class="ad-icon-btn"><svg class="ad-icon ad-icon-16"><use href="#ad-i-file"></use></svg>Logs</button>
+                <button type="button" class="ad-icon-btn ad-icon-btn--danger"><svg class="ad-icon ad-icon-16"><use href="#ad-i-stop"></use></svg>Stop</button>
+                <button type="button" class="ad-icon-btn"><svg class="ad-icon ad-icon-16"><use href="#ad-i-refresh"></use></svg>Restart</button>
+                <button type="button" class="ad-icon-btn"><svg class="ad-icon ad-icon-16"><use href="#ad-i-globe"></use></svg>Geofiles</button>
+                <button type="button" class="ad-icon-btn"><svg class="ad-icon ad-icon-16"><use href="#ad-i-tag"></use></svg>Version</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="ad-card ad-span-3">
+            <div class="ad-card-head"><h3 class="ad-card-title">Manage</h3></div>
+            <div class="ad-card-body">
+              <p class="ad-card-caption">Panel logs, configuration file and database backups.</p>
+              <div class="ad-action-row">
+                <button type="button" class="ad-icon-btn"><svg class="ad-icon ad-icon-16"><use href="#ad-i-file"></use></svg>Logs</button>
+                <button type="button" class="ad-icon-btn"><svg class="ad-icon ad-icon-16"><use href="#ad-i-sliders"></use></svg>Config</button>
+                <button type="button" class="ad-icon-btn"><svg class="ad-icon ad-icon-16"><use href="#ad-i-download"></use></svg>Backup</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="ad-card ad-span-4 ad-card--flex">
+            <div class="ad-card-head"><h3 class="ad-card-title">VPN-UI</h3></div>
+            <div class="ad-card-body ad-card-body--flex">
+              <div>
+                <div class="ad-metric-md num">v1.7.6</div>
+                <p class="ad-status-line ad-status-line--ok">
+                  <svg class="ad-icon ad-icon-16"><use href="#ad-i-check-circle"></use></svg>
+                  Up to date
+                </p>
+              </div>
+              <button type="button" class="ad-btn ad-btn--primary">Check for Update</button>
+            </div>
+          </div>
+
+          <div class="ad-card ad-span-4">
+            <div class="ad-card-head"><h3 class="ad-card-title">Uptime</h3></div>
+            <div class="ad-card-body">
+              <div class="ad-stat-row">
+                <div class="ad-stat">
+                  <svg class="ad-icon ad-icon-16 ad-stat-icon"><use href="#ad-i-clock"></use></svg>
+                  <span class="ad-stat-label">Xray</span>
+                  <span class="ad-stat-value num">12d 4h</span>
+                </div>
+                <div class="ad-stat">
+                  <svg class="ad-icon ad-icon-16 ad-stat-icon"><use href="#ad-i-clock"></use></svg>
+                  <span class="ad-stat-label">OS</span>
+                  <span class="ad-stat-value num">47d 9h</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ad-card ad-span-4">
+            <div class="ad-card-head"><h3 class="ad-card-title">Usage</h3></div>
+            <div class="ad-card-body">
+              <div class="ad-stat-row">
+                <div class="ad-stat">
+                  <svg class="ad-icon ad-icon-16 ad-stat-icon"><use href="#ad-i-activity"></use></svg>
+                  <span class="ad-stat-label">RAM</span>
+                  <span class="ad-stat-value num">84 MB</span>
+                </div>
+                <div class="ad-stat">
+                  <svg class="ad-icon ad-icon-16 ad-stat-icon"><use href="#ad-i-activity"></use></svg>
+                  <span class="ad-stat-label">Threads</span>
+                  <span class="ad-stat-value num">23</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ad-card ad-span-4">
+            <div class="ad-card-head"><h3 class="ad-card-title">Network</h3></div>
+            <div class="ad-card-body">
+              <p class="ad-group-label">Overall speed</p>
+              <div class="ad-stat-row">
+                <div class="ad-stat">
+                  <svg class="ad-icon ad-icon-16 ad-stat-icon"><use href="#ad-i-arrow-up"></use></svg>
+                  <span class="ad-stat-label">Upload</span>
+                  <span class="ad-stat-value num">2.4 MB/s</span>
+                </div>
+                <div class="ad-stat">
+                  <svg class="ad-icon ad-icon-16 ad-stat-icon"><use href="#ad-i-arrow-down"></use></svg>
+                  <span class="ad-stat-label">Download</span>
+                  <span class="ad-stat-value num">8.1 MB/s</span>
+                </div>
+              </div>
+              <div class="ad-divider"></div>
+              <p class="ad-group-label">Total data</p>
+              <div class="ad-stat-row">
+                <div class="ad-stat ad-stat--plain"><span class="ad-stat-label">Sent</span><span class="ad-stat-value num">1.24 TB</span></div>
+                <div class="ad-stat ad-stat--plain"><span class="ad-stat-label">Received</span><span class="ad-stat-value num">4.68 TB</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ad-card ad-span-6">
+            <div class="ad-card-head">
+              <h3 class="ad-card-title">IP Addresses</h3>
+              <button type="button" class="ad-icon-btn ad-icon-btn--ghost" id="adIpToggle" aria-label="Hide IP addresses">
+                <svg class="ad-icon ad-icon-16 ad-i-eye"><use href="#ad-i-eye"></use></svg>
+                <svg class="ad-icon ad-icon-16 ad-i-eye-off" style="display:none"><use href="#ad-i-eye-off"></use></svg>
+                <span id="adIpToggleLabel">Hide</span>
+              </button>
+            </div>
+            <div class="ad-card-body">
+              <div class="ad-ip-row"><span class="ad-ip-label">IPv4</span><span class="ad-ip-value num" data-full="203.0.113.7">203.0.113.7</span></div>
+              <div class="ad-ip-row"><span class="ad-ip-label">IPv6</span><span class="ad-ip-value num" data-full="2a01:4f8:1c1c:abcd::1">2a01:4f8:1c1c:abcd::1</span></div>
+            </div>
+          </div>
+
+          <div class="ad-card ad-span-6">
+            <div class="ad-card-head"><h3 class="ad-card-title">Connection Stats</h3></div>
+            <div class="ad-card-body ad-card-body--split">
+              <div class="ad-big-stat"><span class="ad-big-stat-label">TCP</span><span class="ad-big-stat-value num">1,284</span></div>
+              <div class="ad-big-stat"><span class="ad-big-stat-label">UDP</span><span class="ad-big-stat-value num">462</span></div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <footer class="ad-foot">Design mockup, vpn-ui Overview, Aurora</footer>
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root = document.querySelector('.ad-root');
+  if(!root) return;
+  var docEl = document.documentElement;
+
+  /* theme toggle - stamps data-theme on the document root, same attribute the
+     Artifact viewer's own theme control uses, so the two stay in sync */
+  var themeBtn = document.getElementById('adThemeToggle');
+  function effectiveTheme(){
+    var attr = docEl.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function applyTheme(t){
+    docEl.setAttribute('data-theme', t);
+    if(themeBtn) themeBtn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+  }
+  applyTheme(effectiveTheme());
+  if(themeBtn){
+    themeBtn.addEventListener('click', function(){
+      applyTheme(effectiveTheme() === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  /* gauge fill-in */
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var gauges = root.querySelectorAll('.ad-gauge-progress');
+  gauges.forEach(function(el){
+    var target = el.getAttribute('data-offset');
+    if(!target) return;
+    if(reduceMotion){
+      el.style.strokeDashoffset = target;
+      return;
+    }
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        el.style.strokeDashoffset = target;
+      });
+    });
+  });
+
+  /* IP show / hide */
+  var ipBtn = document.getElementById('adIpToggle');
+  var ipLabel = document.getElementById('adIpToggleLabel');
+  var ipValues = root.querySelectorAll('.ad-ip-value');
+  var ipVisible = true;
+  function maskValue(v){
+    return v.replace(/[^:.]/g, '•');
+  }
+  function renderIp(){
+    ipValues.forEach(function(el){
+      var full = el.getAttribute('data-full') || el.textContent;
+      el.textContent = ipVisible ? full : maskValue(full);
+    });
+    if(ipBtn){
+      var eye = ipBtn.querySelector('.ad-i-eye');
+      var eyeOff = ipBtn.querySelector('.ad-i-eye-off');
+      if(eye) eye.style.display = ipVisible ? 'none' : '';
+      if(eyeOff) eyeOff.style.display = ipVisible ? '' : 'none';
+      ipBtn.setAttribute('aria-label', ipVisible ? 'Hide IP addresses' : 'Show IP addresses');
+    }
+    if(ipLabel) ipLabel.textContent = ipVisible ? 'Hide' : 'Show';
+  }
+  if(ipBtn){
+    ipBtn.addEventListener('click', function(){
+      ipVisible = !ipVisible;
+      renderIp();
+    });
+  }
+})();
+</script>
+</div>
+</body>
+</html>

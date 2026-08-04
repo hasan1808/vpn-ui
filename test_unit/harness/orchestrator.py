@@ -17,8 +17,8 @@ import sys
 import tomllib
 import traceback
 
-from . import (abort, provision, server_setup, protocols, bulkops, backup_test,
-               subscription_test, warp_test, random_test, systemd_test,
+from . import (abort, provision, server_setup, protocols, multi_inbound, bulkops,
+               backup_test, subscription_test, warp_test, random_test, systemd_test,
                uninstall_test, style)
 from .console import Console
 from .clients.base import Client
@@ -30,7 +30,8 @@ from .model import (JobResult, SubTest, Status, ALL_PHASES, PHASE_CORE, PHASE_SE
                     IKEV2_MODE_PHASES, IKEV2_PHASE_BY_MODE,
                     MTPROTO_MODE_PHASES, MTPROTO_PHASE_BY_MODE,
                     PHASE_MTPROTO_TOGGLE, PHASE_MTPROTO_TERMINATION,
-                    PHASE_MTPROTO_ADTAG, PHASE_SSH, PHASE_SSH_UDP)
+                    PHASE_MTPROTO_ADTAG, PHASE_SSH, PHASE_SSH_UDP,
+                    PHASE_MULTI)
 from .panel import Panel
 from ..report.report import write_reports
 
@@ -55,6 +56,8 @@ _PHASE_TAG = {
     "mtproto-toggle": "MT-TOGL", "mtproto-termination": "MT-TERM",
     "mtproto-adtag": "MT-ADTAG",
     "ssh": "SSH", "ssh-udp": "SSH-UDP",
+    "anytls": "ANYTLS", "tuic": "TUIC", "naive": "NAIVE",
+    "multi-inbound": "MULTI",
     "bulk-ops": "BULK",
     "backup-restore": "BACKUP", "warp-socks": "WARP", "random-cfg": "RANDOM",
     "systemd": "SYSTEMD", "uninstall": "UNINSTALL",
@@ -155,7 +158,9 @@ def run_job(spec: dict, index: int, cfg: dict,
     need_clients = any(_sel(p) for p in ("openvpn", "l2tp", "pptp", "openconnect", "sstp", "ikev2", "wg-c", "awg",
                                          "gre",
                                          "mtproto", "mtproto-classic", "mtproto-secure", "mtproto-tls",
-                                         "mtproto-toggle", "ssh", "ssh-udp"))
+                                         "mtproto-toggle", "ssh", "ssh-udp",
+                                         "anytls", "tuic", "naive",
+                                         "multi-inbound"))
     need_setup = (need_clients or _sel(PHASE_SETUP)
                   or _sel(PHASE_BULK) or _sel(PHASE_BACKUP)
                   or _sel(PHASE_SUBSCRIPTION))
@@ -261,7 +266,11 @@ def run_job(spec: dict, index: int, cfg: dict,
             return incus.exec(server_vm, cmd, timeout=timeout)
 
         # --- protocol suites (filtered by the --tests selection) ---
-        for proto in [p for p in ("openvpn", "l2tp", "pptp", "openconnect", "sstp", "wg-c", "awg", "gre", "ssh") if _sel(p)]:
+        for proto in [p for p in ("openvpn", "l2tp", "pptp", "openconnect", "sstp",
+                                  "wg-c", "awg", "gre", "ssh",
+                                  # Xray-native: same driver contract as the rest
+                                  # (protocols.run resolves phase + inbound by name).
+                                  "anytls", "tuic", "naive") if _sel(p)]:
             if _aborting():
                 break
             log(f":: {proto} — connect variants + checks + peer reachability")
@@ -387,6 +396,27 @@ def run_job(spec: dict, index: int, cfg: dict,
                             str(e)[:200], traceback.format_exc()[-1500:]))
             finally:
                 cA.disconnect_all()
+
+        # --- multi-inbound: ONE account on an inbound of every protocol ---------
+        # Last of the protocol phases on purpose. It adds a third account to every
+        # inbound the suite built (plus four Xray inbounds of its own), sets and clears
+        # a multiplier, a quota and an IP cap on it, and disables/re-enables it — all
+        # of which restart daemons. Running it before the per-protocol phases would
+        # have those restarts land in the middle of somebody else's tunnel.
+        if _sel(PHASE_MULTI) and not _aborting():
+            log(f":: {PHASE_MULTI}, one account across every protocol "
+                "(connectivity, accounting, multiplier, quota, ip limit, suspension)")
+            try:
+                multi_inbound.run(cA, cB, cC, sc, cfg, result, panel=panel,
+                                  server_exec=server_exec, log=log)
+            except Exception as e:  # noqa: BLE001
+                result.phase(PHASE_MULTI).add(
+                    SubTest("multi-inbound-driver", Status.ERROR,
+                            str(e)[:200], traceback.format_exc()[-1500:]))
+            finally:
+                for c in (cA, cB, cC):
+                    if c is not None:
+                        c.disconnect_all()
 
         # --- bulk client operations (pure panel API; once, after protocols so
         #     the bulk regen's daemon restarts can't race a live protocol test) ---
@@ -559,6 +589,12 @@ def main(argv=None):
                              PHASE_MTPROTO_ADTAG})
         if "ssh" in tests:                        # ssh -> its main phase + the udp phase
             selected.add(PHASE_SSH_UDP)
+    if PHASE_MULTI in selected:
+        # multi-inbound puts the account on the ikev2 inbound and dials it, so the
+        # marker has to be set for it too: it is what makes server_setup build l2tp
+        # RAW-only, leaving 500/4500 to charon. Without it both IKE daemons want
+        # those ports and whichever loses is dead for the whole run.
+        selected.add("ikev2")
     if selected & set(IKEV2_MODE_PHASES):         # marker: any ikev2 mode active
         selected.add("ikev2")
     if selected & (set(MTPROTO_MODE_PHASES) | {PHASE_MTPROTO_TOGGLE,

@@ -77,6 +77,25 @@ func Uninstall(opts UninstallOptions) *UninstallReport {
 	//    procMgr is empty, so fall back to pkill by resolved binary path).
 	stopVpnDaemons(r, opts.ExePath)
 
+	// 2b. Client-side VPN outbound tunnels (wg/gre/tun/ppp/xfrm netdevs plus whatever
+	//     client each driver spawned). Nothing else here reaches them: they are not
+	//     procMgr children of THIS process, they are not in the /etc list below, and
+	//     the panel that raised them was SIGKILLed just above, which skips the shutdown
+	//     hook that would normally take them down. Left alone, an uninstalled host
+	//     keeps a live interface with a route into somebody else's VPN.
+	//
+	//     Runs after stopVpnDaemons on purpose: with every other panel dead, nothing is
+	//     left to reconcile a tunnel back up behind us. Driven off the stored list and
+	//     each driver's own Down rather than a name pattern, so a protocol added later
+	//     is covered on the day its driver lands.
+	var vpnOut VpnOutboundService
+	if tunnels := vpnOut.List(); len(tunnels) > 0 {
+		vpnOut.StopAll()
+		for _, t := range tunnels {
+			r.Removed = append(r.Removed, "vpn outbound tunnel "+t.Tag+" ("+t.Kind+")")
+		}
+	}
+
 	// 3. Host ipsec.service (only present on the non-bundled libreswan path).
 	if commandExists("systemctl") {
 		_, _ = systemctl("disable", "--now", "ipsec")

@@ -161,6 +161,38 @@ func TestCrossAdminIsolation(t *testing.T) {
 		}
 	})
 
+	// One account can now be asked for on SEVERAL inbounds, and every one of them
+	// arrives in the body. Checking only the target id would reopen the exact hole
+	// the addClient case above pins, one field to the left.
+	t.Run("addClient with a membership on another admin's inbound", func(t *testing.T) {
+		f := newIdorFixture(t)
+		body := url.Values{
+			"id":         {fmt.Sprint(f.rezaInbound.Id)}, // his own, so the target check passes
+			"inboundIds": {fmt.Sprint(f.rezaInbound.Id), fmt.Sprint(f.aliInbound.Id)},
+			"settings":   {`{"clients":[{"id":"reza-spread","email":"reza-spread","enable":true}]}`},
+		}.Encode()
+		f.as(t, f.reza, http.MethodPost, "/panel/api/inbounds/addClient", body)
+
+		if strings.Contains(f.aliSettings(t), "reza-spread") {
+			t.Error("Reza put a membership on Ali's inbound by listing it in inboundIds: " +
+				"a live account on the victim's inbound, eating their IP pool and quota")
+		}
+	})
+
+	t.Run("updateClient adding a membership on another admin's inbound", func(t *testing.T) {
+		f := newIdorFixture(t)
+		body := url.Values{
+			"id":         {fmt.Sprint(f.rezaInbound.Id)},
+			"inboundIds": {fmt.Sprint(f.rezaInbound.Id), fmt.Sprint(f.aliInbound.Id)},
+			"settings":   {`{"clients":[{"id":"reza-uuid","email":"reza-client","enable":true}]}`},
+		}.Encode()
+		f.as(t, f.reza, http.MethodPost, "/panel/api/inbounds/updateClient/reza-uuid", body)
+
+		if strings.Contains(f.aliSettings(t), "reza-client") {
+			t.Error("Reza spread his account onto Ali's inbound through an edit")
+		}
+	})
+
 	t.Run("copyClients from another admin's inbound", func(t *testing.T) {
 		f := newIdorFixture(t)
 		// Destination is Reza's own (so `owns` on :id passes); the SOURCE is Ali's and

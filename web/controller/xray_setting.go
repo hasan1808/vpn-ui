@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/util/common"
@@ -21,6 +22,7 @@ type XraySettingController struct {
 	WarpService        service.WarpService
 	NordService        service.NordService
 	SshOutboundService service.SshOutboundService
+	VpnOutboundService service.VpnOutboundService
 }
 
 // NewXraySettingController creates a new XraySettingController and initializes its routes.
@@ -42,6 +44,7 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/warp/:action", a.warp)
 	g.POST("/warpsocks/:action", a.warpsocks)
 	g.POST("/sshoutbound/:action", a.sshoutbound)
+	g.POST("/vpnoutbound/:action", a.vpnoutbound)
 	g.POST("/nord/:action", a.nord)
 	g.POST("/update", a.updateSetting)
 	g.POST("/resetOutboundsTraffic", a.resetOutboundsTraffic)
@@ -200,6 +203,115 @@ func (a *XraySettingController) sshoutbound(c *gin.Context) {
 		jsonObj(c, gin.H{"running": up, "log": log}, nil)
 	default:
 		jsonObj(c, a.SshOutboundService.List(), nil)
+	}
+}
+
+// vpnOutboundForm carries one client tunnel over the panel's form-urlencoded POSTs.
+//
+// It exists only because Settings cannot be bound directly. On the config it is a
+// json.RawMessage, i.e. a byte slice, and gin's form binder walks a slice element by
+// element through ParseUint: a JSON object in that field fails the whole bind with
+// "strconv.ParseUint: invalid syntax", and an EMPTY field binds to a one-byte \x00
+// blob that is not valid JSON either and would poison the stored list. So the nested
+// blob travels as text and is unmarshalled by hand, the same way importInbound and
+// testOutbound take theirs.
+type vpnOutboundForm struct {
+	Tag      string `form:"tag"`
+	Kind     string `form:"kind"`
+	Remark   string `form:"remark"`
+	Enable   bool   `form:"enable"`
+	Settings string `form:"settings"`
+}
+
+// vpnOutKindInfo is one entry of the outbound protocol picker.
+type vpnOutKindInfo struct {
+	Kind      string `json:"kind"`
+	Available bool   `json:"available"`
+	// Why is set only when Available is false, so the UI has a single thing to test.
+	// One line for an operator, naming what is missing.
+	Why string `json:"why"`
+}
+
+// vpnOutKindList builds the picker: every protocol whose driver compiled in, each
+// marked with whether this HOST can actually run it.
+//
+// Availability travels WITH the kind rather than filtering it out. A protocol that
+// is simply absent from the list looks like a panel that does not support it, and
+// the operator has nothing to act on; a greyed-out entry carrying "the client binary
+// was not included in this build" is a different message entirely. It also cannot be
+// left to the save: the driver is asked the same question there and refuses, so
+// without this the only way to discover a missing client is to fill the whole modal
+// in and submit it.
+func vpnOutKindList() []vpnOutKindInfo {
+	// Order is VpnOutKinds's, which is sorted, so the picker does not reshuffle
+	// between loads.
+	kinds := service.VpnOutKinds()
+	out := make([]vpnOutKindInfo, 0, len(kinds))
+	for _, k := range kinds {
+		// Asked through the service rather than by type-asserting the driver here:
+		// Available is optional, and this is the one place that already answers for
+		// the drivers that do not implement it.
+		ok, why := service.VpnOutKindAvailable(k)
+		if ok {
+			why = ""
+		}
+		out = append(out, vpnOutKindInfo{Kind: k, Available: ok, Why: why})
+	}
+	return out
+}
+
+// vpnoutbound drives operator-configured VPN client tunnels used as egress
+// (list/save/delete/status/kinds). Each tunnel is backed by a synthesized tagged
+// `freedom` outbound pinned to the netdev the driver brought up, so it is
+// reverse/routing-selectable purely by that tag - the same shape as the SSH tunnels
+// above. Form-urlencoded, per the panel convention (no JSON binding).
+func (a *XraySettingController) vpnoutbound(c *gin.Context) {
+	switch c.Param("action") {
+	case "list":
+		jsonObj(c, a.VpnOutboundService.List(), nil)
+	case "kinds":
+		jsonObj(c, vpnOutKindList(), nil)
+	case "save":
+		var f vpnOutboundForm
+		if err := c.ShouldBind(&f); err != nil {
+			jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+			return
+		}
+		cfg := service.VpnOutboundConfig{
+			Tag:    f.Tag,
+			Kind:   f.Kind,
+			Remark: f.Remark,
+			Enable: f.Enable,
+		}
+		// Rejected here rather than left to the driver, because a malformed blob does
+		// not stop at the driver: it survives Validate if the driver only looks at the
+		// fields it knows, then breaks the marshal of the WHOLE tunnel list in persist,
+		// which reports itself as a failed save of an unrelated field.
+		if raw := strings.TrimSpace(f.Settings); raw != "" {
+			if !json.Valid([]byte(raw)) {
+				jsonMsg(c, I18nWeb(c, "somethingWentWrong"), common.NewError("settings is not valid JSON"))
+				return
+			}
+			cfg.Settings = json.RawMessage(raw)
+		}
+		// Settings go through as posted. Save restores the keys the panel could not
+		// send (it is served a masked list) under the same lock it writes with.
+		saved, err := a.VpnOutboundService.Save(cfg)
+		if err != nil {
+			jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
+			return
+		}
+		// The interface goes back to the caller for the same reason the SSH tunnel's
+		// socks port does: the driver picked it while bringing the tunnel up, it is what
+		// the synthesized outbound binds to, and only the server knows it.
+		jsonObj(c, gin.H{"iface": saved.Iface}, nil)
+	case "delete":
+		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), a.VpnOutboundService.Delete(c.PostForm("tag")))
+	case "status":
+		up, detail := a.VpnOutboundService.Status(c.PostForm("tag"))
+		jsonObj(c, gin.H{"running": up, "detail": detail}, nil)
+	default:
+		jsonObj(c, a.VpnOutboundService.List(), nil)
 	}
 }
 

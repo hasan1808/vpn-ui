@@ -134,7 +134,15 @@ func (s *ServerService) CheckPanelUpdate() (*PanelUpdateInfo, error) {
 // Self-update phases, as polled by the overview.
 const (
 	updatePhaseDownloading = "downloading"
-	updatePhaseInstalling  = "installing"
+	// Between the last byte and the staged confirmation: the ELF and build-info
+	// checks, plus a -v probe that has to exec a ~300MB binary. Only the URL fetch
+	// publishes it; the upload path reaches the same state client-side, where the
+	// browser is the end that knows its last byte has gone out.
+	updatePhaseChecking = "checking"
+	// Downloaded and accepted, waiting on the operator's confirmation. Terminal for
+	// the fetch request itself: nothing further happens until they answer.
+	updatePhaseStaged     = "staged"
+	updatePhaseInstalling = "installing"
 	updatePhaseRestarting  = "restarting"
 	updatePhaseCancelled   = "cancelled"
 	updatePhaseError       = "error"

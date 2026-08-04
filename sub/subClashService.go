@@ -10,7 +10,6 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
-	"github.com/mhsanaei/3x-ui/v2/xray"
 )
 
 type SubClashService struct {
@@ -30,14 +29,24 @@ func NewSubClashService(subService *SubService) *SubClashService {
 	return &SubClashService{SubService: subService}
 }
 
+// forResponse mirrors SubService.forResponse: one SubClashService is built at
+// start-up and shared across requests, so the per-response scope lives on a copy.
+// It matters more here than anywhere else, because Clash proxies are keyed by name
+// and a duplicate name is not a second server, it is a replacement.
+// Its own service fields are rebuilt as zero values for the same reason as in
+// SubService.forResponse: nothing assigns them, and two of them carry a mutex.
+func (s *SubClashService) forResponse() *SubClashService {
+	return &SubClashService{SubService: s.SubService.forResponse()}
+}
+
 func (s *SubClashService) GetClash(subId string, host string) (string, string, error) {
+	s = s.forResponse()
 	inbounds, err := s.SubService.getInboundsBySubId(subId)
 	if err != nil || len(inbounds) == 0 {
 		return "", "", err
 	}
 
-	var traffic xray.ClientTraffic
-	var clientTraffics []xray.ClientTraffic
+	usage := newSubUsage()
 	var proxies []map[string]any
 
 	for _, inbound := range inbounds {
@@ -58,7 +67,8 @@ func (s *SubClashService) GetClash(subId string, host string) (string, string, e
 		}
 		for _, client := range clients {
 			if client.Enable && client.SubID == subId {
-				clientTraffics = append(clientTraffics, s.SubService.getClientTraffics(inbound.ClientStats, client.Email))
+				ct, accountBacked, _ := s.SubService.resolveTraffic(inbound, client.Email)
+				usage.add(client.Email, ct, accountBacked)
 				proxies = append(proxies, s.getProxies(inbound, client, host)...)
 			}
 		}
@@ -68,27 +78,9 @@ func (s *SubClashService) GetClash(subId string, host string) (string, string, e
 		return "", "", nil
 	}
 
-	for index, clientTraffic := range clientTraffics {
-		if index == 0 {
-			traffic.Up = clientTraffic.Up
-			traffic.Down = clientTraffic.Down
-			traffic.Total = clientTraffic.Total
-			if clientTraffic.ExpiryTime > 0 {
-				traffic.ExpiryTime = clientTraffic.ExpiryTime
-			}
-		} else {
-			traffic.Up += clientTraffic.Up
-			traffic.Down += clientTraffic.Down
-			if traffic.Total == 0 || clientTraffic.Total == 0 {
-				traffic.Total = 0
-			} else {
-				traffic.Total += clientTraffic.Total
-			}
-			if clientTraffic.ExpiryTime != traffic.ExpiryTime {
-				traffic.ExpiryTime = 0
-			}
-		}
-	}
+	// Folded per identity: see subUsage. Summing the per-inbound rows reported an
+	// account served on several inbounds as unlimited and never expiring.
+	traffic := usage.result()
 
 	proxyNames := make([]string, 0, len(proxies)+1)
 	for _, proxy := range proxies {
@@ -240,6 +232,17 @@ func (s *SubClashService) buildProxy(inbound *model.Inbound, client model.Client
 	if model.IsHysteria(inbound.Protocol) {
 		return s.buildHysteriaProxy(inbound, client, extraRemark)
 	}
+	// Same story for anytls and tuic: mihomo declares a fixed set of keys per proxy
+	// type and neither fits the network/tls shape below. naive is deliberately absent:
+	// mihomo has no naive proxy type at all, so it falls through to the switch's
+	// `default: return nil` and gets no Clash entry. Those accounts are delivered by
+	// the raw sub's naive+https:// link instead.
+	switch inbound.Protocol {
+	case model.ANYTLS:
+		return s.buildAnytlsProxy(inbound, client, extraRemark)
+	case model.TUIC:
+		return s.buildTuicProxy(inbound, client, extraRemark)
+	}
 
 	proxy := map[string]any{
 		"name":   s.SubService.genRemark(inbound, client.Email, extraRemark),
@@ -333,30 +336,7 @@ func (s *SubClashService) buildHysteriaProxy(inbound *model.Inbound, client mode
 	_ = json.Unmarshal([]byte(inbound.StreamSettings), &rawStream)
 
 	// TLS details — hysteria always uses TLS.
-	if tlsSettings, ok := rawStream["tlsSettings"].(map[string]any); ok {
-		if serverName, ok := tlsSettings["serverName"].(string); ok && serverName != "" {
-			proxy["sni"] = serverName
-		}
-		if alpnList, ok := tlsSettings["alpn"].([]any); ok && len(alpnList) > 0 {
-			out := make([]string, 0, len(alpnList))
-			for _, a := range alpnList {
-				if s, ok := a.(string); ok && s != "" {
-					out = append(out, s)
-				}
-			}
-			if len(out) > 0 {
-				proxy["alpn"] = out
-			}
-		}
-		if inner, ok := tlsSettings["settings"].(map[string]any); ok {
-			if insecure, ok := inner["allowInsecure"].(bool); ok && insecure {
-				proxy["skip-cert-verify"] = true
-			}
-			if fp, ok := inner["fingerprint"].(string); ok && fp != "" {
-				proxy["client-fingerprint"] = fp
-			}
-		}
-	}
+	applyAlwaysOnTLS(proxy, rawStream)
 
 	// Salamander obfs (Hysteria2). Read the same finalmask.udp[salamander]
 	// block the subscription link generator uses.
@@ -378,6 +358,158 @@ func (s *SubClashService) buildHysteriaProxy(inbound *model.Inbound, client mode
 	}
 
 	return proxy
+}
+
+// buildAnytlsProxy produces a mihomo Clash entry for an AnyTLS inbound.
+//
+// It bypasses applyTransport/applySecurity because mihomo's anytls proxy is raw TCP
+// plus TLS and nothing else: it declares neither `network` nor `tls`, and mihomo errors
+// on a proxy carrying keys its type does not know.
+//
+// Be aware how narrow that makes this. Exactly ONE anytls stream configuration, plain
+// tcp + tls, survives; every other one returns nil and the account vanishes from the
+// Clash sub. Counting them, because the two obvious counts are both wrong: the transport
+// picker (form/stream/stream_settings.html) renders tcp/ws/grpc/httpupgrade/xhttp for
+// anytls, and REALITY is offered on only tcp/grpc/xhttp of those, so an operator can
+// reach 3*3 + 2*2 = 13 combinations. The MODEL reaches 16, because canEnableTls() also
+// accepts "http", which no longer has a select option. Either way, one gets a node.
+//
+// The drops are deliberate and each is a real mihomo limitation, not an omission: a
+// non-tcp transport is inexpressible (mihomo's anytls declares no `network`), REALITY is
+// refused outright (the maintainers have said they will not add it), and security=none
+// would have mihomo handshake TLS against a plaintext listener. An entry that lied about
+// any of those would fail in the handshake instead, which is worse than an absent node.
+//
+// Those accounts still reach the subscriber through the raw sub's anytls:// link, which
+// describes them faithfully.
+//
+// KNOWN BLIND SPOT, deferred on purpose: this reads inbound.StreamSettings, so it judges
+// the INBOUND's own security and not the ENDPOINT's. getProxies has already resolved each
+// External Proxy entry's forceTls into the `stream` argument, which this ignores. Two
+// consequences, in opposite directions:
+//
+//   - A TLS-offload inbound (nginx terminating TLS on the public port, plaintext to Xray
+//     behind it) that ALSO carries an entry with forceTls=tls is dropped, although the
+//     client speaks TLS end to end and a node would work. Note the "also": offload with
+//     NO External Proxy advertises its own plaintext port, where dropping is correct. The
+//     alert only lies when offload, a promoting entry AND a Clash subscriber coincide.
+//   - An entry with forceTls=none on a TLS inbound still gets a node, which then
+//     handshakes TLS against a plaintext endpoint and cannot connect.
+//
+// Gating on stream["security"] fixes both. It is not done here because the raw sub is
+// already correct in both directions (genAnytlsLink resolves forceTls per endpoint the
+// way genTrojanLink does), so the gap is confined to this builder and the browser
+// predicate below, and those two have to land together.
+//
+// For whoever picks it up: anytlsClashDropReason()'s pinned cases encode SINGLE-INBOUND
+// semantics (ws+reality reports the transport, tcp+reality names REALITY, tcp+none names
+// TLS). Per-endpoint evaluation changes what "the reason" MEANS once two entries fail
+// differently, so those assertions will not pass automatically, and passing them would
+// not prove the rewrite correct either. The shape both sides agreed on: warn only when NO
+// entry would yield a node, iterating entries instead of reading the inbound, with the
+// reason derived from the set rather than from one configuration.
+//
+// MIRRORED IN THE BROWSER: anytlsClashDropReason() in web/html/modals/inbound_modal.html
+// predicts these two early returns to warn the operator at edit time, and names WHICH
+// reason applied. It cannot see this file. If a case here is added, removed or loosened
+// (mihomo shipping AnyTLS-over-REALITY is the likely one), that predicate goes stale and
+// starts confidently reporting a drop that did not happen, or missing one that did.
+// That is worse than the silence it was built to fix. Change the two together.
+func (s *SubClashService) buildAnytlsProxy(inbound *model.Inbound, client model.Client, extraRemark string) map[string]any {
+	var rawStream map[string]any
+	_ = json.Unmarshal([]byte(inbound.StreamSettings), &rawStream)
+
+	if security, _ := rawStream["security"].(string); security != "tls" {
+		return nil
+	}
+	if network, _ := rawStream["network"].(string); network != "" && network != "tcp" {
+		return nil
+	}
+
+	proxy := map[string]any{
+		"name":     s.SubService.genRemark(inbound, client.Email, extraRemark),
+		"type":     "anytls",
+		"server":   inbound.Listen,
+		"port":     inbound.Port,
+		"password": client.Password,
+		"udp":      true,
+	}
+	applyAlwaysOnTLS(proxy, rawStream)
+	return proxy
+}
+
+// buildTuicProxy produces a mihomo Clash entry for a TUIC inbound.
+//
+// `alpn` is pinned to h3 instead of copied from tlsSettings. The server forces h3 while
+// mihomo defaults to an EMPTY ALPN list, so anything else fails the handshake with
+// nothing but "no application protocol" to go on.
+func (s *SubClashService) buildTuicProxy(inbound *model.Inbound, client model.Client, extraRemark string) map[string]any {
+	var inboundSettings map[string]any
+	_ = json.Unmarshal([]byte(inbound.Settings), &inboundSettings)
+
+	congestion, _ := inboundSettings["congestionControl"].(string)
+	if congestion == "" {
+		congestion = "cubic"
+	}
+
+	proxy := map[string]any{
+		"name":                  s.SubService.genRemark(inbound, client.Email, extraRemark),
+		"type":                  "tuic",
+		"server":                inbound.Listen,
+		"port":                  inbound.Port,
+		"uuid":                  client.ID,
+		"password":              client.Password,
+		"udp":                   true,
+		"congestion-controller": congestion,
+		"udp-relay-mode":        "native",
+	}
+
+	var rawStream map[string]any
+	_ = json.Unmarshal([]byte(inbound.StreamSettings), &rawStream)
+	applyAlwaysOnTLS(proxy, rawStream)
+	proxy["alpn"] = []string{"h3"}
+
+	// The panel stores whole seconds; mihomo's heartbeat-interval is milliseconds.
+	if heartbeat, ok := inboundSettings["heartbeat"].(float64); ok && heartbeat > 0 {
+		proxy["heartbeat-interval"] = int(heartbeat) * 1000
+	}
+	if zeroRtt, ok := inboundSettings["zeroRttHandshake"].(bool); ok && zeroRtt {
+		proxy["reduce-rtt"] = true
+	}
+	return proxy
+}
+
+// applyAlwaysOnTLS fills in the mihomo TLS fields for the protocols whose TLS is not
+// optional (hysteria, anytls, tuic). It reads inbound.StreamSettings raw rather than the
+// streamData()-pruned map, because that helper drops exactly the fields wanted here
+// (allowInsecure, the client fingerprint).
+func applyAlwaysOnTLS(proxy map[string]any, rawStream map[string]any) {
+	tlsSettings, ok := rawStream["tlsSettings"].(map[string]any)
+	if !ok {
+		return
+	}
+	if serverName, ok := tlsSettings["serverName"].(string); ok && serverName != "" {
+		proxy["sni"] = serverName
+	}
+	if alpnList, ok := tlsSettings["alpn"].([]any); ok && len(alpnList) > 0 {
+		out := make([]string, 0, len(alpnList))
+		for _, a := range alpnList {
+			if s, ok := a.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		if len(out) > 0 {
+			proxy["alpn"] = out
+		}
+	}
+	if inner, ok := tlsSettings["settings"].(map[string]any); ok {
+		if insecure, ok := inner["allowInsecure"].(bool); ok && insecure {
+			proxy["skip-cert-verify"] = true
+		}
+		if fp, ok := inner["fingerprint"].(string); ok && fp != "" {
+			proxy["client-fingerprint"] = fp
+		}
+	}
 }
 
 func (s *SubClashService) applyTransport(proxy map[string]any, network string, stream map[string]any) bool {

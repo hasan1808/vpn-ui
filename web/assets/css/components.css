@@ -86,6 +86,11 @@
 .bo-dot--warn { background:var(--warn); }
 .bo-dot--error { background:var(--error); }
 
+/* Secondary text sitting beside primary text: a port after a remark, a traffic
+   figure under an email. Used across the Clients page and the client forms to
+   mean "here if you want it, not what you are reading". */
+.bo-dim { color:var(--text-3); font-size:12px; }
+
 /* ================================================================== *
  * shell: rail nav
  * ================================================================== */
@@ -1160,3 +1165,289 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
   width:172px; height:172px; cursor:pointer;
   background:#fff; border-radius:var(--radius-sm); padding:6px;
 }
+
+/* ================================================================== *
+ * client form (Clients page add / edit)
+ *
+ * A summary rail on the left - who the account is and what it has left -
+ * with the section tabs beneath it, and one pane on the right. The rail
+ * stays put while the operator moves between sections, so a credential
+ * can be rotated without losing sight of whose it is.
+ *
+ * On ADD there is nothing stored to summarise, so the rail previews what
+ * is being typed rather than sitting empty.
+ * ================================================================== */
+
+/* Sized to its CONTENT, not to the tallest tab.
+
+   This was a fixed height set by whichever section was tallest, on the theory
+   that a modal which resizes between tabs makes the footer jump. In practice it
+   just made the window too big: Identity is the section every operator fills in
+   and the one that must never scroll, and pinning the height to Credentials left
+   ~90px of dead space under it on every add.
+
+   So: no fixed height. The modal is as tall as the section on screen, with a
+   floor so the short sections do not collapse into a letterbox, and a viewport
+   ceiling so a long one cannot push the footer (and the save button with it) off
+   a short screen. Identity comes in well under the ceiling at any realistic size,
+   which is what "never scrolls" means here; a section that does exceed it scrolls
+   inside the pane rather than growing the window. */
+.bo-cf {
+  display:flex; align-items:stretch; margin:-24px;
+  min-height:340px; max-height:calc(100vh - 210px);
+}
+.bo-cf-rail {
+  flex:0 0 200px; border-inline-end:1px solid var(--border);
+  background:var(--surface-2); display:flex; flex-direction:column;
+}
+/* min-height:0 is what lets the pane actually scroll: a flex item defaults to
+   min-height:auto, which refuses to shrink below its content and pushes the
+   overflow out of the modal instead of into a scrollbar. */
+.bo-cf-pane { flex:1 1 auto; min-width:0; min-height:0; padding:20px 22px; overflow-y:auto; }
+
+.bo-cf-summary { padding:16px; border-bottom:1px solid var(--border); }
+.bo-cf-who {
+  font-size:15px; font-weight:600; line-height:1.3; margin-bottom:2px;
+  word-break:break-all; color:var(--text);
+}
+.bo-cf-sub { font-size:11.5px; color:var(--text-3); margin-bottom:12px; line-height:1.4; }
+.bo-cf-kv {
+  display:flex; justify-content:space-between; align-items:baseline;
+  font-size:12px; padding:3px 0; color:var(--text-2);
+}
+.bo-cf-kv b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+
+.bo-cf-tabs { padding:10px; display:flex; flex-direction:column; gap:2px; }
+.bo-cf-tab {
+  display:flex; align-items:center; gap:9px; width:100%;
+  font:inherit; font-size:13.5px; text-align:start; cursor:pointer;
+  padding:8px 11px; border:0; border-radius:7px;
+  background:transparent; color:var(--text-2);
+}
+.bo-cf-tab:hover { color:var(--text); background:var(--surface); }
+.bo-cf-tab[aria-selected="true"] {
+  background:var(--surface); color:var(--accent);
+  font-weight:600; box-shadow:0 1px 2px rgba(16,24,40,.07);
+}
+.bo-cf-tab:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+
+.bo-cf-field { margin-bottom:14px; }
+.bo-cf-field > label {
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  font-size:12px; font-weight:600; color:var(--text-2); margin-bottom:5px;
+}
+.bo-cf-field > label .ant-tag { margin-inline-end:0; font-size:11px; line-height:17px; }
+.bo-cf-hint { font-size:11.5px; color:var(--text-3); margin-top:4px; }
+/* Dimmed, not hidden: a field that vanishes as inbounds are ticked makes the
+   form shift under the operator mid-edit. */
+.bo-cf-unused { opacity:.5; }
+.bo-cf-mono input { font-family:var(--font-mono, ui-monospace, monospace); font-size:12.5px; }
+
+/* An input with a trailing icon button, matching the addonAfter that a-input
+   gets for free. a-input-number and a-date-picker have no addon slot, so the
+   pairing is built here rather than faked with absolute positioning. */
+.bo-cf-withicon { display:flex; align-items:stretch; }
+.bo-cf-withicon > *:first-child { flex:1 1 auto; min-width:0; }
+.bo-cf-withicon > *:first-child .ant-input-number,
+.bo-cf-withicon > *:first-child .ant-input {
+  border-start-end-radius:0; border-end-end-radius:0;
+}
+.bo-cf-iconbtn {
+  flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
+  width:34px; font:inherit; cursor:pointer; color:var(--text-2);
+  background:var(--surface-2); border:1px solid var(--border); border-inline-start:0;
+  border-start-end-radius:2px; border-end-end-radius:2px;
+}
+.bo-cf-iconbtn:hover { color:var(--accent); }
+.bo-cf-iconbtn:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+
+.bo-cf-switch {
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  padding:11px 0; border-bottom:1px solid var(--border);
+}
+.bo-cf-switch:last-child { border-bottom:0; }
+.bo-cf-t { font-size:13.5px; color:var(--text); }
+.bo-cf-d { font-size:11.5px; color:var(--text-3); margin-top:2px; }
+
+.bo-cf-ib {
+  border:1px solid var(--border); border-radius:7px;
+  padding:7px 10px; margin-bottom:7px;
+}
+.bo-cf-ib.on { border-color:var(--accent); background:var(--accent-weak); }
+.bo-cf-ib .ant-checkbox-wrapper { width:100%; }
+
+/* The bulk form reuses the shell above, and adds three things to it.
+
+   A rail value that is a name rather than a figure (the target inbound) can be
+   arbitrarily long, so it is truncated instead of pushing its own label out of
+   the rail. */
+.bo-cf-ell { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* The shape of the generated emails, under the count. Monospace so the eight
+   x's standing in for the random stem line up with the real thing. */
+.bo-cf-shape {
+  font-family:var(--font-mono, ui-monospace, monospace);
+  font-size:11px; word-break:break-all;
+}
+
+/* One row per account the batch would create. */
+.bo-cf-list { border:1px solid var(--border); border-radius:7px; overflow:hidden; }
+.bo-cf-row {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:6px 10px; border-bottom:1px solid var(--border);
+  font-family:var(--font-mono, ui-monospace, monospace);
+  font-size:12.5px; color:var(--text); word-break:break-all;
+}
+.bo-cf-row:last-child { border-bottom:0; }
+.bo-cf-row.clash { background:var(--error-weak); color:var(--error); }
+.bo-cf-row .ant-tag { margin-inline-end:0; flex:0 0 auto; }
+/* The minted half of a name, and the row counts beside it: present, but not
+   what the operator is here to read. */
+.bo-cf-stem { color:var(--text-3); }
+
+/* The rail stacks above the pane once there is no room beside it. */
+@media (max-width:640px) {
+  .bo-cf { flex-direction:column; height:auto; }
+  .bo-cf-rail { flex:0 0 auto; border-inline-end:0; border-bottom:1px solid var(--border); }
+  .bo-cf-tabs { flex-direction:row; overflow-x:auto; }
+  .bo-cf-tab { width:auto; white-space:nowrap; }
+  .bo-cf-pane { overflow-y:visible; }
+}
+
+/* ================================================================== *
+ * clients ledger (the Clients page table)
+ *
+ * The row used to spend its width on a badge, a wrapping tag list and five
+ * 28px buttons crammed against the right edge, while the two figures an
+ * operator actually reads - how much is left, how long is left - were the
+ * smallest grey text on the line. This inverts that: state collapses to one
+ * lamp, the actions collapse to a switch and one menu, and the space goes to
+ * the figures.
+ * ================================================================== */
+
+/* One glyph for the whole account state, with the label in its tooltip. Hue is
+   doing real work here (it is the reserved status scale), which is why the
+   protocol chips beside it must not also be carrying identity hues. */
+.bo-lamp { width:8px; height:8px; border-radius:50%; flex:0 0 auto; background:var(--off); }
+.bo-lamp--ok { background:var(--ok); }
+.bo-lamp--warn { background:var(--warn); }
+.bo-lamp--error { background:var(--error); }
+.bo-lamp--off { background:var(--off); }
+/* Online is a ring rather than a sixth colour: it is orthogonal to health, so
+   an account can be online AND nearly out of data. */
+.bo-lamp--live { box-shadow:0 0 0 3px var(--ok-weak); }
+
+.bo-lg-who { display:flex; align-items:center; gap:9px; min-width:0; }
+.bo-lg-names { min-width:0; }
+.bo-lg-name { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bo-lg-note {
+  font-size:11.5px; color:var(--text-3);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+.bo-lg-figs {
+  font-size:12px; color:var(--text-2); margin-bottom:5px; white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.bo-lg-figs b { color:var(--text); font-weight:600; }
+
+.bo-meter { height:4px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.bo-meter > i { display:block; height:100%; background:var(--accent); border-radius:999px; }
+.bo-meter--warn > i { background:var(--warn); }
+.bo-meter--error > i { background:var(--error); }
+/* Unlimited is not 0% and not 100%, so it gets neither. A dashed rail says
+   "there is no scale here" without pretending to a value. */
+.bo-meter--inf {
+  background:repeating-linear-gradient(90deg,var(--border) 0 5px,transparent 5px 10px);
+}
+
+.bo-lg-rel { font-size:13px; white-space:nowrap; }
+.bo-lg-rel--warn { color:var(--warn); }
+.bo-lg-rel--error { color:var(--error); }
+.bo-lg-rel--info { color:var(--info); }
+.bo-lg-abs { font-size:11px; color:var(--text-3); white-space:nowrap; font-variant-numeric:tabular-nums; }
+
+.bo-lg-serving { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.bo-lg-serving .ant-tag { margin:0; }
+.bo-lg-port {
+  font-family:var(--font-mono, ui-monospace, monospace);
+  font-weight:400; opacity:.72; margin-inline-start:3px;
+}
+
+.bo-lg-seen { font-size:12px; color:var(--text-3); white-space:nowrap; }
+.bo-lg-seen--live { color:var(--ok); }
+
+.bo-lg-acts { display:inline-flex; align-items:center; gap:8px; justify-content:flex-end; }
+
+/* Denser rows for a big fleet. The two lines that go are the two that repeat
+   what is already visible elsewhere: the comment (searchable) and the absolute
+   date (the relative one above it is the one being scanned).
+
+   !important because the rule being beaten is antd's own size variant,
+   `.ant-table-middle > .ant-table-content > .ant-table-body > table >
+   .ant-table-tbody > tr > td` - seven classes deep, in four near-identical
+   flavours for the scroll and fixed-column cases. Matching that depth would mean
+   copying all four and re-copying them on any antd bump; this is the override
+   that stays correct. It is not winning a fight with our own cascade. */
+.bo-shell .bo-lg--compact .ant-table-tbody > tr > td { padding:6px 14px !important; }
+.bo-lg--compact .bo-lg-note,
+.bo-lg--compact .bo-lg-abs { display:none; }
+.bo-lg--compact .bo-lg-figs { margin-bottom:3px; }
+
+/* ================================================================== *
+ * account memberships (the Clients page expander)
+ *
+ * One block per inbound serving the account. This was a NESTED a-table per
+ * inbound: four inbounds meant four column headers, four copies of the same
+ * email, and four repeats of the account-wide quota and expiry - the figures
+ * the row above already shows once. What actually differs per inbound is the
+ * protocol, the credential the customer installs and the bytes that inbound
+ * moved, so those are the three columns, and the account-wide controls live on
+ * the account row where they belong.
+ * ================================================================== */
+
+/* ONE bordered list with hairline dividers, not a stack of separate cards.
+   Each membership used to be its own rounded box with an 8px gap under it, which
+   read as three unrelated things floating in the expanded row - and the gaps
+   were pure empty space in a panel that is short of vertical room. They belong
+   to one account, so they are one list. */
+.bo-mb-list {
+  display:flex; flex-direction:column;
+  border:1px solid var(--border); border-radius:9px;
+  background:var(--surface); overflow:hidden;
+}
+.bo-mb {
+  display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px;
+  padding:9px 14px;
+  border-bottom:1px solid var(--border);
+}
+.bo-mb:last-child { border-bottom:0; }
+/* Disabled ON THIS INBOUND ONLY - the account itself is still enabled, so the
+   row is recessed rather than marked with a status hue. */
+.bo-mb.off { opacity:.55; }
+
+.bo-mb-id { display:flex; align-items:center; gap:7px; flex:1 1 210px; min-width:0; }
+.bo-mb-name {
+  font-weight:500; color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.bo-mb-port { color:var(--text-3); font-variant-numeric:tabular-nums; flex:0 0 auto; }
+
+/* The credential this inbound authenticates on. Monospace because it is copied,
+   truncated because a uuid is 36 characters and the whole row is not about it. */
+.bo-mb-cred {
+  flex:1 1 260px; min-width:0; display:flex; align-items:center; gap:6px;
+  font-family:var(--font-mono, ui-monospace, monospace); font-size:12px;
+  color:var(--text-2); cursor:pointer;
+}
+.bo-mb-cred:hover { color:var(--accent); }
+.bo-mb-cred-v { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bo-mb-cred .anticon { flex:0 0 auto; font-size:12px; }
+
+.bo-mb-use {
+  flex:0 0 auto; display:flex; align-items:center; gap:8px;
+  font-size:12px; color:var(--text-2); font-variant-numeric:tabular-nums;
+}
+.bo-mb-use b { color:var(--text); font-weight:600; }
+
+.bo-mb-actions { flex:0 0 auto; margin-inline-start:auto; }

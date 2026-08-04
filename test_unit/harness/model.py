@@ -169,6 +169,19 @@ PHASE_MTPROTO_ADTAG = "mtproto-adtag"
 # billed to the account). `--tests ssh` selects both (see orchestrator.main).
 PHASE_SSH = "ssh"
 PHASE_SSH_UDP = "ssh-udp"
+# Xray-NATIVE proxy protocols (11th-13th). Unlike every phase above them these are
+# served by the xray core itself, not by a bundled daemon or an in-binary Go server:
+# the panel writes them straight into the xray config as inbounds, so their data path,
+# their per-account accounting and their user matching are the core's own. The client
+# is xray as well (a local socks inbound + the matching outbound) plus
+# badvpn-tun2socks on tun0, exactly the system-tunnel trick clients/ssh.py uses, so
+# they run the SAME shared suite MINUS everything that needs a client tunnel address.
+PHASE_ANYTLS = "anytls"
+PHASE_TUIC = "tuic"
+PHASE_NAIVE = "naive"
+# ONE account across an inbound of every account-bearing protocol: the
+# accounts/membership layer driven end to end. See harness/multi_inbound.py.
+PHASE_MULTI = "multi-inbound"
 PHASE_BULK = "bulk-ops"
 PHASE_BACKUP = "backup-restore"
 PHASE_SUBSCRIPTION = "subscription"      # sub links/JSON/Clash + stats, every protocol
@@ -186,5 +199,7 @@ ALL_PHASES = [PHASE_CORE, PHASE_SETUP, PHASE_OPENVPN, PHASE_L2TP, PHASE_PPTP,
               PHASE_MTPROTO_CLASSIC, PHASE_MTPROTO_SECURE, PHASE_MTPROTO_TLS,
               PHASE_MTPROTO_TOGGLE, PHASE_MTPROTO_TERMINATION, PHASE_MTPROTO_ADTAG,
               PHASE_SSH, PHASE_SSH_UDP,
+              PHASE_ANYTLS, PHASE_TUIC, PHASE_NAIVE,
+              PHASE_MULTI,
               PHASE_BULK, PHASE_BACKUP, PHASE_SUBSCRIPTION,
               PHASE_WARP, PHASE_RANDOM, PHASE_SYSTEMD, PHASE_UNINSTALL]

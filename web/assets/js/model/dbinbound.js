@@ -194,6 +194,9 @@ class DBInbound {
             case Protocols.VLESS:
             case Protocols.TROJAN:
             case Protocols.HYSTERIA:
+            case Protocols.ANYTLS:
+            case Protocols.TUIC:
+            case Protocols.NAIVE:
             case Protocols.L2TP:
             case Protocols.PPTP:
             case Protocols.OPENVPN:
@@ -256,11 +259,18 @@ class DBInbound {
             case Protocols.TROJAN:
             case Protocols.SHADOWSOCKS:
             case Protocols.HYSTERIA:
+            // AnyTLS, TUIC and naive each generate a real client-importable share
+            // link (see genAnytlsLink / genTuicLink / genNaiveLink), so their
+            // accounts get the QR icon and the shared QR modal like any other
+            // Xray-native protocol.
+            case Protocols.ANYTLS:
+            case Protocols.TUIC:
+            case Protocols.NAIVE:
                 return true;
             case Protocols.MTPROTO:
                 // MTProto accounts have real tg:// links (one per enabled mode), so
                 // they use the shared QR modal. Whether a GIVEN account has any is a
-                // per-client question the caller gates on, see aClientTable.
+                // per-client question the caller gates on, see component/clientActionIcons.
                 return true;
             default:
                 return false;

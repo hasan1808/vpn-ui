@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Login: Gateway</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<div id="lg-gateway">
+<style>
+/* ==================================================================
+   GATEWAY. The login screen as the first tile of the dashboard.
+   Same tile vocabulary as redesign/bento.html: surface fill, 1px
+   --border stroke, ~12px radius, uppercase tracked eyebrows, tabular
+   numerals. Everything below is scoped to #lg-gateway except the four
+   token blocks, which follow the bento convention exactly.
+   ================================================================== */
+
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --ok-weak:rgba(28,122,69,.10); --info-weak:rgba(31,111,208,.10); --warn-weak:rgba(138,96,8,.12);
+  --error-weak:rgba(179,38,30,.10); --off-weak:rgba(107,119,135,.12);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+    --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13); --warn-weak:rgba(224,169,74,.14);
+    --error-weak:rgba(242,114,106,.13); --off-weak:rgba(133,147,168,.15);
+    --shadow-sm:none; --shadow-md:none;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13); --warn-weak:rgba(224,169,74,.14);
+  --error-weak:rgba(242,114,106,.13); --off-weak:rgba(133,147,168,.15);
+  --shadow-sm:none; --shadow-md:none;
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --ok-weak:rgba(28,122,69,.10); --info-weak:rgba(31,111,208,.10); --warn-weak:rgba(138,96,8,.12);
+  --error-weak:rgba(179,38,30,.10); --off-weak:rgba(107,119,135,.12);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+  color-scheme:light;
+}
+/* The panel ships a third real theme. Nothing above hardcodes a colour, so
+   ultra-dark is one more token block and the whole screen follows it. */
+:root[data-theme="ultra-dark"]{
+  --bg:#21242a; --surface:#0c0e12; --surface-2:#222327; --border:#32353b; --border-strong:#505663;
+  --text:rgba(255,255,255,.85); --text-2:rgba(255,255,255,.58); --text-3:rgba(255,255,255,.48);
+  --accent:#59cbac; --accent-strong:#59cbac; --accent-weak:rgba(89,203,172,.14); --on-accent:#06140f;
+  --ok:#59cbac; --info:#3c89e8; --warn:#e89a3c; --error:#e84749; --off:#5a5f6b;
+  --ok-weak:rgba(89,203,172,.14); --info-weak:rgba(60,137,232,.14); --warn-weak:rgba(232,154,60,.16);
+  --error-weak:rgba(232,71,73,.14); --off-weak:rgba(90,95,107,.18);
+  --shadow-sm:none; --shadow-md:none;
+  color-scheme:dark;
+}
+
+/* ---------- root ---------- */
+#lg-gateway, #lg-gateway *, #lg-gateway *::before, #lg-gateway *::after{ box-sizing:border-box; }
+#lg-gateway{
+  --font-sans:'Vazirmatn UI NL',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  --lg-fast:.15s; --lg-med:.25s;
+  font-family:var(--font-sans);
+  background:var(--bg); color:var(--text);
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  min-height:100vh; overflow-x:hidden;
+}
+#lg-gateway h1, #lg-gateway h2, #lg-gateway h3, #lg-gateway p, #lg-gateway ul{ margin:0; padding:0; }
+#lg-gateway button, #lg-gateway input, #lg-gateway select{ font-family:inherit; }
+#lg-gateway svg{ display:block; }
+
+#lg-gateway .lg-sr{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0;
+}
+/* Dotted and colonned strings (versions, locale tags, the bracketed
+   wordmark) must not be reordered by bidi in fa-IR / ar-EG. */
+#lg-gateway .lg-ltr{ direction:ltr; unicode-bidi:isolate; }
+
+#lg-gateway *:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+#lg-gateway .lg-input:focus-visible{ outline:none; }
+
+/* ---------- icons ---------- */
+#lg-gateway .lg-icon{
+  width:18px; height:18px; flex:0 0 auto; fill:none; stroke:currentColor;
+  stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;
+}
+#lg-gateway .lg-icon-14{ width:14px; height:14px; }
+#lg-gateway .lg-icon-16{ width:16px; height:16px; }
+
+/* ---------- page shell ---------- */
+#lg-gateway .lg-page{
+  position:relative; min-height:100vh; width:100%;
+  display:flex; flex-direction:column; padding:24px 20px 18px;
+}
+/* margin:auto rather than justify-content:center. Flex centering clips the
+   start edge once the content is taller than the viewport; auto margins do not. */
+#lg-gateway .lg-main{ margin:auto; width:100%; max-width:980px; min-width:0; }
+
+/* In flow and aligned to the grid's inline end, not pinned to the viewport
+   corner: an absolute corner button collides with the top-right tile as soon
+   as the viewport stops being wider than the grid. */
+#lg-gateway .lg-corner{
+  display:flex; align-items:center; justify-content:flex-end;
+  gap:8px; margin-block-end:10px;
+}
+#lg-gateway .lg-round-btn{
+  width:34px; height:34px; border-radius:50%; border:1px solid var(--border);
+  background:var(--surface); color:var(--text-2);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:background var(--lg-fast), border-color var(--lg-fast), color var(--lg-fast);
+}
+#lg-gateway .lg-round-btn:hover{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+#lg-gateway .lg-round-btn .lg-i-moon{ display:none; }
+#lg-gateway[data-eff-theme="dark"] .lg-round-btn .lg-i-sun{ display:none; }
+#lg-gateway[data-eff-theme="dark"] .lg-round-btn .lg-i-moon{ display:block; }
+
+/* ---------- bento grid ----------
+   DOM order is: notice, form, ident, build, tls, pref, ghost. The form is
+   first in the document, so the single column at phone width leads with it
+   and so does the tab order. Named areas do the desktop composition. */
+#lg-gateway .lg-grid{
+  display:grid; grid-template-columns:1fr; gap:12px;
+  grid-template-areas:"notice" "form" "ident" "build" "tls" "pref" "ghost";
+}
+/* Two columns is already the desktop composition, just narrower. The form
+   never spans the full width: 900px-wide inputs are not a login form.
+   The form spans exactly the two satellites beside it, so its height is set
+   by them rather than by a tile it has no relationship with. */
+@media (min-width:640px){
+  #lg-gateway .lg-grid{
+    grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:13px;
+    grid-template-areas:
+      "notice notice"
+      "ident  build"
+      "form   tls"
+      "form   pref"
+      "ghost  ghost";
+  }
+}
+@media (min-width:1020px){
+  #lg-gateway .lg-grid{
+    grid-template-columns:repeat(12,1fr); gap:14px;
+    grid-template-areas:
+      "notice notice notice notice notice notice notice notice notice notice notice notice"
+      "ident  ident  ident  ident  ident  ident  ident  build  build  build  build  build"
+      "form   form   form   form   form   form   form   tls    tls    tls    tls    tls"
+      "form   form   form   form   form   form   form   pref   pref   pref   pref   pref"
+      "ghost  ghost  ghost  ghost  ghost  ghost  ghost  ghost  ghost  ghost  ghost  ghost";
+  }
+}
+#lg-gateway .lg-a-notice{ grid-area:notice; }
+#lg-gateway .lg-a-form{ grid-area:form; }
+#lg-gateway .lg-a-ident{ grid-area:ident; }
+#lg-gateway .lg-a-build{ grid-area:build; }
+#lg-gateway .lg-a-tls{ grid-area:tls; }
+#lg-gateway .lg-a-pref{ grid-area:pref; }
+#lg-gateway .lg-a-ghost{ grid-area:ghost; }
+
+/* ---------- tile ---------- */
+#lg-gateway .lg-tile{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:16px 18px; box-shadow:var(--shadow-sm); min-width:0;
+  display:flex; flex-direction:column;
+  transition:border-color var(--lg-fast);
+}
+#lg-gateway .lg-tile--form{ padding:20px 22px 22px; box-shadow:var(--shadow-md); }
+#lg-gateway .lg-eyebrow{
+  font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--text-2); display:flex; align-items:center; gap:7px; min-width:0;
+}
+#lg-gateway .lg-eyebrow .lg-icon{ color:var(--text-3); }
+#lg-gateway .lg-tile-head{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; margin-block-end:14px;
+}
+#lg-gateway .lg-tile-head--flush{ margin-block-end:0; }
+#lg-gateway .lg-caption{ font-size:12.5px; line-height:1.5; color:var(--text-3); }
+
+/* ---------- compose-in. One orchestrated settle, then stillness. ---------- */
+@keyframes lg-settle{
+  from{ opacity:0; transform:translateY(10px) scale(.985); }
+  to  { opacity:1; transform:none; }
+}
+/* fill:backwards, not both. The from-state holds through the delay, but once
+   the animation is over (or cancelled) the tile reverts to its normal style
+   rather than keeping a forwards fill. Nothing here can strand a tile at
+   opacity 0, which is the failure mode an entrance animation has to avoid. */
+#lg-gateway .lg-tile, #lg-gateway .lg-scaffold{
+  animation:lg-settle .46s cubic-bezier(.22,1,.36,1) backwards;
+  animation-delay:var(--lg-d,0ms);
+}
+#lg-gateway .lg-a-form  { --lg-d:0ms; }
+#lg-gateway .lg-a-notice{ --lg-d:40ms; }
+#lg-gateway .lg-a-ident { --lg-d:80ms; }
+#lg-gateway .lg-a-build { --lg-d:130ms; }
+#lg-gateway .lg-a-tls   { --lg-d:180ms; }
+#lg-gateway .lg-a-pref  { --lg-d:230ms; }
+#lg-gateway .lg-a-ghost { --lg-d:280ms; }
+#lg-gateway .lg-scaffold{ --lg-d:360ms; }
+
+/* ---------- identity ---------- */
+#lg-gateway .lg-tile--ident{ justify-content:space-between; gap:14px; }
+#lg-gateway .lg-wordmark{
+  font-family:var(--font-mono); font-size:20px; font-weight:700;
+  letter-spacing:.14em; color:var(--accent); line-height:1.1;
+}
+#lg-gateway .lg-wordmark .lg-brk{ opacity:.5; }
+#lg-gateway .lg-words{
+  position:relative; display:block; min-height:1.3em;
+  font-size:26px; font-weight:600; color:var(--text); line-height:1.3;
+}
+#lg-gateway .lg-words b{
+  position:absolute; inset-block-start:0; inset-inline-start:0; font-weight:600;
+  opacity:0; transform:translateY(-.32em);
+  transition:opacity .3s ease, transform .3s cubic-bezier(.22,1,.36,1);
+}
+/* The outgoing word clears before the incoming one arrives. Overlapping
+   cross-fades leave the tail of the longer word ghosting behind the shorter. */
+#lg-gateway .lg-words b.is-visible{ opacity:1; transform:none; transition-delay:.16s; }
+#lg-gateway .lg-words b.is-hidden{ opacity:0; transform:translateY(.32em); transition-duration:.16s; }
+
+/* ---------- build / version ---------- */
+#lg-gateway .lg-tile--build{ justify-content:space-between; }
+#lg-gateway .lg-version{
+  font-family:var(--font-mono); font-size:26px; font-weight:700;
+  color:var(--text); letter-spacing:-.01em; line-height:1.2;
+}
+
+/* ---------- chips ---------- */
+#lg-gateway .lg-chip{
+  display:inline-flex; align-items:center; gap:7px; align-self:flex-start;
+  font-size:12px; font-weight:600; padding:5px 11px; border-radius:999px;
+  background:var(--surface-2); color:var(--text-2); max-width:100%;
+}
+#lg-gateway .lg-chip--ok  { background:var(--ok-weak);   color:var(--ok); }
+#lg-gateway .lg-chip--warn{ background:var(--warn-weak); color:var(--warn); }
+#lg-gateway .lg-chip .lg-icon{ color:currentColor; }
+
+/* ---------- transport security ---------- */
+#lg-gateway .lg-tls-secure  { display:none; }
+#lg-gateway .lg-tls-insecure{ display:none; }
+#lg-gateway[data-tls="on"]  .lg-tls-secure  { display:flex; }
+#lg-gateway[data-tls="off"] .lg-tls-insecure{ display:flex; }
+/* Same auto-margin trick as the form fields: a satellite that gets stretched
+   by its neighbour shares the slack evenly rather than banking it at the foot. */
+#lg-gateway .lg-tls-body{ flex-direction:column; gap:10px; margin-block:auto; }
+
+/* ---------- preferences ---------- */
+#lg-gateway .lg-pref-body{ margin-block:auto; }
+#lg-gateway .lg-pref-row{ display:flex; flex-direction:column; gap:7px; }
+#lg-gateway .lg-pref-row + .lg-pref-row{ margin-block-start:14px; }
+#lg-gateway .lg-pref-label{ font-size:12px; font-weight:600; color:var(--text-2); }
+
+#lg-gateway .lg-seg{
+  display:flex; gap:2px; padding:3px; border-radius:8px;
+  background:var(--surface-2); border:1px solid var(--border);
+}
+#lg-gateway .lg-seg-btn{
+  flex:1 1 0; min-width:0; border:none; background:transparent; cursor:pointer;
+  font-size:12px; font-weight:600; color:var(--text-2);
+  padding:6px 6px; border-radius:6px; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis;
+  transition:background var(--lg-fast), color var(--lg-fast);
+}
+#lg-gateway .lg-seg-btn:hover{ color:var(--text); }
+#lg-gateway .lg-seg-btn[aria-checked="true"]{ background:var(--surface); color:var(--accent); box-shadow:var(--shadow-sm); }
+
+#lg-gateway .lg-select-wrap{ position:relative; display:block; }
+#lg-gateway .lg-select{
+  appearance:none; -webkit-appearance:none; width:100%;
+  font-size:14px; font-weight:500; color:var(--text);
+  background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+  padding-block:9px; padding-inline:34px 34px;
+  cursor:pointer; text-align:start;
+  transition:border-color var(--lg-fast), background var(--lg-fast);
+}
+#lg-gateway .lg-select:hover{ border-color:var(--border-strong); }
+#lg-gateway .lg-select-icon{
+  position:absolute; inset-block-start:50%; transform:translateY(-50%);
+  inset-inline-start:10px; color:var(--text-3); pointer-events:none;
+}
+#lg-gateway .lg-select-chev{
+  position:absolute; inset-block-start:50%; transform:translateY(-50%);
+  inset-inline-end:10px; color:var(--text-3); pointer-events:none;
+}
+
+/* ---------- ghost tile: the dashboard structure, already there ---------- */
+#lg-gateway .lg-tile--ghost{ justify-content:space-between; gap:12px; }
+#lg-gateway .lg-ghost-grid{
+  display:grid; grid-template-columns:repeat(2,1fr); gap:8px; flex:1; min-height:64px;
+}
+@media (min-width:640px){
+  #lg-gateway .lg-ghost-grid{ grid-template-columns:repeat(4,1fr); }
+}
+#lg-gateway .lg-ghost-cell{
+  border:1px dashed var(--border); border-radius:8px; padding:10px 12px;
+  display:flex; flex-direction:column; justify-content:center; gap:6px; min-height:44px;
+}
+#lg-gateway .lg-ghost-bar{ height:5px; border-radius:3px; background:var(--border); }
+#lg-gateway .lg-ghost-bar--short{ width:44%; }
+#lg-gateway .lg-ghost-bar--mid{ width:66%; }
+
+/* ---------- notice / alert ---------- */
+#lg-gateway .lg-notice{
+  display:flex; flex-direction:row; align-items:flex-start; gap:10px;
+  padding:12px 14px; border-radius:12px; font-size:13px; line-height:1.5;
+  border:1px solid var(--border); background:var(--surface);
+}
+#lg-gateway .lg-notice--info{
+  background:var(--info-weak); border-color:transparent; color:var(--info);
+  border-inline-start:3px solid var(--info);
+}
+#lg-gateway .lg-notice--info .lg-notice-text{ color:var(--text); }
+#lg-gateway .lg-notice .lg-icon{ margin-block-start:1px; }
+#lg-gateway .lg-notice-text{ flex:1; min-width:0; font-weight:500; }
+#lg-gateway .lg-notice-close{
+  border:none; background:transparent; cursor:pointer; color:inherit;
+  padding:2px; border-radius:6px; opacity:.7; flex:0 0 auto;
+}
+#lg-gateway .lg-notice-close:hover{ opacity:1; }
+#lg-gateway .lg-a-notice{ display:none; }
+#lg-gateway[data-expired="on"] .lg-a-notice{ display:flex; flex-direction:row; }
+
+#lg-gateway .lg-error{
+  display:none; align-items:flex-start; gap:10px;
+  padding:11px 13px; border-radius:10px; margin-block-end:14px;
+  background:var(--error-weak); border-inline-start:3px solid var(--error);
+  color:var(--error); font-size:13px; line-height:1.45; font-weight:500;
+}
+#lg-gateway[data-error="on"] .lg-error{ display:flex; }
+#lg-gateway .lg-error .lg-icon{ margin-block-start:1px; }
+
+/* ---------- form ---------- */
+#lg-gateway .lg-form{ display:flex; flex-direction:column; flex:1; min-width:0; }
+/* auto margins, so whatever slack the neighbouring tiles hand the form tile
+   is shared evenly above and below the fields instead of pooling in one hole. */
+#lg-gateway .lg-fields{ display:flex; flex-direction:column; gap:16px; margin-block:auto; }
+#lg-gateway .lg-field{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+#lg-gateway .lg-label{ font-size:12.5px; font-weight:600; color:var(--text-2); }
+#lg-gateway .lg-input-wrap{
+  position:relative; display:flex; align-items:center;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:10px;
+  transition:border-color var(--lg-fast), background var(--lg-fast), box-shadow var(--lg-fast);
+}
+#lg-gateway .lg-input-wrap:hover{ border-color:var(--border-strong); }
+#lg-gateway .lg-input-wrap:focus-within{
+  border-color:var(--accent); background:var(--surface);
+  box-shadow:0 0 0 3px var(--accent-weak);
+}
+#lg-gateway .lg-input-icon{ position:absolute; inset-inline-start:12px; color:var(--text-3); pointer-events:none; }
+#lg-gateway .lg-input-wrap:focus-within .lg-input-icon{ color:var(--accent); }
+#lg-gateway .lg-input{
+  flex:1; min-width:0; width:100%;
+  border:none; background:transparent; color:var(--text);
+  font-size:16px; font-weight:500; line-height:1.4;
+  padding-block:11px; padding-inline:40px 12px;
+  border-radius:10px;
+}
+#lg-gateway .lg-input::placeholder{ color:var(--text-3); font-weight:400; opacity:1; }
+#lg-gateway .lg-input--reveal{ padding-inline-end:42px; }
+#lg-gateway .lg-reveal{
+  position:absolute; inset-inline-end:6px;
+  width:30px; height:30px; border:none; background:transparent; cursor:pointer;
+  color:var(--text-3); display:flex; align-items:center; justify-content:center;
+  border-radius:8px; transition:color var(--lg-fast), background var(--lg-fast);
+}
+#lg-gateway .lg-reveal:hover{ color:var(--accent); background:var(--accent-weak); }
+#lg-gateway .lg-reveal .lg-i-eye-off{ display:none; }
+#lg-gateway .lg-reveal[aria-pressed="true"] .lg-i-eye{ display:none; }
+#lg-gateway .lg-reveal[aria-pressed="true"] .lg-i-eye-off{ display:block; }
+
+/* The server's message names all three fields, so all three carry the state. */
+#lg-gateway[data-error="on"] .lg-field--auth .lg-input-wrap,
+#lg-gateway[data-error="on"] .lg-field--2fa .lg-input-wrap{ border-color:var(--error); }
+#lg-gateway[data-error="on"] .lg-field--auth .lg-input-wrap:focus-within,
+#lg-gateway[data-error="on"] .lg-field--2fa .lg-input-wrap:focus-within{ box-shadow:0 0 0 3px var(--error-weak); }
+#lg-gateway[data-error="on"] .lg-field--auth .lg-input-icon,
+#lg-gateway[data-error="on"] .lg-field--2fa .lg-input-icon{ color:var(--error); }
+
+/* second factor. Hidden until the server says this account has one. */
+#lg-gateway .lg-field--2fa{ display:none; }
+#lg-gateway[data-twofactor="on"] .lg-field--2fa{ display:flex; animation:lg-reveal .3s cubic-bezier(.22,1,.36,1) both; }
+@keyframes lg-reveal{
+  from{ opacity:0; transform:translateY(-6px); }
+  to  { opacity:1; transform:none; }
+}
+#lg-gateway .lg-hint{ font-size:11.5px; color:var(--text-3); }
+
+/* ---------- submit ---------- */
+#lg-gateway .lg-submit-row{ padding-block-start:22px; }
+#lg-gateway .lg-submit{
+  position:relative; width:100%; min-height:46px;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  border:1px solid transparent; border-radius:10px; cursor:pointer;
+  background:var(--accent-strong); color:var(--on-accent);
+  font-size:14px; font-weight:700; letter-spacing:.02em;
+  transition:filter var(--lg-fast), transform var(--lg-fast);
+}
+#lg-gateway .lg-submit:hover{ filter:brightness(1.07); }
+#lg-gateway .lg-submit:active{ transform:translateY(1px); }
+#lg-gateway .lg-submit[aria-busy="true"]{ cursor:progress; filter:none; }
+#lg-gateway .lg-submit[aria-busy="true"] .lg-submit-label{ display:none; }
+#lg-gateway .lg-submit-spin{ display:none; }
+#lg-gateway .lg-submit[aria-busy="true"] .lg-submit-spin{ display:block; }
+#lg-gateway .lg-spinner{
+  display:block; width:18px; height:18px; border-radius:50%;
+  border:2px solid currentColor; border-top-color:transparent; opacity:.85;
+  animation:lg-spin .7s linear infinite;
+}
+@keyframes lg-spin{ to{ transform:rotate(360deg); } }
+
+/* ---------- mockup scaffold. Not part of the design. ---------- */
+#lg-gateway .lg-scaffold{
+  margin-block-start:18px; width:100%; max-width:980px; margin-inline:auto;
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px;
+  padding:8px 10px; border:1px dashed var(--border); border-radius:999px;
+  background:var(--surface);
+}
+#lg-gateway .lg-scaffold-label{
+  font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--text-3); margin-inline-end:4px;
+}
+#lg-gateway .lg-scaffold-btn{
+  border:1px solid var(--border); background:var(--surface-2); color:var(--text-2);
+  font-size:11.5px; font-weight:600; padding:5px 11px; border-radius:999px; cursor:pointer;
+  transition:background var(--lg-fast), color var(--lg-fast), border-color var(--lg-fast);
+}
+#lg-gateway .lg-scaffold-btn:hover{ border-color:var(--border-strong); color:var(--text); }
+#lg-gateway .lg-scaffold-btn[aria-pressed="true"]{ background:var(--accent-weak); color:var(--accent); border-color:var(--accent); }
+#lg-gateway .lg-scaffold-key{ font-family:var(--font-mono); opacity:.6; margin-inline-start:5px; }
+
+/* ---------- motion ---------- */
+#lg-gateway{ --lg-fast:.15s; --lg-med:.25s; }
+@media (prefers-reduced-motion: reduce){
+  #lg-gateway *, #lg-gateway *::before, #lg-gateway *::after{
+    animation-duration:.001ms !important; animation-iteration-count:1 !important;
+    animation-delay:0ms !important; transition-duration:.001ms !important;
+  }
+  #lg-gateway .lg-tile, #lg-gateway .lg-scaffold{ animation:none; opacity:1; transform:none; }
+  #lg-gateway .lg-spinner{ animation:none; }
+  #lg-gateway .lg-words b{ transition:none; }
+}
+
+/* ---------- narrow ---------- */
+@media (max-width:479px){
+  #lg-gateway .lg-page{ padding:16px 12px 14px; }
+  #lg-gateway .lg-tile{ padding:14px 15px; }
+  #lg-gateway .lg-tile--form{ padding:16px 16px 18px; }
+  #lg-gateway .lg-words{ font-size:20px; }
+  #lg-gateway .lg-version{ font-size:20px; }
+  #lg-gateway .lg-scaffold{ border-radius:14px; }
+}
+</style>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+<defs>
+<symbol id="lg-i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></symbol>
+<symbol id="lg-i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="10.5" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+<symbol id="lg-i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4"/><path d="M12 12h9"/><path d="M17.5 12v3.2"/><path d="M20.5 12v2.2"/></symbol>
+<symbol id="lg-i-eye" viewBox="0 0 24 24"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="lg-i-eye-off" viewBox="0 0 24 24"><path d="M3.3 3.3l17.4 17.4"/><path d="M10.6 5.2A10.5 10.5 0 0 1 12 5c6.2 0 10 7 10 7a17.6 17.6 0 0 1-3.9 4.8"/><path d="M6.5 6.7C3.8 8.6 2 12 2 12s3.8 7 10 7c1.4 0 2.7-.3 3.9-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+<symbol id="lg-i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3"/><line x1="12" y1="2" x2="12" y2="4.6"/><line x1="12" y1="19.4" x2="12" y2="22"/><line x1="2" y1="12" x2="4.6" y2="12"/><line x1="19.4" y1="12" x2="22" y2="12"/><line x1="4.7" y1="4.7" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.3" y2="19.3"/><line x1="4.7" y1="19.3" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.3" y2="4.7"/></symbol>
+<symbol id="lg-i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7.3 7.3 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="lg-i-shield-check" viewBox="0 0 24 24"><path d="M12 3 19 6v5c0 4.8-3.2 8.6-7 10-3.8-1.4-7-5.2-7-10V6l7-3z"/><polyline points="8.8 11.8 11.2 14.2 15.4 10"/></symbol>
+<symbol id="lg-i-shield-alert" viewBox="0 0 24 24"><path d="M12 3 19 6v5c0 4.8-3.2 8.6-7 10-3.8-1.4-7-5.2-7-10V6l7-3z"/><line x1="12" y1="8.4" x2="12" y2="13"/><line x1="12" y1="15.8" x2="12.01" y2="15.8"/></symbol>
+<symbol id="lg-i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c2.4 2.5 3.8 5.7 3.8 9s-1.4 6.5-3.8 9c-2.4-2.5-3.8-5.7-3.8-9s1.4-6.5 3.8-9z"/></symbol>
+<symbol id="lg-i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor" stroke="none"/></symbol>
+<symbol id="lg-i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="7.6" x2="12" y2="12.8"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
+<symbol id="lg-i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 6.8 12 12 15.6 13.8"/></symbol>
+<symbol id="lg-i-x" viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></symbol>
+<symbol id="lg-i-chevron" viewBox="0 0 24 24"><polyline points="6.5 9.5 12 15 17.5 9.5"/></symbol>
+<symbol id="lg-i-tag" viewBox="0 0 24 24"><path d="M11.4 3H5a1 1 0 0 0-1 1v6.4a1 1 0 0 0 .3.7l9.1 9.1a1 1 0 0 0 1.4 0l6.4-6.4a1 1 0 0 0 0-1.4l-9.1-9.1a1 1 0 0 0-.7-.3z"/><circle cx="7.8" cy="7.8" r="1.4"/></symbol>
+<symbol id="lg-i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></symbol>
+<symbol id="lg-i-shield" viewBox="0 0 24 24"><path d="M12 3 19 6v5c0 4.8-3.2 8.6-7 10-3.8-1.4-7-5.2-7-10V6l7-3z"/></symbol>
+</defs>
+</svg>
+
+<div class="lg-page">
+
+  <main class="lg-main">
+    <div class="lg-corner">
+      <button type="button" class="lg-round-btn" id="lgThemeQuick" aria-pressed="false" aria-label="Theme" title="Theme">
+        <svg class="lg-icon lg-icon-16 lg-i-sun" aria-hidden="true"><use href="#lg-i-sun"></use></svg>
+        <svg class="lg-icon lg-icon-16 lg-i-moon" aria-hidden="true"><use href="#lg-i-moon"></use></svg>
+      </button>
+    </div>
+
+    <div class="lg-grid">
+
+      <!-- session expired. The page can arrive carrying this. -->
+      <div class="lg-tile lg-notice lg-notice--info lg-a-notice" id="lgNotice" role="status">
+        <svg class="lg-icon lg-icon-16" aria-hidden="true"><use href="#lg-i-clock"></use></svg>
+        <p class="lg-notice-text">Your session has expired, please log in again</p>
+        <button type="button" class="lg-notice-close" id="lgNoticeClose" aria-label="Dismiss">
+          <svg class="lg-icon lg-icon-14" aria-hidden="true"><use href="#lg-i-x"></use></svg>
+        </button>
+      </div>
+
+      <!-- the dominant tile -->
+      <section class="lg-tile lg-tile--form lg-a-form" aria-labelledby="lgFormTitle">
+        <div class="lg-tile-head">
+          <h1 class="lg-eyebrow" id="lgFormTitle">
+            <svg class="lg-icon lg-icon-14" aria-hidden="true"><use href="#lg-i-shield"></use></svg>
+            Account
+          </h1>
+        </div>
+
+        <form class="lg-form ant-form" id="lgForm" novalidate>
+
+          <div class="lg-error" id="lgError" role="alert">
+            <svg class="lg-icon lg-icon-16" aria-hidden="true"><use href="#lg-i-alert"></use></svg>
+            <span>Invalid username or password or two-factor code.</span>
+          </div>
+
+          <div class="lg-fields">
+
+            <div class="lg-field lg-field--auth">
+              <label class="lg-label" for="lg-username">Username</label>
+              <div class="lg-input-wrap">
+                <svg class="lg-icon lg-icon-16 lg-input-icon" aria-hidden="true"><use href="#lg-i-user"></use></svg>
+                <input class="lg-input ant-input" id="lg-username" name="username" type="text"
+                       autocomplete="username" placeholder="Username" spellcheck="false"
+                       autocapitalize="none" required>
+              </div>
+            </div>
+
+            <div class="lg-field lg-field--auth">
+              <label class="lg-label" for="lg-password">Password</label>
+              <div class="lg-input-wrap">
+                <svg class="lg-icon lg-icon-16 lg-input-icon" aria-hidden="true"><use href="#lg-i-lock"></use></svg>
+                <input class="lg-input ant-input lg-input--reveal" id="lg-password" name="password" type="password"
+                       autocomplete="current-password" placeholder="Password" required>
+                <button type="button" class="lg-reveal" id="lgReveal" aria-pressed="false"
+                        aria-controls="lg-password" aria-label="Show password" title="Show password">
+                  <svg class="lg-icon lg-icon-16 lg-i-eye" aria-hidden="true"><use href="#lg-i-eye"></use></svg>
+                  <svg class="lg-icon lg-icon-16 lg-i-eye-off" aria-hidden="true"><use href="#lg-i-eye-off"></use></svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="lg-field lg-field--2fa" id="lgTwoFactor">
+              <label class="lg-label" for="lg-code">Code</label>
+              <div class="lg-input-wrap">
+                <svg class="lg-icon lg-icon-16 lg-input-icon" aria-hidden="true"><use href="#lg-i-key"></use></svg>
+                <input class="lg-input ant-input" id="lg-code" name="twoFactorCode" type="text"
+                       autocomplete="one-time-code" inputmode="numeric" placeholder="Code"
+                       spellcheck="false" required>
+              </div>
+              <p class="lg-hint">Two-factor authentication is enabled for this account.</p>
+            </div>
+
+          </div>
+
+          <div class="lg-submit-row">
+            <button type="submit" class="lg-submit" id="lgSubmit" aria-busy="false">
+              <span class="lg-submit-label">Log In</span>
+              <span class="lg-submit-spin" aria-hidden="true"><span class="lg-spinner"></span></span>
+              <span class="lg-sr" id="lgSubmitSr"></span>
+            </button>
+          </div>
+
+        </form>
+      </section>
+
+      <!-- identity -->
+      <section class="lg-tile lg-tile--ident lg-a-ident" aria-label="vpn-ui">
+        <div class="lg-tile-head lg-tile-head--flush">
+          <p class="lg-eyebrow">Panel</p>
+        </div>
+        <p class="lg-wordmark lg-ltr"><span class="lg-brk">[</span>VPN-UI<span class="lg-brk">]</span></p>
+        <p class="lg-words" aria-hidden="true">
+          <b class="is-visible">Hello</b>
+          <b class="is-hidden">Welcome</b>
+        </p>
+        <span class="lg-sr">Welcome</span>
+      </section>
+
+      <!-- version -->
+      <section class="lg-tile lg-tile--build lg-a-build" aria-label="Version">
+        <div class="lg-tile-head">
+          <p class="lg-eyebrow">
+            <svg class="lg-icon lg-icon-14" aria-hidden="true"><use href="#lg-i-tag"></use></svg>
+            Version
+          </p>
+        </div>
+        <p class="lg-version lg-ltr">v1.8.1</p>
+      </section>
+
+      <!-- transport security of THIS page. Both states are real conditions. -->
+      <section class="lg-tile lg-a-tls" aria-label="Connection">
+        <div class="lg-tile-head">
+          <p class="lg-eyebrow">Connection</p>
+        </div>
+        <div class="lg-tls-body lg-tls-secure">
+          <span class="lg-chip lg-chip--ok">
+            <svg class="lg-icon lg-icon-14" aria-hidden="true"><use href="#lg-i-shield-check"></use></svg>
+            TLS active
+          </span>
+          <p class="lg-caption">This page is served over HTTPS.</p>
+        </div>
+        <div class="lg-tls-body lg-tls-insecure">
+          <span class="lg-chip lg-chip--warn">
+            <svg class="lg-icon lg-icon-14" aria-hidden="true"><use href="#lg-i-shield-alert"></use></svg>
+            Not secure
+          </span>
+          <p class="lg-caption">This connection is not secure. Please avoid entering sensitive information until TLS is activated for data protection.</p>
+        </div>
+      </section>
+
+      <!-- theme and language, out of the gear popover and into a tile -->
+      <section class="lg-tile lg-a-pref" aria-label="Settings">
+        <div class="lg-tile-head">
+          <p class="lg-eyebrow">Settings</p>
+        </div>
+
+        <div class="lg-pref-body">
+        <div class="lg-pref-row">
+          <span class="lg-pref-label" id="lgThemeLabel">Theme</span>
+          <div class="lg-seg" role="radiogroup" aria-labelledby="lgThemeLabel">
+            <button type="button" class="lg-seg-btn" role="radio" aria-checked="false" data-theme-value="light">Light</button>
+            <button type="button" class="lg-seg-btn" role="radio" aria-checked="true" data-theme-value="dark">Dark</button>
+            <button type="button" class="lg-seg-btn" role="radio" aria-checked="false" data-theme-value="ultra-dark">Ultra Dark</button>
+          </div>
+        </div>
+
+        <div class="lg-pref-row">
+          <label class="lg-pref-label" for="lg-lang">Language</label>
+          <span class="lg-select-wrap">
+            <svg class="lg-icon lg-icon-16 lg-select-icon" aria-hidden="true"><use href="#lg-i-globe"></use></svg>
+            <select class="lg-select" id="lg-lang" name="lang">
+              <option value="en-US" selected>en-US &#183; English</option>
+              <option value="fa-IR">fa-IR &#183; &#1601;&#1575;&#1585;&#1587;&#1740;</option>
+              <option value="ar-EG">ar-EG &#183; &#1575;&#1604;&#1593;&#1585;&#1576;&#1610;&#1577;</option>
+              <option value="zh-CN">zh-CN &#183; &#31616;&#20307;&#20013;&#25991;</option>
+              <option value="zh-TW">zh-TW &#183; &#32321;&#39636;&#20013;&#25991;</option>
+              <option value="ja-JP">ja-JP &#183; &#26085;&#26412;&#35486;</option>
+              <option value="ru-RU">ru-RU &#183; &#1056;&#1091;&#1089;&#1089;&#1082;&#1080;&#1081;</option>
+              <option value="uk-UA">uk-UA &#183; &#1059;&#1082;&#1088;&#1072;&#1111;&#1085;&#1089;&#1100;&#1082;&#1080;&#1081;</option>
+              <option value="vi-VN">vi-VN &#183; Ti&#7871;ng Vi&#7879;t</option>
+              <option value="es-ES">es-ES &#183; Espa&#241;ol</option>
+              <option value="pt-BR">pt-BR &#183; Portugu&#234;s</option>
+              <option value="tr-TR">tr-TR &#183; T&#252;rk&#231;e</option>
+              <option value="id-ID">id-ID &#183; Indonesian</option>
+            </select>
+            <svg class="lg-icon lg-icon-16 lg-select-chev" aria-hidden="true"><use href="#lg-i-chevron"></use></svg>
+          </span>
+        </div>
+        </div>
+      </section>
+
+      <!-- The tile that has nothing true to say yet. It is the shape of the
+           dashboard, waiting, not fabricated data. -->
+      <section class="lg-tile lg-tile--ghost lg-a-ghost" aria-label="System status">
+        <div class="lg-tile-head">
+          <p class="lg-eyebrow">
+            <svg class="lg-icon lg-icon-14" aria-hidden="true"><use href="#lg-i-grid"></use></svg>
+            System Status
+          </p>
+        </div>
+        <div class="lg-ghost-grid" aria-hidden="true">
+          <div class="lg-ghost-cell"><span class="lg-ghost-bar lg-ghost-bar--short"></span><span class="lg-ghost-bar lg-ghost-bar--mid"></span></div>
+          <div class="lg-ghost-cell"><span class="lg-ghost-bar lg-ghost-bar--short"></span><span class="lg-ghost-bar lg-ghost-bar--mid"></span></div>
+          <div class="lg-ghost-cell"><span class="lg-ghost-bar lg-ghost-bar--short"></span><span class="lg-ghost-bar lg-ghost-bar--mid"></span></div>
+          <div class="lg-ghost-cell"><span class="lg-ghost-bar lg-ghost-bar--short"></span><span class="lg-ghost-bar lg-ghost-bar--mid"></span></div>
+        </div>
+        <p class="lg-caption">Available after you log in.</p>
+      </section>
+
+    </div>
+  </main>
+
+  <div class="lg-scaffold" role="group" aria-label="Mockup states">
+    <span class="lg-scaffold-label">Mockup states</span>
+    <button type="button" class="lg-scaffold-btn" data-toggle="twofactor" aria-pressed="false">Code field<span class="lg-scaffold-key">2</span></button>
+    <button type="button" class="lg-scaffold-btn" data-toggle="error" aria-pressed="false">Error<span class="lg-scaffold-key">e</span></button>
+    <button type="button" class="lg-scaffold-btn" data-toggle="loading" aria-pressed="false">Loading<span class="lg-scaffold-key">l</span></button>
+    <button type="button" class="lg-scaffold-btn" data-toggle="expired" aria-pressed="false">Session expired<span class="lg-scaffold-key">x</span></button>
+    <button type="button" class="lg-scaffold-btn" data-toggle="tls" aria-pressed="false">Not secure<span class="lg-scaffold-key">n</span></button>
+    <button type="button" class="lg-scaffold-btn" data-toggle="rtl" aria-pressed="false">RTL<span class="lg-scaffold-key">r</span></button>
+    <button type="button" class="lg-scaffold-btn" data-toggle="replay">Replay compose<span class="lg-scaffold-key">p</span></button>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var root = document.getElementById('lg-gateway');
+  if(!root) return;
+  var docEl = document.documentElement;
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- theme. Stamps data-theme on <html>, exactly like the panel. --- */
+  var THEMES = ['light','dark','ultra-dark'];
+  var segBtns = root.querySelectorAll('.lg-seg-btn');
+  var quickBtn = document.getElementById('lgThemeQuick');
+
+  function systemTheme(){
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function currentTheme(){
+    var attr = docEl.getAttribute('data-theme');
+    return THEMES.indexOf(attr) === -1 ? systemTheme() : attr;
+  }
+  function applyTheme(t){
+    if(THEMES.indexOf(t) === -1) t = systemTheme();
+    docEl.setAttribute('data-theme', t);
+    var isDarkish = (t !== 'light');
+    root.setAttribute('data-eff-theme', isDarkish ? 'dark' : 'light');
+    if(quickBtn){
+      quickBtn.setAttribute('aria-pressed', isDarkish ? 'true' : 'false');
+    }
+    segBtns.forEach(function(b){
+      b.setAttribute('aria-checked', b.getAttribute('data-theme-value') === t ? 'true' : 'false');
+      b.tabIndex = b.getAttribute('data-theme-value') === t ? 0 : -1;
+    });
+  }
+  applyTheme(currentTheme());
+
+  segBtns.forEach(function(b, i){
+    b.addEventListener('click', function(){ applyTheme(b.getAttribute('data-theme-value')); });
+    /* roving focus, so the radiogroup behaves like one */
+    b.addEventListener('keydown', function(ev){
+      var d = 0;
+      if(ev.key === 'ArrowRight' || ev.key === 'ArrowDown') d = 1;
+      else if(ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') d = -1;
+      else return;
+      ev.preventDefault();
+      var next = segBtns[(i + d + segBtns.length) % segBtns.length];
+      applyTheme(next.getAttribute('data-theme-value'));
+      next.focus();
+    });
+  });
+  if(quickBtn){
+    quickBtn.addEventListener('click', function(){
+      applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
+    });
+  }
+
+  /* ---------- password reveal ---------- */
+  var pw = document.getElementById('lg-password');
+  var reveal = document.getElementById('lgReveal');
+  if(reveal && pw){
+    reveal.addEventListener('click', function(){
+      var shown = reveal.getAttribute('aria-pressed') === 'true';
+      var next = !shown;
+      pw.type = next ? 'text' : 'password';
+      reveal.setAttribute('aria-pressed', next ? 'true' : 'false');
+      reveal.setAttribute('aria-label', next ? 'Hide password' : 'Show password');
+      reveal.setAttribute('title', next ? 'Hide password' : 'Show password');
+      pw.focus();
+    });
+  }
+
+  /* ---------- states ---------- */
+  var submit = document.getElementById('lgSubmit');
+  var submitSr = document.getElementById('lgSubmitSr');
+  var codeInput = document.getElementById('lg-code');
+  var authInputs = root.querySelectorAll('.lg-field--auth .lg-input');
+
+  var state = {
+    twofactor:false,
+    error:false,
+    loading:false,
+    expired:false,
+    /* tls pressed == "not secure" */
+    tls:false,
+    rtl:false
+  };
+
+  function render(){
+    root.setAttribute('data-twofactor', state.twofactor ? 'on' : 'off');
+    root.setAttribute('data-error', state.error ? 'on' : 'off');
+    root.setAttribute('data-expired', state.expired ? 'on' : 'off');
+    root.setAttribute('data-tls', state.tls ? 'off' : 'on');
+
+    authInputs.forEach(function(el){
+      if(state.error) el.setAttribute('aria-invalid','true');
+      else el.removeAttribute('aria-invalid');
+    });
+    if(codeInput){
+      if(state.error && state.twofactor) codeInput.setAttribute('aria-invalid','true');
+      else codeInput.removeAttribute('aria-invalid');
+    }
+
+    if(submit){
+      submit.setAttribute('aria-busy', state.loading ? 'true' : 'false');
+      submit.disabled = state.loading;
+      if(submitSr) submitSr.textContent = state.loading ? 'Logging in' : '';
+    }
+
+    root.querySelectorAll('.lg-scaffold-btn[data-toggle]').forEach(function(b){
+      var k = b.getAttribute('data-toggle');
+      if(k in state) b.setAttribute('aria-pressed', state[k] ? 'true' : 'false');
+    });
+
+    /* dir only. The copy stays English, so claiming lang="fa" would lie to
+       a screen reader about what it is reading. */
+    docEl.setAttribute('dir', state.rtl ? 'rtl' : 'ltr');
+  }
+
+  /* The transport chip states the truth about THIS page, then the scaffold
+     can override it so both designs are reviewable. */
+  state.tls = (window.location.protocol !== 'https:');
+  render();
+
+  function toggle(key){
+    if(key === 'replay'){ replay(); return; }
+    if(!(key in state)) return;
+    state[key] = !state[key];
+    render();
+    if(key === 'twofactor' && state.twofactor && codeInput){
+      codeInput.focus();
+    }
+  }
+
+  root.querySelectorAll('.lg-scaffold-btn[data-toggle]').forEach(function(b){
+    b.addEventListener('click', function(){ toggle(b.getAttribute('data-toggle')); });
+  });
+
+  var KEYS = { '2':'twofactor', 'e':'error', 'l':'loading', 'x':'expired', 'n':'tls', 'r':'rtl', 'p':'replay' };
+  document.addEventListener('keydown', function(ev){
+    if(ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var t = ev.target;
+    if(t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    var key = KEYS[(ev.key || '').toLowerCase()];
+    if(!key) return;
+    ev.preventDefault();
+    toggle(key);
+  });
+
+  var noticeClose = document.getElementById('lgNoticeClose');
+  if(noticeClose){
+    noticeClose.addEventListener('click', function(){ state.expired = false; render(); });
+  }
+
+  /* Submitting shows the loading state, the way the real page does. */
+  var form = document.getElementById('lgForm');
+  if(form){
+    form.addEventListener('submit', function(ev){
+      ev.preventDefault();
+      if(state.loading) return;
+      state.loading = true; state.error = false; render();
+      window.setTimeout(function(){
+        state.loading = false;
+        /* No server here, so the honest outcome to show is the failure. */
+        state.error = true;
+        render();
+      }, 1100);
+    });
+  }
+
+  /* ---------- the one moment: the tiles compose, then hold still ---------- */
+  function replay(){
+    if(reduceMotion) return;
+    var tiles = root.querySelectorAll('.lg-tile, .lg-scaffold');
+    tiles.forEach(function(el){ el.style.animation = 'none'; });
+    void root.offsetWidth;
+    tiles.forEach(function(el){ el.style.animation = ''; });
+  }
+
+  /* ---------- Hello / Welcome, the panel's own word swap ---------- */
+  var words = root.querySelector('.lg-words');
+  if(words && !reduceMotion){
+    var list = words.querySelectorAll('b');
+    var idx = 0;
+    window.setInterval(function(){
+      var cur = list[idx];
+      idx = (idx + 1) % list.length;
+      var next = list[idx];
+      cur.classList.remove('is-visible'); cur.classList.add('is-hidden');
+      next.classList.remove('is-hidden'); next.classList.add('is-visible');
+    }, 2000);
+  }
+})();
+</script>
+</div>
+</body>
+</html>

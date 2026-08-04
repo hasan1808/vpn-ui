@@ -1,0 +1,758 @@
+{{define "component/clientActions"}}
+<script>
+  // Everything the client surface does, as a Vue mixin, so the page that OWNS
+  // clients and the page that merely counts them share one implementation.
+  //
+  // It lives in a template rather than assets/js because half of these methods
+  // build user-visible strings with {{ "{{" }} i18n ... {{ "}}" }}, which only Go's html/template
+  // expands; a plain .js asset is served verbatim and would ship the literal
+  // braces to the browser.
+  //
+  // The host page owes this mixin the following, because each one means something
+  // different depending on what the page is a list OF:
+  //   methods: submit(url, data, modal)   the write funnel; inbounds.html also gates
+  //                                       inbound CREATES on the core being installed
+  //            getDBInbounds()            re-read the inbound list after a write
+  //            loading(spinning)          page-level spinner
+  //            refreshResellerBalance()   re-read the reseller's balance chip
+  //   state:   dbInbounds, inbounds, membershipIndex, onlineClients, lastOnlineMap,
+  //            selInbounds, selClients, expireDiff, trafficDiff
+  //
+  // Vue merges a page's own methods over a mixin's, so a page may override any of
+  // the rest the same way.
+  //
+  // Four of these open a modal the CLIENTS page includes and the Inbounds page
+  // does not, so calling one from a page that omits the include is a
+  // ReferenceError rather than a no-op:
+  //
+  //   showWgcConfig                   -> modals/wgcConfigModal
+  //   showAwgConfig                   -> modals/awgConfigModal
+  //   showGreConfig                   -> modals/greConfigModal
+  //   showSshConfig                   -> modals/sshConfigModal
+  //
+  // The rest reach only qrcodeModal and inboundInfoModal, which both pages carry.
+  // Inbounds uses eight of these in total and is fine; a page that starts calling
+  // one of the four has to add the include with it.
+  //
+  // Adding and editing an account are NOT here. They belong to the Clients page's
+  // own forms (modals/clientMembershipModal and modals/clientsBulkModal), which
+  // are account-shaped rather than inbound-shaped: they carry one credential set
+  // and a membership list, where a mixin helper could only ever speak for the one
+  // inbound it was handed.
+
+  // Every bulk operation the modal can offer, in the order it lists them.
+  const BULK_OPS = ['addDays', 'subDays', 'addTraffic', 'subTraffic',
+    'enable', 'disable', 'freeze', 'unfreeze', 'delete'];
+
+  // Two of them are withheld from a reseller. subDays is refused outright by the
+  // server for a reseller, so offering it only buys them a failed run. addDays is
+  // dropped when their profile derives an account's duration from its traffic
+  // (daysPerGb): the day count is recomputed from the GB on the next edit, so a
+  // manual change there looks applied and then quietly is not.
+  // Presentation only, as always: the server re-checks both.
+  function isBulkOpAllowed(op) {
+    if (op === 'subDays' && RESELLER.isReseller) return false;
+    if (op === 'addDays' && (Number(RESELLER.daysPerGb) || 0) > 0) return false;
+    return true;
+  }
+
+  // The first option that survives the filter, so the select never opens pointing
+  // at an operation it does not render. An a-select bound to a value with no
+  // matching option shows the bare value string instead of a label.
+  const DEFAULT_BULK_OP = BULK_OPS.find(isBulkOpAllowed) || 'addTraffic';
+
+  // One account's identity, the way the server keys it (accountKey in
+  // web/service/account.go): the email, trimmed and lower-cased. Two rows that
+  // reduce to the same key are the SAME account on two inbounds, not two accounts.
+  function accountKeyOf(email) {
+    return typeof email === 'string' ? email.trim().toLowerCase() : '';
+  }
+
+  const ClientActionsMixin = {
+    // Selection and bulk-run state travel with the methods that drive them, so a
+    // page only has to mix this in to get a working selection.
+    data() {
+      return {
+        selInbounds: [],
+        selClients: [],
+        bulkOps: {
+          visible: false,
+          confirmLoading: false,
+          op: DEFAULT_BULK_OP,
+          amount: 1,
+          unit: 'GB',
+          skipFirstUse: false,
+          skipUnlimited: false,
+          skipDisabled: false,
+          progress: { running: false, done: 0, total: 0, applied: 0, skipped: 0, etaText: '' },
+        },
+      };
+    },
+    computed: {
+      // Which inbounds serve each account, keyed by account identity (the email,
+      // the way accountKey reduces it server-side).
+      //
+      // No request behind it: an account served on several inbounds is written into
+      // settings.clients on every one of them (the projection in
+      // web/service/accountproject.go), so the list this page already holds IS the
+      // membership set. Cached as a computed because building it parses every
+      // inbound's settings JSON, and both readers run per rendered row.
+      membershipIndex() {
+        const index = {};
+        this.dbInbounds.forEach(dbInbound => {
+          const clients = this.getInboundClients(dbInbound);
+          if (!Array.isArray(clients)) return;
+          const entry = {
+            id: dbInbound.id,
+            remark: dbInbound.remark,
+            protocol: dbInbound.protocol,
+            port: dbInbound.port,
+          };
+          clients.forEach(client => {
+            const key = accountKeyOf(client && client.email);
+            if (!key) return;
+            if (!index[key]) index[key] = [];
+            index[key].push(entry);
+          });
+        });
+        return index;
+      },
+    },
+    methods: {
+      clearSelection() { this.selInbounds = []; this.selClients = []; },
+      resolveSelectedTargets() {
+        const map = {};
+        const add = (inboundId, email) => { if (email) map[inboundId + ':' + email] = { inboundId, email }; };
+        this.selInbounds.forEach(id => {
+          const dbInbound = this.dbInbounds.find(r => r.id === id);
+          (this.getInboundClients(dbInbound) || []).forEach(c => add(id, c.email));
+        });
+        this.selClients.forEach(k => { const i = k.indexOf(':'); add(Number(k.slice(0, i)), k.slice(i + 1)); });
+        return Object.values(map);
+      },
+      selectedCount() { return this.resolveSelectedTargets().length; },
+      inboundTargets(dbInbound) {
+        return (this.getInboundClients(dbInbound) || [])
+          .map(c => c.email).filter(Boolean)
+          .map(email => ({ inboundId: dbInbound.id, email }));
+      },
+      exportSelectedTxt() { this.exportTxt(this.resolveSelectedTargets(), 'accounts'); },
+      exportSelectedPdf() { this.exportPdf(this.resolveSelectedTargets(), 'accounts'); },
+      // --- bulk operations ----------------------------------------------
+      openBulkOps() {
+        if (!this.selectedCount()) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
+        this.bulkOps.progress = { running: false, done: 0, total: 0, applied: 0, skipped: 0, etaText: '' };
+        // A previous run may have left a selection that is no longer offered, and
+        // the value survives the modal closing. Snap it back to a rendered option.
+        if (!isBulkOpAllowed(this.bulkOps.op)) this.bulkOps.op = DEFAULT_BULK_OP;
+        this.bulkOps.visible = true;
+      },
+      // Template hook for the option filter; the rule itself lives in isBulkOpAllowed.
+      bulkOpAllowed(op) { return isBulkOpAllowed(op); },
+      bulkIsTrafficOp() { return ['addTraffic', 'subTraffic'].includes(this.bulkOps.op); },
+      bulkIsNumericOp() { return ['addDays', 'subDays', 'addTraffic', 'subTraffic'].includes(this.bulkOps.op); },
+      bulkProgressPercent() {
+        const p = this.bulkOps.progress;
+        return p.total > 0 ? Math.floor((p.done / p.total) * 100) : 0;
+      },
+      bulkFormatEta(sec) {
+        sec = Math.max(0, Math.ceil(sec));
+        if (sec >= 60) { return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's'; }
+        return sec + 's';
+      },
+      // Asks the server what this batch WOULD cost, and when a reseller cannot
+      // afford all of it, offers the part they can instead of failing the run.
+      //
+      // Returns the target list to actually send, or null to abandon. Admins and
+      // affordable batches pass straight through: the path that already works
+      // must not grow a dialog.
+      async bulkConfirmAffordable(base, targets) {
+        if (!RESELLER.isReseller) return targets;
+        let p = null;
+        try {
+          const msg = await HttpUtil.post('/panel/api/inbounds/bulkPreview',
+            { data: JSON.stringify(Object.assign({}, base, { targets })) });
+          if (!msg || !msg.success) return null;
+          p = msg.obj || {};
+        } catch (e) {
+          return null;
+        }
+        if (!p.isReseller || p.affordable) return targets;
+
+        const short = SizeFormatter.sizeFormat(Number(p.shortBytes) || 0);
+        const can = Number(p.canProcess) || 0;
+        const eligible = Number(p.eligible) || 0;
+        // Nothing fits, so there is no partial run to offer and asking them to
+        // confirm one would be a dialog with no useful answer.
+        if (can <= 0) {
+          this.$message.error('{{ i18n "pages.resellers.bulkShort" }} ' + short +
+            '. {{ i18n "pages.resellers.available" }}: ' +
+            SizeFormatter.sizeFormat(Number(p.availableBytes) || 0));
+          return null;
+        }
+        // The emails the server says fit, mapped back to full targets so the run
+        // posts the same (inbound, email) pairs it always does. Anything the
+        // server did not name is dropped, never guessed at.
+        const keep = new Set((p.processEmails || []).map(e => String(e).toLowerCase()));
+        const narrowed = targets.filter(t => keep.has(String(t.email || '').toLowerCase()));
+        const ok = await new Promise((resolve) => {
+          this.$confirm({
+            title: '{{ i18n "pages.inbounds.bulkOperations" }}',
+            content: '{{ i18n "pages.resellers.bulkShort" }} ' + short +
+              '. {{ i18n "pages.resellers.bulkPartial" }}: ' + can + ' / ' + eligible,
+            okText: '{{ i18n "confirm" }}',
+            cancelText: '{{ i18n "cancel" }}',
+            class: themeSwitcher.currentTheme,
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          });
+        });
+        return ok ? narrowed : null;
+      },
+      async runBulkOps() {
+        const b = this.bulkOps;
+        // Delete removes whatever is checked: a selected INBOUND is deleted wholesale
+        // (its accounts go with it, no per-client filtering), a selected ACCOUNT is
+        // removed on its own. Separate flow from the in-place client update ops.
+        if (b.op === 'delete') return this.runBulkDelete();
+        let targets = this.resolveSelectedTargets();
+        if (!targets.length) return;
+        const amount = Math.max(0, Number(b.amount) || 0);
+        const bytes = b.unit === 'MB' ? 1024 * 1024 : 1024 * 1024 * 1024;
+        const base = {
+          op: b.op,
+          days: this.bulkIsTrafficOp() ? 0 : amount,
+          amountBytes: this.bulkIsTrafficOp() ? Math.round(amount * bytes) : 0,
+          skipFirstUse: b.skipFirstUse,
+          skipUnlimited: b.skipUnlimited,
+          skipDisabled: b.skipDisabled,
+        };
+        // Priced before a single batch goes out. A reseller who cannot afford the
+        // whole run is told the shortfall and how many accounts fit, and either
+        // confirms the partial run or abandons it. Doing this per batch instead
+        // would ask them the same question five times mid-run, with some of it
+        // already spent.
+        targets = await this.bulkConfirmAffordable(base, targets);
+        if (!targets || !targets.length) return;
+        b.progress = { running: false, done: 0, total: 0, applied: 0, skipped: 0, etaText: '' };
+        // Batch the targets so the modal can show real per-item progress + ETA
+        // (the backend accepts an arbitrary target list, so this is honest progress,
+        // not a fake animation). One request per batch, sequential.
+        const BATCH = 20;
+        const batches = [];
+        for (let i = 0; i < targets.length; i += BATCH) batches.push(targets.slice(i, i + BATCH));
+        b.confirmLoading = true;
+        b.progress = { running: true, done: 0, total: targets.length, applied: 0, skipped: 0, etaText: '' };
+        const start = Date.now();
+        let ok = true;
+        for (let i = 0; i < batches.length; i++) {
+          const payload = Object.assign({}, base, { targets: batches[i] });
+          const msg = await HttpUtil.post('/panel/api/inbounds/bulkUpdateClients', { data: JSON.stringify(payload) });
+          if (!msg.success) { ok = false; break; }
+          const r = msg.obj || {};
+          b.progress.applied += (r.applied || 0);
+          b.progress.skipped += (r.skipped || 0);
+          b.progress.done += batches[i].length;
+          const elapsed = (Date.now() - start) / 1000;
+          const rate = elapsed > 0 ? b.progress.done / elapsed : 0;
+          const remaining = b.progress.total - b.progress.done;
+          b.progress.etaText = (rate > 0 && remaining > 0) ? this.bulkFormatEta(remaining / rate) : '';
+        }
+        b.progress.running = false;
+        b.confirmLoading = false;
+        // Refreshed whether or not the whole run succeeded: batches are applied one
+        // request at a time, so a run that broke on batch three still spent the
+        // balance the first two cost.
+        await this.refreshResellerBalance();
+        if (ok) {
+          b.visible = false;
+          this.$message.success('{{ i18n "pages.inbounds.bulkDone" }} {{ i18n "pages.inbounds.bulkAffected" }}: ' + b.progress.applied + ' {{ i18n "pages.inbounds.bulkSkipped" }}: ' + b.progress.skipped);
+          this.clearSelection();
+          await this.getDBInbounds();
+        }
+      },
+      bulkTickEta(start) {
+        const p = this.bulkOps.progress;
+        const elapsed = (Date.now() - start) / 1000;
+        const rate = elapsed > 0 ? p.done / elapsed : 0;
+        const remaining = p.total - p.done;
+        p.etaText = (rate > 0 && remaining > 0) ? this.bulkFormatEta(remaining / rate) : '';
+      },
+      async runBulkDelete() {
+        const b = this.bulkOps;
+        // Whole inbounds selected -> delete the inbound (its accounts go with it, no
+        // per-client filtering). Accounts selected on their own (inbound NOT wholesale-
+        // selected) -> delete just those.
+        const inboundIds = this.selInbounds.slice();
+        const clientTargets = this.selClients
+          .filter(k => !inboundIds.includes(Number(k.slice(0, k.indexOf(':')))))
+          .map(k => { const i = k.indexOf(':'); return { inboundId: Number(k.slice(0, i)), email: k.slice(i + 1) }; });
+        const totalUnits = inboundIds.length + clientTargets.length;
+        if (!totalUnits) return;
+        const okDel = await new Promise((resolve) => {
+          this.$confirm({
+            title: '{{ i18n "pages.inbounds.opDelete" }}',
+            content: '{{ i18n "pages.inbounds.bulkDeleteConfirm" }}'
+              .replace('%INBOUNDS%', inboundIds.length).replace('%CLIENTS%', clientTargets.length),
+            okText: '{{ i18n "delete" }}',
+            okType: 'danger',
+            class: themeSwitcher.currentTheme,
+            cancelText: '{{ i18n "cancel" }}',
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          });
+        });
+        if (!okDel) return;
+        b.confirmLoading = true;
+        b.progress = { running: true, done: 0, total: totalUnits, applied: 0, skipped: 0, etaText: '' };
+        const start = Date.now();
+        let ok = true;
+        // 1) whole inbounds (one request each; each triggers its own config regen).
+        for (const id of inboundIds) {
+          const msg = await HttpUtil.post('/panel/api/inbounds/del/' + id);
+          if (!msg.success) { ok = false; break; }
+          b.progress.applied++;
+          b.progress.done++;
+          this.bulkTickEta(start);
+        }
+        // 2) standalone accounts (batched, reuses the bulk 'delete' op).
+        if (ok && clientTargets.length) {
+          const base = {
+            op: 'delete', days: 0, amountBytes: 0,
+            skipFirstUse: b.skipFirstUse, skipUnlimited: b.skipUnlimited, skipDisabled: b.skipDisabled,
+          };
+          const BATCH = 20;
+          for (let i = 0; i < clientTargets.length; i += BATCH) {
+            const batch = clientTargets.slice(i, i + BATCH);
+            const msg = await HttpUtil.post('/panel/api/inbounds/bulkUpdateClients',
+              { data: JSON.stringify(Object.assign({}, base, { targets: batch })) });
+            if (!msg.success) { ok = false; break; }
+            const r = msg.obj || {};
+            b.progress.applied += (r.applied || 0);
+            b.progress.skipped += (r.skipped || 0);
+            b.progress.done += batch.length;
+            this.bulkTickEta(start);
+          }
+        }
+        b.progress.running = false;
+        b.confirmLoading = false;
+        // Same reason as runBulkOps: a partial delete has already credited back
+        // whatever the removed accounts never used.
+        await this.refreshResellerBalance();
+        if (ok) {
+          b.visible = false;
+          this.$message.success('{{ i18n "pages.inbounds.bulkDone" }} {{ i18n "pages.inbounds.bulkAffected" }}: ' + b.progress.applied + ' {{ i18n "pages.inbounds.bulkSkipped" }}: ' + b.progress.skipped);
+          this.clearSelection();
+          await this.getDBInbounds();
+        }
+      },
+      // Single definition in model/inbound.js, mirrored by clientIdentityKey() in
+      // web/service/inbound.go. Do not inline the switch here again.
+      getClientId(protocol, client) {
+        return getClientIdentity(protocol, client);
+      },
+      checkFallback(dbInbound) {
+        newDbInbound = new DBInbound(dbInbound);
+        if (dbInbound.listen.startsWith("@")) {
+          rootInbound = this.inbounds.find((i) =>
+            i.isTcp &&
+            ['trojan', 'vless'].includes(i.protocol) &&
+            i.settings.fallbacks.find(f => f.dest === dbInbound.listen)
+          );
+          if (rootInbound) {
+            newDbInbound.listen = rootInbound.listen;
+            newDbInbound.port = rootInbound.port;
+            newInbound = newDbInbound.toInbound();
+            newInbound.stream.security = rootInbound.stream.security;
+            newInbound.stream.tls = rootInbound.stream.tls;
+            newInbound.stream.externalProxy = rootInbound.stream.externalProxy;
+            newDbInbound.streamSettings = newInbound.stream.toString();
+          }
+        }
+        return newDbInbound;
+      },
+      isClientSel(inboundId, email) {
+        return this.selInbounds.includes(inboundId) || this.selClients.includes(inboundId + ':' + email);
+      },
+      toggleClientSel(inboundId, email, checked) {
+        // If the whole inbound was selected, unpack it into explicit per-client keys
+        // first, so unchecking one client keeps the others selected.
+        if (this.selInbounds.includes(inboundId)) {
+          const dbInbound = this.dbInbounds.find(r => r.id === inboundId);
+          const emails = (this.getInboundClients(dbInbound) || []).map(c => c.email).filter(Boolean);
+          this.selInbounds = this.selInbounds.filter(x => x !== inboundId);
+          emails.forEach(em => { const k = inboundId + ':' + em; if (!this.selClients.includes(k)) this.selClients.push(k); });
+        }
+        const key = inboundId + ':' + email;
+        if (checked) { if (!this.selClients.includes(key)) this.selClients.push(key); }
+        else { this.selClients = this.selClients.filter(k => k !== key); }
+      },
+      // Per-inbound "select all clients" (client-table header checkbox). Operates
+      // ONLY on selClients — never selInbounds — so the inbound row itself is never
+      // selected (a select-all of clients must not delete/select the inbound).
+      isAllClientsSel(dbInbound) {
+        if (!dbInbound) return false;
+        const emails = (this.getInboundClients(dbInbound) || []).map(c => c.email).filter(Boolean);
+        return emails.length > 0 && emails.every(em => this.isClientSel(dbInbound.id, em));
+      },
+      isSomeClientsSel(dbInbound) {
+        if (!dbInbound) return false;
+        const emails = (this.getInboundClients(dbInbound) || []).map(c => c.email).filter(Boolean);
+        const n = emails.filter(em => this.isClientSel(dbInbound.id, em)).length;
+        return n > 0 && n < emails.length;
+      },
+      toggleSelectAllClients(dbInbound, checked) {
+        if (!dbInbound) return;
+        const id = dbInbound.id;
+        const emails = (this.getInboundClients(dbInbound) || []).map(c => c.email).filter(Boolean);
+        // If the inbound was wholesale-selected, unpack it into per-client keys and
+        // drop it from selInbounds first (mirrors toggleClientSel above).
+        if (this.selInbounds.includes(id)) {
+          this.selInbounds = this.selInbounds.filter(x => x !== id);
+          emails.forEach(em => { const k = id + ':' + em; if (!this.selClients.includes(k)) this.selClients.push(k); });
+        }
+        if (checked) {
+          emails.forEach(em => { const k = id + ':' + em; if (!this.selClients.includes(k)) this.selClients.push(k); });
+        } else {
+          this.selClients = this.selClients.filter(k => !k.startsWith(id + ':'));
+        }
+      },
+      // --- export (txt / pdf) -------------------------------------------
+      async exportTxt(targets, filename) {
+        if (!targets || !targets.length) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
+        try {
+          const cards = await AccountExport.buildCards(this, targets);
+          if (!cards.length) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
+          AccountExport.txt(cards, filename || 'accounts');
+        } catch (e) { this.$message.error('Export failed: ' + (e && e.message ? e.message : e)); }
+      },
+      async exportPdf(targets, filename) {
+        if (!targets || !targets.length) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
+        try {
+          const cards = await AccountExport.buildCards(this, targets);
+          if (!cards.length) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
+          AccountExport.pdf(cards, filename || 'accounts');
+        } catch (e) { this.$message.error('Export failed: ' + (e && e.message ? e.message : e)); }
+      },
+      // Single-account export straight from a client row's action buttons.
+      exportClientTxt(dbInbound, client) { this.exportTxt([{ inboundId: dbInbound.id, email: client.email }], client.email || dbInbound.remark); },
+      exportClientPdf(dbInbound, client) { this.exportPdf([{ inboundId: dbInbound.id, email: client.email }], client.email || dbInbound.remark); },
+      // A map rather than a Set: it is read from a template expression, and Vue 2
+      // does not make a Set's contents reactive.
+      emailsInUse() {
+        const seen = {};
+        (this.dbInbounds || []).forEach(dbInbound => {
+          (this.getInboundClients(dbInbound) || []).forEach(client => {
+            if (client && client.email) seen[client.email] = true;
+          });
+        });
+        return seen;
+      },
+      findIndexOfClient(protocol, clients, client) {
+        if (!clients || !Array.isArray(clients) || !client) {
+          return -1;
+        }
+        switch (protocol) {
+          case Protocols.TROJAN:
+          case Protocols.SHADOWSOCKS:
+          case Protocols.ANYTLS:
+          case Protocols.NAIVE:
+          case Protocols.L2TP:
+          case Protocols.PPTP:
+          case Protocols.OPENVPN:
+          case Protocols.OPENCONNECT:
+          case Protocols.SSTP:
+          case Protocols.IKEV2:
+            return clients.findIndex(item => item && item.password === client.password && item.email === client.email);
+          // TUIC deliberately stays on the default branch: it carries BOTH a uuid and
+          // a password, and the uuid is its identity (clientIdentityKey /
+          // getClientIdentity both key it on id).
+          default: return clients.findIndex(item => item && item.id === client.id && item.email === client.email);
+        }
+      },
+      // Switch an account on or off on ONE inbound.
+      //
+      // Its own route, not a client update carrying enable:false. `enable` inside a
+      // posted client entry is the ACCOUNT's flag: the panel writes it to
+      // client_traffics, which RADIUS (radius.go:769) and the rbridge sweep
+      // (radius.go:701) both read panel-wide. So this switch used to take the
+      // customer off EVERY inbound while re-projecting only this one, leaving the
+      // other memberships' rows still reading enable:true - the page showed them as
+      // serving and they were not. The per-membership flag lives on
+      // account_inbounds.enable and the projection renders the AND of the two.
+      async setMembershipEnable(dbInboundId, email, enable) {
+        await this.submit(
+          `/panel/api/inbounds/${dbInboundId}/setMembershipEnable/${encodeURIComponent(email)}`,
+          { enable: !!enable });
+      },
+      delClient(dbInboundId, client, confirmation = true) {
+        dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
+        clientId = this.getClientId(dbInbound.protocol, client);
+        if (confirmation) {
+          this.$confirm({
+            title: '{{ i18n "pages.inbounds.deleteClient"}}' + ' ' + client.email,
+            content: '{{ i18n "pages.inbounds.deleteClientContent"}}',
+            class: themeSwitcher.currentTheme,
+            okText: '{{ i18n "delete"}}',
+            cancelText: '{{ i18n "cancel"}}',
+            onOk: () => this.submit(`/panel/api/inbounds/${dbInboundId}/delClient/${clientId}`),
+          });
+        } else {
+          this.submit(`/panel/api/inbounds/${dbInboundId}/delClient/${clientId}`);
+        }
+      },
+      showQrcode(dbInboundId, client) {
+        dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
+        newDbInbound = this.checkFallback(dbInbound);
+        qrModal.show('{{ i18n "qrCode"}}', newDbInbound, client);
+      },
+      showWgcConfig(dbInboundId, client) {
+        // WireGuard (C) configs are rendered server-side (per-device .conf with
+        // backend-minted keys); the modal fetches them from the wgc-configs API.
+        wgcConfigModal.show(dbInboundId, client);
+      },
+      showAwgConfig(dbInboundId, client) {
+        // AmneziaWG configs are rendered server-side (per-device .conf with
+        // backend-minted keys + obfuscation params); the modal fetches them from
+        // the awg-configs API.
+        awgConfigModal.show(dbInboundId, client);
+      },
+      showGreConfig(dbInboundId, client) {
+        // GRE "configs" are the router-side values rendered server-side (no profile file
+        // and nothing to scan: the client is a router); the modal fetches them from the
+        // gre-configs API.
+        greConfigModal.show(dbInboundId, client);
+      },
+      showSshConfig(dbInboundId, client) {
+        // SSH configs are rendered server-side (a sing-box ssh outbound plus a
+        // plaintext host/port/user/pass block); the modal fetches them from the
+        // ssh-configs API.
+        sshConfigModal.show(dbInboundId, client);
+      },
+      showInfo(dbInboundId, client) {
+        dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
+        if (!dbInbound) return;
+        index = 0;
+        if (dbInbound.isMultiUser()) {
+          inbound = dbInbound.toInbound();
+          clients = inbound && inbound.clients ? inbound.clients : null;
+          if (clients && Array.isArray(clients)) {
+            index = this.findIndexOfClient(dbInbound.protocol, clients, client);
+            if (index < 0) index = 0;
+          }
+        }
+        newDbInbound = this.checkFallback(dbInbound);
+        infoModal.show(newDbInbound, index);
+      },
+      // The per-inbound switch in the Clients page's membership rows. Addressed by
+      // EMAIL rather than by the protocol's client id: the account is the same
+      // customer on every inbound, and the email is the one identity all of them
+      // share, so this needs none of the per-protocol id resolution a client edit
+      // does.
+      async switchEnableClient(dbInboundId, client, state) {
+        this.loading();
+        try {
+          const email = client && client.email;
+          if (!email) return;
+          await this.setMembershipEnable(
+            dbInboundId, email, typeof state === 'boolean' ? state : !!client.enable);
+        } finally {
+          this.loading(false);
+        }
+      },
+      isFrozen(client) {
+        // Frozen = disabled with a locked (negative, non-ticking) remaining time.
+        return !!client && client.enable === false && Number(client.expiryTime) < 0;
+      },
+      async toggleFreeze(dbInboundId, client) {
+        // Freeze/unfreeze reuse the bulk endpoint (single target) so the time-lock math
+        // lives in one place (the backend). Freeze disables + locks remaining days;
+        // unfreeze re-enables + resumes them.
+        if (!client || !client.email) return;
+        const op = this.isFrozen(client) ? 'unfreeze' : 'freeze';
+        this.loading();
+        try {
+          const payload = {
+            op, days: 0, amountBytes: 0,
+            skipFirstUse: false, skipUnlimited: false, skipDisabled: false,
+            targets: [{ inboundId: dbInboundId, email: client.email }],
+          };
+          const msg = await HttpUtil.post('/panel/api/inbounds/bulkUpdateClients', { data: JSON.stringify(payload) });
+          if (msg.success) {
+            this.$message.success(op === 'freeze'
+              ? '{{ i18n "pages.client.freeze" }}' : '{{ i18n "pages.client.unfreeze" }}');
+            await this.getDBInbounds();
+            // Goes through the same bulk endpoint as the rest, so it is refreshed
+            // alongside them rather than being the one path that drifts.
+            await this.refreshResellerBalance();
+          }
+        } finally {
+          this.loading(false);
+        }
+      },
+      getInboundClients(dbInbound) {
+        if (!dbInbound) return null;
+        const inbound = dbInbound.toInbound();
+        return inbound && inbound.clients ? inbound.clients : null;
+      },
+      // Every inbound serving this account, for the row badge and for the client
+      // form's membership checklist. Reads the index below, so a row costs a map
+      // lookup rather than a walk over every inbound's settings JSON.
+      clientInbounds(email) {
+        return this.membershipIndex[accountKeyOf(email)] || [];
+      },
+      clientInboundCount(email) {
+        return this.clientInbounds(email).length;
+      },
+      // The badge's tooltip heading. The inbounds themselves are listed under it.
+      clientMembershipTitle(email) {
+        return '{{ i18n "pages.inbounds.membershipOnInbounds" }}'
+          .replace('%COUNT%', this.clientInboundCount(email));
+      },
+      resetClientTraffic(client, dbInboundId, confirmation = true) {
+        if (confirmation) {
+          this.$confirm({
+            title: '{{ i18n "pages.inbounds.resetTraffic"}}' + ' ' + client.email,
+            content: '{{ i18n "pages.inbounds.resetTrafficContent"}}',
+            class: themeSwitcher.currentTheme,
+            okText: '{{ i18n "reset"}}',
+            cancelText: '{{ i18n "cancel"}}',
+            onOk: () => this.submit('/panel/api/inbounds/' + dbInboundId + '/resetClientTraffic/' + client.email),
+          })
+        } else {
+          this.submit('/panel/api/inbounds/' + dbInboundId + '/resetClientTraffic/' + client.email);
+        }
+      },
+      resetAllClientTraffics(dbInboundId) {
+        this.$confirm({
+          title: dbInboundId > 0 ? '{{ i18n "pages.inbounds.resetInboundClientTrafficTitle"}}' : '{{ i18n "pages.inbounds.resetAllClientTrafficTitle"}}',
+          content: dbInboundId > 0 ? '{{ i18n "pages.inbounds.resetInboundClientTrafficContent"}}' : '{{ i18n "pages.inbounds.resetAllClientTrafficContent"}}',
+          class: themeSwitcher.currentTheme,
+          okText: '{{ i18n "reset"}}',
+          cancelText: '{{ i18n "cancel"}}',
+          onOk: () => this.submit('/panel/api/inbounds/resetAllClientTraffics/' + dbInboundId),
+        })
+      },
+      delDepletedClients(dbInboundId) {
+        this.$confirm({
+          title: '{{ i18n "pages.inbounds.delDepletedClientsTitle"}}',
+          content: '{{ i18n "pages.inbounds.delDepletedClientsContent"}}',
+          class: themeSwitcher.currentTheme,
+          okText: '{{ i18n "delete"}}',
+          cancelText: '{{ i18n "cancel"}}',
+          onOk: () => this.submit('/panel/api/inbounds/delDepletedClients/' + dbInboundId),
+        })
+      },
+      getClientStats(dbInbound, email) {
+        if (!dbInbound) return null;
+        if (!dbInbound._clientStatsMap) {
+            dbInbound._clientStatsMap = new Map();
+            if (dbInbound.clientStats && Array.isArray(dbInbound.clientStats)) {
+                for (const stats of dbInbound.clientStats) {
+                    dbInbound._clientStatsMap.set(stats.email, stats);
+                }
+            }
+        }
+        return dbInbound._clientStatsMap.get(email);
+      },
+      getUpStats(dbInbound, email) {
+        if (!email || email.length == 0) return 0;
+        let clientStats = this.getClientStats(dbInbound, email);
+        return clientStats ? clientStats.up : 0;
+      },
+      getDownStats(dbInbound, email) {
+        if (!email || email.length == 0) return 0;
+        let clientStats = this.getClientStats(dbInbound, email);
+        return clientStats ? clientStats.down : 0;
+      },
+      getSumStats(dbInbound, email) {
+        if (!email || email.length == 0) return 0;
+        let clientStats = this.getClientStats(dbInbound, email);
+        return clientStats ? clientStats.up + clientStats.down : 0;
+      },
+      getAllTimeClient(dbInbound, email) {
+        if (!email || email.length == 0) return 0;
+        let clientStats = this.getClientStats(dbInbound, email);
+        if (!clientStats) return 0;
+        return clientStats.allTime || (clientStats.up + clientStats.down);
+      },
+      getRemStats(dbInbound, email) {
+        if (!email || email.length == 0) return 0;
+        let clientStats = this.getClientStats(dbInbound, email);
+        if (!clientStats) return 0;
+        let remained = clientStats.total - (clientStats.up + clientStats.down);
+        return remained > 0 ? remained : 0;
+      },
+      clientStatsColor(dbInbound, email) {
+        if (!email || email.length == 0) return ColorUtils.clientUsageColor();
+        let clientStats = this.getClientStats(dbInbound, email);
+        return ColorUtils.clientUsageColor(clientStats, app.trafficDiff)
+      },
+      statsProgress(dbInbound, email) {
+        if (!email || email.length == 0) return 100;
+        let clientStats = this.getClientStats(dbInbound, email);
+        if (!clientStats) return 0;
+        if (clientStats.total == 0) return 100;
+        return 100 * (clientStats.down + clientStats.up) / clientStats.total;
+      },
+      expireProgress(expTime, reset) {
+        now = new Date().getTime();
+        remainedSeconds = expTime < 0 ? -expTime / 1000 : (expTime - now) / 1000;
+        resetSeconds = reset * 86400;
+        if (remainedSeconds >= resetSeconds) return 0;
+        return 100 * (1 - (remainedSeconds / resetSeconds));
+      },
+      statsExpColor(dbInbound, email) {
+        if (!email || email.length == 0) return '#7a316f';
+        let clientStats = this.getClientStats(dbInbound, email);
+        if (!clientStats) return '#7a316f';
+        let statsColor = ColorUtils.usageColor(clientStats.down + clientStats.up, this.trafficDiff, clientStats.total);
+        let expColor = ColorUtils.usageColor(new Date().getTime(), this.expireDiff, clientStats.expiryTime);
+        switch (true) {
+          case statsColor == "red" || expColor == "red":
+            return "#cf3c3c"; // Red
+          case statsColor == "orange" || expColor == "orange":
+            return "#f37b24"; // Orange
+          case statsColor == "green" || expColor == "green":
+            return "#008771"; // Green
+          default:
+            return "#7a316f"; // purple
+        }
+      },
+      isClientDepleted(dbInbound, email) {
+        if (!email || !dbInbound) return false;
+        const stats = this.getClientStats(dbInbound, email);
+        if (!stats) return false;
+        const total = stats.total ?? 0;
+        const used = (stats.up ?? 0) + (stats.down ?? 0);
+        const hasTotal = total > 0;
+        const exhausted = hasTotal && used >= total;
+        const expiryTime = stats.expiryTime ?? 0;
+        const hasExpiry = expiryTime > 0;
+        const now = Date.now();
+        const expired = hasExpiry && expiryTime <= now;
+        return expired || exhausted;
+      },
+      isClientOnline(email) {
+        return this.onlineClients.includes(email);
+      },
+      getLastOnline(email) {
+        return this.lastOnlineMap[email] || null
+      },
+      formatLastOnline(email) {
+        const ts = this.getLastOnline(email)
+        if (!ts) return '-'
+        // Check if IntlUtil is available (may not be loaded yet)
+        if (typeof IntlUtil !== 'undefined' && IntlUtil.formatDate) {
+          return IntlUtil.formatDate(ts)
+        }
+        // Fallback to simple date formatting if IntlUtil is not available
+        return new Date(ts).toLocaleString()
+      },
+      isRemovable(dbInboundId) {
+        return this.getInboundClients(this.dbInbounds.find(row => row.id === dbInboundId)).length > 1;
+      },
+    },
+  };
+</script>
+{{end}}

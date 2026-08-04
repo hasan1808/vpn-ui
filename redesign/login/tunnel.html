@@ -1,0 +1,1161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Login: Tunnel</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<div id="lg-tunnel">
+<style>
+/* ==================================================================
+   Login: Tunnel
+   Direction 3 of 5. The ground is one generative graphic: traffic
+   converging into a protected conduit and out the other side. The
+   form is a solid plate laid over it.
+
+   Token blocks below are the production values from
+   web/assets/css/tokens.css, repeated the same four times as
+   redesign/bento.html, plus the production ultra-dark block so the
+   panel's third theme stays reachable.
+   ================================================================== */
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --info-weak:rgba(31,111,208,.10); --error-weak:rgba(179,38,30,.10);
+  --shadow-lg:0 18px 40px -18px rgba(16,24,32,.22), 0 4px 10px rgba(16,24,32,.06);
+  --font-sans:'Vazirmatn UI NL',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+    --info-weak:rgba(111,168,245,.13); --error-weak:rgba(242,114,106,.13);
+    --shadow-lg:0 20px 44px -22px rgba(0,0,0,.66);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --info-weak:rgba(111,168,245,.13); --error-weak:rgba(242,114,106,.13);
+  --shadow-lg:0 20px 44px -22px rgba(0,0,0,.66);
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --info-weak:rgba(31,111,208,.10); --error-weak:rgba(179,38,30,.10);
+  --shadow-lg:0 18px 40px -18px rgba(16,24,32,.22), 0 4px 10px rgba(16,24,32,.06);
+  color-scheme:light;
+}
+:root[data-theme="ultra-dark"]{
+  --bg:#21242a; --surface:#0c0e12; --surface-2:#222327; --border:#32353b; --border-strong:#505663;
+  --text:rgba(255,255,255,.85); --text-2:rgba(255,255,255,.58); --text-3:rgba(255,255,255,.48);
+  --accent:#59cbac; --accent-strong:#59cbac; --accent-weak:rgba(89,203,172,.14); --on-accent:#06140f;
+  --ok:#59cbac; --info:#3c89e8; --warn:#e89a3c; --error:#e84749; --off:#5a5f6b;
+  --info-weak:rgba(60,137,232,.14); --error-weak:rgba(232,71,73,.14);
+  --shadow-lg:0 20px 44px -22px rgba(0,0,0,.72);
+  color-scheme:dark;
+}
+
+/* ===== scope ===== */
+#lg-tunnel, #lg-tunnel *, #lg-tunnel *::before, #lg-tunnel *::after{ box-sizing:border-box; }
+#lg-tunnel{
+  position:relative; min-height:100vh; min-height:100dvh;
+  display:flex; flex-direction:column;
+  background:var(--bg); color:var(--text);
+  font-family:var(--font-sans); font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden;
+}
+#lg-tunnel h1, #lg-tunnel h2, #lg-tunnel p, #lg-tunnel ul{ margin:0; padding:0; }
+/* every conditional block here is driven by the hidden attribute, and
+   several of them carry a display:flex class. Without this the class
+   silently wins and hidden does nothing. */
+#lg-tunnel [hidden]{ display:none; }
+#lg-tunnel button, #lg-tunnel input, #lg-tunnel select{ font-family:inherit; font-size:inherit; }
+#lg-tunnel svg{ display:block; }
+#lg-tunnel button:focus-visible,
+#lg-tunnel input:focus-visible,
+#lg-tunnel select:focus-visible,
+#lg-tunnel a:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:8px;
+}
+
+.lgt-icon{ width:16px; height:16px; flex:0 0 auto; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.lgt-icon-14{ width:14px; height:14px; }
+.lgt-icon-18{ width:18px; height:18px; }
+.lgt-vh{ position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+
+/* ===== the ground ===== */
+.lgt-ground{ position:fixed; inset:0; z-index:0; pointer-events:none; contain:layout paint; }
+.lgt-ground canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+/* ===== stage ===== */
+.lgt-main{
+  position:relative; z-index:1; flex:1 1 auto;
+  display:flex; align-items:center; justify-content:center;
+  padding:40px 20px;
+}
+.lgt-stage{ position:relative; width:100%; max-width:412px; }
+
+/* The legibility guarantee is two independent things, in this order.
+   ONE: the card is solid --surface with a defined border, exactly the
+   plate every other panel surface uses. Nothing behind it shows through,
+   so the contrast of every string on this screen is identical to the
+   rest of the product, at every frame, whatever the animation is doing.
+   TWO (in script, see quiet()): the canvas simply does not paint in a
+   wide halo around the card, so the form also has room to breathe.
+   Two was deliberately NOT done as a translucent plate over the canvas:
+   an extra composited layer lands a level off the page colour and shows
+   up as a faint banded outline on a dark ground. Not painting is exact. */
+.lgt-card{
+  position:relative; z-index:1;
+  background:var(--surface); border:1px solid var(--border-strong);
+  border-radius:16px; box-shadow:var(--shadow-lg);
+  padding:24px;
+}
+@media (min-width:420px){ .lgt-card{ padding:32px; } }
+
+.lgt-rise{ animation:lgt-rise .4s cubic-bezier(.22,1,.36,1) both; }
+@keyframes lgt-rise{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+
+/* ===== card head ===== */
+.lgt-head{ display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.lgt-brand{
+  font-size:20px; font-weight:700; letter-spacing:.14em; color:var(--accent);
+  white-space:nowrap; direction:ltr; unicode-bidi:isolate;
+}
+.lgt-gear{
+  width:34px; height:34px; flex:0 0 auto; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface-2); color:var(--text-2);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:background .15s ease, color .15s ease, border-color .15s ease;
+}
+.lgt-gear:hover{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+.lgt-gear[aria-expanded="true"]{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+
+/* ===== settings popover ===== */
+.lgt-pop-wrap{ position:relative; }
+.lgt-pop{
+  position:absolute; z-index:6; top:calc(100% + 8px); inset-inline-end:0; width:252px;
+  background:var(--surface); border:1px solid var(--border-strong); border-radius:12px;
+  box-shadow:var(--shadow-lg); padding:16px;
+  display:flex; flex-direction:column; gap:16px;
+}
+.lgt-pop[hidden]{ display:none; }
+.lgt-pop-title{
+  font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-3);
+}
+.lgt-pop-group{ display:flex; flex-direction:column; gap:8px; }
+.lgt-pop-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.lgt-pop-row label, .lgt-pop-row span{ font-size:12.5px; color:var(--text-2); }
+
+/* switch, shaped like ant's a-switch so the DOM maps across */
+.lgt-switch{ position:relative; width:34px; height:18px; flex:0 0 auto; }
+.lgt-switch input{ position:absolute; inset:0; opacity:0; margin:0; width:100%; height:100%; cursor:pointer; }
+.lgt-switch i{
+  position:absolute; inset:0; border-radius:999px; background:var(--off); opacity:.55;
+  transition:background .15s ease, opacity .15s ease; pointer-events:none;
+}
+.lgt-switch i::after{
+  content:""; position:absolute; top:2px; inset-inline-start:2px; width:14px; height:14px;
+  border-radius:50%; background:var(--surface); transition:transform .15s ease;
+}
+.lgt-switch input:checked + i{ background:var(--accent); opacity:1; }
+.lgt-switch input:checked + i::after{ transform:translateX(16px); }
+:root[dir="rtl"] .lgt-switch input:checked + i::after{ transform:translateX(-16px); }
+.lgt-switch input:focus-visible + i{ outline:2px solid var(--accent); outline-offset:2px; }
+
+.lgt-check{ display:flex; align-items:center; gap:8px; cursor:pointer; }
+.lgt-check input{
+  appearance:none; -webkit-appearance:none; margin:0; cursor:pointer;
+  width:16px; height:16px; flex:0 0 auto; border-radius:4px;
+  border:1px solid var(--border-strong); background:var(--surface-2);
+  transition:background .15s ease, border-color .15s ease;
+}
+.lgt-check input:checked{ background:var(--accent); border-color:var(--accent); }
+.lgt-check input:checked::after{
+  content:""; display:block; width:4px; height:8px; margin:1px 0 0 5px;
+  border:solid var(--on-accent); border-width:0 2px 2px 0; transform:rotate(42deg);
+}
+.lgt-check input:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+.lgt-select{
+  width:100%; padding:9px 10px; border-radius:10px;
+  border:1px solid var(--border); background:var(--surface-2); color:var(--text);
+  font-size:12.5px; cursor:pointer;
+}
+.lgt-select:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-weak); }
+
+/* ===== notices ===== */
+.lgt-notice{
+  display:flex; align-items:flex-start; gap:10px;
+  margin-top:20px; padding:10px 12px; border-radius:10px;
+  font-size:12.5px; line-height:1.45;
+  background:var(--info-weak); color:var(--info);
+  border-inline-start:2px solid var(--info);
+}
+.lgt-alert{
+  display:flex; align-items:flex-start; gap:10px;
+  margin-top:16px; padding:10px 12px; border-radius:10px;
+  font-size:12.5px; line-height:1.45;
+  background:var(--error-weak); color:var(--error);
+  border-inline-start:2px solid var(--error);
+}
+.lgt-notice[hidden], .lgt-alert[hidden]{ display:none; }
+.lgt-notice .lgt-icon, .lgt-alert .lgt-icon{ margin-top:1px; }
+
+/* ===== greeting ===== */
+.lgt-greet{ margin-top:24px; display:flex; flex-direction:column; gap:4px; }
+.lgt-eyebrow{
+  font-size:12.5px; font-weight:600; color:var(--text-3);
+  text-transform:uppercase; letter-spacing:.08em;
+}
+.lgt-title{ font-size:26px; font-weight:700; letter-spacing:-.01em; text-wrap:balance; }
+
+/* ===== form ===== */
+.lgt-form{ margin-top:24px; display:flex; flex-direction:column; gap:16px; }
+.lgt-field{ display:flex; flex-direction:column; gap:8px; }
+.lgt-field[hidden]{ display:none; }
+.lgt-label{ font-size:12.5px; font-weight:600; color:var(--text-2); }
+.lgt-control{
+  display:flex; align-items:center; gap:10px;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:10px;
+  padding-inline:12px;
+  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.lgt-control > .lgt-icon{ color:var(--text-3); }
+.lgt-control:focus-within{
+  background:var(--surface); border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-weak);
+}
+.lgt-control:focus-within > .lgt-icon{ color:var(--accent); }
+.lgt-control.is-invalid{ border-color:var(--error); }
+/* a rejected field that also has focus stays in the error colour rather
+   than showing an accent ring that reads as approval */
+.lgt-control.is-invalid:focus-within{ border-color:var(--error); box-shadow:0 0 0 3px var(--error-weak); }
+.lgt-control.is-invalid:focus-within > .lgt-icon{ color:var(--error); }
+.lgt-control input{
+  flex:1 1 auto; min-width:0; height:42px;
+  border:0; background:transparent; color:var(--text);
+  padding:0; outline:none;
+}
+.lgt-control input::placeholder{ color:var(--text-3); opacity:1; }
+.lgt-reveal{
+  width:30px; height:30px; flex:0 0 auto; margin-inline-end:-4px;
+  border:0; border-radius:8px; background:transparent; color:var(--text-3);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:color .15s ease, background .15s ease;
+}
+.lgt-reveal:hover{ color:var(--accent); background:var(--accent-weak); }
+
+/* the code is a machine string: it stays LTR and monospaced in every locale */
+.lgt-code input{
+  font-family:var(--font-mono); font-size:16px; letter-spacing:.34em;
+  direction:ltr; unicode-bidi:isolate; text-align:start;
+}
+.lgt-hint{ font-size:11px; color:var(--text-3); line-height:1.45; }
+
+/* ===== submit ===== */
+.lgt-submit{
+  position:relative; width:100%; height:44px; margin-top:4px;
+  border:1px solid transparent; border-radius:10px;
+  background:var(--accent-strong); color:var(--on-accent);
+  font-size:14px; font-weight:600; letter-spacing:.01em; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  transition:filter .15s ease, transform .15s ease;
+}
+.lgt-submit:hover{ filter:brightness(1.06); }
+.lgt-submit:active{ transform:translateY(1px); }
+.lgt-submit[aria-busy="true"]{ cursor:progress; filter:none; }
+.lgt-spin{
+  width:16px; height:16px; flex:0 0 auto; border-radius:50%;
+  border:2px solid currentColor; border-top-color:transparent; opacity:.9;
+  animation:lgt-spin .8s linear infinite;
+}
+.lgt-spin[hidden]{ display:none; }
+@keyframes lgt-spin{ to{ transform:rotate(360deg); } }
+
+/* ===== prototype scaffolding. Not part of the screen. ===== */
+.lgt-proto{
+  position:relative; z-index:2; flex:0 0 auto;
+  background:var(--surface); border-top:1px solid var(--border);
+}
+.lgt-proto-inner{
+  max-width:1180px; margin:0 auto; padding:10px 20px;
+  display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px;
+}
+.lgt-proto-tag{
+  font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--text-3); margin-inline-end:4px;
+}
+.lgt-proto-item{ display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--text-2); cursor:pointer; }
+.lgt-proto-item input{ width:14px; height:14px; margin:0; accent-color:var(--accent); cursor:pointer; }
+.lgt-proto-btn{
+  font-size:12.5px; font-weight:600; color:var(--text-2);
+  background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+  padding:5px 11px; cursor:pointer;
+  transition:background .15s ease, color .15s ease, border-color .15s ease;
+}
+.lgt-proto-btn:hover{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+.lgt-proto-spacer{ flex:1 1 auto; }
+.lgt-proto[hidden]{ display:none; }
+.lgt-proto-show{
+  position:fixed; z-index:3; inset-block-end:12px; inset-inline-start:12px;
+  font-size:11px; font-weight:600; color:var(--text-3);
+  background:var(--surface); border:1px solid var(--border); border-radius:999px;
+  padding:5px 12px; cursor:pointer;
+}
+.lgt-proto-show[hidden]{ display:none; }
+
+@media (max-width:400px){
+  .lgt-main{ padding:24px 12px; }
+  .lgt-title{ font-size:20px; }
+}
+
+/* Reduced motion. The CSS half only covers transitions; the animation
+   loop itself is cancelled in script, it is not merely slowed. */
+@media (prefers-reduced-motion: reduce){
+  #lg-tunnel *, #lg-tunnel *::before, #lg-tunnel *::after{
+    transition-duration:.001ms !important;
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+  }
+  .lgt-spin{ animation:none; border-top-color:currentColor; opacity:.45; }
+}
+</style>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+<defs>
+<symbol id="lgt-i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.9 20.2a7.1 7.1 0 0 1 14.2 0"/></symbol>
+<symbol id="lgt-i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.4" width="15" height="9.8" rx="2.1"/><path d="M8.3 10.4V7.9a3.7 3.7 0 0 1 7.4 0v2.5"/></symbol>
+<symbol id="lgt-i-key" viewBox="0 0 24 24"><circle cx="7.6" cy="12" r="3.6"/><path d="M11.2 12h9.3"/><path d="M18.2 12v3.3"/><path d="M14.9 12v2.4"/></symbol>
+<symbol id="lgt-i-eye" viewBox="0 0 24 24"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="lgt-i-eye-off" viewBox="0 0 24 24"><path d="M3.3 3.3l17.4 17.4"/><path d="M10.6 5.2A10.5 10.5 0 0 1 12 5c6.2 0 10 7 10 7a17.6 17.6 0 0 1-3.9 4.8"/><path d="M6.5 6.7C3.8 8.6 2 12 2 12s3.8 7 10 7c1.4 0 2.7-.3 3.9-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+<symbol id="lgt-i-sliders" viewBox="0 0 24 24"><line x1="5" y1="21" x2="5" y2="14"/><line x1="5" y1="10" x2="5" y2="3"/><circle cx="5" cy="12" r="2.1"/><line x1="12" y1="21" x2="12" y2="12.5"/><line x1="12" y1="8.5" x2="12" y2="3"/><circle cx="12" cy="10.5" r="2.1"/><line x1="19" y1="21" x2="19" y2="16"/><line x1="19" y1="12" x2="19" y2="3"/><circle cx="19" cy="14" r="2.1"/></symbol>
+<symbol id="lgt-i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11.2" x2="12" y2="16.6"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></symbol>
+<symbol id="lgt-i-alert" viewBox="0 0 24 24"><path d="M12 4.3 21 19.6H3z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="16.7" x2="12.01" y2="16.7"/></symbol>
+</defs>
+</svg>
+
+<div class="lgt-ground" aria-hidden="true">
+  <canvas id="lgtShell"></canvas>
+  <canvas id="lgtFlow"></canvas>
+</div>
+
+<main class="lgt-main">
+  <div class="lgt-stage" id="lgtStage">
+    <div class="lgt-card lgt-rise" id="lgtCard">
+
+      <div class="lgt-head">
+        <p class="lgt-brand">[VPN-UI]</p>
+        <div class="lgt-pop-wrap">
+          <button type="button" class="lgt-gear" id="lgtGear"
+                  aria-expanded="false" aria-controls="lgtPop" aria-label="Settings" data-t-attr="settings|aria-label|title" title="Settings">
+            <svg class="lgt-icon lgt-icon-18" aria-hidden="true"><use href="#lgt-i-sliders"></use></svg>
+          </button>
+          <div class="lgt-pop" id="lgtPop" hidden>
+            <div class="lgt-pop-group">
+              <p class="lgt-pop-title" data-t="settings">Settings</p>
+              <div class="lgt-pop-row">
+                <label for="lgtDark" data-t="dark">Dark</label>
+                <span class="lgt-switch">
+                  <input type="checkbox" id="lgtDark">
+                  <i aria-hidden="true"></i>
+                </span>
+              </div>
+              <label class="lgt-check" id="lgtUltraRow" hidden>
+                <input type="checkbox" id="lgtUltra">
+                <span data-t="ultraDark">Ultra Dark</span>
+              </label>
+            </div>
+            <div class="lgt-pop-group">
+              <label class="lgt-pop-title" for="lgtLang" data-t="language">Language</label>
+              <select class="lgt-select" id="lgtLang">
+                <option value="ar-EG">العربية (ar-EG)</option>
+                <option value="en-US" selected>English (en-US)</option>
+                <option value="fa-IR">فارسی (fa-IR)</option>
+                <option value="zh-CN">简体中文 (zh-CN)</option>
+                <option value="zh-TW">繁體中文 (zh-TW)</option>
+                <option value="ja-JP">日本語 (ja-JP)</option>
+                <option value="ru-RU">Русский (ru-RU)</option>
+                <option value="vi-VN">Tiếng Việt (vi-VN)</option>
+                <option value="es-ES">Español (es-ES)</option>
+                <option value="id-ID">Indonesian (id-ID)</option>
+                <option value="uk-UA">Український (uk-UA)</option>
+                <option value="tr-TR">Türkçe (tr-TR)</option>
+                <option value="pt-BR">Português (pt-BR)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lgt-notice" id="lgtExpired" role="status" hidden>
+        <svg class="lgt-icon lgt-icon-14" aria-hidden="true"><use href="#lgt-i-info"></use></svg>
+        <span data-t="loginAgain">Your session has expired, please log in again</span>
+      </div>
+
+      <div class="lgt-greet">
+        <p class="lgt-eyebrow" data-t="hello">Hello</p>
+        <h1 class="lgt-title" data-t="welcome">Welcome</h1>
+      </div>
+
+      <div class="lgt-alert" id="lgtError" role="alert" hidden>
+        <svg class="lgt-icon lgt-icon-14" aria-hidden="true"><use href="#lgt-i-alert"></use></svg>
+        <span data-t="wrongCredentials">Invalid username or password or two-factor code.</span>
+      </div>
+
+      <form class="lgt-form" id="lgtForm" novalidate>
+
+        <div class="lgt-field">
+          <label class="lgt-label" for="lgtUser" data-t="username">Username</label>
+          <div class="lgt-control" id="lgtUserCtl">
+            <svg class="lgt-icon" aria-hidden="true"><use href="#lgt-i-user"></use></svg>
+            <input id="lgtUser" name="username" type="text" autocomplete="username" required autofocus>
+          </div>
+        </div>
+
+        <div class="lgt-field">
+          <label class="lgt-label" for="lgtPass" data-t="password">Password</label>
+          <div class="lgt-control" id="lgtPassCtl">
+            <svg class="lgt-icon" aria-hidden="true"><use href="#lgt-i-lock"></use></svg>
+            <input id="lgtPass" name="password" type="password" autocomplete="current-password" required>
+            <button type="button" class="lgt-reveal" id="lgtReveal" aria-pressed="false" aria-label="Show password" title="Show password">
+              <svg class="lgt-icon" aria-hidden="true"><use href="#lgt-i-eye" id="lgtRevealIcon"></use></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="lgt-field lgt-code" id="lgtCodeField" hidden>
+          <label class="lgt-label" for="lgtCode" data-t="code">Code</label>
+          <div class="lgt-control" id="lgtCodeCtl">
+            <svg class="lgt-icon" aria-hidden="true"><use href="#lgt-i-key"></use></svg>
+            <input id="lgtCode" name="twoFactorCode" type="text" autocomplete="one-time-code"
+                   inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000"
+                   aria-describedby="lgtCodeHint" required>
+          </div>
+          <p class="lgt-hint" id="lgtCodeHint" data-t="twoFactorRequired">Enter the code from your authenticator app to finish signing in.</p>
+        </div>
+
+        <button type="submit" class="lgt-submit" id="lgtSubmit">
+          <span class="lgt-spin" id="lgtSpin" hidden aria-hidden="true"></span>
+          <span data-t="login">Log In</span>
+        </button>
+
+      </form>
+    </div>
+  </div>
+</main>
+
+<div class="lgt-proto" id="lgtProto">
+  <div class="lgt-proto-inner">
+    <span class="lgt-proto-tag">Prototype states</span>
+    <label class="lgt-proto-item"><input type="checkbox" id="pxTwoFactor"><span>Two-factor</span></label>
+    <label class="lgt-proto-item"><input type="checkbox" id="pxError"><span>Wrong credentials</span></label>
+    <label class="lgt-proto-item"><input type="checkbox" id="pxExpired"><span>Session expired</span></label>
+    <label class="lgt-proto-item"><input type="checkbox" id="pxLoading"><span>Loading</span></label>
+    <span class="lgt-proto-spacer"></span>
+    <button type="button" class="lgt-proto-btn" id="pxDir">Direction: LTR</button>
+    <button type="button" class="lgt-proto-btn" id="pxHide">Hide</button>
+  </div>
+</div>
+<button type="button" class="lgt-proto-show" id="pxShow" hidden>Prototype states</button>
+
+<script>
+(function(){
+  "use strict";
+
+  var root      = document.documentElement;
+  var groundEl  = document.querySelector('.lgt-ground');
+  var shellCv   = document.getElementById('lgtShell');
+  var flowCv    = document.getElementById('lgtFlow');
+  var cardEl    = document.getElementById('lgtCard');
+  var shell     = shellCv.getContext('2d');
+  var flow      = flowCv.getContext('2d');
+
+  var motionQ = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var schemeQ = window.matchMedia('(prefers-color-scheme: dark)');
+
+  /* ---------------------------------------------------------------
+     Performance budget, fixed up front. This page can sit open for
+     hours on a phone, so none of these are tuned by feel:
+       - device pixel ratio capped at 1.5
+       - 30 frames a second, enforced by an accumulator
+       - particle count derived from width and hard capped
+       - the tunnel shell is drawn ONCE per resize onto its own canvas
+       - the loop is cancelled outright when the tab is hidden or when
+         the user prefers reduced motion
+     --------------------------------------------------------------- */
+  var DPR_CAP     = 1.5;
+  var TARGET_FPS  = 30;
+  var FRAME_MS    = 1000 / TARGET_FPS;
+  var MAX_DOTS    = 76;
+  var MIN_DOTS    = 18;
+
+  var W = 0, H = 0, DPR = 1;
+  var dots = [];
+  var sprites = null;
+  var geo = null;
+  var rafId = 0, running = false, lastT = 0, acc = 0, clock = 0;
+
+  /* verification hook: read window.__lgtStats from devtools to see the
+     real cost of a frame. Nothing on the page reads or displays it. */
+  var stats = window.__lgtStats = { frames:0, drawMs:0, avgMs:0, dots:0, dpr:1, fpsCap:TARGET_FPS, running:false };
+
+  /* ---- deterministic noise, so a screenshot is reproducible ---- */
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ---- colour, read back from the live tokens ---- */
+  function tokenRGB(name){
+    var v = getComputedStyle(root).getPropertyValue(name).trim();
+    var m;
+    if(v.charAt(0) === '#'){
+      if(v.length === 4) return [parseInt(v[1]+v[1],16), parseInt(v[2]+v[2],16), parseInt(v[3]+v[3],16)];
+      return [parseInt(v.substr(1,2),16), parseInt(v.substr(3,2),16), parseInt(v.substr(5,2),16)];
+    }
+    m = v.match(/(-?[\d.]+)\s*[, ]\s*(-?[\d.]+)\s*[, ]\s*(-?[\d.]+)/);
+    if(m) return [+m[1], +m[2], +m[3]];
+    return [128,128,128];
+  }
+  function rgba(c, a){ return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+  function isDarkGround(){
+    var t = root.getAttribute('data-theme');
+    if(t === 'dark' || t === 'ultra-dark') return true;
+    if(t === 'light') return false;
+    return schemeQ.matches;
+  }
+
+  /* Two rendering profiles. A graphic tuned only for a dark ground turns
+     into grey smudge on #f4f6f8, so light gets its own: shorter marks, no
+     bloom, thinner walls held at a higher alpha to survive the pale bg. */
+  function profile(){
+    return isDarkGround()
+      ? { dot:0.92, len:1.00, wash:0.030, wall:0.22, bloom:0.34 }
+      : { dot:0.80, len:0.86, wash:0.030, wall:0.38, bloom:0.00 };
+  }
+
+  /* ---- geometry -------------------------------------------------
+     One horizontal conduit. It is wide and loose at the two ends and
+     pinches to a waist in the middle, where the form sits. Traffic
+     converges into it, disappears behind the plate, and comes out the
+     far side: the card is the protected segment.                    */
+  function measure(){
+    W = groundEl.clientWidth  || window.innerWidth;
+    H = groundEl.clientHeight || window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+    stats.dpr = DPR;
+
+    var r  = cardEl.getBoundingClientRect();
+    var cx = r.left + r.width / 2;
+    var cy = r.top + r.height / 2;
+    cy = Math.max(H * 0.30, Math.min(H * 0.70, cy));
+
+    /* the mouths must clear the scrim halo, or the transition from
+       scattered to ordered happens where nobody can see it */
+    var mouth = Math.max(W * 0.28, r.width * 0.5 + 240);
+    mouth = Math.min(mouth, W * 0.46);
+    mouth = Math.max(mouth, 150);
+
+    var half = Math.min(Math.max(H * 0.22, 92), 198);
+    var narrow = W < 560;
+
+    /* the quiet zone: the card rect, inflated, inside which the graphic
+       is simply not drawn. Feathered so it has no edge of its own. */
+    var pad = narrow ? 12 : 26;
+    var feather = narrow ? 54 : Math.min(126, Math.max(70, W * 0.09));
+
+    /* On a phone the form is most of the screen. Open the conduit wide
+       enough that its outer lanes still clear the card, so the graphic
+       survives as a trace above and below it rather than vanishing. */
+    if(narrow) half = Math.min(Math.max(half, r.height * 0.5 + 76), H * 0.45);
+
+    geo = {
+      cx:cx, cy:cy, mouth:mouth, half:half,
+      waist:0.30, envMax:1.55, reach:1.62,
+      xMin:-W * 0.14, xMax:W * 1.14,
+      qx0:r.left - pad, qy0:r.top - pad, qx1:r.right + pad, qy1:r.bottom + pad,
+      qr:Math.min(44, r.width / 2), qf:feather
+    };
+  }
+
+  /* 0 inside the quiet zone, 1 once well clear of it */
+  function quiet(x, y){
+    var dx = x < geo.qx0 ? geo.qx0 - x : (x > geo.qx1 ? x - geo.qx1 : 0);
+    var dy = y < geo.qy0 ? geo.qy0 - y : (y > geo.qy1 ? y - geo.qy1 : 0);
+    if(dx === 0 && dy === 0) return 0;
+    var d = Math.sqrt(dx * dx + dy * dy);
+    if(d >= geo.qf) return 1;
+    var t = d / geo.qf;
+    return t * t * (3 - 2 * t);
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    if(ctx.roundRect){ ctx.beginPath(); ctx.roundRect(x, y, w, h, r); return; }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y,     x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x,     y + h, r);
+    ctx.arcTo(x,     y + h, x,     y,     r);
+    ctx.arcTo(x,     y,     x + w, y,     r);
+    ctx.closePath();
+  }
+
+  function env(x){
+    var u = Math.abs(x - geo.cx) / geo.mouth;
+    if(u <= 1) return geo.waist + (1 - geo.waist) * Math.pow(u, 1.55);
+    /* asymptotic past the mouth: the conduit opens out and settles,
+       it never runs off to the corners as a hard diagonal */
+    return 1 + (geo.envMax - 1) * (1 - Math.exp(-(u - 1)));
+  }
+  /* 1 at the waist, 0 at the mouth and beyond: how ordered the traffic is */
+  function order(x){
+    var e = env(x);
+    var o = 1 - (e - geo.waist) / (1 - geo.waist);
+    return o < 0 ? 0 : (o > 1 ? 1 : o);
+  }
+  /* everything fades out well before the viewport edge, so the whole
+     graphic stays a pool of light around the form instead of a poster */
+  function haze(x){
+    var u = Math.abs(x - geo.cx) / geo.mouth;
+    if(u <= 0.92) return 1;
+    var t = (u - 0.92) / (geo.reach - 0.92);
+    if(t >= 1) return 0;
+    return 1 - t * t * (3 - 2 * t);
+  }
+  /* the same falloff as a paintable gradient along x, sampled at eight
+     stops so the curve matches haze() rather than banding across it.
+     invert gives the complement, used once with destination-out. */
+  function hazeGradient(ctx, col, peak, invert){
+    var span = geo.mouth * geo.reach;
+    var g = ctx.createLinearGradient(geo.cx - span, 0, geo.cx + span, 0);
+    var inner = (geo.reach - 0.92) / (geo.reach * 2);
+    for(var i = 0; i <= 8; i++){
+      var f = i / 8;
+      var p = inner * f;
+      var h = 1 - (1 - f) * (1 - f) * (1 + 2 * f);   /* smoothstep, same as haze() */
+      var a = peak * (invert ? 1 - h : h);
+      g.addColorStop(p, rgba(col, a));
+      g.addColorStop(1 - p, rgba(col, a));
+    }
+    return g;
+  }
+
+  /* ---- packet sprites, pre-rendered once per theme ---- */
+  function makeSprite(col, right, p){
+    var w = Math.round(30 * p.len), h = 13;
+    var c = document.createElement('canvas');
+    c.width  = Math.max(1, Math.round(w * DPR));
+    c.height = Math.max(1, Math.round(h * DPR));
+    var g = c.getContext('2d');
+    g.scale(DPR, DPR);
+
+    var headX = right ? w * 0.80 : w * 0.20;
+    if(p.bloom > 0){
+      var rg = g.createRadialGradient(headX, h / 2, 0, headX, h / 2, h * 0.62);
+      rg.addColorStop(0, rgba(col, p.bloom));
+      rg.addColorStop(1, rgba(col, 0));
+      g.fillStyle = rg;
+      g.fillRect(0, 0, w, h);
+    }
+
+    var lg = g.createLinearGradient(right ? 0 : w, 0, right ? w : 0, 0);
+    lg.addColorStop(0.00, rgba(col, 0));
+    lg.addColorStop(0.55, rgba(col, 0.30));
+    lg.addColorStop(1.00, rgba(col, 1));
+    g.fillStyle = lg;
+
+    var top = h / 2 - 2.1, bot = h / 2 + 2.1;
+    g.beginPath();
+    g.moveTo(0, h / 2);
+    g.quadraticCurveTo(w * 0.42, top, w, h / 2);
+    g.quadraticCurveTo(w * 0.42, bot, 0, h / 2);
+    g.closePath();
+    g.fill();
+
+    return { cv:c, w:w, h:h };
+  }
+
+  function buildSprites(){
+    var p = profile();
+    var accent = tokenRGB('--accent');
+    var info   = tokenRGB('--info');
+    sprites = {
+      /* toward the server: the panel already reads upload as teal */
+      out: makeSprite(accent, true,  p),
+      /* toward the client: and download as blue */
+      back: makeSprite(info,  false, p)
+    };
+  }
+
+  /* ---- the static shell -----------------------------------------
+     Drawn once per resize onto its own canvas. Eight lane curves
+     squeezing into the waist and opening out again: the convergence
+     is what makes it read as a conduit rather than a stripe.      */
+  var LANE_LINES = [
+    { o:1.00, w:1.00 }, { o:0.68, w:0.60 }, { o:0.38, w:0.60 }, { o:0.13, w:0.32 }
+  ];
+
+  function laneCurve(ctx, mul){
+    ctx.beginPath();
+    for(var x = -24, k = 0; x <= W + 24; x += 10, k++){
+      var y = geo.cy + mul * env(x) * geo.half;
+      if(k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  function paintShell(){
+    var p = profile();
+    var accent = tokenRGB('--accent');
+
+    shellCv.width  = Math.max(1, Math.round(W * DPR));
+    shellCv.height = Math.max(1, Math.round(H * DPR));
+    shellCv.style.width  = W + 'px';
+    shellCv.style.height = H + 'px';
+    shell.setTransform(DPR, 0, 0, DPR, 0, 0);
+    shell.clearRect(0, 0, W, H);
+
+    /* interior wash, vertically soft, then feathered along x so the
+       conduit is a pool of light and not a band across the poster */
+    var reachY = geo.half * geo.envMax;
+    var wash = shell.createLinearGradient(0, geo.cy - reachY, 0, geo.cy + reachY);
+    wash.addColorStop(0.00, rgba(accent, 0));
+    wash.addColorStop(0.50, rgba(accent, p.wash));
+    wash.addColorStop(1.00, rgba(accent, 0));
+
+    shell.beginPath();
+    var x, first = true;
+    for(x = -24; x <= W + 24; x += 10){
+      var yt = geo.cy - env(x) * geo.half;
+      if(first){ shell.moveTo(x, yt); first = false; } else shell.lineTo(x, yt);
+    }
+    for(x = W + 24; x >= -24; x -= 10){
+      shell.lineTo(x, geo.cy + env(x) * geo.half);
+    }
+    shell.closePath();
+    shell.fillStyle = wash;
+    shell.fill();
+
+    shell.globalCompositeOperation = 'destination-out';
+    shell.fillStyle = hazeGradient(shell, [0, 0, 0], 1, true);
+    shell.fillRect(0, 0, W, H);
+    shell.globalCompositeOperation = 'source-over';
+
+    /* lanes */
+    shell.lineWidth = 1;
+    LANE_LINES.forEach(function(l){
+      shell.strokeStyle = hazeGradient(shell, accent, p.wall * l.w, false);
+      laneCurve(shell, -l.o);
+      laneCurve(shell,  l.o);
+    });
+
+    /* and lift the quiet zone straight back out of it */
+    shell.save();
+    shell.globalCompositeOperation = 'destination-out';
+    shell.shadowColor = 'rgba(0,0,0,1)';
+    shell.shadowBlur = geo.qf;
+    shell.fillStyle = '#000';
+    roundRect(shell, geo.qx0, geo.qy0, geo.qx1 - geo.qx0, geo.qy1 - geo.qy0, geo.qr);
+    shell.fill();
+    shell.fill();
+    shell.restore();
+  }
+
+  /* ---- packets ---- */
+  var LANES = [-1, -0.68, -0.38, -0.13, 0.13, 0.38, 0.68, 1];
+
+  function dotTarget(){
+    var n = Math.round(W / 17);
+    if(n > MAX_DOTS) n = MAX_DOTS;
+    if(n < MIN_DOTS) n = MIN_DOTS;
+    return n;
+  }
+
+  function seed(){
+    var rand = mulberry32(0x51F3E7);
+    var n = dotTarget();
+    dots = [];
+    for(var i = 0; i < n; i++){
+      var dir = (i % 2 === 0) ? 1 : -1;
+      dots.push({
+        x: geo.xMin + rand() * (geo.xMax - geo.xMin),
+        lane: LANES[i % LANES.length],
+        dir: dir,
+        v: 42 + rand() * 44,
+        sz: 0.72 + rand() * 0.46,
+        off: (rand() - 0.5) * 0.44,   /* how far it strays once outside */
+        wa: 4 + rand() * 10,
+        wf: 0.16 + rand() * 0.2,
+        ph: rand() * 6.283
+      });
+    }
+    stats.dots = dots.length;
+  }
+
+  function paintFlow(dt){
+    flow.clearRect(0, 0, W, H);
+
+    for(var i = 0; i < dots.length; i++){
+      var d = dots[i];
+      if(dt){
+        d.x += d.dir * d.v * dt;
+        if(d.x > geo.xMax) d.x = geo.xMin;
+        else if(d.x < geo.xMin) d.x = geo.xMax;
+      }
+      var h = haze(d.x);
+      if(h <= 0.02) continue;
+
+      var o = order(d.x);
+      var e = env(d.x);
+      var stray = 1 - o * 0.92;
+      var y = geo.cy + d.lane * geo.half * e
+            + d.off * geo.half * e * stray
+            + Math.sin(clock * d.wf + d.ph) * d.wa * stray;
+      if(y < -40 || y > H + 40) continue;
+
+      var a = h * quiet(d.x, y) * (0.34 + 0.66 * o) * profileAlpha;
+      if(a <= 0.01) continue;
+
+      var s  = (d.dir > 0) ? sprites.out : sprites.back;
+      var sw = s.w * d.sz * (0.78 + 0.36 * o);
+      var sh = s.h * d.sz;
+      flow.globalAlpha = a;
+      flow.drawImage(s.cv, d.x - sw / 2, y - sh / 2, sw, sh);
+    }
+    flow.globalAlpha = 1;
+  }
+
+  var profileAlpha = 0.86;
+
+  function sizeFlow(){
+    flowCv.width  = Math.max(1, Math.round(W * DPR));
+    flowCv.height = Math.max(1, Math.round(H * DPR));
+    flowCv.style.width  = W + 'px';
+    flowCv.style.height = H + 'px';
+    flow.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+
+  /* ---- loop ---- */
+  function frame(now){
+    rafId = requestAnimationFrame(frame);
+    var delta = now - lastT;
+    lastT = now;
+    if(delta > 250) delta = FRAME_MS;   /* woke from a stall: do not jump */
+    acc += delta;
+    if(acc < FRAME_MS) return;
+    var dt = acc / 1000;
+    acc = 0;
+    clock += dt;
+
+    var t0 = performance.now();
+    paintFlow(dt);
+    var cost = performance.now() - t0;
+    stats.frames++;
+    stats.drawMs += cost;
+    stats.avgMs = +(stats.drawMs / stats.frames).toFixed(3);
+  }
+
+  function start(){
+    if(running || motionQ.matches || document.hidden) return;
+    running = true; stats.running = true;
+    lastT = performance.now(); acc = 0;
+    rafId = requestAnimationFrame(frame);
+  }
+  function stop(){
+    if(!running) return;
+    cancelAnimationFrame(rafId);
+    rafId = 0; running = false; stats.running = false;
+  }
+
+  /* ---- (re)build ---- */
+  function build(){
+    measure();
+    profileAlpha = profile().dot;
+    sizeFlow();
+    buildSprites();
+    paintShell();
+    if(dots.length !== dotTarget()) seed();
+    paintFlow(0);
+  }
+
+  var layoutPending = false;
+  function scheduleBuild(){
+    if(layoutPending) return;
+    layoutPending = true;
+    requestAnimationFrame(function(){
+      layoutPending = false;
+      build();
+    });
+  }
+
+  var resizeTimer = 0;
+  function deferBuild(ms){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(build, ms);
+  }
+  window.addEventListener('resize', function(){ deferBuild(150); });
+  /* the ground is fixed, so if the form is tall enough to scroll, the
+     quiet zone has to be re-measured once the scrolling settles */
+  window.addEventListener('scroll', function(){ deferBuild(120); }, { passive:true });
+
+  if(window.ResizeObserver){
+    new ResizeObserver(scheduleBuild).observe(cardEl);
+  }
+
+  /* a hidden tab must cost nothing at all */
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden) stop(); else start();
+  });
+
+  /* reduced motion cancels the loop, it does not merely shorten it */
+  function motionChanged(){
+    if(motionQ.matches){ stop(); build(); }
+    else start();
+  }
+  if(motionQ.addEventListener) motionQ.addEventListener('change', motionChanged);
+  else if(motionQ.addListener) motionQ.addListener(motionChanged);
+
+  function schemeChanged(){ build(); }
+  if(schemeQ.addEventListener) schemeQ.addEventListener('change', schemeChanged);
+  else if(schemeQ.addListener) schemeQ.addListener(schemeChanged);
+
+  /* ==============================================================
+     Form behaviour. Two-step, the same shape as the real page: the
+     code field does not exist until the server says the account has
+     a second factor, which it only says after the password checks
+     out.
+     ============================================================== */
+  var form     = document.getElementById('lgtForm');
+  var submit   = document.getElementById('lgtSubmit');
+  var spin     = document.getElementById('lgtSpin');
+  var errorEl  = document.getElementById('lgtError');
+  var expEl    = document.getElementById('lgtExpired');
+  var codeWrap = document.getElementById('lgtCodeField');
+  var codeIn   = document.getElementById('lgtCode');
+  var userCtl  = document.getElementById('lgtUserCtl');
+  var passCtl  = document.getElementById('lgtPassCtl');
+  var codeCtl  = document.getElementById('lgtCodeCtl');
+  var userIn   = document.getElementById('lgtUser');
+  var passIn   = document.getElementById('lgtPass');
+
+  var state = { twoFactor:false, error:false, expired:false, loading:false };
+
+  function render(){
+    codeWrap.hidden = !state.twoFactor;
+    errorEl.hidden  = !state.error;
+    expEl.hidden    = !state.expired;
+
+    spin.hidden = !state.loading;
+    submit.setAttribute('aria-busy', state.loading ? 'true' : 'false');
+    submit.disabled = state.loading;
+
+    [userCtl, passCtl].forEach(function(el){ el.classList.toggle('is-invalid', state.error); });
+    codeCtl.classList.toggle('is-invalid', state.error && state.twoFactor);
+    [userIn, passIn].forEach(function(el){ el.setAttribute('aria-invalid', state.error ? 'true' : 'false'); });
+    codeIn.setAttribute('aria-invalid', (state.error && state.twoFactor) ? 'true' : 'false');
+
+    document.getElementById('pxTwoFactor').checked = state.twoFactor;
+    document.getElementById('pxError').checked     = state.error;
+    document.getElementById('pxExpired').checked   = state.expired;
+    document.getElementById('pxLoading').checked   = state.loading;
+
+    scheduleBuild();
+  }
+
+  var pending = 0;
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    if(state.loading) return;
+    state.loading = true;
+    state.error = false;
+    render();
+    clearTimeout(pending);
+    pending = setTimeout(function(){
+      state.loading = false;
+      state.expired = false;
+      if(!state.twoFactor){
+        /* server answered twoFactorRequired: reveal the code field */
+        state.twoFactor = true;
+        render();
+        codeIn.focus();
+      } else {
+        state.error = true;
+        render();
+      }
+    }, 1100);
+  });
+
+  /* password reveal */
+  var reveal = document.getElementById('lgtReveal');
+  var revealIcon = document.getElementById('lgtRevealIcon');
+  reveal.addEventListener('click', function(){
+    var shown = passIn.type === 'text';
+    passIn.type = shown ? 'password' : 'text';
+    reveal.setAttribute('aria-pressed', shown ? 'false' : 'true');
+    revealIcon.setAttribute('href', shown ? '#lgt-i-eye' : '#lgt-i-eye-off');
+    var label = shown ? 'Show password' : 'Hide password';
+    reveal.setAttribute('aria-label', label);
+    reveal.setAttribute('title', label);
+  });
+
+  /* ==============================================================
+     Settings: theme and language, modelled on the panel's own
+     control (a Dark switch, with Ultra Dark offered underneath it
+     only while dark is on).
+     ============================================================== */
+  var gear = document.getElementById('lgtGear');
+  var pop  = document.getElementById('lgtPop');
+  var darkSw = document.getElementById('lgtDark');
+  var ultraRow = document.getElementById('lgtUltraRow');
+  var ultraCb = document.getElementById('lgtUltra');
+
+  function popOpen(open){
+    pop.hidden = !open;
+    gear.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  gear.addEventListener('click', function(e){
+    e.stopPropagation();
+    popOpen(pop.hidden);
+  });
+  document.addEventListener('click', function(e){
+    if(!pop.hidden && !pop.contains(e.target) && e.target !== gear) popOpen(false);
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && !pop.hidden){ popOpen(false); gear.focus(); }
+  });
+
+  function applyTheme(){
+    var dark = darkSw.checked;
+    ultraRow.hidden = !dark;
+    if(!dark) ultraCb.checked = false;
+    root.setAttribute('data-theme', dark ? (ultraCb.checked ? 'ultra-dark' : 'dark') : 'light');
+    build();
+  }
+  darkSw.addEventListener('change', applyTheme);
+  ultraCb.addEventListener('change', applyTheme);
+  /* start from the system preference, exactly like the CSS does */
+  darkSw.checked = schemeQ.matches;
+  ultraRow.hidden = !darkSw.checked;
+
+  /* ---- language ----
+     Only the three locales whose strings are quoted verbatim from
+     web/translation are swapped here; the rest of the list is real
+     but left in English rather than invent a translation. Persian
+     and Arabic flip the document direction, which is the point. */
+  var STRINGS = {
+    'en-US': {
+      hello:'Hello', welcome:'Welcome', username:'Username', password:'Password',
+      code:'Code', login:'Log In',
+      loginAgain:'Your session has expired, please log in again',
+      wrongCredentials:'Invalid username or password or two-factor code.',
+      twoFactorRequired:'Enter the code from your authenticator app to finish signing in.',
+      settings:'Settings', dark:'Dark', ultraDark:'Ultra Dark', language:'Language'
+    },
+    'fa-IR': {
+      hello:'سلام', welcome:'خوش‌آمدید', username:'نام‌کاربری', password:'رمزعبور',
+      code:'کد', login:'ورود',
+      loginAgain:'مدت زمان استفاده به‌اتمام‌رسیده، لطفا دوباره وارد شوید',
+      wrongCredentials:'نام کاربری، رمز عبور یا کد دو مرحله‌ای نامعتبر است.',
+      twoFactorRequired:'برای تکمیل ورود، کد را از برنامه احرازهویت خود وارد کنید.',
+      settings:'تنظیمات', dark:'تیره', ultraDark:'فوق تیره', language:'زبان'
+    },
+    'ar-EG': {
+      hello:'أهلا', welcome:'أهلاً وسهلاً', username:'اسم المستخدم', password:'الباسورد',
+      code:'الكود', login:'تسجيل الدخول',
+      loginAgain:'انتهت صلاحية الجلسة، سجل دخول تاني',
+      wrongCredentials:'اسم المستخدم أو كلمة المرور أو كود المصادقة الثنائية غير صحيح.',
+      twoFactorRequired:'اكتب الكود من تطبيق المصادقة بتاعك عشان تكمل تسجيل الدخول.',
+      settings:'إعدادات', dark:'داكن', ultraDark:'داكن جدًا', language:'اللغة'
+    }
+  };
+  var RTL = { 'fa-IR':1, 'ar-EG':1 };
+
+  function applyStrings(locale){
+    var s = STRINGS[locale] || STRINGS['en-US'];
+    document.querySelectorAll('#lg-tunnel [data-t]').forEach(function(el){
+      var k = el.getAttribute('data-t');
+      if(s[k]) el.textContent = s[k];
+    });
+    document.querySelectorAll('#lg-tunnel [data-t-attr]').forEach(function(el){
+      el.getAttribute('data-t-attr').split(' ').forEach(function(spec){
+        var parts = spec.split('|');
+        var val = s[parts[0]];
+        if(!val) return;
+        for(var i = 1; i < parts.length; i++) el.setAttribute(parts[i], val);
+      });
+    });
+  }
+
+  function setDirection(rtl){
+    root.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+    dirBtn.textContent = 'Direction: ' + (rtl ? 'RTL' : 'LTR');
+    scheduleBuild();
+  }
+
+  var langSel = document.getElementById('lgtLang');
+  langSel.addEventListener('change', function(){
+    var v = langSel.value;
+    root.lang = v.slice(0, 2);
+    applyStrings(STRINGS[v] ? v : 'en-US');
+    setDirection(!!RTL[v]);
+  });
+
+  /* ==============================================================
+     Prototype scaffolding below this line. Not part of the screen.
+     ============================================================== */
+  var dirBtn = document.getElementById('pxDir');
+  dirBtn.addEventListener('click', function(){
+    setDirection(root.getAttribute('dir') !== 'rtl');
+  });
+
+  function bindState(id, key){
+    document.getElementById(id).addEventListener('change', function(e){
+      state[key] = e.target.checked;
+      if(key === 'loading' && !e.target.checked) clearTimeout(pending);
+      render();
+    });
+  }
+  bindState('pxTwoFactor', 'twoFactor');
+  bindState('pxError', 'error');
+  bindState('pxExpired', 'expired');
+  bindState('pxLoading', 'loading');
+
+  var proto = document.getElementById('lgtProto');
+  var protoShow = document.getElementById('pxShow');
+  document.getElementById('pxHide').addEventListener('click', function(){
+    proto.hidden = true; protoShow.hidden = false; scheduleBuild();
+  });
+  protoShow.addEventListener('click', function(){
+    proto.hidden = false; protoShow.hidden = true; scheduleBuild();
+  });
+
+  /* ---- go ---- */
+  setDirection(false);
+  render();
+  build();
+  if(motionQ.matches) stop(); else start();
+})();
+</script>
+</div>
+</body>
+</html>

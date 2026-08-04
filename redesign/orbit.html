@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Overview: Orbit</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<div class="orbit-root">
+<style>
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --accent-glow:rgba(0,135,113,.16); --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --ok-glow:rgba(82,196,26,.18); --info-glow:rgba(24,144,255,.18); --warn-glow:rgba(250,173,20,.18); --error-glow:rgba(245,34,45,.16);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+    --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --accent-glow:rgba(27,191,159,.22); --on-accent:#071a16;
+    --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+    --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+    --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+    --ok-glow:rgba(99,214,126,.22); --info-glow:rgba(74,160,255,.22); --warn-glow:rgba(255,196,77,.22); --error-glow:rgba(255,107,107,.20);
+    --shadow-sm:none; --shadow-md:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+  --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --accent-glow:rgba(27,191,159,.22); --on-accent:#071a16;
+  --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+  --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+  --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+  --ok-glow:rgba(99,214,126,.22); --info-glow:rgba(74,160,255,.22); --warn-glow:rgba(255,196,77,.22); --error-glow:rgba(255,107,107,.20);
+  --shadow-sm:none; --shadow-md:none;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --accent-glow:rgba(0,135,113,.16); --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --ok-glow:rgba(82,196,26,.18); --info-glow:rgba(24,144,255,.18); --warn-glow:rgba(250,173,20,.18); --error-glow:rgba(245,34,45,.16);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+}
+
+.orbit-root *, .orbit-root *::before, .orbit-root *::after{ box-sizing:border-box; }
+.orbit-root{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--bg); color:var(--text);
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden;
+  min-height:100vh;
+}
+.orbit-root .num{ font-variant-numeric:tabular-nums; }
+.orbit-root svg{ display:block; }
+.orbit-root button{ font-family:inherit; }
+.orbit-root ul, .orbit-root p, .orbit-root h1, .orbit-root h2, .orbit-root h3{ margin:0; padding:0; }
+
+@media (prefers-reduced-motion: reduce){
+  .orbit-root *{ transition-duration:.001ms !important; animation-duration:.001ms !important; }
+}
+.orbit-root button:focus-visible, .orbit-root [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;
+}
+
+.orb-icon{ width:18px; height:18px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.orb-icon-14{ width:14px; height:14px; }
+.orb-icon-16{ width:16px; height:16px; }
+.orb-icon-20{ width:20px; height:20px; }
+
+.orb-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; background:var(--off); }
+.orb-dot--ok{ background:var(--ok); }
+
+/* ===== shell / layout ===== */
+.orb-shell{ display:flex; min-height:100vh; }
+.orb-rail{
+  flex:0 0 84px; width:84px; align-self:flex-start; position:sticky; top:0; height:100vh;
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center;
+  padding:20px 0; gap:22px; overflow-y:auto;
+}
+.orb-rail-brand{ display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--accent); }
+.orb-rail-brand span{ font-size:12px; font-weight:700; color:var(--text); letter-spacing:.01em; }
+.orb-rail-nav{ display:flex; flex-direction:column; gap:4px; width:100%; align-items:center; }
+.orb-rail-item{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  width:66px; padding:4px 4px 8px; border-radius:10px; border:none; background:transparent; color:var(--text-3);
+  cursor:pointer;
+}
+.orb-rail-item-mark{
+  width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  transition:background-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.orb-rail-item span{ font-size:10px; font-weight:600; letter-spacing:.01em; transition:color .15s ease; }
+.orb-rail-item:hover .orb-rail-item-mark{ color:var(--text-2); background:var(--surface-2); }
+.orb-rail-item.is-active .orb-rail-item-mark{ background:var(--accent-weak); color:var(--accent); box-shadow:0 0 0 1.5px var(--accent) inset; }
+.orb-rail-item.is-active span{ color:var(--accent); }
+
+.orb-main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.orb-topbar{ background:var(--surface); border-bottom:1px solid var(--border); }
+.orb-topbar-inner{
+  max-width:1280px; margin:0 auto; padding:14px 28px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+.orb-topbar-left{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-width:0; }
+.orb-host-chip, .orb-health-pill{
+  display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600;
+  padding:6px 12px; border-radius:999px; white-space:nowrap;
+}
+.orb-host-chip{ background:var(--surface-2); color:var(--text-2); }
+.orb-host-chip .orb-icon{ color:var(--text-3); }
+.orb-health-pill{ background:var(--ok-weak); color:var(--ok); }
+
+.orb-theme-toggle{
+  width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:0 0 auto;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.orb-theme-toggle:hover{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+.orb-theme-toggle .orb-i-moon{ display:none; }
+:root[data-theme="dark"] .orb-theme-toggle .orb-i-sun{ display:none; }
+:root[data-theme="dark"] .orb-theme-toggle .orb-i-moon{ display:block; }
+
+.orb-content{ max-width:1280px; width:100%; margin:0 auto; padding:26px 28px 48px; }
+.orb-page-head{ margin-bottom:24px; }
+.orb-page-title{ font-size:24px; font-weight:700; text-wrap:balance; }
+.orb-page-sub{ font-size:13px; color:var(--text-3); margin-top:4px; }
+.orb-page-sub strong{ color:var(--text-2); font-weight:600; }
+
+.orb-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:0 0 12px; }
+.orb-section-title{ font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); }
+.orb-section-meta{ font-size:12px; color:var(--text-3); }
+.orb-section{ margin-bottom:32px; }
+
+/* ===== hero: OS identity banner ===== */
+.orb-hero{ margin-bottom:32px; }
+.orb-os-banner{
+  position:relative; overflow:hidden;
+  display:flex; align-items:center; gap:22px;
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:24px 28px; box-shadow:var(--shadow-md); margin-bottom:22px;
+}
+.orb-os-orbits{ position:absolute; top:50%; right:-40px; width:280px; height:280px; transform:translateY(-50%); pointer-events:none; }
+.orb-os-orbits circle{ fill:none; stroke:var(--border); stroke-width:1; opacity:.7; }
+.orb-os-badge{
+  position:relative; flex:0 0 auto; width:88px; height:88px; border-radius:50%;
+  background:var(--accent-weak); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+}
+.orb-os-badge svg{ width:46px; height:46px; }
+.orb-os-info{ position:relative; min-width:0; }
+.orb-os-eyebrow{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-3); margin-bottom:4px; }
+.orb-os-name{ font-size:23px; font-weight:700; letter-spacing:-.01em; }
+.orb-os-meta{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:9px; }
+.orb-os-meta-item{ display:flex; align-items:center; gap:7px; font-size:13px; color:var(--text-2); }
+.orb-os-meta-item .orb-icon{ color:var(--text-3); }
+
+@media (max-width:520px){
+  .orb-os-banner{ flex-direction:column; align-items:flex-start; gap:16px; padding:22px; }
+  .orb-os-orbits{ display:none; }
+}
+
+/* ===== ring cluster (hero gauges) ===== */
+.orb-ring-row{ display:flex; flex-wrap:wrap; gap:18px; align-items:stretch; }
+.orb-ring-card{
+  flex:1 1 228px; min-width:0;
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:20px 18px; box-shadow:var(--shadow-md);
+  transition:transform .15s ease, border-color .15s ease;
+}
+.orb-ring-card:hover{ transform:translateY(-3px); border-color:var(--border-strong); }
+.orb-ring-card--sm{ flex:1 1 176px; }
+.orb-ring-head{ font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); }
+
+.orb-ring-figure{ position:relative; width:176px; height:176px; margin:10px 0 14px; }
+.orb-ring-figure--sm{ width:108px; height:108px; margin:8px 0 12px; }
+.orb-ring-svg{ width:100%; height:100%; transform:rotate(-90deg); display:block; }
+.orb-ring-track{ fill:none; stroke:var(--border); }
+.orb-ring-progress{ fill:none; stroke-linecap:round; transition:stroke-dashoffset .9s cubic-bezier(.22,1,.36,1); }
+.orb-ring-progress--accent{ stroke:var(--accent); filter:drop-shadow(0 0 5px var(--accent-glow)); }
+.orb-ring-progress--warn{ stroke:var(--warn); filter:drop-shadow(0 0 5px var(--warn-glow)); }
+.orb-ring-progress--error{ stroke:var(--error); filter:drop-shadow(0 0 5px var(--error-glow)); }
+
+.orb-ring-overlay{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; }
+.orb-ring-value{ font-size:38px; font-weight:750; color:var(--text); line-height:1; }
+.orb-ring-overlay--sm .orb-ring-value{ font-size:22px; }
+.orb-ring-unit{ font-size:15px; font-weight:600; color:var(--text-3); margin-left:2px; }
+.orb-ring-spark{ width:60px; height:16px; opacity:.95; }
+
+.orb-ring-foot{ min-width:0; }
+.orb-ring-main{ font-size:13.5px; font-weight:600; color:var(--text); }
+.orb-ring-sub{ font-size:12px; color:var(--text-2); margin-top:6px; }
+.orb-ring-tiny{ font-size:10.5px; color:var(--text-3); margin-top:2px; }
+.orb-ring-spark--wide{ width:120px; height:22px; margin:8px auto 0; }
+
+/* ===== services chip grid ===== */
+.orb-chip-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; }
+.orb-chip{
+  display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:11px 14px; transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.orb-chip:hover{ transform:translateY(-1px); border-color:var(--border-strong); box-shadow:var(--shadow-sm); }
+.orb-chip-led{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; background:var(--off); }
+.orb-chip[data-state="running"] .orb-chip-led{ background:var(--ok); box-shadow:0 0 0 3px var(--ok-glow); }
+.orb-chip[data-state="idle"] .orb-chip-led{ background:var(--info); box-shadow:0 0 0 3px var(--info-glow); }
+.orb-chip[data-state="stopped"] .orb-chip-led{ background:var(--warn); box-shadow:0 0 0 3px var(--warn-glow); }
+.orb-chip-name{ font-size:13.5px; font-weight:600; color:var(--text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.orb-chip-state{ font-size:11.5px; font-weight:700; letter-spacing:.02em; }
+.orb-chip[data-state="running"] .orb-chip-state{ color:var(--ok); }
+.orb-chip[data-state="idle"] .orb-chip-state{ color:var(--info); }
+.orb-chip[data-state="stopped"] .orb-chip-state{ color:var(--warn); }
+
+/* ===== supporting card grid ===== */
+.orb-card-grid{ display:grid; grid-template-columns:1fr; gap:14px; }
+@media (min-width:640px){
+  .orb-card-grid{ grid-template-columns:repeat(6,1fr); gap:16px; }
+  .orb-span-4, .orb-span-5, .orb-span-6, .orb-span-7{ grid-column:span 3; }
+  .orb-span-12{ grid-column:span 6; }
+}
+@media (min-width:1024px){
+  .orb-card-grid{ grid-template-columns:repeat(12,1fr); gap:18px; }
+  .orb-span-4{ grid-column:span 4; }
+  .orb-span-5{ grid-column:span 5; }
+  .orb-span-6{ grid-column:span 6; }
+  .orb-span-7{ grid-column:span 7; }
+  .orb-span-12{ grid-column:span 12; }
+}
+
+.orb-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:18px 20px; box-shadow:var(--shadow-md);
+  transition:transform .15s ease, border-color .15s ease;
+}
+.orb-card:hover{ transform:translateY(-2px); border-color:var(--border-strong); }
+.orb-card--flex{ display:flex; flex-direction:column; height:100%; }
+.orb-card-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+.orb-card-title{ font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-2); }
+.orb-card-caption{ font-size:12.5px; color:var(--text-3); margin-bottom:14px; }
+.orb-card-body--flex{ display:flex; flex-direction:column; justify-content:space-between; gap:16px; flex:1; }
+
+.orb-status-pill{
+  display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+  padding:4px 10px 4px 8px; border-radius:999px;
+}
+.orb-status-pill--ok{ background:var(--ok-weak); color:var(--ok); }
+
+.orb-metric-md{ font-size:24px; font-weight:700; color:var(--text); }
+.orb-status-line{ display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; margin-top:8px; }
+.orb-status-line--ok{ color:var(--ok); }
+
+.orb-stat-row{ display:flex; flex-direction:column; }
+.orb-stat{ display:flex; align-items:center; gap:9px; padding:9px 0; }
+.orb-stat + .orb-stat{ border-top:1px solid var(--border); }
+.orb-stat-icon{ color:var(--text-3); }
+.orb-stat-label{ flex:1; font-size:12.5px; font-weight:500; color:var(--text-2); min-width:0; }
+.orb-stat-value{ font-size:14.5px; font-weight:600; color:var(--text); text-align:right; }
+.orb-stat--plain{ padding:9px 0; }
+
+.orb-divider{ height:1px; background:var(--border); margin:12px 0; }
+
+.orb-action-row{ display:flex; flex-wrap:wrap; gap:8px; }
+.orb-icon-btn{
+  display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600;
+  color:var(--text-2); background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+  padding:7px 12px; cursor:pointer; transition:background .15s ease,color .15s ease,border-color .15s ease,transform .15s ease;
+}
+.orb-icon-btn:hover{ background:var(--accent-weak); color:var(--accent); border-color:var(--accent); transform:translateY(-1px); }
+.orb-icon-btn--danger:hover{ background:var(--error-weak); color:var(--error); border-color:var(--error); }
+.orb-icon-btn--ghost{ background:transparent; padding:5px 10px; }
+
+.orb-btn{ font-size:13.5px; font-weight:600; border-radius:9px; padding:10px 16px; cursor:pointer; border:1px solid transparent; transition:filter .15s ease, transform .15s ease; }
+.orb-btn--primary{ background:var(--accent); color:var(--on-accent); align-self:flex-start; }
+.orb-btn--primary:hover{ filter:brightness(1.06); transform:translateY(-1px); }
+
+/* network throughput */
+.orb-flow-row{ display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+@media (max-width:420px){ .orb-flow-row{ grid-template-columns:1fr; } }
+.orb-flow-col{ min-width:0; display:flex; flex-direction:column; gap:8px; }
+.orb-flow-head{ display:flex; align-items:center; gap:6px; }
+.orb-flow-label{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.orb-flow-col--up .orb-flow-head{ color:var(--accent); }
+.orb-flow-col--down .orb-flow-head{ color:var(--info); }
+.orb-flow-value{ font-size:25px; font-weight:700; letter-spacing:-.01em; }
+.orb-flow-col--up .orb-flow-value{ color:var(--accent); }
+.orb-flow-col--down .orb-flow-value{ color:var(--info); }
+.orb-flow-unit{ font-size:12.5px; font-weight:600; color:var(--text-3); margin-left:2px; }
+.orb-flow-spark{ width:100%; height:48px; }
+.orb-flow-spark svg{ width:100%; height:100%; overflow:visible; }
+
+.orb-big-stat-split{ display:flex; }
+.orb-big-stat{ flex:1; display:flex; flex-direction:column; gap:6px; padding:2px 20px; }
+.orb-big-stat:first-child{ padding-left:0; border-right:1px solid var(--border); }
+.orb-big-stat:last-child{ padding-right:0; }
+.orb-big-stat-label{ font-size:12px; font-weight:500; color:var(--text-2); }
+.orb-big-stat-value{ font-size:27px; font-weight:700; color:var(--text); }
+@media (max-width:420px){
+  .orb-big-stat-split{ flex-direction:column; gap:14px; }
+  .orb-big-stat:first-child{ border-right:none; border-bottom:1px solid var(--border); padding-bottom:12px; }
+}
+
+.orb-ip-split{ display:flex; }
+.orb-ip-block{ flex:1; min-width:0; display:flex; flex-direction:column; gap:7px; padding:2px 22px; }
+.orb-ip-block:first-child{ padding-left:0; border-right:1px solid var(--border); }
+.orb-ip-block:last-child{ padding-right:0; }
+.orb-ip-block-label{ font-size:12px; font-weight:500; color:var(--text-2); }
+.orb-ip-block-value{ font-size:16.5px; font-weight:700; color:var(--text); overflow-wrap:anywhere; }
+@media (max-width:560px){
+  .orb-ip-split{ flex-direction:column; gap:14px; }
+  .orb-ip-block:first-child{ border-right:none; border-bottom:1px solid var(--border); padding-bottom:12px; }
+}
+
+.orb-eye-btn{
+  background:transparent; border:1px solid var(--border); color:var(--text-3); cursor:pointer;
+  width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+  transition:color .15s ease, border-color .15s ease;
+}
+.orb-eye-btn:hover{ color:var(--accent); border-color:var(--accent); }
+.orb-eye-btn .orb-i-eye-off{ display:none; }
+.orb-eye-btn[data-hidden="true"] .orb-i-eye{ display:none; }
+.orb-eye-btn[data-hidden="true"] .orb-i-eye-off{ display:block; }
+
+.orb-foot{ margin-top:38px; padding-top:16px; border-top:1px solid var(--border); font-size:11.5px; color:var(--text-3); text-align:left; }
+
+@media (max-width:520px){
+  .orb-rail{ flex-basis:60px; width:60px; padding:16px 0; gap:16px; }
+  .orb-rail-item{ width:52px; }
+  .orb-rail-item span, .orb-rail-brand span{ display:none; }
+}
+</style>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+<symbol id="orb-i-shield" viewBox="0 0 24 24"><path d="M12 3 19 6v5c0 4.8-3.2 8.6-7 10-3.8-1.4-7-5.2-7-10V6l7-3z"/></symbol>
+<symbol id="orb-i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></symbol>
+<symbol id="orb-i-list" viewBox="0 0 24 24"><circle cx="4.5" cy="6" r="1.3"/><line x1="8.5" y1="6" x2="20.5" y2="6"/><circle cx="4.5" cy="12" r="1.3"/><line x1="8.5" y1="12" x2="20.5" y2="12"/><circle cx="4.5" cy="18" r="1.3"/><line x1="8.5" y1="18" x2="20.5" y2="18"/></symbol>
+<symbol id="orb-i-sliders" viewBox="0 0 24 24"><line x1="5" y1="21" x2="5" y2="14"/><line x1="5" y1="10" x2="5" y2="3"/><circle cx="5" cy="12" r="2.1"/><line x1="12" y1="21" x2="12" y2="12.5"/><line x1="12" y1="8.5" x2="12" y2="3"/><circle cx="12" cy="10.5" r="2.1"/><line x1="19" y1="21" x2="19" y2="16"/><line x1="19" y1="12" x2="19" y2="3"/><circle cx="19" cy="14" r="2.1"/></symbol>
+<symbol id="orb-i-zap" viewBox="0 0 24 24"><polygon points="13 2 4.5 13.5 11 13.5 10 22 19.5 10 13 10 13 2"/></symbol>
+<symbol id="orb-i-file" viewBox="0 0 24 24"><path d="M7 3h6.5L18 7.5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M13.5 3v4.5H18"/><line x1="9" y1="12.5" x2="15" y2="12.5"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></symbol>
+<symbol id="orb-i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6.5" rx="1.6"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.6"/><line x1="7" y1="7.25" x2="7.01" y2="7.25"/><line x1="7" y1="16.75" x2="7.01" y2="16.75"/></symbol>
+<symbol id="orb-i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><line x1="9" y1="3" x2="9" y2="7"/><line x1="15" y1="3" x2="15" y2="7"/><line x1="9" y1="17" x2="9" y2="21"/><line x1="15" y1="17" x2="15" y2="21"/><line x1="3" y1="9" x2="7" y2="9"/><line x1="3" y1="15" x2="7" y2="15"/><line x1="17" y1="9" x2="21" y2="9"/><line x1="17" y1="15" x2="21" y2="15"/></symbol>
+<symbol id="orb-i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3"/><line x1="12" y1="2" x2="12" y2="4.6"/><line x1="12" y1="19.4" x2="12" y2="22"/><line x1="2" y1="12" x2="4.6" y2="12"/><line x1="19.4" y1="12" x2="22" y2="12"/><line x1="4.7" y1="4.7" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.3" y2="19.3"/><line x1="4.7" y1="19.3" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.3" y2="4.7"/></symbol>
+<symbol id="orb-i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7.3 7.3 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="orb-i-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1.1"/></symbol>
+<symbol id="orb-i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3.1-6.3"/><polyline points="20.5 3 20 8 15 7.3"/></symbol>
+<symbol id="orb-i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c2.4 2.5 3.8 5.7 3.8 9s-1.4 6.5-3.8 9c-2.4-2.5-3.8-5.7-3.8-9s1.4-6.5 3.8-9z"/></symbol>
+<symbol id="orb-i-tag" viewBox="0 0 24 24"><path d="M11.4 3H5a1 1 0 0 0-1 1v6.4a1 1 0 0 0 .3.7l9.1 9.1a1 1 0 0 0 1.4 0l6.4-6.4a1 1 0 0 0 0-1.4l-9.1-9.1a1 1 0 0 0-.7-.3z"/><circle cx="7.8" cy="7.8" r="1.4"/></symbol>
+<symbol id="orb-i-download" viewBox="0 0 24 24"><path d="M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><polyline points="7.5 10 12 14.5 16.5 10"/><line x1="12" y1="3" x2="12" y2="14.5"/></symbol>
+<symbol id="orb-i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.3 10.4 15.2 16.5 9"/></symbol>
+<symbol id="orb-i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12.3 15.8 14.3"/></symbol>
+<symbol id="orb-i-activity" viewBox="0 0 24 24"><polyline points="3 12 8 12 10 5.5 14 18.5 16 12 21 12"/></symbol>
+<symbol id="orb-i-arrow-up" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5.5"/><polyline points="6.5 11 12 5.5 17.5 11"/></symbol>
+<symbol id="orb-i-arrow-down" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="18.5"/><polyline points="6.5 13 12 18.5 17.5 13"/></symbol>
+<symbol id="orb-i-eye" viewBox="0 0 24 24"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="orb-i-eye-off" viewBox="0 0 24 24"><path d="M3.3 3.3l17.4 17.4"/><path d="M10.6 5.2A10.5 10.5 0 0 1 12 5c6.2 0 10 7 10 7a17.6 17.6 0 0 1-3.9 4.8"/><path d="M6.5 6.7C3.8 8.6 2 12 2 12s3.8 7 10 7c1.4 0 2.7-.3 3.9-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+</defs>
+</svg>
+
+<div class="orb-shell">
+  <aside class="orb-rail">
+    <div class="orb-rail-brand">
+      <svg class="orb-icon orb-icon-20"><use href="#orb-i-shield"></use></svg>
+      <span>vpn-ui</span>
+    </div>
+    <nav class="orb-rail-nav" aria-label="Primary">
+      <button type="button" class="orb-rail-item is-active" aria-current="page">
+        <span class="orb-rail-item-mark"><svg class="orb-icon orb-icon-20"><use href="#orb-i-grid"></use></svg></span>
+        <span>Overview</span>
+      </button>
+      <button type="button" class="orb-rail-item">
+        <span class="orb-rail-item-mark"><svg class="orb-icon orb-icon-20"><use href="#orb-i-list"></use></svg></span>
+        <span>Inbounds</span>
+      </button>
+      <button type="button" class="orb-rail-item">
+        <span class="orb-rail-item-mark"><svg class="orb-icon orb-icon-20"><use href="#orb-i-sliders"></use></svg></span>
+        <span>Settings</span>
+      </button>
+      <button type="button" class="orb-rail-item">
+        <span class="orb-rail-item-mark"><svg class="orb-icon orb-icon-20"><use href="#orb-i-zap"></use></svg></span>
+        <span>Xray</span>
+      </button>
+      <button type="button" class="orb-rail-item">
+        <span class="orb-rail-item-mark"><svg class="orb-icon orb-icon-20"><use href="#orb-i-file"></use></svg></span>
+        <span>Logs</span>
+      </button>
+    </nav>
+  </aside>
+
+  <div class="orb-main">
+    <header class="orb-topbar">
+      <div class="orb-topbar-inner">
+        <div class="orb-topbar-left">
+          <span class="orb-host-chip">
+            <svg class="orb-icon orb-icon-16"><use href="#orb-i-server"></use></svg>
+            srv-fra-01
+          </span>
+          <span class="orb-health-pill">
+            <span class="orb-dot orb-dot--ok"></span>
+            All systems operational
+          </span>
+        </div>
+        <button type="button" class="orb-theme-toggle" id="orbThemeToggle" aria-label="Toggle color theme">
+          <svg class="orb-icon orb-i-sun"><use href="#orb-i-sun"></use></svg>
+          <svg class="orb-icon orb-i-moon"><use href="#orb-i-moon"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="orb-content">
+      <div class="orb-page-head">
+        <h1 class="orb-page-title">Overview</h1>
+        <p class="orb-page-sub">Real-time status for <strong>srv-fra-01</strong></p>
+      </div>
+
+      <section class="orb-hero" aria-label="System identity and vitals">
+        <div class="orb-os-banner">
+          <svg class="orb-os-orbits" viewBox="0 0 280 280" aria-hidden="true" focusable="false">
+            <circle cx="140" cy="140" r="60"></circle>
+            <circle cx="140" cy="140" r="92"></circle>
+            <circle cx="140" cy="140" r="124"></circle>
+          </svg>
+          <div class="orb-os-badge">
+            <svg viewBox="0 0 24 24" fill="#51A2DA" aria-hidden="true"><path d="M12.001 0C5.376 0 .008 5.369.004 11.992H.002v9.287h.002A2.726 2.726 0 0 0 2.73 24h9.275c6.626-.004 11.993-5.372 11.993-11.997C23.998 5.375 18.628 0 12 0zm2.431 4.94c2.015 0 3.917 1.543 3.917 3.671 0 .197.001.395-.03.619a1.002 1.002 0 0 1-1.137.893 1.002 1.002 0 0 1-.842-1.175 2.61 2.61 0 0 0 .013-.337c0-1.207-.987-1.672-1.92-1.672-.934 0-1.775.784-1.777 1.672.016 1.027 0 2.046 0 3.07l1.732-.012c1.352-.028 1.368 2.009.016 1.998l-1.748.013c-.004.826.006.677.002 1.093 0 0 .015 1.01-.016 1.776-.209 2.25-2.124 4.046-4.424 4.046-2.438 0-4.448-1.993-4.448-4.437.073-2.515 2.078-4.492 4.603-4.469l1.409-.01v1.996l-1.409.013h-.007c-1.388.04-2.577.984-2.6 2.47a2.438 2.438 0 0 0 2.452 2.439c1.356 0 2.441-.987 2.441-2.437l-.001-7.557c0-.14.005-.252.02-.407.23-1.848 1.883-3.256 3.754-3.256z"/></svg>
+          </div>
+          <div class="orb-os-info">
+            <p class="orb-os-eyebrow">Operating System</p>
+            <h2 class="orb-os-name">Fedora 44</h2>
+            <div class="orb-os-meta">
+              <span class="orb-os-meta-item"><svg class="orb-icon orb-icon-16"><use href="#orb-i-chip"></use></svg><span class="num">6.14.5-300.fc44</span></span>
+              <span class="orb-os-meta-item"><svg class="orb-icon orb-icon-16"><use href="#orb-i-server"></use></svg>srv-fra-01</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="orb-section-head">
+          <h2 class="orb-section-title">System Vitals</h2>
+        </div>
+        <div class="orb-ring-row">
+
+          <div class="orb-ring-card">
+            <div class="orb-ring-head">CPU</div>
+            <div class="orb-ring-figure">
+              <svg class="orb-ring-svg" viewBox="0 0 176 176" aria-hidden="true">
+                <circle class="orb-ring-track" cx="88" cy="88" r="76" stroke-width="13"></circle>
+                <circle class="orb-ring-progress orb-ring-progress--accent" cx="88" cy="88" r="76" stroke-width="13" data-pct="34" style="stroke-dasharray:477.52;stroke-dashoffset:477.52"></circle>
+              </svg>
+              <div class="orb-ring-overlay">
+                <span class="orb-ring-value"><span class="num">34</span><span class="orb-ring-unit">%</span></span>
+                <span class="orb-ring-spark" data-spark="cpu" data-spark-w="60" data-spark-h="16"></span>
+              </div>
+            </div>
+            <div class="orb-ring-foot">
+              <p class="orb-ring-main">8 cores &middot; 3.40 GHz</p>
+              <p class="orb-ring-sub">Load <span class="num">0.42</span> &middot; <span class="num">0.55</span> &middot; <span class="num">0.48</span></p>
+              <p class="orb-ring-tiny">1m / 5m / 15m avg</p>
+            </div>
+          </div>
+
+          <div class="orb-ring-card">
+            <div class="orb-ring-head">RAM</div>
+            <div class="orb-ring-figure">
+              <svg class="orb-ring-svg" viewBox="0 0 176 176" aria-hidden="true">
+                <circle class="orb-ring-track" cx="88" cy="88" r="76" stroke-width="13"></circle>
+                <circle class="orb-ring-progress orb-ring-progress--accent" cx="88" cy="88" r="76" stroke-width="13" data-pct="33" style="stroke-dasharray:477.52;stroke-dashoffset:477.52"></circle>
+              </svg>
+              <div class="orb-ring-overlay">
+                <span class="orb-ring-value"><span class="num">33</span><span class="orb-ring-unit">%</span></span>
+                <span class="orb-ring-spark" data-spark="ram" data-spark-w="60" data-spark-h="16"></span>
+              </div>
+            </div>
+            <div class="orb-ring-foot">
+              <p class="orb-ring-main">5.2 GB / 16 GB</p>
+            </div>
+          </div>
+
+          <div class="orb-ring-card">
+            <div class="orb-ring-head">Storage</div>
+            <div class="orb-ring-figure">
+              <svg class="orb-ring-svg" viewBox="0 0 176 176" aria-hidden="true">
+                <circle class="orb-ring-track" cx="88" cy="88" r="76" stroke-width="13"></circle>
+                <circle class="orb-ring-progress orb-ring-progress--warn" cx="88" cy="88" r="76" stroke-width="13" data-pct="51" style="stroke-dasharray:477.52;stroke-dashoffset:477.52"></circle>
+              </svg>
+              <div class="orb-ring-overlay">
+                <span class="orb-ring-value"><span class="num">51</span><span class="orb-ring-unit">%</span></span>
+                <span class="orb-ring-spark" data-spark="storage" data-spark-w="60" data-spark-h="16"></span>
+              </div>
+            </div>
+            <div class="orb-ring-foot">
+              <p class="orb-ring-main">82 GB / 160 GB</p>
+            </div>
+          </div>
+
+          <div class="orb-ring-card orb-ring-card--sm">
+            <div class="orb-ring-head">Swap</div>
+            <div class="orb-ring-figure orb-ring-figure--sm">
+              <svg class="orb-ring-svg" viewBox="0 0 108 108" aria-hidden="true">
+                <circle class="orb-ring-track" cx="54" cy="54" r="44" stroke-width="9"></circle>
+                <circle class="orb-ring-progress orb-ring-progress--accent" cx="54" cy="54" r="44" stroke-width="9" data-pct="7" style="stroke-dasharray:276.46;stroke-dashoffset:276.46"></circle>
+              </svg>
+              <div class="orb-ring-overlay orb-ring-overlay--sm">
+                <span class="orb-ring-value"><span class="num">7</span><span class="orb-ring-unit">%</span></span>
+              </div>
+            </div>
+            <div class="orb-ring-foot">
+              <p class="orb-ring-main">0.3 GB / 4.0 GB</p>
+              <span class="orb-ring-spark orb-ring-spark--wide" data-spark="swap" data-spark-w="120" data-spark-h="22"></span>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <section class="orb-section" aria-label="VPN Services">
+        <div class="orb-section-head">
+          <h2 class="orb-section-title">VPN Services</h2>
+          <span class="orb-section-meta">10 protocols &middot; 7 running &middot; 2 idle &middot; 1 stopped</span>
+        </div>
+        <div class="orb-chip-grid">
+          <div class="orb-chip" data-state="running"><span class="orb-chip-led"></span><span class="orb-chip-name">Xray</span><span class="orb-chip-state">Running</span></div>
+          <div class="orb-chip" data-state="running"><span class="orb-chip-led"></span><span class="orb-chip-name">OpenVPN</span><span class="orb-chip-state">Running</span></div>
+          <div class="orb-chip" data-state="running"><span class="orb-chip-led"></span><span class="orb-chip-name">WireGuard</span><span class="orb-chip-state">Running</span></div>
+          <div class="orb-chip" data-state="running"><span class="orb-chip-led"></span><span class="orb-chip-name">L2TP/IPsec</span><span class="orb-chip-state">Running</span></div>
+          <div class="orb-chip" data-state="running"><span class="orb-chip-led"></span><span class="orb-chip-name">IKEv2</span><span class="orb-chip-state">Running</span></div>
+          <div class="orb-chip" data-state="running"><span class="orb-chip-led"></span><span class="orb-chip-name">OpenConnect</span><span class="orb-chip-state">Running</span></div>
+          <div class="orb-chip" data-state="running"><span class="orb-chip-led"></span><span class="orb-chip-name">MTProto</span><span class="orb-chip-state">Running</span></div>
+          <div class="orb-chip" data-state="idle"><span class="orb-chip-led"></span><span class="orb-chip-name">SSTP</span><span class="orb-chip-state">Idle</span></div>
+          <div class="orb-chip" data-state="idle"><span class="orb-chip-led"></span><span class="orb-chip-name">SSH</span><span class="orb-chip-state">Idle</span></div>
+          <div class="orb-chip" data-state="stopped"><span class="orb-chip-led"></span><span class="orb-chip-name">PPTP</span><span class="orb-chip-state">Stopped</span></div>
+        </div>
+      </section>
+
+      <section class="orb-section" aria-label="System">
+        <div class="orb-section-head">
+          <h2 class="orb-section-title">System</h2>
+        </div>
+        <div class="orb-card-grid">
+
+          <div class="orb-card orb-span-7">
+            <div class="orb-card-head">
+              <h3 class="orb-card-title">Xray</h3>
+              <span class="orb-status-pill orb-status-pill--ok"><span class="orb-dot orb-dot--ok"></span>Running</span>
+            </div>
+            <div class="orb-stat-row">
+              <div class="orb-stat"><span class="orb-stat-label">Version</span><span class="orb-stat-value num">v25.3.6</span></div>
+              <div class="orb-stat"><span class="orb-stat-label">Uptime</span><span class="orb-stat-value num">12d 4h</span></div>
+            </div>
+            <div class="orb-divider"></div>
+            <div class="orb-action-row">
+              <button type="button" class="orb-icon-btn"><svg class="orb-icon orb-icon-16"><use href="#orb-i-file"></use></svg>Logs</button>
+              <button type="button" class="orb-icon-btn orb-icon-btn--danger"><svg class="orb-icon orb-icon-16"><use href="#orb-i-stop"></use></svg>Stop</button>
+              <button type="button" class="orb-icon-btn"><svg class="orb-icon orb-icon-16"><use href="#orb-i-refresh"></use></svg>Restart</button>
+              <button type="button" class="orb-icon-btn"><svg class="orb-icon orb-icon-16"><use href="#orb-i-globe"></use></svg>Geofiles</button>
+              <button type="button" class="orb-icon-btn"><svg class="orb-icon orb-icon-16"><use href="#orb-i-tag"></use></svg>Version</button>
+            </div>
+          </div>
+
+          <div class="orb-card orb-span-5">
+            <div class="orb-card-head"><h3 class="orb-card-title">Manage</h3></div>
+            <p class="orb-card-caption">Panel logs, configuration file and database backups.</p>
+            <div class="orb-action-row">
+              <button type="button" class="orb-icon-btn"><svg class="orb-icon orb-icon-16"><use href="#orb-i-file"></use></svg>Logs</button>
+              <button type="button" class="orb-icon-btn"><svg class="orb-icon orb-icon-16"><use href="#orb-i-sliders"></use></svg>Config</button>
+              <button type="button" class="orb-icon-btn"><svg class="orb-icon orb-icon-16"><use href="#orb-i-download"></use></svg>Backup</button>
+            </div>
+          </div>
+
+          <div class="orb-card orb-span-4 orb-card--flex">
+            <div class="orb-card-head"><h3 class="orb-card-title">VPN-UI</h3></div>
+            <div class="orb-card-body--flex">
+              <div>
+                <div class="orb-metric-md num">v1.7.6</div>
+                <p class="orb-status-line orb-status-line--ok">
+                  <svg class="orb-icon orb-icon-16"><use href="#orb-i-check-circle"></use></svg>
+                  Up to date
+                </p>
+              </div>
+              <button type="button" class="orb-btn orb-btn--primary">Check for Update</button>
+            </div>
+          </div>
+
+          <div class="orb-card orb-span-4">
+            <div class="orb-card-head"><h3 class="orb-card-title">Uptime</h3></div>
+            <div class="orb-stat-row">
+              <div class="orb-stat">
+                <svg class="orb-icon orb-icon-16 orb-stat-icon"><use href="#orb-i-clock"></use></svg>
+                <span class="orb-stat-label">Xray</span>
+                <span class="orb-stat-value num">12d 4h</span>
+              </div>
+              <div class="orb-stat">
+                <svg class="orb-icon orb-icon-16 orb-stat-icon"><use href="#orb-i-clock"></use></svg>
+                <span class="orb-stat-label">OS</span>
+                <span class="orb-stat-value num">47d 9h</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="orb-card orb-span-4">
+            <div class="orb-card-head"><h3 class="orb-card-title">Usage</h3></div>
+            <div class="orb-stat-row">
+              <div class="orb-stat">
+                <svg class="orb-icon orb-icon-16 orb-stat-icon"><use href="#orb-i-activity"></use></svg>
+                <span class="orb-stat-label">RAM</span>
+                <span class="orb-stat-value num">84 MB</span>
+              </div>
+              <div class="orb-stat">
+                <svg class="orb-icon orb-icon-16 orb-stat-icon"><use href="#orb-i-activity"></use></svg>
+                <span class="orb-stat-label">Threads</span>
+                <span class="orb-stat-value num">23</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="orb-card orb-span-6">
+            <div class="orb-card-head"><h3 class="orb-card-title">Network</h3></div>
+            <div class="orb-flow-row">
+              <div class="orb-flow-col orb-flow-col--up">
+                <div class="orb-flow-head">
+                  <svg class="orb-icon orb-icon-14"><use href="#orb-i-arrow-up"></use></svg>
+                  <span class="orb-flow-label">Upload</span>
+                </div>
+                <div class="orb-flow-value"><span class="num">2.4</span><span class="orb-flow-unit">MB/s</span></div>
+                <div class="orb-flow-spark" data-spark="upload" data-spark-h="48"></div>
+              </div>
+              <div class="orb-flow-col orb-flow-col--down">
+                <div class="orb-flow-head">
+                  <svg class="orb-icon orb-icon-14"><use href="#orb-i-arrow-down"></use></svg>
+                  <span class="orb-flow-label">Download</span>
+                </div>
+                <div class="orb-flow-value"><span class="num">8.1</span><span class="orb-flow-unit">MB/s</span></div>
+                <div class="orb-flow-spark" data-spark="download" data-spark-h="48"></div>
+              </div>
+            </div>
+            <div class="orb-divider"></div>
+            <div class="orb-stat-row">
+              <div class="orb-stat orb-stat--plain"><span class="orb-stat-label">Total sent</span><span class="orb-stat-value num">1.24 TB</span></div>
+              <div class="orb-stat orb-stat--plain"><span class="orb-stat-label">Total received</span><span class="orb-stat-value num">4.68 TB</span></div>
+            </div>
+          </div>
+
+          <div class="orb-card orb-span-6">
+            <div class="orb-card-head"><h3 class="orb-card-title">Connections</h3></div>
+            <div class="orb-big-stat-split">
+              <div class="orb-big-stat"><span class="orb-big-stat-label">TCP</span><span class="orb-big-stat-value num">1,284</span></div>
+              <div class="orb-big-stat"><span class="orb-big-stat-label">UDP</span><span class="orb-big-stat-value num">462</span></div>
+            </div>
+          </div>
+
+          <div class="orb-card orb-span-12">
+            <div class="orb-card-head">
+              <h3 class="orb-card-title">IP Addresses</h3>
+              <button type="button" class="orb-eye-btn" id="orbIpToggle" aria-label="Hide IP addresses" data-hidden="false">
+                <svg class="orb-icon orb-icon-16 orb-i-eye"><use href="#orb-i-eye"></use></svg>
+                <svg class="orb-icon orb-icon-16 orb-i-eye-off"><use href="#orb-i-eye-off"></use></svg>
+              </button>
+            </div>
+            <div class="orb-ip-split">
+              <div class="orb-ip-block">
+                <span class="orb-ip-block-label">IPv4</span>
+                <span class="orb-ip-block-value num" id="orbIp4" data-full="203.0.113.7">203.0.113.7</span>
+              </div>
+              <div class="orb-ip-block">
+                <span class="orb-ip-block-label">IPv6</span>
+                <span class="orb-ip-block-value num" id="orbIp6" data-full="2a01:4f8:1c1c:abcd::1">2a01:4f8:1c1c:abcd::1</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <footer class="orb-foot">Design mockup, vpn-ui Overview, Orbit</footer>
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root = document.querySelector('.orbit-root');
+  if(!root) return;
+  var docEl = document.documentElement;
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* theme toggle - stamps data-theme on the document root, same attribute the
+     Artifact viewer's own theme control uses, so the two stay in sync */
+  var themeBtn = document.getElementById('orbThemeToggle');
+  function effectiveTheme(){
+    var attr = docEl.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function applyTheme(t){
+    docEl.setAttribute('data-theme', t);
+    if(themeBtn) themeBtn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+  }
+  applyTheme(effectiveTheme());
+  if(themeBtn){
+    themeBtn.addEventListener('click', function(){
+      applyTheme(effectiveTheme() === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  /* ---------- ring gauge fill-in ---------- */
+  var rings = root.querySelectorAll('.orb-ring-progress');
+  rings.forEach(function(el){
+    var r = parseFloat(el.getAttribute('r'));
+    var pct = parseFloat(el.getAttribute('data-pct')) || 0;
+    var c = 2 * Math.PI * r;
+    var target = c * (1 - pct / 100);
+    el.style.strokeDasharray = c.toFixed(2);
+    if(reduceMotion){
+      el.style.strokeDashoffset = target.toFixed(2);
+      return;
+    }
+    el.style.strokeDashoffset = c.toFixed(2);
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        el.style.strokeDashoffset = target.toFixed(2);
+      });
+    });
+  });
+
+  /* ---------- deterministic pseudo-random history ---------- */
+  function seededRand(seed){
+    var s = seed >>> 0;
+    return function(){
+      s = (s + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function synth(seed, n, min, max, endValue){
+    var rand = seededRand(seed);
+    var range = max - min;
+    var v = min + range * 0.5;
+    var out = [];
+    for(var i = 0; i < n; i++){
+      v += (rand() - 0.5) * range * 0.55;
+      if(v < min) v = min;
+      if(v > max) v = max;
+      out.push(v);
+    }
+    if(endValue !== undefined) out[out.length - 1] = endValue;
+    return out;
+  }
+
+  var DATA = {
+    cpu:      synth(11, 24, 28,  42,  34),
+    ram:      synth(22, 24, 30,  36,  33),
+    swap:     synth(33, 24, 4,   9,   7),
+    storage:  synth(44, 24, 49.3,51.2,51),
+    upload:   synth(55, 24, 1.5, 3,   2.4),
+    download: synth(66, 24, 5,   11,  8.1)
+  };
+
+  /* ---------- sparkline renderer ---------- */
+  function buildSparkline(values, w, h, color){
+    var pad = 2;
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    var span = (max - min) || 1;
+    var n = values.length;
+    var stepX = (w - pad * 2) / (n - 1);
+
+    var pts = values.map(function(v, i){
+      var x = pad + i * stepX;
+      var y = pad + (1 - (v - min) / span) * (h - pad * 2);
+      return [x, y];
+    });
+
+    var line = pts.map(function(p, i){ return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+    var area = line +
+      ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + (h - pad).toFixed(1) +
+      ' L' + pts[0][0].toFixed(1) + ',' + (h - pad).toFixed(1) + ' Z';
+    var last = pts[pts.length - 1];
+
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-hidden="true">' +
+      '<path d="' + area + '" style="fill:' + color + ';opacity:.14" stroke="none"/>' +
+      '<path d="' + line + '" fill="none" style="stroke:' + color + '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="3.4" style="fill:' + color + ';opacity:.18"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="1.9" style="fill:' + color + '"/>' +
+      '</svg>';
+  }
+
+  var SPARK_DEFS = [
+    { key:'cpu',      values:DATA.cpu,      color:'var(--accent)' },
+    { key:'ram',      values:DATA.ram,      color:'var(--accent)' },
+    { key:'storage',  values:DATA.storage,  color:'var(--warn)' },
+    { key:'swap',     values:DATA.swap,     color:'var(--accent)' },
+    { key:'upload',   values:DATA.upload,   color:'var(--accent)' },
+    { key:'download', values:DATA.download, color:'var(--info)' }
+  ];
+
+  function renderSparklines(){
+    SPARK_DEFS.forEach(function(def){
+      var el = root.querySelector('[data-spark="' + def.key + '"]');
+      if(!el) return;
+      var fixedW = el.getAttribute('data-spark-w');
+      var w = fixedW ? parseInt(fixedW, 10) : (Math.round(el.clientWidth) || 100);
+      var h = parseInt(el.getAttribute('data-spark-h'), 10) || 20;
+      el.innerHTML = buildSparkline(def.values, w, h, def.color);
+    });
+  }
+  renderSparklines();
+
+  var resizeTimer;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderSparklines, 150);
+  });
+
+  /* ---------- IP show / hide ---------- */
+  var ipBtn = document.getElementById('orbIpToggle');
+  var ip4El = document.getElementById('orbIp4');
+  var ip6El = document.getElementById('orbIp6');
+  var ipVisible = true;
+  function maskValue(v){
+    return v.replace(/[^:.]/g, '•');
+  }
+  function renderIp(){
+    [ip4El, ip6El].forEach(function(el){
+      if(!el) return;
+      var full = el.getAttribute('data-full') || el.textContent;
+      el.textContent = ipVisible ? full : maskValue(full);
+    });
+    if(ipBtn){
+      ipBtn.setAttribute('data-hidden', ipVisible ? 'false' : 'true');
+      ipBtn.setAttribute('aria-label', ipVisible ? 'Hide IP addresses' : 'Show IP addresses');
+    }
+  }
+  if(ipBtn){
+    ipBtn.addEventListener('click', function(){
+      ipVisible = !ipVisible;
+      renderIp();
+    });
+  }
+})();
+</script>
+</div>
+</body>
+</html>

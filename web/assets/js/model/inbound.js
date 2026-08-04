@@ -5,6 +5,9 @@ const Protocols = {
     SHADOWSOCKS: 'shadowsocks',
     WIREGUARD: 'wireguard',
     HYSTERIA: 'hysteria',
+    ANYTLS: 'anytls',
+    TUIC: 'tuic',
+    NAIVE: 'naive',
     MIXED: 'mixed',
     HTTP: 'http',
     TUNNEL: 'tunnel',
@@ -42,10 +45,28 @@ function getClientIdentity(protocol, client) {
         case Protocols.SSTP:
         case Protocols.IKEV2:
             return client.password;
+        // Password-credential proxy protocols. AnyTLS authenticates on a bare
+        // password; naive sends a Basic username:password, and the username is both
+        // renameable and optional (empty falls back to the email), so the password is
+        // again the only field that can address the account.
+        case Protocols.ANYTLS:
+        case Protocols.NAIVE:
+            return client.password;
         case Protocols.SHADOWSOCKS:
             return client.email;
         case Protocols.HYSTERIA:
+        // 'hysteria2' has no Protocols constant because the inbound form cannot
+        // create one, but the server knows it (model.Hysteria2) and an inbound
+        // made through the API shows up on every page that lists them. Left to the
+        // default it would be keyed on `id`, which a hysteria account does not
+        // have, and every write against it would answer "empty client ID".
+        case 'hysteria2':
             return client.auth;
+        // Spelled out rather than left to the default below: a TUIC account carries
+        // BOTH a uuid and a password, so which of the two addresses it has to be a
+        // decision written down on the page, not a fallthrough nobody can see.
+        case Protocols.TUIC:
+            return client.id;
         default:
             // vmess/vless (uuid) and the email-identity protocols (wg-c, awg, gre,
             // mtproto, ssh), whose models expose id via a `get id()` returning email.
@@ -63,6 +84,9 @@ const ProtocolLabels = {
     shadowsocks: 'Shadowsocks',
     wireguard: 'WireGuard (Xray)',
     hysteria: 'Hysteria',
+    anytls: 'AnyTLS',
+    tuic: 'TUIC',
+    naive: 'NaiveProxy',
     mixed: 'Mixed',
     http: 'HTTP',
     tunnel: 'Tunnel',
@@ -2149,6 +2173,18 @@ class Inbound extends XrayCommonClass {
         }
     }
 
+    // Empties the client list without needing to know which key holds it.
+    //
+    // Every protocol's settings class seeds ONE client in its constructor, which
+    // made "create an inbound" and "create an account" the same act. They are not
+    // the same act any more: accounts are made on the Clients page, where one can
+    // be put on several inbounds at once. A new inbound therefore starts empty and
+    // the operator adds accounts to it afterwards.
+    clearClients() {
+        const list = this.clients;
+        if (Array.isArray(list)) list.splice(0, list.length);
+    }
+
     get clients() {
         switch (this.protocol) {
             case Protocols.VMESS: return this.settings.vmesses;
@@ -2156,6 +2192,9 @@ class Inbound extends XrayCommonClass {
             case Protocols.TROJAN: return this.settings.trojans;
             case Protocols.SHADOWSOCKS: return this.isSSMultiUser ? this.settings.shadowsockses : null;
             case Protocols.HYSTERIA: return this.settings.hysterias;
+            case Protocols.ANYTLS: return this.settings.anytlses;
+            case Protocols.TUIC: return this.settings.tuics;
+            case Protocols.NAIVE: return this.settings.naives;
             case Protocols.L2TP: return this.settings.l2tpUsers;
             case Protocols.PPTP: return this.settings.pptpUsers;
             case Protocols.OPENVPN: return this.settings.openvpnUsers;
@@ -2178,6 +2217,12 @@ class Inbound extends XrayCommonClass {
     set protocol(protocol) {
         this._protocol = protocol;
         this.settings = Inbound.Settings.getSettings(protocol);
+        // getSettings builds a fresh settings object and every settings class seeds
+        // ONE client in its constructor, so picking a protocol puts an account back
+        // even when the form deliberately started empty. startEmpty is set by the
+        // add-inbound form and by nothing else: on an EDIT the inbound already has
+        // accounts and clearing them here would drop them without saying so.
+        if (this.startEmpty) this.clearClients();
         this.stream = new StreamSettings();
         if (protocol === Protocols.TROJAN) {
             this.tls = false;
@@ -2187,6 +2232,22 @@ class Inbound extends XrayCommonClass {
             this.stream.security = 'tls';
             // Hysteria runs over QUIC and must not inherit TCP TLS ALPN defaults.
             this.stream.tls.alpn = [ALPN_OPTION.H3];
+        }
+        if (protocol === Protocols.TUIC) {
+            // TUIC carries its own QUIC transport, the same shape as Hysteria: the
+            // network is fixed and TLS is not optional. The ALPN is pinned to h3
+            // because the server forces it, and a client that negotiates anything
+            // else is refused with an opaque "no application protocol" TLS alert.
+            this.stream.network = 'tuic';
+            this.stream.security = 'tls';
+            this.stream.tls.alpn = [ALPN_OPTION.H3];
+        }
+        if (protocol === Protocols.ANYTLS || protocol === Protocols.NAIVE) {
+            // Both are TLS-only over a plain stream: AnyTLS is a TLS-shaped session
+            // multiplexer, naive is HTTP/2 over TLS. Neither has a cleartext mode,
+            // so the switch starts on rather than leaving a new inbound listening
+            // in the clear until someone notices.
+            this.stream.security = 'tls';
         }
     }
 
@@ -2290,8 +2351,31 @@ class Inbound extends XrayCommonClass {
 
     canEnableTls() {
         if (this.protocol === Protocols.HYSTERIA) return true;
-        if (![Protocols.VMESS, Protocols.VLESS, Protocols.TROJAN, Protocols.SHADOWSOCKS].includes(this.protocol)) return false;
+        // TUIC's TLS lives under its own transport, not under one of the stream
+        // networks listed below, so it is always available (and mandatory).
+        if (this.protocol === Protocols.TUIC) return true;
+        // AnyTLS and naive ride the standard stream TLS, so they fall through to
+        // the transport check: both are stream protocols and both need it.
+        if (![Protocols.VMESS, Protocols.VLESS, Protocols.TROJAN, Protocols.SHADOWSOCKS,
+            Protocols.ANYTLS, Protocols.NAIVE].includes(this.protocol)) return false;
         return ["tcp", "ws", "http", "grpc", "httpupgrade", "xhttp"].includes(this.network);
+    }
+
+    // Protocols whose transport IS TLS, so "no TLS" is not a state they can hold.
+    // Both run over QUIC, and QUIC's handshake is TLS 1.3 (RFC 9001): no plaintext
+    // QUIC wire format exists, so security 'none' on either describes nothing the
+    // core could be running. The security picker is hidden for exactly this set in
+    // web/html/form/tls_settings.html, so gate on this rather than restating the pair.
+    //
+    // Deliberately NOT anytls or naive. They are as TLS-dependent in practice but run
+    // over TCP, where 'none' is a real TLS-offload deployment (a terminator in front
+    // forwarding plaintext to a local port), so they keep the choice and warn instead.
+    static protocolRequiresTls(protocol) {
+        return [Protocols.HYSTERIA, Protocols.TUIC].includes(protocol);
+    }
+
+    requiresTls() {
+        return Inbound.protocolRequiresTls(this.protocol);
     }
 
     //this is used for xtls-rprx-vision
@@ -2310,13 +2394,21 @@ class Inbound extends XrayCommonClass {
         return clients.some(c => c?.flow === TLS_FLOW_CONTROL.VISION || c?.flow === TLS_FLOW_CONTROL.VISION_UDP443);
     }
 
+    // AnyTLS belongs here and naive/tuic do not: REALITY is transport-layer, so it
+    // works under any stream protocol, but it only helps if the CLIENT speaks it.
+    // sing-box's anytls outbound does; every naive client does plain TLS only, and
+    // tuic is QUIC, which REALITY does not cover.
     canEnableReality() {
-        if (![Protocols.VLESS, Protocols.TROJAN].includes(this.protocol)) return false;
+        if (![Protocols.VLESS, Protocols.TROJAN, Protocols.ANYTLS].includes(this.protocol)) return false;
         return ["tcp", "http", "grpc", "xhttp"].includes(this.network);
     }
 
+    // Whether toJson() emits streamSettings AT ALL. A protocol missing from this list
+    // silently ships an inbound with no transport and no TLS block, which for a
+    // TLS-only protocol means a listener nothing can ever connect to.
     canEnableStream() {
-        return [Protocols.VMESS, Protocols.VLESS, Protocols.TROJAN, Protocols.SHADOWSOCKS, Protocols.HYSTERIA].includes(this.protocol);
+        return [Protocols.VMESS, Protocols.VLESS, Protocols.TROJAN, Protocols.SHADOWSOCKS, Protocols.HYSTERIA,
+            Protocols.ANYTLS, Protocols.TUIC, Protocols.NAIVE].includes(this.protocol);
     }
 
     reset() {
@@ -2593,8 +2685,13 @@ class Inbound extends XrayCommonClass {
         return url.toString();
     }
 
-    genTrojanLink(address = '', port = this.port, forceTls, remark = '', clientPassword) {
-        const security = forceTls == 'same' ? this.stream.security : forceTls;
+    // The query parameters that describe an ordinary Xray stream: the transport and
+    // then the TLS or REALITY block. Shared by every protocol whose link is
+    // "scheme://<credential>@host:port?<stream>", which today is trojan and anytls.
+    // Mirrored on the Go side by applyShareNetworkParams + applyShareTLSParams /
+    // applyShareRealityParams in sub/subService.go, so the two generators of the SAME
+    // account's link agree; keep the pair in step.
+    streamShareParams(security) {
         const type = this.stream.network;
         const params = new Map();
         params.set("type", this.stream.network);
@@ -2682,6 +2779,13 @@ class Inbound extends XrayCommonClass {
             params.set("security", "none");
         }
 
+        return params;
+    }
+
+    genTrojanLink(address = '', port = this.port, forceTls, remark = '', clientPassword) {
+        const security = forceTls == 'same' ? this.stream.security : forceTls;
+        const params = this.streamShareParams(security);
+
         const link = `trojan://${clientPassword}@${address}:${port}`;
         const url = new URL(link);
         for (const [key, value] of params) {
@@ -2715,6 +2819,128 @@ class Inbound extends XrayCommonClass {
 
         Inbound.applyFinalMaskToParams(this.stream.finalmask, params);
 
+        const url = new URL(link);
+        for (const [key, value] of params) {
+            url.searchParams.set(key, value);
+        }
+        url.hash = encodeURIComponent(remark);
+        return url.toString();
+    }
+
+    // The three generators below are each written a SECOND time in Go, for the
+    // subscription endpoint (sub/subService.go genAnytlsLink / genTuicLink /
+    // genNaiveLink). The goal is that an account gets the same bytes from the panel's
+    // QR as from its subscription, so two things are deliberate here:
+    //
+    //   * parameters are set in ALPHABETICAL order, because Go builds its query with
+    //     url.Values.Encode(), which sorts;
+    //   * credentials go through encodeUserinfo(), because Go escapes them with
+    //     url.User / url.UserPassword and encodeURIComponent is not the same set.
+    //
+    // Keep new parameters sorted and change both sides together.
+    //
+    // That goal is NOT currently met, and the gap is older and wider than these three
+    // protocols: it is in the shared link tail, so trojan, vless and vmess have it too.
+    // Measured, not assumed:
+    //
+    //   * the FRAGMENT. Go assigns url.URL.Fragment and lets String() escape it, which
+    //     leaves "@ + /" raw; here it is encodeURIComponent, which escapes all three.
+    //     The default remark model is -ieo, and the "e" is the client EMAIL, so every
+    //     email's "@" makes the two forms differ. In practice that is nearly every
+    //     account, not a corner case.
+    //   * EMPTY values on anytls. Go's applyShareTLSParams emits "sni=" when the SNI is
+    //     empty and omits "alpn" when it is; streamShareParams below does the reverse.
+    //
+    // Both forms decode to the same remark and the same parameters, so no client is
+    // broken and nothing here is urgent. It is recorded because "the two sides are
+    // byte-identical" was previously written down as fact, and anyone who trusts that
+    // while diffing a QR against a subscription will lose an afternoon to it.
+
+    // Escapes one half of a userinfo the way Go's url.User does. encodeURIComponent
+    // leaves !*'() raw and escapes $&+,;= ; Go does exactly the opposite, so a
+    // password holding any of those would otherwise differ by a byte between the two
+    // generators (both still decode to the same credential, which is what makes it a
+    // silent divergence rather than a broken link).
+    static encodeUserinfo(value) {
+        return encodeURIComponent(value ?? '')
+            .replace(/[!*'()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())
+            .replace(/%24/g, '$')
+            .replace(/%26/g, '&')
+            .replace(/%2B/g, '+')
+            .replace(/%2C/g, ',')
+            .replace(/%3B/g, ';')
+            .replace(/%3D/g, '=');
+    }
+
+    // AnyTLS rides the ordinary transport layer, so its link carries exactly the
+    // stream parameters a trojan link does, REALITY included.
+    genAnytlsLink(address = '', port = this.port, forceTls = 'same', remark = '', clientPassword = '') {
+        const security = forceTls == 'same' ? this.stream.security : forceTls;
+        const params = this.streamShareParams(security);
+
+        const link = `anytls://${Inbound.encodeUserinfo(clientPassword)}@${address}:${port}`;
+        const url = new URL(link);
+        // Sorted, unlike genTrojanLink, which emits streamShareParams in insertion
+        // order: this protocol is new enough that its two generators can still be
+        // made to agree exactly, and sorting is what the Go half already does.
+        for (const [key, value] of [...params].sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)) {
+            url.searchParams.set(key, value);
+        }
+        url.hash = encodeURIComponent(remark);
+        return url.toString();
+    }
+
+    // TUIC's TLS is not optional and its transport is its own, so the link carries
+    // neither `type` nor `security`: only the handful of parameters its clients read.
+    genTuicLink(address = '', port = this.port, remark = '', clientId = '', clientPassword = '') {
+        const params = new Map();
+        // No allow_insecure. This core dropped `allowInsecure` (it errors out, having
+        // been replaced by pinnedPeerCertSha256), and TlsStreamSettings.Settings
+        // carries only fingerprint and echConfigList, so there is no stored value to
+        // read: TlsStreamSettings.fromJson drops the key even if it is in the DB. A
+        // self-signed deployment therefore has to be handled at the client, by
+        // trusting or pinning the cert, because the link cannot ask it to skip
+        // verification.
+        // MANDATORY. The server pins ALPN to h3; sing-box, mihomo and the Rust
+        // tuic-client all default to sending none, and the handshake then dies with
+        // "tls: no application protocol", which names nothing an operator can act on.
+        params.set("alpn", "h3");
+        params.set("congestion_control", this.settings?.congestionControl || 'cubic');
+        if (this.stream.tls?.sni?.length > 0) params.set("sni", this.stream.tls.sni);
+        params.set("udp_relay_mode", "native");
+
+        const link = `tuic://${Inbound.encodeUserinfo(clientId)}:${Inbound.encodeUserinfo(clientPassword)}@${address}:${port}`;
+        const url = new URL(link);
+        for (const [key, value] of params) {
+            url.searchParams.set(key, value);
+        }
+        url.hash = encodeURIComponent(remark);
+        return url.toString();
+    }
+
+    // naive sends exactly one `Proxy-Authorization: Basic base64(username:password)`,
+    // and the username here must be the one the SERVER will match: the account's
+    // `username` when it has one, its email when it does not. Passing the email
+    // unconditionally, as this used to, hands every account with a username a link that
+    // authenticates as somebody who does not exist.
+    //
+    // The scheme is NekoRay/NekoBox's `naive+<transport>://`, the only share-link form
+    // a GUI client imports. naiveproxy's own binary takes the same URL with the
+    // `naive+` prefix stripped, as its --proxy value.
+    genNaiveLink(address = '', port = this.port, remark = '', clientUsername = '', clientPassword = '') {
+        // settings.network selects the server's transport: tcp = HTTP/2 over TLS,
+        // udp = HTTP/3 over QUIC. An inbound serving both advertises https, which
+        // every client speaks; quic-only is the one case that has to say so.
+        const network = (this.settings?.network || 'tcp').trim();
+        const scheme = network === 'udp' ? 'naive+quic' : 'naive+https';
+
+        // No insecure param, for the same reason as genTuicLink: `allowInsecure` does
+        // not exist in this core or in TlsStreamSettings.Settings, so there is nothing
+        // to read and the flag could only ever be hardcoded.
+        const params = new Map();
+        if (this.stream.tls?.sni?.length > 0) params.set("sni", this.stream.tls.sni);
+
+        const link = `${scheme}://${Inbound.encodeUserinfo(clientUsername)}:${Inbound.encodeUserinfo(clientPassword)}@${address}:${port}`;
         const url = new URL(link);
         for (const [key, value] of params) {
             url.searchParams.set(key, value);
@@ -2799,6 +3025,15 @@ class Inbound extends XrayCommonClass {
                 return this.genTrojanLink(address, port, forceTls, remark, client.password);
             case Protocols.HYSTERIA:
                 return this.genHysteriaLink(address, port, remark, client.auth.length > 0 ? client.auth : this.stream.hysteria.auth);
+            case Protocols.ANYTLS:
+                return this.genAnytlsLink(address, port, forceTls, remark, client.password);
+            case Protocols.TUIC:
+                return this.genTuicLink(address, port, remark, client.id, client.password);
+            case Protocols.NAIVE:
+                // The `|| email` is the back-compat fallback, not defensiveness: an
+                // account saved before the username field existed has none, and the
+                // server matches it by email.
+                return this.genNaiveLink(address, port, remark, client.username || client.email, client.password);
             default: return '';
         }
     }
@@ -2867,12 +3102,26 @@ class Inbound extends XrayCommonClass {
     }
 
     static fromJson(json = {}) {
+        const stream = StreamSettings.fromJson(json.streamSettings);
+        // The ONE case where rewriting a stored value on load is right. An inbound
+        // stored on a transport its protocol cannot use describes something real and
+        // is shown as-is (the picker renders it disabled), but QUIC without TLS
+        // describes nothing, so there is no state to preserve by keeping it.
+        //
+        // It matters because the security picker is hidden for these protocols: an
+        // inbound created over the REST API without an explicit streamSettings
+        // security gets 'none' from the StreamSettings constructor default, and would
+        // then render a "TLS" heading with no fields under it and no control to fix
+        // it. Normalising here is what makes the form's claim true.
+        if (Inbound.protocolRequiresTls(json.protocol) && stream.security !== 'tls') {
+            stream.security = 'tls';
+        }
         return new Inbound(
             json.port,
             json.listen,
             json.protocol,
             Inbound.Settings.fromJson(json.protocol, json.settings),
-            StreamSettings.fromJson(json.streamSettings),
+            stream,
             json.tag,
             Sniffing.fromJson(json.sniffing),
             json.clientStats
@@ -2915,6 +3164,9 @@ Inbound.Settings = class extends XrayCommonClass {
             case Protocols.WIREGUARD: return new Inbound.WireguardSettings(protocol);
             case Protocols.TUN: return new Inbound.TunSettings(protocol);
             case Protocols.HYSTERIA: return new Inbound.HysteriaSettings(protocol);
+            case Protocols.ANYTLS: return new Inbound.AnytlsSettings(protocol);
+            case Protocols.TUIC: return new Inbound.TuicSettings(protocol);
+            case Protocols.NAIVE: return new Inbound.NaiveSettings(protocol);
             case Protocols.L2TP: return new Inbound.L2tpSettings(protocol);
             case Protocols.PPTP: return new Inbound.PptpSettings(protocol);
             case Protocols.OPENVPN: return new Inbound.OpenvpnSettings(protocol);
@@ -2942,6 +3194,9 @@ Inbound.Settings = class extends XrayCommonClass {
             case Protocols.WIREGUARD: return Inbound.WireguardSettings.fromJson(json);
             case Protocols.TUN: return Inbound.TunSettings.fromJson(json);
             case Protocols.HYSTERIA: return Inbound.HysteriaSettings.fromJson(json);
+            case Protocols.ANYTLS: return Inbound.AnytlsSettings.fromJson(json);
+            case Protocols.TUIC: return Inbound.TuicSettings.fromJson(json);
+            case Protocols.NAIVE: return Inbound.NaiveSettings.fromJson(json);
             case Protocols.L2TP: return Inbound.L2tpSettings.fromJson(json);
             case Protocols.PPTP: return Inbound.PptpSettings.fromJson(json);
             case Protocols.OPENVPN: return Inbound.OpenvpnSettings.fromJson(json);
@@ -3464,6 +3719,267 @@ Inbound.HysteriaSettings.Hysteria = class extends Inbound.ClientBase {
     static fromJson(json = {}) {
         return new Inbound.HysteriaSettings.Hysteria(
             json.auth,
+            ...Inbound.ClientBase.commonArgsFromJson(json),
+        );
+    }
+};
+
+Inbound.AnytlsSettings = class extends Inbound.Settings {
+    constructor(protocol,
+        anytlses = [new Inbound.AnytlsSettings.Anytls()],
+        paddingScheme = Inbound.AnytlsSettings.DEFAULT_PADDING_SCHEME.slice(),
+    ) {
+        super(protocol);
+        this.anytlses = anytlses;
+        // The padding scheme is SERVER-AUTHORITATIVE: it is handed to the client in
+        // the session's settings frame, so this list is the only copy that matters
+        // and a client never has to be reconfigured to match it.
+        this.paddingScheme = paddingScheme;
+    }
+
+    // A stored inbound is shown exactly as stored, INCLUDING an absent scheme, which
+    // is how an operator who deliberately cleared the field sees it stay cleared. The
+    // default only seeds a NEW inbound, via the constructor above.
+    static fromJson(json = {}) {
+        return new Inbound.AnytlsSettings(
+            Protocols.ANYTLS,
+            (json.clients || []).map(client => Inbound.AnytlsSettings.Anytls.fromJson(client)),
+            Array.isArray(json.paddingScheme) ? json.paddingScheme.slice() : [],
+        );
+    }
+
+    toJson() {
+        // The form binds the textarea straight to this array and splits on newlines
+        // WITHOUT filtering, so that typing a new line does not move the cursor; the
+        // blank entries that leaves are dropped here instead. An empty result omits
+        // the key entirely rather than sending [], which the core reads as "no
+        // padding at all" instead of falling back to its own default scheme.
+        const paddingScheme = (this.paddingScheme || [])
+            .map(line => String(line).trim())
+            .filter(line => line.length > 0);
+        return {
+            clients: Inbound.AnytlsSettings.toJsonArray(this.anytlses),
+            paddingScheme: paddingScheme.length > 0 ? paddingScheme : undefined,
+        };
+    }
+};
+
+// AnyTLS's upstream default scheme, spelled out rather than left empty so the form
+// shows what the server will actually do and an operator can edit one line of it.
+Inbound.AnytlsSettings.DEFAULT_PADDING_SCHEME = [
+    'stop=8',
+    '0=30-30',
+    '1=100-400',
+    '2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000',
+    '3=9-9,500-1000',
+    '4=500-1000',
+    '5=500-1000',
+    '6=500-1000',
+    '7=500-1000',
+];
+
+Inbound.AnytlsSettings.Anytls = class extends Inbound.ClientBase {
+    constructor(
+        password = RandomUtil.randomSeq(10),
+        email, limitIp, totalGB, expiryTime, enable, tgId, subId, comment, reset, created_at, updated_at,
+    ) {
+        super(email, limitIp, totalGB, expiryTime, enable, tgId, subId, comment, reset, created_at, updated_at);
+        this.password = password;
+    }
+
+    toJson() {
+        return {
+            password: this.password,
+            ...this._clientBaseToJson(),
+        };
+    }
+
+    static fromJson(json = {}) {
+        return new Inbound.AnytlsSettings.Anytls(
+            json.password,
+            ...Inbound.ClientBase.commonArgsFromJson(json),
+        );
+    }
+};
+
+Inbound.TuicSettings = class extends Inbound.Settings {
+    constructor(protocol,
+        tuics = [new Inbound.TuicSettings.Tuic()],
+        congestionControl = 'cubic',
+        authTimeout = 3,
+        zeroRttHandshake = false,
+        heartbeat = 10,
+        udpTimeout = 60,
+    ) {
+        super(protocol);
+        this.tuics = tuics;
+        // cubic | bbr | new_reno. Echoed into every share link as
+        // congestion_control=, because a client that picks a different one talks
+        // past the server's pacing rather than failing outright.
+        this.congestionControl = congestionControl;
+        // Seconds a connection may stay open before it has authenticated.
+        this.authTimeout = authTimeout;
+        this.zeroRttHandshake = zeroRttHandshake;
+        this.heartbeat = heartbeat;
+        this.udpTimeout = udpTimeout;
+    }
+
+    static fromJson(json = {}) {
+        return new Inbound.TuicSettings(
+            Protocols.TUIC,
+            (json.clients || []).map(client => Inbound.TuicSettings.Tuic.fromJson(client)),
+            json.congestionControl ?? 'cubic',
+            json.authTimeout ?? 3,
+            json.zeroRttHandshake ?? false,
+            json.heartbeat ?? 10,
+            json.udpTimeout ?? 60,
+        );
+    }
+
+    toJson() {
+        return {
+            clients: Inbound.TuicSettings.toJsonArray(this.tuics),
+            congestionControl: this.congestionControl,
+            authTimeout: this.authTimeout,
+            zeroRttHandshake: this.zeroRttHandshake,
+            heartbeat: this.heartbeat,
+            udpTimeout: this.udpTimeout,
+        };
+    }
+};
+
+// A TUIC account presents BOTH halves on every connection: the uuid names it and
+// the password authenticates it. The uuid is the identity (see getClientIdentity),
+// so it is a real `id` field and needs no email-backed getter.
+Inbound.TuicSettings.Tuic = class extends Inbound.ClientBase {
+    constructor(
+        id = RandomUtil.randomUUID(),
+        password = RandomUtil.randomSeq(10),
+        email, limitIp, totalGB, expiryTime, enable, tgId, subId, comment, reset, created_at, updated_at,
+    ) {
+        super(email, limitIp, totalGB, expiryTime, enable, tgId, subId, comment, reset, created_at, updated_at);
+        this.id = id;
+        this.password = password;
+    }
+
+    toJson() {
+        return {
+            id: this.id,
+            password: this.password,
+            ...this._clientBaseToJson(),
+        };
+    }
+
+    static fromJson(json = {}) {
+        return new Inbound.TuicSettings.Tuic(
+            json.id,
+            json.password,
+            ...Inbound.ClientBase.commonArgsFromJson(json),
+        );
+    }
+};
+
+Inbound.NaiveSettings = class extends Inbound.Settings {
+    constructor(protocol,
+        naives = [new Inbound.NaiveSettings.Naive()],
+        network = 'tcp',
+        masquerade = new Inbound.NaiveSettings.Masquerade(),
+    ) {
+        super(protocol);
+        this.naives = naives;
+        // tcp = HTTP/2 over TLS, udp = HTTP/3 over QUIC, "tcp,udp" = both on one port.
+        // naive's transport is part of the protocol, so this settings field is the
+        // SINGLE SOURCE OF TRUTH for which wires the listener owns: the core's
+        // NormalizeNaiveInboundStream forces its own transport onto the stream and
+        // takes the mode from here, OVERRIDING whatever streamSettings.network says.
+        // The stream still carries TLS and sockopt, which is why the inbound needs
+        // canEnableStream(), but its transport picker is decorative for naive.
+        this.network = network;
+        // What an unauthenticated request gets instead of a proxy error, which is
+        // the whole point of naive: a probe must see an ordinary web server.
+        this.masquerade = masquerade;
+    }
+
+    static fromJson(json = {}) {
+        return new Inbound.NaiveSettings(
+            Protocols.NAIVE,
+            (json.clients || []).map(client => Inbound.NaiveSettings.Naive.fromJson(client)),
+            json.network ?? 'tcp',
+            Inbound.NaiveSettings.Masquerade.fromJson(json.masquerade),
+        );
+    }
+
+    toJson() {
+        return {
+            clients: Inbound.NaiveSettings.toJsonArray(this.naives),
+            network: this.network,
+            masquerade: this.masquerade.toJson(),
+        };
+    }
+};
+
+Inbound.NaiveSettings.Masquerade = class extends XrayCommonClass {
+    constructor(type = '404', file = '', url = '', string = '') {
+        super();
+        // 404 | file | proxy | string. Each of the three below belongs to exactly one
+        // type; they are all kept so switching type back and forth does not lose what
+        // was typed under the other one.
+        this.type = type;
+        this.file = file;
+        this.url = url;
+        this.string = string;
+    }
+
+    static fromJson(json = {}) {
+        return new Inbound.NaiveSettings.Masquerade(
+            json?.type ?? '404',
+            json?.file ?? '',
+            json?.url ?? '',
+            json?.string ?? '',
+        );
+    }
+
+    toJson() {
+        return {
+            type: this.type,
+            file: this.file,
+            url: this.url,
+            string: this.string,
+        };
+    }
+};
+
+// naive sends one `Proxy-Authorization: Basic base64(username:password)`. The username
+// half is this field, and an EMPTY one falls back to the email: that is what every
+// account created before the field existed authenticates with, and nothing backfills
+// them. The email stays the accounting identity either way.
+//
+// There is still no id field, and the identity remains the password (see
+// getClientIdentity): the username is precisely the field an operator renames, and a
+// key that moves mid-edit cannot be matched against the one the modal opened with.
+Inbound.NaiveSettings.Naive = class extends Inbound.ClientBase {
+    constructor(
+        password = RandomUtil.randomSeq(10),
+        username = '',
+        email, limitIp, totalGB, expiryTime, enable, tgId, subId, comment, reset, created_at, updated_at,
+    ) {
+        super(email, limitIp, totalGB, expiryTime, enable, tgId, subId, comment, reset, created_at, updated_at);
+        this.password = password;
+        this.username = username;
+    }
+
+    toJson() {
+        return {
+            password: this.password,
+            username: this.username,
+            ...this._clientBaseToJson(),
+        };
+    }
+
+    static fromJson(json = {}) {
+        return new Inbound.NaiveSettings.Naive(
+            json.password,
+            json.username ?? '',
             ...Inbound.ClientBase.commonArgsFromJson(json),
         );
     }

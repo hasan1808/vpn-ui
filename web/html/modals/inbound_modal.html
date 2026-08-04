@@ -53,6 +53,13 @@
                 this.inbound = Inbound.fromJson(inbound.toJson());
             } else {
                 this.inbound = new Inbound();
+                // A new inbound starts with no accounts. Every settings class seeds
+                // one, which used to make creating an inbound silently create a
+                // client too - a name the operator never chose, on an inbound they
+                // were still configuring. Accounts are made on the Clients page now,
+                // where one can be put on several inbounds at once.
+                this.inbound.startEmpty = true;
+                this.inbound.clearClients();
             }
             // Always ensure testseed is initialized for VLESS protocol (even if vision flow is not set yet)
             // This ensures Vue reactivity works properly
@@ -275,9 +282,9 @@
             // mounts. A render-time throw takes the modal with it, which is why
             // the symptom was a button that silently did nothing.
             //
-            // Same meaning as in client_modal: true only for a reseller on a
-            // days-per-GB plan, where the backend overwrites any posted expiry
-            // (ResellerService.forcedExpiry) so the controls are hidden.
+            // True only for a reseller on a days-per-GB plan, where the backend
+            // overwrites any posted expiry (ResellerService.forcedExpiry) so the
+            // controls are hidden.
             resellerForcedDays() {
                 return !!(RESELLER.isReseller && RESELLER.daysPerGb > 0);
             },
@@ -446,6 +453,79 @@
                 let n = parseInt(d, 10);
                 return n > 65535 ? 65535 : n;
             },
+            // Would this anytls inbound be dropped from Clash subscriptions? Returns the
+            // reason, or '' when it is fine, so a caller can use it as both the test and
+            // the message.
+            //
+            // MIRRORS sub/subClashService.go buildAnytlsProxy, which returns nil (no
+            // entry, no error, nothing logged) unless security is exactly "tls" AND the
+            // transport is tcp or unset. That is correct there and is not changing:
+            // mihomo's anytls proxy is raw TCP plus TLS, it cannot express ws/grpc/xhttp,
+            // and its maintainers have refused AnyTLS over REALITY outright, so emitting
+            // an entry anyway would fail in the handshake instead. Keep the two
+            // conditions below identical to the Go: a warning that has drifted from the
+            // thing it warns about is worse than no warning.
+            //
+            // Only 1 of the 16 reachable anytls stream configurations yields a Clash
+            // node, and the operator is given no indication of which one they are on,
+            // which is the whole reason this exists.
+            anytlsClashDropReason(inbound) {
+                if (!inbound || !inbound.stream) return "";
+                const net = inbound.stream.network;
+                const sec = inbound.stream.security;
+                const badNet = net !== "" && net !== "tcp";
+                const badSec = sec !== "tls";
+                if (!badNet && !badSec) return "";
+                const lead = "Clash and mihomo clients will not receive this inbound";
+                // ORDER IS LOAD-BEARING. The transport is settled before REALITY is
+                // named, so ws+reality reports the transport (the reason that actually
+                // bites) instead of "they do not support AnyTLS over REALITY", which is
+                // true of mihomo but is not what is costing this inbound its node:
+                // switching to TLS while staying on ws still yields nothing. Hoisting
+                // the reality branch for readability sends the operator to fix the wrong
+                // half. Not a dead defence either. ws+reality is unreachable through the
+                // UI (canEnableReality excludes ws) but arrives the same way the unknown
+                // transports do, through the REST API or a config import, which is the
+                // input class streamNetworkOffered() below exists for.
+                if (badNet && badSec) {
+                    return lead + ": they support AnyTLS only over a plain TCP transport with TLS";
+                }
+                if (badNet) {
+                    return lead + ": they support AnyTLS only over a plain TCP transport";
+                }
+                if (sec === "reality") {
+                    return lead + ": they do not support AnyTLS over REALITY";
+                }
+                return lead + ": AnyTLS needs TLS to appear in a Clash subscription";
+            },
+            // Is the inbound's CURRENT transport one of the options the picker actually
+            // renders for its protocol? Usually yes, but a stored inbound can carry one
+            // that is not: Inbound.fromJson hands streamSettings to the constructor
+            // verbatim, and the protocol setter (which resets the stream wholesale) never
+            // runs on load. So a row created through the REST API, a config import, or an
+            // older build can arrive on a transport this picker no longer offers, such as
+            // kcp on anytls/naive or the long-dropped 'http'.
+            //
+            // That matters because antd draws a select whose value matches NO option as
+            // blank. Blank reads as unset, and an operator who opens the modal to change
+            // something unrelated fills it in, silently rewriting a transport the server
+            // is actually running. The picker therefore renders the stored value as a
+            // disabled option rather than swallowing it: visible and honest, but not
+            // something you can pick your way back into once you leave it.
+            //
+            // Deliberately NOT normalized on load. Rewriting a stored transport when the
+            // modal opens would mean pressing Save changes what the server runs without
+            // anyone asking for it, which is worse than showing an unusual value.
+            streamNetworkOffered(inbound) {
+                if (!inbound || !inbound.stream) return true;
+                const offered = ["tcp", "ws", "grpc", "httpupgrade", "xhttp"];
+                // Kept in sync with the matching v-if in form/streamSettings.
+                if (inbound.protocol !== Protocols.ANYTLS &&
+                    inbound.protocol !== Protocols.NAIVE) {
+                    offered.push("kcp");
+                }
+                return offered.includes(inbound.stream.network);
+            },
             onProtocolChange(protocol) {
                 // Prefill the standard control port for the PPP-based VPN protocols
                 // (L2TP 1701, PPTP 1723) and OpenVPN (UDP 1195 / TCP 1194 when ports
@@ -496,6 +576,11 @@
                     // Non-privileged default so the in-binary SSH server binds without
                     // colliding with the host's own sshd on 22.
                     inModal.inbound.port = 2222;
+                } else if (protocol === 'anytls' || protocol === 'tuic' || protocol === 'naive') {
+                    // All three impersonate HTTPS and are only plausible on 443: anytls
+                    // and naive are TLS/HTTP over TCP, tuic is QUIC/h3 over UDP, and a
+                    // censor treats any of them on another port as an anomaly by itself.
+                    inModal.inbound.port = 443;
                 }
             },
             streamNetworkChange() {

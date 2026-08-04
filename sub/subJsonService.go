@@ -12,7 +12,6 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/util/json_util"
 	"github.com/mhsanaei/3x-ui/v2/util/random"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
-	"github.com/mhsanaei/3x-ui/v2/xray"
 )
 
 //go:embed default.json
@@ -85,16 +84,26 @@ func NewSubJsonService(fragment string, noises string, mux string, rules string,
 	}
 }
 
+// forResponse mirrors SubService.forResponse. The controller builds one
+// SubJsonService at start-up and shares it across requests, so the per-response
+// scope has to live on a copy, and the copy has to be the one getConfig sees since
+// that is where the node names are composed.
+func (s *SubJsonService) forResponse() *SubJsonService {
+	scoped := *s
+	scoped.SubService = s.SubService.forResponse()
+	return &scoped
+}
+
 // GetJson generates a JSON subscription configuration for the given subscription ID and host.
 func (s *SubJsonService) GetJson(subId string, host string) (string, string, error) {
+	s = s.forResponse()
 	inbounds, err := s.SubService.getInboundsBySubId(subId)
 	if err != nil || len(inbounds) == 0 {
 		return "", "", err
 	}
 
 	var header string
-	var traffic xray.ClientTraffic
-	var clientTraffics []xray.ClientTraffic
+	usage := newSubUsage()
 	var configArray []json_util.RawMessage
 
 	// Prepare Inbounds
@@ -117,7 +126,8 @@ func (s *SubJsonService) GetJson(subId string, host string) (string, string, err
 
 		for _, client := range clients {
 			if client.Enable && client.SubID == subId {
-				clientTraffics = append(clientTraffics, s.SubService.getClientTraffics(inbound.ClientStats, client.Email))
+				ct, accountBacked, _ := s.SubService.resolveTraffic(inbound, client.Email)
+				usage.add(client.Email, ct, accountBacked)
 				newConfigs := s.getConfig(inbound, client, host)
 				configArray = append(configArray, newConfigs...)
 			}
@@ -128,28 +138,10 @@ func (s *SubJsonService) GetJson(subId string, host string) (string, string, err
 		return "", "", nil
 	}
 
-	// Prepare statistics
-	for index, clientTraffic := range clientTraffics {
-		if index == 0 {
-			traffic.Up = clientTraffic.Up
-			traffic.Down = clientTraffic.Down
-			traffic.Total = clientTraffic.Total
-			if clientTraffic.ExpiryTime > 0 {
-				traffic.ExpiryTime = clientTraffic.ExpiryTime
-			}
-		} else {
-			traffic.Up += clientTraffic.Up
-			traffic.Down += clientTraffic.Down
-			if traffic.Total == 0 || clientTraffic.Total == 0 {
-				traffic.Total = 0
-			} else {
-				traffic.Total += clientTraffic.Total
-			}
-			if clientTraffic.ExpiryTime != traffic.ExpiryTime {
-				traffic.ExpiryTime = 0
-			}
-		}
-	}
+	// Prepare statistics. Folded per identity, so an account served on several
+	// inbounds reports its own quota once instead of collapsing to unlimited; see
+	// subUsage.
+	traffic := usage.result()
 
 	// Combile outbounds
 	var finalJson []byte
@@ -168,8 +160,13 @@ func (s *SubJsonService) getConfig(inbound *model.Inbound, client model.Client, 
 	// protocols (mtproto/ssh/wg-c/awg/gre + the credential VPNs) have no such outbound, so
 	// they are delivered via the raw and Clash subs and skipped here rather than emitting
 	// a JSON config with no working outbound.
+	//
+	// anytls and tuic DO have one, but only in the patched core this panel ships: a
+	// subscriber running stock Xray gets "unknown config id" for that one profile. Each
+	// element of the array is a standalone config, so the blast radius is that profile
+	// alone. naive stays out because it has no Xray outbound at all.
 	switch inbound.Protocol {
-	case "vmess", "vless", "trojan", "shadowsocks", "hysteria", "hysteria2":
+	case "vmess", "vless", "trojan", "shadowsocks", "hysteria", "hysteria2", "anytls", "tuic":
 	default:
 		return nil
 	}
@@ -216,10 +213,15 @@ func (s *SubJsonService) getConfig(inbound *model.Inbound, client model.Client, 
 			newOutbounds = append(newOutbounds, s.genVnext(inbound, streamSettings, client))
 		case "vless":
 			newOutbounds = append(newOutbounds, s.genVless(inbound, streamSettings, client))
-		case "trojan", "shadowsocks":
+		// anytls joins trojan/shadowsocks: its account is a bare password and its
+		// outbound reads the same `servers` array, so genServer already emits it
+		// correctly. (The core's infra/conf must accept that shape.)
+		case "trojan", "shadowsocks", "anytls":
 			newOutbounds = append(newOutbounds, s.genServer(inbound, streamSettings, client))
 		case "hysteria", "hysteria2":
 			newOutbounds = append(newOutbounds, s.genHy(inbound, newStream, client))
+		case "tuic":
+			newOutbounds = append(newOutbounds, s.genTuic(inbound, newStream, client))
 		}
 
 		newOutbounds = append(newOutbounds, s.defaultOutbounds...)
@@ -410,6 +412,48 @@ func (s *SubJsonService) genServer(inbound *model.Inbound, streamSettings json_u
 	outbound.Settings = map[string]any{
 		"servers": serverData,
 	}
+
+	result, _ := json.MarshalIndent(outbound, "", "  ")
+	return result
+}
+
+// genTuic builds the Xray-JSON outbound for a TUIC account. It does not go through
+// genServer because a TUIC account is a uuid AND a password, and the outbound's
+// congestion control has to match the server's or the two disagree on the QUIC
+// algorithm. The transport name is likewise fixed: the core selects its QUIC transport
+// off `network: tuic`, and TLS is not optional.
+func (s *SubJsonService) genTuic(inbound *model.Inbound, newStream map[string]any, client model.Client) json_util.RawMessage {
+	outbound := Outbound{}
+
+	outbound.Protocol = string(inbound.Protocol)
+	outbound.Tag = "proxy"
+	if s.mux != "" {
+		outbound.Mux = json_util.RawMessage(s.mux)
+	}
+
+	var settings map[string]any
+	json.Unmarshal([]byte(inbound.Settings), &settings)
+	congestionControl, _ := settings["congestionControl"].(string)
+	if congestionControl == "" {
+		congestionControl = "cubic"
+	}
+
+	outbound.Settings = map[string]any{
+		"servers": []map[string]any{{
+			"address":  inbound.Listen,
+			"port":     inbound.Port,
+			"level":    8,
+			"email":    client.Email,
+			"id":       client.ID,
+			"password": client.Password,
+		}},
+		"congestionControl": congestionControl,
+		"udpRelayMode":      "native",
+	}
+
+	newStream["network"] = "tuic"
+	newStream["security"] = "tls"
+	outbound.StreamSettings, _ = json.MarshalIndent(newStream, "", "  ")
 
 	result, _ := json.MarshalIndent(outbound, "", "  ")
 	return result

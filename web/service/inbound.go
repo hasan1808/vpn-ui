@@ -494,6 +494,19 @@ func (s *InboundService) NormalizeGrePort(inbound *model.Inbound, id int) error 
 	return common.NewError("no free port left to key a GRE inbound on")
 }
 
+// GetClients decodes an inbound's accounts from its settings JSON.
+//
+// The discarded Unmarshal error is DELIBERATE and load-bearing. The browser's ClientBase
+// defaults tgId to the empty string while model.Client.TgID is an int64, so every inbound
+// the panel has ever written decodes with an UnmarshalTypeError on that one field. Go's
+// decoder skips the mistyped field and keeps going, so the accounts come back complete
+// with TgID=0. Checking the error here would fail EVERY inbound in the database at once.
+//
+// Fixing it at the source is worse than it looks: the client form binds
+// v-model.number="client.tgId", so defaulting to 0 instead would show a spurious 0 in the
+// Telegram box of every account that never set one, across all eight ClientBase
+// protocols. Pinned by TestUnmarshalRecoversFromBrowserTgIdString, which asserts both
+// that the error is real and that the data survives it.
 func (s *InboundService) GetClients(inbound *model.Inbound) ([]model.Client, error) {
 	settings := map[string][]model.Client{}
 	json.Unmarshal([]byte(inbound.Settings), &settings)
@@ -665,6 +678,143 @@ func (s *InboundService) checkPPPUsernamesForDuplicates(protocol string, clients
 	return "", nil
 }
 
+// vpnLoginProtocols are the protocols whose client "id" is a LOGIN NAME: a value
+// the customer types into their client and the server authenticates them by.
+//
+// wg-c, awg, gre and mtproto are deliberately absent even though they also store an
+// "id". Nothing reads it for them (the identity is the email, and the credential is
+// a keypair or a secret), so it is not a login and folding it into this namespace
+// would refuse names nobody can log in with.
+var vpnLoginProtocols = []model.Protocol{
+	model.L2TP, model.PPTP, model.OPENVPN, model.OPENCONNECT,
+	model.SSTP, model.IKEV2, model.SSH,
+}
+
+func isVpnLoginProtocol(protocol model.Protocol) bool {
+	for _, p := range vpnLoginProtocols {
+		if protocol == p {
+			return true
+		}
+	}
+	return false
+}
+
+// loginKey normalises a login name for comparison, the same way accountKey
+// normalises an email. Authentication itself compares exactly, so this is STRICTER
+// than the wire: it refuses "Alice" against a stored "alice". That is deliberate.
+// Two accounts differing only in case are indistinguishable to the operator who has
+// to support them, and the email rule this is modelled on already works this way.
+func loginKey(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+
+// getAllVpnLoginOwners maps every login name in use, panel-wide, to the set of
+// account emails currently using it.
+//
+// Panel-wide and cross-protocol, which is the whole point. It used to be scoped to
+// one protocol, because that is all the DATA PLANE strictly needs: l2tp/pptp/ikev2
+// share a daemon that sends a bare NAS-Identifier, so RadiusService.findClientInbound
+// resolves an account by username across a protocol's inbounds and takes the first
+// match. But "unique per protocol" is an implementation detail leaking into policy:
+// an operator does not think of a customer's login as belonging to l2tp, and two
+// customers sharing one name is a support problem whatever the protocols are.
+//
+// A set of emails per name, not one email, because MIGRATED data can legitimately
+// already contain a collision (a panel that predates this rule, or an import). The
+// caller forgives a name the posting account already holds, which is what keeps that
+// data editable while still refusing every NEW collision.
+func (s *InboundService) getAllVpnLoginOwners() (map[string]map[string]bool, error) {
+	db := database.GetDB()
+	var rows []struct {
+		Login string
+		Email string
+	}
+	protocols := make([]string, 0, len(vpnLoginProtocols))
+	for _, p := range vpnLoginProtocols {
+		protocols = append(protocols, string(p))
+	}
+	// COALESCE for the same reason as getAllPPPUsernames: `id` is omitempty, so an
+	// account stored without one yields NULL and a bare scan into a string dies,
+	// taking every add and edit of that protocol with it.
+	err := db.Raw(`
+		SELECT COALESCE(JSON_EXTRACT(client.value, '$.id'), '')   AS login,
+		       COALESCE(JSON_EXTRACT(client.value, '$.email'), '') AS email
+		FROM inbounds,
+			JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
+		WHERE inbounds.protocol IN ?
+		`, protocols).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	owners := map[string]map[string]bool{}
+	for _, r := range rows {
+		key := loginKey(r.Login)
+		if key == "" {
+			continue
+		}
+		if owners[key] == nil {
+			owners[key] = map[string]bool{}
+		}
+		owners[key][accountKey(r.Email)] = true
+	}
+	return owners, nil
+}
+
+// findNewDuplicateLogin returns the first login name in clients that a DIFFERENT
+// account already answers to, panel-wide. Empty means the batch is clean.
+//
+// Two things count as taken, because RADIUS treats them as the same thing: another
+// account's login name, and another account's EMAIL. getClientPassword matches on
+// `client.ID == username || client.Email == username` (radius.go:764), so a login of
+// "bob@example.com" authenticates as whoever owns that email. Checking only the login
+// column would leave that door open.
+//
+// Only CHANGED names are held to the rule. A name the posting account already holds
+// passes, so re-saving an inbound works, and so does editing an account that a
+// migration left sharing a name with another one. New collisions are refused
+// outright; old ones are left for the operator to clean up deliberately.
+func (s *InboundService) findNewDuplicateLogin(clients []model.Client) (string, error) {
+	owners, err := s.getAllVpnLoginOwners()
+	if err != nil {
+		return "", err
+	}
+	emails, err := s.getAllEmailsExcludingInbound(0)
+	if err != nil {
+		return "", err
+	}
+	emailOwners := map[string]bool{}
+	for _, e := range emails {
+		if k := accountKey(e); k != "" {
+			emailOwners[k] = true
+		}
+	}
+
+	seen := map[string]string{} // login -> the email in THIS batch that claimed it
+	for _, client := range clients {
+		key := loginKey(client.ID)
+		if key == "" {
+			continue
+		}
+		mine := accountKey(client.Email)
+		// Inside the posted list a repeat is always wrong unless it is the same
+		// account twice, which one inbound cannot serve anyway.
+		if prev, dup := seen[key]; dup && prev != mine {
+			return client.ID, nil
+		}
+		seen[key] = mine
+		// Already stored against this account: unchanged, so not a new collision.
+		if owners[key][mine] {
+			continue
+		}
+		if len(owners[key]) > 0 {
+			return client.ID, nil
+		}
+		// A login that is somebody else's email would authenticate as them.
+		if key != mine && emailOwners[key] {
+			return client.ID, nil
+		}
+	}
+	return "", nil
+}
+
 // checkEmailsExistExcludingInbound returns the first email in clients that already
 // names another account, whether inside the batch itself or anywhere in the DB
 // outside ignoreInboundId.
@@ -675,6 +825,25 @@ func (s *InboundService) checkPPPUsernamesForDuplicates(protocol string, clients
 // persisted (AddInbound) or whose write is additive (AddInboundClient) pass 0 and
 // get a plain global check.
 func (s *InboundService) checkEmailsExistExcludingInbound(clients []model.Client, ignoreInboundId int) (string, error) {
+	return s.checkEmailsExistExcludingKnown(clients, ignoreInboundId, nil)
+}
+
+// checkEmailsExistExcludingKnown is the same check with a set of emails that are
+// ALREADY served on this inbound and are therefore not new duplicates.
+//
+// This exists because one account may now legitimately be on several inbounds.
+// The plain check asks "does this email appear on any OTHER inbound", which used
+// to mean "a different account already owns it". It no longer does: the same
+// email on two inbounds is ONE account with two memberships, which is the whole
+// feature. So saving an inbound that holds any multi-inbound account failed with
+// "Duplicate email ... must be unique across all inbounds", and the operator
+// could not edit that inbound at all. Found on a live panel.
+//
+// The exemption is deliberately narrow: only emails ALREADY stored on this
+// inbound are forgiven, so re-saving an existing member works while typing a
+// stranger's email into the client list still fails. Joining an account to a new
+// inbound goes through inboundIds, where the intent is explicit.
+func (s *InboundService) checkEmailsExistExcludingKnown(clients []model.Client, ignoreInboundId int, known []string) (string, error) {
 	allEmails, err := s.getAllEmailsExcludingInbound(ignoreInboundId)
 	if err != nil {
 		return "", err
@@ -685,7 +854,12 @@ func (s *InboundService) checkEmailsExistExcludingInbound(clients []model.Client
 		if email == "" {
 			continue
 		}
-		if containsEmail(emails, email) || containsEmail(allEmails, email) {
+		// A duplicate WITHIN the posted list is always wrong, membership or not:
+		// one inbound cannot serve the same account twice.
+		if containsEmail(emails, email) {
+			return email, nil
+		}
+		if containsEmail(allEmails, email) && !containsEmail(known, email) {
 			return email, nil
 		}
 		emails = append(emails, email)
@@ -695,6 +869,89 @@ func (s *InboundService) checkEmailsExistExcludingInbound(clients []model.Client
 
 func (s *InboundService) checkEmailsExistForClients(clients []model.Client) (string, error) {
 	return s.checkEmailsExistExcludingInbound(clients, 0)
+}
+
+// firstAnytlsPasswordCollision returns the EMAIL of the first account here that shares
+// its password with an earlier one, or "" when they are all distinct. It names the
+// account rather than the password so the collision can be reported without putting a
+// live credential in an error message, a log line or the panel's UI.
+//
+// AnyTLS carries no username on the wire: a client sends only its password and the core
+// looks the account up by that password's hash. Two accounts sharing one are therefore
+// indistinguishable to everything downstream, and the loser's traffic is booked against
+// the winner, so the core refuses to build such an inbound at all.
+//
+// That refusal is why this is caught here instead of being left to the core. The panel
+// logs AddUser's rejection at Debug and swallows it (it only sets needRestart), so the
+// operator is told the add succeeded; the restart that follows then hands Xray a config
+// it rejects OUTRIGHT, and one unbuildable inbound takes every OTHER inbound on the box
+// down with it. Only hand-typed passwords can collide (generated ones are uuids), but
+// the cost of the one that does is the whole node.
+func firstAnytlsPasswordCollision(clients []model.Client) string {
+	seen := make(map[string]struct{}, len(clients))
+	for _, client := range clients {
+		if client.Password == "" {
+			continue
+		}
+		if _, duplicate := seen[client.Password]; duplicate {
+			return client.Email
+		}
+		seen[client.Password] = struct{}{}
+	}
+	return ""
+}
+
+// naiveAuthUsername returns the Basic-auth username the core will actually match for
+// this account: its own username when it has one, its email otherwise. The fallback is
+// what every naive account predating the username field authenticates with.
+//
+// The test is EMPTY, not blank. The same one-line rule is written four more times (the
+// core's Validator, both share-link generators, the exports), and a trim here would make
+// this the only place where a username of " " means the email, so the panel would
+// validate one credential and hand out another.
+func naiveAuthUsername(client model.Client) string {
+	if client.Username != "" {
+		return client.Username
+	}
+	return client.Email
+}
+
+// firstNaiveUsernameFault returns the EMAIL of the first account whose Basic-auth
+// username is unusable, plus what is wrong with it, or ("", "") when they are all fine.
+// It names the account rather than the username so a collision can be reported without
+// putting half a live credential in an error message or the panel's UI.
+//
+// Two faults, both of which produce an account that exists in the panel and can never
+// log in:
+//
+//   - A COLON. HTTP Basic is base64("user:pass") and the server splits on the FIRST
+//     colon, so a colon in the username silently moves the split and the password the
+//     core compares is not the one the operator typed.
+//   - A DUPLICATE. The core indexes accounts by this value, so two accounts sharing one
+//     are indistinguishable and the loser's traffic is booked against the winner.
+//     Checked against the resolved value, not the raw field: an account with username
+//     "bob" collides with a username-less account whose EMAIL is "bob" just as surely.
+//
+// Caught here rather than left to the core because the core deliberately degrades with
+// a warning instead of failing Build() (an error there makes Xray refuse the ENTIRE
+// config and takes every unrelated inbound on the box down with it), so nothing
+// downstream would ever tell the operator.
+func firstNaiveUsernameFault(clients []model.Client) (string, string) {
+	seen := make(map[string]struct{}, len(clients))
+	for _, client := range clients {
+		if strings.Contains(client.Username, ":") {
+			return client.Email, "a naive username cannot contain a colon"
+		}
+		username := naiveAuthUsername(client)
+		if username == "" {
+			continue
+		}
+		if _, duplicate := seen[username]; duplicate {
+			return client.Email, "duplicate naive username"
+		}
+		seen[username] = struct{}{}
+	}
+	return "", ""
 }
 
 // isVpnProtocol reports whether a protocol is one of the panel's built-in VPN
@@ -893,6 +1150,20 @@ func (s *InboundService) validateInboundConfig(inbound *model.Inbound) error {
 }
 
 func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, bool, error) {
+	// Fill in every settings key of the protocol's shape the caller left out, then
+	// validate what is left, so a MINIMAL API body (or none at all) creates the same
+	// inbound the panel's own Add form would. Only for the protocols whose settings JSON
+	// is built client-side (see web/service/protocoldefaults.go); an Xray-native inbound
+	// passes through untouched.
+	//
+	// Defaults only ADD absent keys, so every request the UI makes today (all of which
+	// already carry the full shape) comes back byte-identical and nothing it sent is
+	// second-guessed. Ahead of everything below, so the blob validated is the blob
+	// stored.
+	if err := NormalizeInboundSettings(inbound); err != nil {
+		return inbound, false, err
+	}
+
 	// Before anything parses the settings, so the emails checked below and the ones
 	// persisted are the same strings.
 	inbound.Settings = normalizeClientEmails(inbound.Settings)
@@ -915,6 +1186,12 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 
 	clients, err := s.GetClients(inbound)
 	if err != nil {
+		return inbound, false, err
+	}
+
+	// Reject an identity that cannot safely round-trip through the daemon config
+	// files and the Xray stat names, BEFORE anything is written.
+	if err := validateClientIdentities(inbound.Protocol, clients); err != nil {
 		return inbound, false, err
 	}
 
@@ -965,14 +1242,40 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 		}
 	}
 
-	// Check for duplicate L2TP/PPTP/OpenVPN/SSTP usernames
-	if inbound.Protocol == "l2tp" || inbound.Protocol == "pptp" || inbound.Protocol == "openvpn" || inbound.Protocol == "sstp" || inbound.Protocol == "ikev2" || inbound.Protocol == "wg-c" || inbound.Protocol == "awg" || inbound.Protocol == "gre" || inbound.Protocol == "ssh" {
+	// A login name is unique PANEL-WIDE, exactly like an email. See
+	// findNewDuplicateLogin: the old check was per protocol, which is all the RADIUS
+	// demux strictly needs but is not a rule an operator can hold in their head, and
+	// it left openconnect out of the list entirely.
+	if isVpnLoginProtocol(inbound.Protocol) {
+		dupUser, err := s.findNewDuplicateLogin(clients)
+		if err != nil {
+			return inbound, false, err
+		}
+		if dupUser != "" {
+			return inbound, false, common.NewError("Duplicate username:", dupUser)
+		}
+	} else if inbound.Protocol == model.WGC || inbound.Protocol == model.AWG || inbound.Protocol == model.GRE {
+		// Their "id" is the email by convention and nothing authenticates by it, so
+		// they keep the narrow per-protocol check rather than joining the login
+		// namespace.
 		dupUser, err := s.checkPPPUsernamesForDuplicates(string(inbound.Protocol), clients)
 		if err != nil {
 			return inbound, false, err
 		}
 		if dupUser != "" {
 			return inbound, false, common.NewError("Duplicate username:", dupUser)
+		}
+	}
+
+	if inbound.Protocol == model.ANYTLS {
+		if dupClient := firstAnytlsPasswordCollision(clients); dupClient != "" {
+			return inbound, false, common.NewError("Duplicate AnyTLS password on client:", dupClient)
+		}
+	}
+
+	if inbound.Protocol == model.NAIVE {
+		if badClient, reason := firstNaiveUsernameFault(clients); badClient != "" {
+			return inbound, false, common.NewError(reason, " on client:", badClient)
 		}
 	}
 
@@ -1140,12 +1443,53 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 	if err != nil {
 		return inbound, false, err
 	}
-	existEmail, err := s.checkEmailsExistExcludingInbound(updatedClients, inbound.Id)
+	// Only entries that actually CHANGED are held to the identity rules. This save
+	// posts every client on the inbound, so validating all of them would let one
+	// account created before these rules existed block every later edit to the
+	// inbound (its DNS, its remark, an unrelated new account) until someone went and
+	// fixed that row. See validateChangedClientIdentities.
+	// Emails already served on THIS inbound, needed twice below: to exempt an
+	// unchanged identity from the new validation rules, and to stop a legitimate
+	// membership reading as a duplicate.
+	var knownEmails []string
+	if storedInbound, gerr := s.GetInbound(inbound.Id); gerr == nil && storedInbound != nil {
+		storedClients, cerr := s.GetClients(storedInbound)
+		if cerr != nil {
+			return inbound, false, cerr
+		}
+		for i := range storedClients {
+			if e := strings.TrimSpace(storedClients[i].Email); e != "" {
+				knownEmails = append(knownEmails, e)
+			}
+		}
+		if err := validateChangedClientIdentities(inbound.Protocol, updatedClients, storedClients); err != nil {
+			return inbound, false, err
+		}
+	} else if err := validateClientIdentities(inbound.Protocol, updatedClients); err != nil {
+		return inbound, false, err
+	}
+
+	existEmail, err := s.checkEmailsExistExcludingKnown(updatedClients, inbound.Id, knownEmails)
 	if err != nil {
 		return inbound, false, err
 	}
 	if existEmail != "" {
 		return inbound, false, duplicateEmailError(existEmail)
+	}
+
+	// No exclusion needed, unlike the email check above: this list REPLACES the stored
+	// one wholesale, so it is already the exact set of accounts the core will be asked
+	// to build.
+	if inbound.Protocol == model.ANYTLS {
+		if dupClient := firstAnytlsPasswordCollision(updatedClients); dupClient != "" {
+			return inbound, false, common.NewError("Duplicate AnyTLS password on client:", dupClient)
+		}
+	}
+
+	if inbound.Protocol == model.NAIVE {
+		if badClient, reason := firstNaiveUsernameFault(updatedClients); badClient != "" {
+			return inbound, false, common.NewError(reason, " on client:", badClient)
+		}
 	}
 
 	oldInbound, err := s.GetInbound(inbound.Id)
@@ -1321,9 +1665,13 @@ func (s *InboundService) buildRuntimeInboundForAPI(tx *gorm.DB, inbound *model.I
 		return &runtimeInbound, nil
 	}
 
+	// Deliberately NOT filtered by inbound_id. client_traffics.Email is UNIQUE
+	// panel-wide, so one account has one row naming one inbound; scoping this read
+	// to inbound.Id meant that on every other inbound serving the same account the
+	// lookup missed and a depleted client was pushed to the live core as enabled.
+	// This is the no-restart twin of the same hole in GetXrayConfig.
 	var clientStats []xray.ClientTraffic
 	err := tx.Model(xray.ClientTraffic{}).
-		Where("inbound_id = ?", inbound.Id).
 		Select("email", "enable").
 		Find(&clientStats).Error
 	if err != nil {
@@ -1332,7 +1680,7 @@ func (s *InboundService) buildRuntimeInboundForAPI(tx *gorm.DB, inbound *model.I
 
 	enableMap := make(map[string]bool, len(clientStats))
 	for _, clientTraffic := range clientStats {
-		enableMap[clientTraffic.Email] = clientTraffic.Enable
+		enableMap[accountKey(clientTraffic.Email)] = clientTraffic.Enable
 	}
 
 	finalClients := make([]any, 0, len(clients))
@@ -1343,7 +1691,7 @@ func (s *InboundService) buildRuntimeInboundForAPI(tx *gorm.DB, inbound *model.I
 		}
 
 		email, _ := c["email"].(string)
-		if enable, exists := enableMap[email]; exists && !enable {
+		if enable, exists := enableMap[accountKey(email)]; exists && !enable {
 			continue
 		}
 
@@ -1419,6 +1767,16 @@ func (s *InboundService) AddInboundClient(data *model.Inbound) (bool, error) {
 		return false, err
 	}
 
+	// Reject an unusable identity before it reaches the settings blob. The protocol
+	// comes from the STORED inbound: the request body carries only id and settings
+	// on this path, so data.Protocol is usually empty and the VPN username rules
+	// would be skipped for exactly the protocols that need them.
+	if target, terr := s.GetInbound(data.Id); terr == nil && target != nil {
+		if err := validateClientIdentities(target.Protocol, clients); err != nil {
+			return false, err
+		}
+	}
+
 	var settings map[string]any
 	err = json.Unmarshal([]byte(data.Settings), &settings)
 	if err != nil {
@@ -1486,14 +1844,49 @@ func (s *InboundService) AddInboundClient(data *model.Inbound) (bool, error) {
 		}
 	}
 
-	// Check for duplicate L2TP/PPTP/OpenVPN/SSTP usernames
-	if oldInbound.Protocol == "l2tp" || oldInbound.Protocol == "pptp" || oldInbound.Protocol == "openvpn" || oldInbound.Protocol == "sstp" || oldInbound.Protocol == "ikev2" || oldInbound.Protocol == "wg-c" || oldInbound.Protocol == "awg" || oldInbound.Protocol == "gre" || oldInbound.Protocol == "ssh" {
+	// Panel-wide login uniqueness; see findNewDuplicateLogin. Re-saving an inbound is
+	// safe because every name it already holds belongs to the account posting it.
+	if isVpnLoginProtocol(oldInbound.Protocol) {
+		dupUser, err := s.findNewDuplicateLogin(clients)
+		if err != nil {
+			return false, err
+		}
+		if dupUser != "" {
+			return false, common.NewError("Duplicate username:", dupUser)
+		}
+	} else if oldInbound.Protocol == model.WGC || oldInbound.Protocol == model.AWG || oldInbound.Protocol == model.GRE {
 		dupUser, err := s.checkPPPUsernamesForDuplicates(string(oldInbound.Protocol), clients)
 		if err != nil {
 			return false, err
 		}
 		if dupUser != "" {
 			return false, common.NewError("Duplicate username:", dupUser)
+		}
+	}
+
+	// Measured against what the inbound ALREADY holds, not just the incoming batch:
+	// the core's account list is per-inbound, so a new client colliding with a
+	// persisted one is the same fatal config as two new ones colliding with each other.
+	if oldInbound.Protocol == model.ANYTLS {
+		existing, gerr := s.GetClients(oldInbound)
+		if gerr != nil {
+			return false, gerr
+		}
+		if dupClient := firstAnytlsPasswordCollision(append(existing, clients...)); dupClient != "" {
+			return false, common.NewError("Duplicate AnyTLS password on client:", dupClient)
+		}
+	}
+
+	// Same reasoning as the anytls check above: the core's account index is per-inbound,
+	// so a new username colliding with a persisted one is the same broken account as two
+	// new ones colliding with each other.
+	if oldInbound.Protocol == model.NAIVE {
+		existing, gerr := s.GetClients(oldInbound)
+		if gerr != nil {
+			return false, gerr
+		}
+		if badClient, reason := firstNaiveUsernameFault(append(existing, clients...)); badClient != "" {
+			return false, common.NewError(reason, " on client:", badClient)
 		}
 	}
 
@@ -1548,6 +1941,7 @@ func (s *InboundService) AddInboundClient(data *model.Inbound) (bool, error) {
 					"security": client.Security,
 					"flow":     client.Flow,
 					"password": client.Password,
+					"username": client.Username,
 					"cipher":   cipher,
 				})
 				if err1 == nil {
@@ -1585,13 +1979,22 @@ func clientIdentityKey(protocol model.Protocol) string {
 	// that moves mid-edit cannot be matched against the one the modal opened with.
 	case model.Trojan, model.L2TP, model.PPTP, model.OPENVPN, model.OPENCONNECT, model.SSTP, model.IKEV2:
 		return "password"
+	// Password-credential native Xray protocols. anytls authenticates on the password
+	// alone. naive now carries its own Basic-auth username, and it still must not be
+	// the identity: it is OPTIONAL (an account created before the field has none, and
+	// keying on it would make every one of them unaddressable, "empty client ID" on
+	// edit and a silent no-op on delete) and it is exactly the field an operator
+	// renames, which is the rule the block above already states.
+	case model.ANYTLS, model.NAIVE:
+		return "password"
 	case model.Shadowsocks:
 		return "email"
 	case model.Hysteria, model.Hysteria2:
 		return "auth"
 	default:
 		// vmess/vless (uuid) and the email-identity protocols (wg-c, awg, mtproto,
-		// ssh), whose settings JSON carries id=email.
+		// ssh), whose settings JSON carries id=email. tuic also lands here: it
+		// carries BOTH a uuid and a password, and the uuid is the identity.
 		return "id"
 	}
 }
@@ -1657,6 +2060,10 @@ func (s *InboundService) buildTargetClientFromSource(source model.Client, target
 	target.Password = ""
 	target.Auth = ""
 	target.Flow = ""
+	// naive's Basic-auth username is unique within an inbound, so carrying the source's
+	// over would give the copy a credential that collides on arrival. Cleared rather
+	// than minted: empty falls back to the new email, which is already unique.
+	target.Username = ""
 	// The address-pool slot belongs to the SOURCE inbound's pool. Carrying it over would
 	// hand the copy an address an account in the target inbound may already hold; the add
 	// path allocates a free one there instead.
@@ -1671,6 +2078,17 @@ func (s *InboundService) buildTargetClientFromSource(source model.Client, target
 			target.Flow = flow
 		}
 	case model.Trojan, model.Shadowsocks:
+		target.Password = s.generateRandomCredential(targetProtocol)
+	case model.ANYTLS, model.NAIVE:
+		// Password-only accounts. naive's Basic-auth username is the email, which
+		// was already set above, so nothing else has to be minted.
+		target.Password = s.generateRandomCredential(targetProtocol)
+	case model.TUIC:
+		// TUIC authenticates with a uuid AND a password and is keyed on the uuid, so
+		// both have to be minted or the copy is unusable. The uuid must keep its
+		// dashes: generateRandomCredential strips them for everything but
+		// vmess/vless, and a TUIC client parses this field as a real UUID.
+		target.ID = uuid.NewString()
 		target.Password = s.generateRandomCredential(targetProtocol)
 	case model.Hysteria, model.Hysteria2:
 		target.Auth = s.generateRandomCredential(targetProtocol)
@@ -1966,6 +2384,15 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 		return false, err
 	}
 
+	// Validated against the STORED protocol, for the same reason as the add path,
+	// and exempting an identity that is unchanged: editing only the QUOTA of an
+	// account created before these rules existed has to keep working, or the rules
+	// would be retroactive in practice. Touching any part of the identity makes the
+	// tuple new and holds it to the current rules.
+	if err := validateChangedClientIdentities(oldInbound.Protocol, clients, oldClients); err != nil {
+		return false, err
+	}
+
 	oldEmail := ""
 	newClientId := clientIdentity(oldInbound.Protocol, clients[0])
 	clientIndex := -1
@@ -1998,8 +2425,22 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 		}
 	}
 
-	// Check for duplicate L2TP/PPTP/OpenVPN/SSTP usernames (allow keeping the same username)
-	if oldInbound.Protocol == "l2tp" || oldInbound.Protocol == "pptp" || oldInbound.Protocol == "openvpn" || oldInbound.Protocol == "sstp" || oldInbound.Protocol == "ikev2" || oldInbound.Protocol == "wg-c" || oldInbound.Protocol == "awg" || oldInbound.Protocol == "gre" || oldInbound.Protocol == "ssh" {
+	// Panel-wide login uniqueness on the single-client edit path (see
+	// findNewDuplicateLogin). The "did it actually change" gate stays: findNewDuplicateLogin
+	// already forgives a name the posting account holds, but an edit that renames an
+	// account whose OLD name was a migrated duplicate must not be refused for the name it
+	// is moving away from.
+	if isVpnLoginProtocol(oldInbound.Protocol) {
+		if loginKey(clients[0].ID) != loginKey(oldClients[clientIndex].ID) {
+			dupUser, err := s.findNewDuplicateLogin(clients)
+			if err != nil {
+				return false, err
+			}
+			if dupUser != "" {
+				return false, common.NewError("Duplicate username:", dupUser)
+			}
+		}
+	} else if oldInbound.Protocol == model.WGC || oldInbound.Protocol == model.AWG || oldInbound.Protocol == model.GRE {
 		oldUsername := oldClients[clientIndex].ID
 		newUsername := clients[0].ID
 		if newUsername != oldUsername {
@@ -2010,6 +2451,27 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 			if dupUser != "" {
 				return false, common.NewError("Duplicate username:", dupUser)
 			}
+		}
+	}
+
+	// The edited client REPLACES its old self here rather than joining the list: it is
+	// still in oldClients, and measuring against that unchanged would reject every edit
+	// as a collision with the account being edited.
+	if oldInbound.Protocol == model.ANYTLS {
+		prospective := make([]model.Client, len(oldClients))
+		copy(prospective, oldClients)
+		prospective[clientIndex] = clients[0]
+		if dupClient := firstAnytlsPasswordCollision(prospective); dupClient != "" {
+			return false, common.NewError("Duplicate AnyTLS password on client:", dupClient)
+		}
+	}
+
+	if oldInbound.Protocol == model.NAIVE {
+		prospective := make([]model.Client, len(oldClients))
+		copy(prospective, oldClients)
+		prospective[clientIndex] = clients[0]
+		if badClient, reason := firstNaiveUsernameFault(prospective); badClient != "" {
+			return false, common.NewError(reason, " on client:", badClient)
 		}
 	}
 
@@ -2120,6 +2582,7 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 				"flow":     clients[0].Flow,
 				"auth":     clients[0].Auth,
 				"password": clients[0].Password,
+				"username": clients[0].Username,
 				"cipher":   cipher,
 			})
 			if err1 == nil {
@@ -2574,12 +3037,66 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 		return err
 	}
 
-	// Owning inbounds for the traffic-multiplier policy. A failure here must not cost
-	// us the tick's traffic: fall back to billing everything 1:1.
-	multiplierInbounds, err := loadMultiplierInbounds(tx, dbClientTraffics)
+	// Inbounds for the traffic-multiplier policy. Two id sources plus, ONLY when it
+	// is actually needed, the account's memberships: the inbound that BILLS a byte
+	// is no longer necessarily the one on the client's row, since a collected
+	// record may name the inbound it really came from and an account can be a
+	// member of several. A failure here must not cost us the tick's traffic, so it
+	// falls back to billing everything 1:1.
+	homeIds := make([]int, 0, len(dbClientTraffics))
+	for _, ct := range dbClientTraffics {
+		homeIds = append(homeIds, ct.InboundId)
+	}
+	sourceIds := make([]int, 0, len(traffics))
+	unattributed := false
+	for _, t := range traffics {
+		sourceIds = append(sourceIds, t.InboundId)
+		if t.InboundId == 0 {
+			unattributed = true
+		}
+	}
+
+	multiplierInbounds, err := loadMultiplierInbounds(tx, homeIds, sourceIds)
 	if err != nil {
 		logger.Warning("traffic multiplier: cannot load inbounds, counting raw: ", err)
 		multiplierInbounds = nil
+	}
+	if multiplierInbounds == nil {
+		// loadMultiplierInbounds returns nil both on error and when there was
+		// nothing to load, and the merge below writes into this map. Writing to a
+		// nil map panics, and it would take the whole 10s traffic job down.
+		multiplierInbounds = map[int]*model.Inbound{}
+	}
+
+	// Resolving memberships means scanning every inbound's settings JSON, and this
+	// runs every 10 seconds on a panel that can hold thousands of accounts. It is
+	// therefore done ONLY when it can change an answer: when some record could not
+	// be attributed to a source inbound AND some inbound actually has a multiplier
+	// enabled. On the overwhelmingly common panel (no multiplier configured at all)
+	// this is skipped entirely and the tick costs exactly what it did before.
+	memberIdsByEmail := map[string][]int{}
+	if unattributed && anyMultiplierEnabled(tx) {
+		billedEmails := make([]string, 0, len(dbClientTraffics))
+		for _, ct := range dbClientTraffics {
+			billedEmails = append(billedEmails, ct.Email)
+		}
+		memberRows, merr := s.inboundsServingEmails(tx, billedEmails)
+		if merr != nil {
+			logger.Warning("traffic multiplier: cannot resolve memberships, using the home inbound: ", merr)
+		}
+		memberIds := make([]int, 0, len(memberRows))
+		for _, row := range memberRows {
+			memberIds = append(memberIds, row.Id)
+			key := accountKey(row.Email)
+			memberIdsByEmail[key] = append(memberIdsByEmail[key], row.Id)
+		}
+		// Second pass now that the membership ids are known: those inbounds' own
+		// multiplier columns still have to be loaded to be compared.
+		if extra, eerr := loadMultiplierInbounds(tx, memberIds); eerr == nil {
+			for id, inb := range extra {
+				multiplierInbounds[id] = inb
+			}
+		}
 	}
 
 	// Every record matching an email is applied, not just the first. A tick can legitimately
@@ -2594,11 +3111,28 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 			if dbClientTraffics[dbTraffic_index].Email == traffics[traffic_index].Email {
 				rawUp := traffics[traffic_index].Up
 				rawDown := traffics[traffic_index].Down
+				// Bill at the multiplier of the inbound the bytes CAME FROM, which
+				// the collector stamps on the record when it can be known (the nine
+				// pool VPN protocols count per tunnel address, the two relays count
+				// per account inside one daemon). When it cannot be known, the max
+				// across the account's memberships is used, so the ambiguity can only
+				// over-bill and never hand out free traffic.
+				//
+				// It genuinely cannot be known for the Xray-native protocols, and
+				// that is a property of the core rather than something this code can
+				// plumb: Xray's counter is named "user>>><email>>>>traffic" with NO
+				// inbound component, so an account on vless AND trojan gets one number
+				// covering both, with nothing to attribute it by.
+				source := billingInbound(
+					multiplierInbounds,
+					traffics[traffic_index].InboundId,
+					memberIdsByEmail[accountKey(dbClientTraffics[dbTraffic_index].Email)],
+				)
 				// Weight the delta against the client's quota. Computed rather than
 				// mutated in place: the same slice is broadcast over the websocket and
 				// posted to the external traffic API, which must report measured bytes.
 				billedUp, billedDown := multiplyDelta(
-					multiplierInbounds[dbClientTraffics[dbTraffic_index].InboundId],
+					source,
 					dbClientTraffics[dbTraffic_index].Up+dbClientTraffics[dbTraffic_index].Down,
 					rawUp, rawDown,
 				)
@@ -2634,19 +3168,54 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 }
 
 func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.ClientTraffic) ([]*xray.ClientTraffic, error) {
-	inboundIds := make([]int, 0, len(dbClientTraffics))
+	// Which ACCOUNTS are converting a "N days from first use" expiry into an
+	// absolute deadline, and then every inbound serving them.
+	//
+	// This used to collect inbound ids from dbClientTraffic.InboundId, which names
+	// only the account's home inbound. The absolute deadline was therefore written
+	// into that one inbound's settings while every other member kept the NEGATIVE
+	// value forever, which the client table renders as "delayed start" on an
+	// account whose clock has actually been running since its first connection.
+	pendingEmails := make([]string, 0, len(dbClientTraffics))
 	for _, dbClientTraffic := range dbClientTraffics {
 		if dbClientTraffic.ExpiryTime < 0 {
-			inboundIds = append(inboundIds, dbClientTraffic.InboundId)
+			pendingEmails = append(pendingEmails, dbClientTraffic.Email)
 		}
 	}
 
-	if len(inboundIds) > 0 {
-		var inbounds []*model.Inbound
-		err := tx.Model(model.Inbound{}).Where("id IN (?)", inboundIds).Find(&inbounds).Error
+	if len(pendingEmails) > 0 {
+		inboundIds, err := s.inboundIdsServingEmails(tx, pendingEmails)
 		if err != nil {
 			return nil, err
 		}
+		if len(inboundIds) == 0 {
+			return dbClientTraffics, nil
+		}
+		var inbounds []*model.Inbound
+		err = tx.Model(model.Inbound{}).Where("id IN (?)", inboundIds).Find(&inbounds).Error
+		if err != nil {
+			return nil, err
+		}
+		// The deadline is computed ONCE PER ACCOUNT, before any inbound is
+		// rewritten, and read from the traffic row rather than from each inbound's
+		// settings. Both details matter now that an account can be on several
+		// inbounds: computing it inside the loop would convert the first inbound,
+		// flip the row positive, and then skip every remaining member (leaving
+		// exactly the negative values this fix exists to remove), and taking the
+		// base from each inbound's own JSON would give one account a different
+		// deadline per inbound.
+		now := time.Now().Unix() * 1000
+		newExpiryByEmail := make(map[string]int64, len(pendingEmails))
+		for traffic_index := range dbClientTraffics {
+			if dbClientTraffics[traffic_index].ExpiryTime >= 0 {
+				continue
+			}
+			// The stored value is negative and means "this many ms from first use".
+			newExpiry := now - dbClientTraffics[traffic_index].ExpiryTime
+			newExpiryByEmail[accountKey(dbClientTraffics[traffic_index].Email)] = newExpiry
+			dbClientTraffics[traffic_index].ExpiryTime = newExpiry
+		}
+
 		for inbound_index := range inbounds {
 			settings := map[string]any{}
 			json.Unmarshal([]byte(inbounds[inbound_index].Settings), &settings)
@@ -2654,22 +3223,20 @@ func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.Cl
 			if ok {
 				var newClients []any
 				for client_index := range clients {
-					c := clients[client_index].(map[string]any)
-					for traffic_index := range dbClientTraffics {
-						if dbClientTraffics[traffic_index].ExpiryTime < 0 && c["email"] == dbClientTraffics[traffic_index].Email {
-							oldExpiryTime := c["expiryTime"].(float64)
-							newExpiryTime := (time.Now().Unix() * 1000) - int64(oldExpiryTime)
-							c["expiryTime"] = newExpiryTime
-							c["updated_at"] = time.Now().Unix() * 1000
-							dbClientTraffics[traffic_index].ExpiryTime = newExpiryTime
-							break
-						}
+					c, ok := clients[client_index].(map[string]any)
+					if !ok {
+						newClients = append(newClients, clients[client_index])
+						continue
+					}
+					email, _ := c["email"].(string)
+					if newExpiry, converting := newExpiryByEmail[accountKey(email)]; converting {
+						c["expiryTime"] = newExpiry
 					}
 					// Backfill created_at and updated_at
 					if _, ok := c["created_at"]; !ok {
-						c["created_at"] = time.Now().Unix() * 1000
+						c["created_at"] = now
 					}
-					c["updated_at"] = time.Now().Unix() * 1000
+					c["updated_at"] = now
 					newClients = append(newClients, any(c))
 				}
 				settings["clients"] = newClients
@@ -2715,46 +3282,82 @@ func (s *InboundService) autoRenewClients(tx *gorm.DB) (bool, int64, error) {
 		client   map[string]any
 	}
 
+	// Every inbound serving a renewing account, not just the one its traffic row
+	// names. Renewing on the home inbound alone left the other members holding the
+	// OLD, already-passed expiry in their settings, so the account read as expired
+	// wherever it had actually been renewed.
+	renewEmails := make([]string, 0, len(traffics))
 	for _, traffic := range traffics {
-		inbound_ids = append(inbound_ids, traffic.InboundId)
+		renewEmails = append(renewEmails, traffic.Email)
+	}
+	inbound_ids, err = s.inboundIdsServingEmails(tx, renewEmails)
+	if err != nil {
+		return false, 0, err
+	}
+	if len(inbound_ids) == 0 {
+		return false, 0, nil
 	}
 	err = tx.Model(model.Inbound{}).Where("id IN ?", inbound_ids).Find(&inbounds).Error
 	if err != nil {
 		return false, 0, err
 	}
+
+	// One new deadline per ACCOUNT, computed before any inbound is touched, so
+	// every membership lands on the same date and a second inbound cannot
+	// re-advance a deadline the first already moved.
+	renewedByEmail := make(map[string]int64, len(traffics))
+	// Whether the account was disabled BEFORE this renewal, captured up front.
+	// Read inside the inbound loop instead, the first membership would flip the
+	// flag to true and every later membership would then look "already enabled",
+	// so the account would be re-added to one inbound's tag and silently left out
+	// of the rest.
+	wasDisabled := make(map[string]bool, len(traffics))
+	for traffic_index, traffic := range traffics {
+		newExpiryTime := traffic.ExpiryTime
+		for newExpiryTime < now {
+			newExpiryTime += (int64(traffic.Reset) * 86400000)
+		}
+		renewedByEmail[accountKey(traffic.Email)] = newExpiryTime
+		wasDisabled[accountKey(traffic.Email)] = !traffic.Enable
+		traffics[traffic_index].ExpiryTime = newExpiryTime
+		traffics[traffic_index].Down = 0
+		traffics[traffic_index].Up = 0
+		traffics[traffic_index].Enable = true
+	}
+
 	for inbound_index := range inbounds {
 		settings := map[string]any{}
 		json.Unmarshal([]byte(inbounds[inbound_index].Settings), &settings)
-		clients := settings["clients"].([]any)
+		clients, ok := settings["clients"].([]any)
+		if !ok {
+			continue
+		}
 		for client_index := range clients {
-			c := clients[client_index].(map[string]any)
-			for traffic_index, traffic := range traffics {
-				if traffic.Email == c["email"].(string) {
-					newExpiryTime := traffic.ExpiryTime
-					for newExpiryTime < now {
-						newExpiryTime += (int64(traffic.Reset) * 86400000)
-					}
-					c["expiryTime"] = newExpiryTime
-					traffics[traffic_index].ExpiryTime = newExpiryTime
-					traffics[traffic_index].Down = 0
-					traffics[traffic_index].Up = 0
-					if !traffic.Enable {
-						traffics[traffic_index].Enable = true
-						clientsToAdd = append(clientsToAdd,
-							struct {
-								protocol string
-								tag      string
-								client   map[string]any
-							}{
-								protocol: string(inbounds[inbound_index].Protocol),
-								tag:      inbounds[inbound_index].Tag,
-								client:   c,
-							})
-					}
-					clients[client_index] = any(c)
-					break
-				}
+			c, ok := clients[client_index].(map[string]any)
+			if !ok {
+				continue
 			}
+			email, _ := c["email"].(string)
+			newExpiryTime, renewing := renewedByEmail[accountKey(email)]
+			if !renewing {
+				continue
+			}
+			c["expiryTime"] = newExpiryTime
+			if wasDisabled[accountKey(email)] {
+				// One entry per MEMBERSHIP: the account has to be re-added to
+				// every inbound tag it serves on, not just to one of them.
+				clientsToAdd = append(clientsToAdd,
+					struct {
+						protocol string
+						tag      string
+						client   map[string]any
+					}{
+						protocol: string(inbounds[inbound_index].Protocol),
+						tag:      inbounds[inbound_index].Tag,
+						client:   c,
+					})
+			}
+			clients[client_index] = any(c)
 		}
 		settings["clients"] = clients
 		newSettings, err := json.MarshalIndent(settings, "", "  ")
@@ -2841,17 +3444,25 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, []stri
 	var ovpnDisabledEmails []string
 
 	if p != nil {
-		var results []struct {
-			Tag      string
-			Email    string
-			Protocol string
+		// Which accounts are depleted, and then SEPARATELY which inbounds each of
+		// them is served on.
+		//
+		// This used to be one query joining inbounds to client_traffics on
+		// inbound_id. That join can only ever return ONE row per account, because
+		// client_traffics.Email is unique panel-wide and its inbound_id names a
+		// single inbound. So RemoveUser fired for exactly one tag and an account
+		// that had exhausted its quota kept passing traffic on every other inbound
+		// serving it, while still billing into the same row: up+down grows past
+		// total forever with enable already false. Free traffic, silently.
+		var depletedEmails []string
+		err := tx.Model(xray.ClientTraffic{}).
+			Where("((total > 0 AND up + down >= total) OR (expiry_time > 0 AND expiry_time <= ?)) AND enable = ?", now, true).
+			Pluck("email", &depletedEmails).Error
+		if err != nil {
+			return false, 0, nil, nil, nil, err
 		}
 
-		err := tx.Table("inbounds").
-			Select("inbounds.tag, inbounds.protocol, client_traffics.email").
-			Joins("JOIN client_traffics ON inbounds.id = client_traffics.inbound_id").
-			Where("((client_traffics.total > 0 AND client_traffics.up + client_traffics.down >= client_traffics.total) OR (client_traffics.expiry_time > 0 AND client_traffics.expiry_time <= ?)) AND client_traffics.enable = ?", now, true).
-			Scan(&results).Error
+		results, err := s.inboundsServingEmails(tx, depletedEmails)
 		if err != nil {
 			return false, 0, nil, nil, nil, err
 		}
@@ -2893,6 +3504,146 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, []stri
 	err := result.Error
 	count := result.RowsAffected
 	return needRestart, count, l2tpDisabledEmails, pptpDisabledEmails, ovpnDisabledEmails, err
+}
+
+// inboundServingEmail is one (account, inbound) pair the enforcement paths have
+// to act on: an account is disabled on EVERY inbound serving it, not just on the
+// one its client_traffics row happens to name.
+type inboundServingEmail struct {
+	Id       int
+	Tag      string
+	Email    string
+	Protocol string
+}
+
+// inboundIdsServingEmails is inboundsServingEmails reduced to distinct inbound
+// ids, for the paths that rewrite settings rather than call the Xray API.
+func (s *InboundService) inboundIdsServingEmails(tx *gorm.DB, emails []string) ([]int, error) {
+	rows, err := s.inboundsServingEmails(tx, emails)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[int]bool{}
+	out := make([]int, 0, len(rows))
+	for _, row := range rows {
+		if seen[row.Id] {
+			continue
+		}
+		seen[row.Id] = true
+		out = append(out, row.Id)
+	}
+	return out, nil
+}
+
+// inboundsServingEmails resolves emails to every inbound that actually serves
+// them, by reading settings.clients.
+//
+// settings.clients is used rather than the account_inbounds table on purpose:
+// it is the source of truth in BOTH worlds, so this is correct before the
+// accounts migration has run, after it, and on an inbound added by an older
+// binary in between. An enforcement path is the last place that should depend
+// on a backfill having completed.
+func (s *InboundService) inboundsServingEmails(tx *gorm.DB, emails []string) ([]inboundServingEmail, error) {
+	if len(emails) == 0 {
+		return nil, nil
+	}
+	wanted := make(map[string]string, len(emails))
+	for _, email := range emails {
+		// Keyed on the normalized form, valued with the original, because the
+		// original is what RemoveUser and the RADIUS-side disable lists must carry.
+		wanted[accountKey(email)] = email
+	}
+
+	var inbounds []*model.Inbound
+	if err := tx.Model(&model.Inbound{}).
+		Select("id", "tag", "protocol", "settings").
+		Order("id ASC").Find(&inbounds).Error; err != nil {
+		return nil, err
+	}
+
+	var out []inboundServingEmail
+	for _, inbound := range inbounds {
+		clients, ok := parseSettingsClients(inbound.Settings)
+		if !ok {
+			continue
+		}
+		for _, entry := range clients {
+			entryEmail, _ := entry["email"].(string)
+			original, hit := wanted[accountKey(entryEmail)]
+			if !hit {
+				continue
+			}
+			out = append(out, inboundServingEmail{
+				Id:       inbound.Id,
+				Tag:      inbound.Tag,
+				Email:    original,
+				Protocol: string(inbound.Protocol),
+			})
+		}
+	}
+	return out, nil
+}
+
+// SingleInboundIdByEmail maps each account served by a protocol to the inbound
+// serving it, keyed by normalized email, for the traffic collectors to stamp the
+// SOURCE of the bytes they report.
+//
+// An email served by TWO inbounds of the same protocol is deliberately mapped to
+// 0 rather than to either of them. Zero means "source unknown", which makes the
+// billing take the max across the account's memberships: over-billing a rare,
+// genuinely ambiguous case is the safe direction, where guessing one of the two
+// would silently bill half a customer's traffic at the wrong rate.
+//
+// This is only reachable for openvpn, openconnect and sstp; l2tp, pptp and ikev2
+// refuse a second same-protocol membership outright (see ValidateMembershipSet).
+func (s *InboundService) SingleInboundIdByEmail(protocol string) map[string]int {
+	var inbounds []*model.Inbound
+	if err := database.GetDB().Model(&model.Inbound{}).
+		Select("id", "protocol", "settings").
+		Where("protocol = ? AND enable = ?", protocol, true).
+		Find(&inbounds).Error; err != nil {
+		logger.Warning("resolving the traffic source inbound for ", protocol, ": ", err)
+		return nil
+	}
+
+	out := map[string]int{}
+	seen := map[string]bool{}
+	for _, inbound := range inbounds {
+		clients, ok := parseSettingsClients(inbound.Settings)
+		if !ok {
+			continue
+		}
+		for _, entry := range clients {
+			email, _ := entry["email"].(string)
+			key := accountKey(email)
+			if key == "" {
+				continue
+			}
+			if seen[key] {
+				out[key] = 0 // ambiguous: two inbounds of this protocol serve it
+				continue
+			}
+			seen[key] = true
+			out[key] = inbound.Id
+		}
+	}
+	return out
+}
+
+// EnableStateByEmail returns every account's enable state, keyed by normalized
+// email. Panel-wide and NOT scoped to an inbound: depletion is a property of the
+// account, and one account can be served on many inbounds.
+func (s *InboundService) EnableStateByEmail() (map[string]bool, error) {
+	var rows []xray.ClientTraffic
+	if err := database.GetDB().Model(xray.ClientTraffic{}).
+		Select("email", "enable").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		out[accountKey(row.Email)] = row.Enable
+	}
+	return out, nil
 }
 
 func (s *InboundService) GetInboundTags() (string, error) {
@@ -3378,6 +4129,7 @@ func (s *InboundService) ResetClientTraffic(id int, clientEmail string) (bool, e
 					"security": client.Security,
 					"flow":     client.Flow,
 					"password": client.Password,
+					"username": client.Username,
 					"cipher":   cipher,
 				})
 				if err1 == nil {
@@ -4311,11 +5063,20 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 
 	// remove stats too
 	if len(email) > 0 {
-		traffic, err := s.GetClientTrafficByEmail(email)
-		if err != nil {
+		// Counted directly rather than read through GetClientTrafficByEmail. That one
+		// resolves the account's inbound (to attach a uuid this path never uses) and
+		// reports a MISSING row as a hard error, "Inbound Not Found For Email".
+		//
+		// A missing row is not an error here, it is "no stats to delete", and it is
+		// the ordinary state of the SECOND membership of one account: an account on
+		// N inbounds has ONE traffic row, the first delete takes it, and every
+		// remaining membership then failed outright and could never be removed. That
+		// left a deleted account still serving on every inbound but the first.
+		var stats int64
+		if err := db.Model(xray.ClientTraffic{}).Where("email = ?", email).Count(&stats).Error; err != nil {
 			return false, err
 		}
-		if traffic != nil {
+		if stats > 0 {
 			if err := s.DelClientStat(db, email); err != nil {
 				logger.Error("Delete stats Data Error")
 				return false, err

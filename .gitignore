@@ -23,7 +23,7 @@ main
 
 # Ignore script and executable files
 /release.sh
-/x-ui
+/vpn-ui
 
 # Ignore OS specific files
 .DS_Store

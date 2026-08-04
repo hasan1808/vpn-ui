@@ -88,11 +88,23 @@ type BulkCharge struct {
 	Email       string
 	NewCharged  int64
 	PrevCharged int64
+	// SetTotal and NewTotal carry the quota this batch was priced for. The applier
+	// works per (inbound, email) target and recomputes the new quota from each
+	// membership's own settings entry, while the price is per ACCOUNT and quoted
+	// once, so an account on three inbounds was charged for one gigabyte and handed
+	// three, from three different starting points, in whatever order the applier's
+	// map happened to iterate. Writing the priced figure onto every membership after
+	// the fact makes the applied result equal the priced one by construction.
+	//
+	// A flag rather than a zero check: totalGB 0 means UNLIMITED in a settings blob,
+	// so a charge that carried no quota would uncap the account it was written to.
+	SetTotal bool
+	NewTotal int64
 	// ForceExpiry and ExpiryTime carry the deadline Quote derived for this
 	// account under days-per-GB. The generic bulk applier moves totalGB and
 	// nothing else, so without writing these back a bulk top-up would sell bytes
 	// and silently leave the deadline where it was. Applied after the batch
-	// lands, by applyBulkExpiry.
+	// lands, by ApplyBulkCharges.
 	ForceExpiry bool
 	ExpiryTime  int64
 }
@@ -166,6 +178,10 @@ func (s *ResellerService) PrepareBulk(user *model.User, req *BulkClientUpdateReq
 	if err != nil {
 		return BulkTicket{}, err
 	}
+	// The applier about to run iterates the REQUEST's targets; the pricing above is
+	// per account. Narrowing the request to what was priced is what stops the two
+	// acting on different sets.
+	scopeBulkTargetsToPriced(req, items)
 	ticket, err := priceBulk(*profile, req, items, now)
 	if err != nil {
 		return BulkTicket{}, err
@@ -253,6 +269,33 @@ func scopeBulkTargets(req *BulkClientUpdateRequest, owned map[string]bool) {
 	req.Targets = kept
 }
 
+// scopeBulkTargetsToPriced drops every target whose account the pricer passed
+// over, in place, so the applier is handed the priced list and not the raw request.
+//
+// A guard rather than a repair. bulkPriceables runs the applier's own rules over
+// every targeted membership, so an account it prices nothing for is one the applier
+// would skip anyway; what this pins is that the two can never come apart, because
+// they are filtered by different code (one per account, one per membership) and a
+// drift between them is a mutation nobody was charged for.
+//
+// Runs AFTER scopeBulkTargets and can only ever remove more, so it cannot widen
+// what a reseller reaches. Every membership of an account that WAS priced is kept:
+// they all have to end up holding the one figure the balance paid for, which
+// ApplyBulkCharges writes onto them.
+func scopeBulkTargetsToPriced(req *BulkClientUpdateRequest, items []bulkPriceable) {
+	priced := make(map[string]bool, len(items))
+	for _, it := range items {
+		priced[emailKey(it.email)] = true
+	}
+	kept := make([]BulkClientTarget, 0, len(req.Targets))
+	for _, t := range req.Targets {
+		if priced[emailKey(t.Email)] {
+			kept = append(kept, t)
+		}
+	}
+	req.Targets = kept
+}
+
 // bulkPriceable is one target the applier will really change, with everything
 // its price is computed from.
 type bulkPriceable struct {
@@ -307,10 +350,22 @@ func (s *ResellerService) bulkPriceables(userId int, req *BulkClientUpdateReques
 		byInbound[t.InboundId][t.Email] = true
 	}
 
+	// Ascending inbound id, not map order. One account can be targeted on several
+	// inbounds and only the first one reached prices it (see the dedup below), so
+	// map order would pick the membership whose settings entry the whole batch is
+	// priced from AT RANDOM. Two runs of the same request could quote different
+	// numbers, and the preview a reseller confirmed would not be the batch they got.
+	inboundIds := make([]int, 0, len(byInbound))
+	for inboundId := range byInbound {
+		inboundIds = append(inboundIds, inboundId)
+	}
+	sort.Ints(inboundIds)
+
 	var inboundService InboundService
 	out := make([]bulkPriceable, 0, len(req.Targets))
 	seen := make(map[string]bool, len(req.Targets))
-	for inboundId, emails := range byInbound {
+	for _, inboundId := range inboundIds {
+		emails := byInbound[inboundId]
 		inbound, err := inboundService.GetInbound(inboundId)
 		if err != nil || inbound == nil {
 			// An inbound the applier will not find either, so there is nothing
@@ -350,9 +405,13 @@ func (s *ResellerService) bulkPriceables(userId int, req *BulkClientUpdateReques
 			if !owned {
 				continue // scoped out already; belt and braces
 			}
-			// One charge per account. Two settings entries sharing an email are
-			// one account to the ledger (there is one row), so pricing both would
-			// debit twice for a single row that can only record one charge.
+			// One charge per account, whether the two entries are on the same
+			// inbound or on two the batch names: an account is one ledger row, one
+			// quota and one charge however many inbounds serve it, so pricing the
+			// second membership would debit twice for a row that can only record
+			// one charge. What the applier then does to those other memberships is
+			// squared up by ApplyBulkCharges, which writes this one priced quota
+			// onto all of them.
 			if seen[key] {
 				continue
 			}
@@ -434,6 +493,7 @@ func priceBulk(p model.ResellerProfile, req *BulkClientUpdateRequest, items []bu
 		ticket.DeltaSpent += q.DeltaSpent
 		ticket.Charges = append(ticket.Charges, BulkCharge{
 			Email: it.email, NewCharged: q.NewCharged, PrevCharged: it.charged,
+			SetTotal: true, NewTotal: it.newTotal,
 			ForceExpiry: q.ForceExpiry, ExpiryTime: q.ExpiryTime,
 		})
 	}
@@ -588,46 +648,65 @@ func bulkTargetEmails(targets []BulkClientTarget) []string {
 	return out
 }
 
-// ApplyBulkExpiry writes back the deadlines days-per-GB derived for a batch,
-// after the generic applier has moved the traffic.
+// ApplyBulkCharges writes back what the quote decided, after the generic applier
+// has run: the quota each account was priced for, and the deadline days-per-GB
+// derived from it.
+//
+// Two things the applier cannot do, and both of them are money:
+//
+//   - It moves totalGB and nothing else, so under days-per-GB a bulk top-up would
+//     sell bytes and leave the deadline exactly where it was.
+//   - It works per (inbound, email) TARGET, recomputing the new quota from each
+//     membership's own settings entry, while the price is per ACCOUNT and was
+//     quoted once. An account on three inbounds is charged for one gigabyte and,
+//     left alone, is handed three, from three different starting points. Writing
+//     the priced figure onto every membership makes applied and priced the same
+//     number by construction, whatever the entries held before.
 //
 // A second pass rather than a change to BulkUpdateClients: that function serves
 // every admin and knows nothing about resellers, and teaching it a per-account
-// expiry override for one role would put reseller policy in the middle of the
-// path every admin takes.
+// override for one role would put reseller policy in the middle of the path every
+// admin takes.
+//
+// Memberships are resolved from what really serves the account, NOT from the join
+// this used to be (inbounds against client_traffics.inbound_id). That join names
+// the one inbound the account's single traffic row happens to point at, so the
+// write-back landed on the home inbound and left every other membership holding
+// the applier's own arithmetic.
 //
 // Both places have to move together. The settings blob is what the panel renders
 // and what regenerates daemon config; client_traffics is what the expiry job and
 // the daemons' own accounting read. Writing one without the other leaves the
 // panel and the data plane disagreeing about when an account dies, so this runs
 // in a single transaction and reports failure rather than half-applying.
-func (s *ResellerService) ApplyBulkExpiry(t BulkTicket) error {
+func (s *ResellerService) ApplyBulkCharges(t BulkTicket) error {
 	if !t.Active {
 		return nil
 	}
-	wanted := make(map[string]int64, len(t.Charges))
+	wanted := make(map[string]BulkCharge, len(t.Charges))
+	emails := make([]string, 0, len(t.Charges))
 	for _, c := range t.Charges {
-		if c.ForceExpiry {
-			wanted[emailKey(c.Email)] = c.ExpiryTime
+		if !c.ForceExpiry && !c.SetTotal {
+			continue
 		}
+		wanted[emailKey(c.Email)] = c
+		emails = append(emails, c.Email)
 	}
 	if len(wanted) == 0 {
 		return nil
 	}
 
 	return database.GetDB().Transaction(func(tx *gorm.DB) error {
-		var inbounds []*model.Inbound
-		emails := make([]string, 0, len(wanted))
-		for _, c := range t.Charges {
-			if c.ForceExpiry {
-				emails = append(emails, c.Email)
-			}
-		}
-		if err := tx.Model(&model.Inbound{}).
-			Joins("JOIN client_traffics ON client_traffics.inbound_id = inbounds.id").
-			Where("client_traffics.email IN (?)", emails).
-			Distinct().Find(&inbounds).Error; err != nil {
+		ids, err := servingInboundIds(tx, emails...)
+		if err != nil {
 			return err
+		}
+		var inbounds []*model.Inbound
+		if len(ids) > 0 {
+			if err := tx.Model(&model.Inbound{}).Where("id IN (?)", ids).
+				Find(&inbounds).Error; err != nil {
+				return err
+			}
 		}
 
 		for _, inbound := range inbounds {
@@ -643,11 +722,16 @@ func (s *ResellerService) ApplyBulkExpiry(t BulkTicket) error {
 					continue
 				}
 				email, _ := cm["email"].(string)
-				exp, want := wanted[emailKey(email)]
+				charge, want := wanted[emailKey(email)]
 				if !want {
 					continue
 				}
-				cm["expiryTime"] = exp
+				if charge.SetTotal {
+					cm["totalGB"] = charge.NewTotal
+				}
+				if charge.ForceExpiry {
+					cm["expiryTime"] = charge.ExpiryTime
+				}
 				cm["updated_at"] = time.Now().UnixMilli()
 				touched = true
 			}
@@ -664,12 +748,16 @@ func (s *ResellerService) ApplyBulkExpiry(t BulkTicket) error {
 			}
 		}
 
-		for _, c := range t.Charges {
-			if !c.ForceExpiry {
-				continue
+		for _, c := range wanted {
+			updates := map[string]any{}
+			if c.SetTotal {
+				updates["total"] = c.NewTotal
+			}
+			if c.ForceExpiry {
+				updates["expiry_time"] = c.ExpiryTime
 			}
 			if err := tx.Model(&xray.ClientTraffic{}).Where("email = ?", c.Email).
-				Update("expiry_time", c.ExpiryTime).Error; err != nil {
+				Updates(updates).Error; err != nil {
 				return err
 			}
 		}
@@ -760,6 +848,25 @@ func (s *ResellerService) RefundDeleted(email string, allTimeAtDelete int64, kno
 	owner, err := s.ClientOwner(email)
 	if err != nil || owner == nil {
 		return err
+	}
+	// SECURITY: removing one membership is not deleting the account.
+	//
+	// One account is one identity on N inbounds with ONE quota and ONE charge, so
+	// taking it off the first of three inbounds leaves the other two serving it
+	// against that same charge. Refunding there hands the reseller back the unused
+	// part of a quota that is still being sold, and dropping the ledger row is worse
+	// than the refund: absence of a row IS "the house owns this", so the account
+	// would go on running with nobody billed for it and no page showing whose it is.
+	//
+	// Asked AFTER the delete deliberately, which is the only moment the answer is
+	// the one that matters: what is left. The consumption figure is the only thing
+	// that has to be carried across, and it already is.
+	ids, err := servingInboundIds(database.GetDB(), email)
+	if err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return nil
 	}
 	// SECURITY: unknown consumption must WITHHOLD the refund, never assume zero.
 	//

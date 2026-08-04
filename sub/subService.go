@@ -28,10 +28,17 @@ import (
 
 // SubService provides business logic for generating subscription links and managing subscription data.
 type SubService struct {
-	address        string
-	showInfo       bool
-	remarkModel    string
-	datepicker     string
+	address     string
+	showInfo    bool
+	remarkModel string
+	datepicker  string
+	// scope is the state of the ONE response being rendered: which identities it
+	// spans, what each one's real quota is, and which node names have been handed
+	// out. Nil on the shared instance the router builds, and set on the per-response
+	// copy forResponse returns; every reader of it is nil-safe, so a caller that
+	// generates a single link without going through GetSubs (the tests, the panel's
+	// own link buttons) keeps working unchanged.
+	scope          *subScope
 	inboundService service.InboundService
 	settingService service.SettingService
 	sshService     service.SshService
@@ -49,13 +56,76 @@ func NewSubService(showInfo bool, remarkModel string) *SubService {
 	}
 }
 
+// forResponse returns a service scoped to ONE subscription response.
+//
+// The router builds a single SubService at start-up and every request is served by
+// it, while GetSubs writes the caller's host onto it before generating links: two
+// subscribers fetching at once can already be handed each other's address. This
+// closes that for the request-scoped fields, and more importantly keeps the
+// per-response maps in subScope off the shared instance, where a concurrent write
+// would panic the process rather than merely return the wrong host.
+//
+// The protocol services are rebuilt as zero values rather than copied across, and
+// that is not a shortcut: nothing ever assigns them (NewSubService sets the two
+// display settings and nothing else), so a fresh one is the same object, while
+// WgcService, AwgService and GreService each carry a sync.Mutex that must not be
+// copied at all. If one of them ever does need configuring, it has to be carried
+// here BY POINTER, or the response will quietly render against an unconfigured one.
+func (s *SubService) forResponse() *SubService {
+	return &SubService{
+		address:     s.address,
+		showInfo:    s.showInfo,
+		remarkModel: s.remarkModel,
+		datepicker:  s.datepicker,
+		scope:       newSubScope(),
+	}
+}
+
+// resolveDatepicker returns the calendar the subscriber page renders dates in.
+//
+// It reads the setting rather than trusting s.datepicker alone because the two
+// halves of a page render run on DIFFERENT service instances: the controller calls
+// GetSubs (which works on the per-response copy forResponse returns) and then
+// BuildPageData on the shared one, so a value stashed on the copy is not there to
+// be read back. Answering "gregorian" for a panel configured on the Jalali calendar
+// is a silent wrong answer, not a missing one.
+func (s *SubService) resolveDatepicker() string {
+	if s.datepicker != "" {
+		return s.datepicker
+	}
+	datepicker, err := s.settingService.GetDatepicker()
+	if err != nil || datepicker == "" {
+		return "gregorian"
+	}
+	return datepicker
+}
+
+// resolveTraffic answers with the traffic figures one membership reports, and says
+// where they came from:
+//
+//   - accountBacked: the row is the ACCOUNT's (quota and expiry from the account,
+//     usage from its single client_traffics row), so the header has to count it
+//     once however many inbounds serve that account.
+//   - exists: there are figures at all. The Show Info suffix is skipped without
+//     them, which is what an account that has never been counted gets.
+//
+// The per-inbound fallback is the legacy path, unchanged, and is what an unmigrated
+// panel keeps using.
+func (s *SubService) resolveTraffic(inbound *model.Inbound, email string) (traffic xray.ClientTraffic, accountBacked bool, exists bool) {
+	if row, ok := s.scope.traffic(email); ok {
+		return row, true, true
+	}
+	row, ok := s.getClientTraffics(inbound.ClientStats, email)
+	return row, false, ok
+}
+
 // GetSubs retrieves subscription links for a given subscription ID and host.
 func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.ClientTraffic, error) {
+	s = s.forResponse()
 	s.address = host
 	var result []string
 	var traffic xray.ClientTraffic
-	var lastOnline int64
-	var clientTraffics []xray.ClientTraffic
+	usage := newSubUsage()
 	inbounds, err := s.getInboundsBySubId(subId)
 	if err != nil {
 		return nil, 0, traffic, err
@@ -65,10 +135,7 @@ func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.C
 		return nil, 0, traffic, common.NewError("No inbounds found with ", subId)
 	}
 
-	s.datepicker, err = s.settingService.GetDatepicker()
-	if err != nil {
-		s.datepicker = "gregorian"
-	}
+	s.datepicker = s.resolveDatepicker()
 	for _, inbound := range inbounds {
 		clients, err := s.inboundService.GetClients(inbound)
 		if err != nil {
@@ -92,11 +159,8 @@ func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.C
 				// no raw link (wg-c/awg deliver via the Clash sub and gre via the page's
 				// config downloads; the credential VPNs add a connection-info line via
 				// getLink).
-				ct := s.getClientTraffics(inbound.ClientStats, client.Email)
-				clientTraffics = append(clientTraffics, ct)
-				if ct.LastOnline > lastOnline {
-					lastOnline = ct.LastOnline
-				}
+				ct, accountBacked, _ := s.resolveTraffic(inbound, client.Email)
+				usage.add(client.Email, ct, accountBacked)
 				if link := s.getLink(inbound, client.Email); link != "" {
 					result = append(result, link)
 				}
@@ -104,57 +168,60 @@ func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.C
 		}
 	}
 
-	// Prepare statistics
-	for index, clientTraffic := range clientTraffics {
-		if index == 0 {
-			traffic.Up = clientTraffic.Up
-			traffic.Down = clientTraffic.Down
-			traffic.Total = clientTraffic.Total
-			if clientTraffic.ExpiryTime > 0 {
-				traffic.ExpiryTime = clientTraffic.ExpiryTime
-			}
-		} else {
-			traffic.Up += clientTraffic.Up
-			traffic.Down += clientTraffic.Down
-			if traffic.Total == 0 || clientTraffic.Total == 0 {
-				traffic.Total = 0
-			} else {
-				traffic.Total += clientTraffic.Total
-			}
-			if clientTraffic.ExpiryTime != traffic.ExpiryTime {
-				traffic.ExpiryTime = 0
-			}
-		}
-	}
-	return result, lastOnline, traffic, nil
+	return result, usage.lastOnline, usage.result(), nil
 }
 
+// getInboundsBySubId returns every enabled inbound holding a client with this subId.
+//
+// The protocol list is a maintenance trap worth knowing about: a protocol missing
+// from it is invisible to the whole subscription layer (no link, no quota, no page
+// entry) with nothing logged, and there is no compile-time tie to model's protocol
+// constants to catch the omission.
+//
+// The JSON_VALID guard is not decoration. SQLite's JSON functions RAISE on
+// malformed input rather than returning null, and the cross join evaluates
+// JSON_EXTRACT once per inbound row, so a single settings blob that is not valid
+// JSON (an ImportDB of a hand-edited backup is the realistic way in) failed this
+// query outright and took down EVERY subscription on the panel with a bare
+// "Error!", not just the one broken inbound's. Guarding the argument itself rather
+// than adding a WHERE term is deliberate: a WHERE term only works while the planner
+// happens to evaluate it first.
 func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) {
 	db := database.GetDB()
 	var inbounds []*model.Inbound
 	// allow "hysteria2" so imports stored with the literal v2 protocol
 	// string still surface here (#4081)
+	//
+	// Ordered by id so the response is stable across refreshes: an account served on
+	// several inbounds is rendered in membership order, and the node-name
+	// disambiguation in subScope.uniqueName leaves the FIRST claimant's name alone,
+	// so an unspecified order would let a subscriber's node names shuffle between
+	// polls. SQLite already returns rowid order for this shape; this pins it.
 	err := db.Model(model.Inbound{}).Preload("ClientStats").Where(`id in (
 		SELECT DISTINCT inbounds.id
 		FROM inbounds,
-			JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
+			JSON_EACH(CASE WHEN JSON_VALID(inbounds.settings)
+				THEN JSON_EXTRACT(inbounds.settings, '$.clients') ELSE '[]' END) AS client
 		WHERE
-			protocol in ('vmess','vless','trojan','shadowsocks','hysteria','hysteria2','mtproto','ssh','wg-c','awg','gre','openvpn','l2tp','pptp','openconnect','sstp','ikev2')
+			protocol in ('vmess','vless','trojan','shadowsocks','hysteria','hysteria2','anytls','tuic','naive','mtproto','ssh','wg-c','awg','gre','openvpn','l2tp','pptp','openconnect','sstp','ikev2')
 			AND JSON_EXTRACT(client.value, '$.subId') = ? AND enable = ?
-	)`, subId, true).Find(&inbounds).Error
+	)`, subId, true).Order("id ASC").Find(&inbounds).Error
 	if err != nil {
 		return nil, err
 	}
 	return inbounds, nil
 }
 
-func (s *SubService) getClientTraffics(traffics []xray.ClientTraffic, email string) xray.ClientTraffic {
+// getClientTraffics finds an email's row among an inbound's preloaded stats. The
+// second return distinguishes "no row" from a row that is genuinely all zeroes,
+// which is what decides whether a remark gets a Show Info suffix at all.
+func (s *SubService) getClientTraffics(traffics []xray.ClientTraffic, email string) (xray.ClientTraffic, bool) {
 	for _, traffic := range traffics {
 		if traffic.Email == email {
-			return traffic
+			return traffic, true
 		}
 	}
-	return xray.ClientTraffic{}
+	return xray.ClientTraffic{}, false
 }
 
 func (s *SubService) getFallbackMaster(dest string, streamSettings string) (string, int, string, error) {
@@ -192,6 +259,12 @@ func (s *SubService) getLink(inbound *model.Inbound, email string) string {
 		return s.genShadowsocksLink(inbound, email)
 	case "hysteria", "hysteria2":
 		return s.genHysteriaLink(inbound, email)
+	case "anytls":
+		return s.genAnytlsLink(inbound, email)
+	case "tuic":
+		return s.genTuicLink(inbound, email)
+	case "naive":
+		return s.genNaiveLink(inbound, email)
 	case "mtproto":
 		// tg:// is the link Telegram itself imports, but no proxy client can parse it,
 		// so the account would contribute nothing a subscription importer recognises.
@@ -521,6 +594,12 @@ func protocolLabel(p model.Protocol) string {
 		return "MTProto"
 	case model.SSH:
 		return "SSH"
+	case model.ANYTLS:
+		return "AnyTLS"
+	case model.TUIC:
+		return "TUIC"
+	case model.NAIVE:
+		return "NaiveProxy"
 	}
 	return string(p)
 }
@@ -848,6 +927,225 @@ func (s *SubService) genHysteriaLink(inbound *model.Inbound, email string) strin
 	return url.String()
 }
 
+// genAnytlsLink emits `anytls://<password>@host:port?<stream params>#<remark>`, the URI
+// sing-box, mihomo and the NekoBox family import.
+//
+// AnyTLS rides Xray's ordinary transport layer, so its query parameters are exactly the
+// ones genTrojanLink emits and the External Proxy fan-out behaves identically.
+//
+// A REALITY inbound still renders `security=reality` here even though mihomo refuses
+// that combination outright: the link describes what the server actually runs, and one
+// that quietly claimed plain TLS would fail in the handshake with nothing to go on.
+func (s *SubService) genAnytlsLink(inbound *model.Inbound, email string) string {
+	if inbound.Protocol != model.ANYTLS {
+		return ""
+	}
+	clients, _ := s.inboundService.GetClients(inbound)
+	clientIndex := findClientIndex(clients, email)
+	if clientIndex < 0 {
+		return ""
+	}
+	address := s.resolveInboundAddress(inbound)
+	stream := unmarshalStreamSettings(inbound.StreamSettings)
+	// url.User pre-escapes, so a hand-typed password holding a '@' or a ':' still
+	// parses. Left raw it would make url.Parse fail, and every caller here ignores
+	// that error and dereferences the nil URL.
+	userinfo := url.User(clients[clientIndex].Password).String()
+	streamNetwork, _ := stream["network"].(string)
+	params := make(map[string]string)
+	params["type"] = streamNetwork
+
+	applyShareNetworkParams(stream, streamNetwork, params)
+	if finalmask, ok := stream["finalmask"].(map[string]any); ok {
+		applyFinalMaskParams(finalmask, params)
+	}
+	security, _ := stream["security"].(string)
+	switch security {
+	case "tls":
+		applyShareTLSParams(stream, params)
+	case "reality":
+		applyShareRealityParams(stream, params)
+	default:
+		params["security"] = "none"
+	}
+
+	externalProxies, _ := stream["externalProxy"].([]any)
+	if len(externalProxies) > 0 {
+		return s.buildExternalProxyURLLinks(
+			externalProxies,
+			params,
+			security,
+			func(dest string, port int) string {
+				return fmt.Sprintf("anytls://%s@%s", userinfo, net.JoinHostPort(dest, strconv.Itoa(port)))
+			},
+			func(ep map[string]any) string {
+				return s.genRemark(inbound, email, ep["remark"].(string))
+			},
+		)
+	}
+
+	link := fmt.Sprintf("anytls://%s@%s", userinfo, net.JoinHostPort(address, strconv.Itoa(inbound.Port)))
+	return buildLinkWithParams(link, params, s.genRemark(inbound, email, ""))
+}
+
+// genTuicLink emits `tuic://<uuid>:<password>@host:port?...#<remark>`, the URI v2rayN,
+// NekoBox and the Rust tuic-client family import.
+//
+// `alpn=h3` is NOT decoration. The server pins h3, while sing-box, mihomo AND
+// tuic-client all default to an EMPTY ALPN list, so a link without it fails the
+// handshake with nothing but "tls: no application protocol" to go on.
+func (s *SubService) genTuicLink(inbound *model.Inbound, email string) string {
+	if inbound.Protocol != model.TUIC {
+		return ""
+	}
+	clients, _ := s.inboundService.GetClients(inbound)
+	clientIndex := findClientIndex(clients, email)
+	if clientIndex < 0 {
+		return ""
+	}
+	client := clients[clientIndex]
+	stream := unmarshalStreamSettings(inbound.StreamSettings)
+
+	var settings map[string]any
+	json.Unmarshal([]byte(inbound.Settings), &settings)
+
+	params := map[string]string{
+		"alpn":           "h3",
+		"udp_relay_mode": "native",
+	}
+	congestion, _ := settings["congestionControl"].(string)
+	if congestion == "" {
+		congestion = "cubic"
+	}
+	params["congestion_control"] = congestion
+	applyFixedTLSParams(stream, params)
+
+	userinfo := url.UserPassword(client.ID, client.Password).String()
+	return s.buildEndpointLinks(inbound, email, stream, params, func(dest string, port int) string {
+		return fmt.Sprintf("tuic://%s@%s", userinfo, net.JoinHostPort(dest, strconv.Itoa(port)))
+	})
+}
+
+// genNaiveLink emits `naive+https://<username>:<password>@host:port#<remark>`, the
+// `--proxy=` string naiveproxy itself takes, prefixed the way NekoBox/NekoRay import it.
+//
+// naive authenticates with a single `Proxy-Authorization: Basic` header, and the
+// username half is the account's `username` when it has one and its EMAIL when it does
+// not, matching the core's Validator. url.UserPassword escapes the '@' an email brings,
+// without which the URI has two of them and every parser splits it in the wrong place.
+//
+// The JS twin is genNaiveLink in web/assets/js/model/inbound.js and the two must agree
+// byte for byte; TestGenNaiveLinkParity pins it.
+//
+// The scheme follows the inbound's `network`: tcp is HTTP/2 over TLS, udp is HTTP/3
+// over QUIC. An inbound serving both advertises https, which every naive client speaks;
+// quic-only is the one case that has to say so.
+func (s *SubService) genNaiveLink(inbound *model.Inbound, email string) string {
+	if inbound.Protocol != model.NAIVE {
+		return ""
+	}
+	clients, _ := s.inboundService.GetClients(inbound)
+	clientIndex := findClientIndex(clients, email)
+	if clientIndex < 0 {
+		return ""
+	}
+	stream := unmarshalStreamSettings(inbound.StreamSettings)
+
+	var settings map[string]any
+	json.Unmarshal([]byte(inbound.Settings), &settings)
+	scheme := "naive+https"
+	if network, _ := settings["network"].(string); strings.TrimSpace(network) == "udp" {
+		scheme = "naive+quic"
+	}
+
+	params := make(map[string]string)
+	applyFixedTLSParams(stream, params)
+
+	username := clients[clientIndex].Username
+	if username == "" {
+		username = email
+	}
+	userinfo := url.UserPassword(username, clients[clientIndex].Password).String()
+	return s.buildEndpointLinks(inbound, email, stream, params, func(dest string, port int) string {
+		return fmt.Sprintf("%s://%s@%s", scheme, userinfo, net.JoinHostPort(dest, strconv.Itoa(port)))
+	})
+}
+
+// applyFixedTLSParams fills in `sni` for the protocols whose TLS is not optional (tuic,
+// naive). It deliberately does not emit `security=tls`: there is no other mode for these.
+//
+// There is deliberately no skip-verification parameter either (tuic's `allow_insecure`,
+// naive's `insecure`), and its absence is not an oversight. The panel can no longer
+// express it: TlsStreamSettings.Settings in web/assets/js/model/inbound.js carries only
+// `fingerprint` and `echConfigList`, and its fromJson rebuilds the object from exactly
+// those two, so `allowInsecure` is dropped from any inbound the panel loads and saves.
+// The core dropped it too: infra/conf/transport_internet.go hard-errors on it past
+// 2026-06-01 and points at pinnedPeerCertSha256 (it never reaches the core from an
+// inbound anyway, since web/service/xray.go deletes tlsSettings.settings). Digging it
+// out of a legacy DB row here would emit a parameter the browser's generator cannot
+// produce, breaking the byte-for-byte agreement between the two generators for exactly
+// the operators least equipped to explain the difference.
+//
+// The consequence worth knowing: a self-signed cert cannot be made to work from the
+// panel side. The subscriber must trust or pin it, or the inbound needs a real
+// certificate from the bundled acme.sh.
+func applyFixedTLSParams(stream map[string]any, params map[string]string) {
+	tlsSetting, _ := stream["tlsSettings"].(map[string]any)
+	if tlsSetting == nil {
+		return
+	}
+	if sniValue, ok := searchKey(tlsSetting, "serverName"); ok {
+		if sni, _ := sniValue.(string); sni != "" {
+			params["sni"] = sni
+		}
+	}
+}
+
+// buildEndpointLinks emits one link per External Proxy entry, or a single link for the
+// inbound's own address when none is configured, carrying the same query parameters on
+// each.
+//
+// This is deliberately not buildExternalProxyURLLinks. That helper rewrites `security`
+// from the entry's forceTls and strips alpn/sni/fp when an entry says "none". TUIC and
+// naive have no plaintext mode to force, so honouring forceTls there would drop the
+// mandatory alpn=h3 and hand out a link that cannot connect.
+func (s *SubService) buildEndpointLinks(
+	inbound *model.Inbound,
+	email string,
+	stream map[string]any,
+	params map[string]string,
+	makeLink func(dest string, port int) string,
+) string {
+	externalProxies, _ := stream["externalProxy"].([]any)
+	if len(externalProxies) == 0 {
+		return buildLinkWithParams(
+			makeLink(s.resolveInboundAddress(inbound), inbound.Port),
+			params,
+			s.genRemark(inbound, email, ""),
+		)
+	}
+
+	links := make([]string, 0, len(externalProxies))
+	for _, externalProxy := range externalProxies {
+		ep, ok := externalProxy.(map[string]any)
+		if !ok {
+			continue
+		}
+		dest, _ := ep["dest"].(string)
+		port, okPort := ep["port"].(float64)
+		if dest == "" || !okPort {
+			continue
+		}
+		remark, _ := ep["remark"].(string)
+		links = append(links, buildLinkWithParams(
+			makeLink(dest, int(port)),
+			params,
+			s.genRemark(inbound, email, remark),
+		))
+	}
+	return strings.Join(links, "\n")
+}
+
 func (s *SubService) resolveInboundAddress(inbound *model.Inbound) string {
 	if inbound.Listen == "" || inbound.Listen == "0.0.0.0" || inbound.Listen == "::" || inbound.Listen == "::0" {
 		return s.address
@@ -1171,6 +1469,15 @@ func cloneStringMap(source map[string]string) map[string]string {
 	return cloned
 }
 
+// genRemark composes the node name a client displays: the inbound remark, the
+// email and a per-protocol extra, in the operator's configured order, plus the
+// remaining traffic and days when Show Info is on.
+//
+// Any of the three parts can be empty and the order is configurable (the panel lets
+// the inbound remark be dropped entirely), so the name is NOT guaranteed to
+// distinguish two memberships of one account on its own. That is why every exit
+// runs through subScope.uniqueName rather than the composition trying to be unique
+// by construction.
 func (s *SubService) genRemark(inbound *model.Inbound, email string, extra string) string {
 	separationChar := string(s.remarkModel[0])
 	orderChars := s.remarkModel[1:]
@@ -1199,20 +1506,17 @@ func (s *SubService) genRemark(inbound *model.Inbound, email string, extra strin
 	}
 
 	if s.showInfo {
-		statsExist := false
-		var stats xray.ClientTraffic
-		for _, clientStat := range inbound.ClientStats {
-			if clientStat.Email == email {
-				stats = clientStat
-				statsExist = true
-				break
-			}
-		}
+		// The account's own figures when it has an account, this inbound's preloaded
+		// row otherwise. Reading the preload alone is what left an account served on
+		// three inbounds showing its remaining traffic and days on ONE node and
+		// nothing on the other two, since its single client_traffics row can only
+		// name one of them.
+		stats, _, statsExist := s.resolveTraffic(inbound, email)
 
 		// Get remained days
 		if statsExist {
 			if !stats.Enable {
-				return fmt.Sprintf("⛔️N/A%s%s", separationChar, strings.Join(remark, separationChar))
+				return s.scope.uniqueName(fmt.Sprintf("⛔️N/A%s%s", separationChar, strings.Join(remark, separationChar)), inbound, separationChar)
 			}
 			if vol := stats.Total - (stats.Up + stats.Down); vol > 0 {
 				remark = append(remark, fmt.Sprintf("%s%s", common.FormatTraffic(vol), "📊"))
@@ -1253,7 +1557,9 @@ func (s *SubService) genRemark(inbound *model.Inbound, email string, extra strin
 			}
 		}
 	}
-	return strings.Join(remark, separationChar)
+	// Every exit goes through the namer: a node name that collides with one already
+	// handed out in this response would REPLACE it in the client. See uniqueName.
+	return s.scope.uniqueName(strings.Join(remark, separationChar), inbound, separationChar)
 }
 
 func searchKey(data any, key string) (any, bool) {
@@ -2036,11 +2342,6 @@ func (s *SubService) BuildPageData(subId string, hostHeader string, traffic xray
 		remained = common.FormatTraffic(left)
 	}
 
-	datepicker := s.datepicker
-	if datepicker == "" {
-		datepicker = "gregorian"
-	}
-
 	return PageData{
 		Host:         hostHeader,
 		BasePath:     basePath,
@@ -2052,7 +2353,7 @@ func (s *SubService) BuildPageData(subId string, hostHeader string, traffic xray
 		Remained:     remained,
 		Expire:       traffic.ExpiryTime / 1000,
 		LastOnline:   lastOnline,
-		Datepicker:   datepicker,
+		Datepicker:   s.resolveDatepicker(),
 		DownloadByte: traffic.Down,
 		UploadByte:   traffic.Up,
 		TotalByte:    traffic.Total,

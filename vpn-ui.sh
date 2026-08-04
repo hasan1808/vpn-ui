@@ -50,7 +50,8 @@ CERT_DIR="${CERT_DIR:-$(dirname "$BIN")/cert}"
 DOMAIN="${DOMAIN:-${DEPLOY_DOMAIN:-}}"
 EMAIL="${EMAIL:-${DEPLOY_EMAIL:-}}"
 # How the ACME challenge is answered: "cloudflare" (DNS-01 through the Cloudflare
-# API) or "manual" (standalone HTTP-01, the original flow). Chosen per run.
+# API), "manual" (standalone HTTP-01, the original flow) or "ip" (standalone
+# HTTP-01 for the server's bare public address). Chosen per run.
 SSL_METHOD="${SSL_METHOD:-}"
 # The Cloudflare API token, when that path is taken. It is a SECRET: this script
 # never prints it and never writes it to disk. It IS exported, for acme.sh, which
@@ -62,6 +63,10 @@ CF_Token="${CF_Token:-${DEPLOY_CF_TOKEN:-}}"
 WILDCARD_SAN="${WILDCARD_SAN:-}"
 # "1" issues a wildcard without asking (Cloudflare path only).
 DEPLOY_WILDCARD="${DEPLOY_WILDCARD:-}"
+# Derived by ssl_ip_target, not an operator knob: "1" when the certificate's
+# identifier is an IPv6 literal, which decides whether acme.sh's standalone server
+# is forced onto v4 or v6. Declared here only so set -u never sees it unset.
+SSL_IPV6="${SSL_IPV6:-}"
 
 # --------------------------------------------------------------------------- #
 #  Panel facts (never parsed out of prose)
@@ -109,6 +114,18 @@ say_unmanaged() {
 #  Item 17: Get SSL  (shared with deploy.sh: one implementation, no copies)
 # --------------------------------------------------------------------------- #
 
+# Is there a terminal to prompt on? Every prompt below is guarded by this, because
+# the same function serves the menu and a fully unattended deploy, and the unattended
+# one must never block on a question nobody can answer.
+#
+# It OPENS /dev/tty rather than testing it with -r. /dev/tty is a 0666 character
+# device, so -r passes even in a process with no controlling terminal at all (cron,
+# systemd, setsid), and the prompt then dies on ENXIO instead of falling through to
+# the preset. Opening it is the only honest test. Note that stdin being a pipe is NOT
+# the same question: `curl ... | sudo bash` over SSH still has a terminal, and asking
+# there is exactly what these prompts are for.
+have_tty() { { : < /dev/tty; } 2>/dev/null; }
+
 # Read the Cloudflare API token and verify it before anything is built on top of it.
 #
 # The permission list is the point of the prompt: a token that can edit DNS but
@@ -118,7 +135,7 @@ say_unmanaged() {
 # instead of five minutes into an issuance.
 ssl_cf_token() {
     if [[ -z "$CF_Token" ]]; then
-        [[ -r /dev/tty ]] || {
+        have_tty || {
             warn "no Cloudflare token (set DEPLOY_CF_TOKEN=...), skipping real SSL."
             return 1
         }
@@ -166,7 +183,7 @@ ssl_cf_domain() {
         fi
         return 0
     fi
-    [[ -r /dev/tty ]] || { warn "no domain (set DEPLOY_DOMAIN=...), skipping real SSL."; return 1; }
+    have_tty || { warn "no domain (set DEPLOY_DOMAIN=...), skipping real SSL."; return 1; }
 
     msg "Reading the domains this token can see"
     local zones=""
@@ -259,6 +276,125 @@ ssl_cf_domain() {
     act "certificate will cover ${TEAL}${DOMAIN}${R}"
 }
 
+# Is $1 an IP literal Let's Encrypt would actually issue a certificate for?
+#
+# A pure predicate: no I/O, no globals, so it can be called from the method chooser
+# before anything has been decided. The private ranges are rejected HERE rather than
+# left to the CA because Let's Encrypt allows only 5 failed validations per hour per
+# address, and spending one of them on 192.168.x.x buys nothing.
+#
+# Documentation ranges (203.0.113.0/24, 2001:db8::/32) are deliberately NOT rejected:
+# they are what every example in the docs uses, and an operator testing the flow
+# against one should get the CA's answer, not ours.
+ssl_ip_valid() {
+    local ip="${1:-}"
+    case "$ip" in
+        *:*) ssl_ip_valid_v6 "$ip" ;;
+        *)   ssl_ip_valid_v4 "$ip" ;;
+    esac
+}
+
+ssl_ip_valid_v4() {
+    local a b c d
+    # The octet pattern forbids a leading zero deliberately. The string is handed to
+    # acme.sh verbatim, so "08.8.8.8" would go to the CA exactly as typed and be
+    # refused as malformed; normalising it to 8.8.8.8 here would issue a certificate
+    # for an address the operator did not name. 10# then keeps the arithmetic below
+    # in base 10 rather than reading a zero-led octet as octal.
+    [[ "$1" =~ ^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$ ]] || return 1
+    a=$(( 10#${BASH_REMATCH[1]} )); b=$(( 10#${BASH_REMATCH[2]} ))
+    c=$(( 10#${BASH_REMATCH[3]} )); d=$(( 10#${BASH_REMATCH[4]} ))
+    (( a <= 255 && b <= 255 && c <= 255 && d <= 255 )) || return 1
+    # 0/8 this-network, 10/8 + 172.16/12 + 192.168/16 private, 127/8 loopback,
+    # 169.254/16 link-local, 100.64/10 carrier NAT, 224/4 and up multicast/reserved.
+    if (( a == 0 || a == 10 || a == 127 || a >= 224 )) \
+    || (( a == 100 && b >= 64  && b <= 127 )) \
+    || (( a == 169 && b == 254 )) \
+    || (( a == 172 && b >= 16  && b <= 31  )) \
+    || (( a == 192 && b == 168 )); then
+        return 1
+    fi
+    return 0
+}
+
+ssl_ip_valid_v6() {
+    local ip="$1" colons first
+    # Hex and colons only. This rejects a zone id ("fe80::1%eth0") and the
+    # ::ffff:1.2.3.4 mapped form, which is an IPv4 address in v6 clothing and not
+    # something the CA will accept as a v6 identifier.
+    [[ "$ip" =~ ^[0-9A-Fa-f:]+$ ]] || return 1
+    [[ "$ip" == *":::"* ]] && return 1
+    # No group longer than four hex digits, and the colon count a real address has:
+    # exactly 7 written out, 2 to 7 once "::" has collapsed a run of zeroes. Cheaper
+    # and less fragile than expanding the address, and the CA is the final authority
+    # on syntax anyway; our job is only to catch the obviously wrong.
+    [[ "$ip" =~ [0-9A-Fa-f]{5} ]] && return 1
+    colons="${ip//[^:]/}"
+    if [[ "$ip" == *"::"* ]]; then
+        (( ${#colons} >= 2 && ${#colons} <= 7 )) || return 1
+    else
+        (( ${#colons} == 7 )) || return 1
+    fi
+    # 2000::/3 is the only global unicast space IANA has assigned, so every address a
+    # server is reachable at from the internet starts there. Testing for that instead
+    # of listing loopback, link-local, unique-local and multicast separately is one
+    # comparison instead of four, and errs towards making the operator look again.
+    [[ "$ip" == ::* ]] && return 1
+    first="${ip%%:*}"
+    (( 16#$first >= 0x2000 && 16#$first <= 0x3fff )) || return 1
+    return 0
+}
+
+# Everything about a certificate for a bare IP that an operator otherwise discovers
+# days later. Printed on stdout rather than /dev/tty on purpose: an unattended
+# DEPLOY_DOMAIN=<ip> install then leaves the same record in its log.
+ssl_ip_caveats() {
+    msg "A certificate for a bare IP is not the same deal as one for a domain"
+    warn "Let's Encrypt issues IP certificates for 160 hours (under 7 days), so this renews every few days instead of quarterly. The panel picks a renewal up without restarting, so nobody is disconnected, but TCP :80 has to be free and reachable from the internet EVERY time. An IP identifier cannot use DNS-01, so there is no escape hatch if it is not."
+    act "Let's Encrypt connects to the address itself, so this cannot work behind NAT or a CDN."
+    act "Rate limit: 5 certificates per 7 days for that address, no override. Re-running this to debug will lock you out for days."
+    act "Browsers do trust it (a real IP SAN), but only for that exact address, never for a hostname. If the IP changes the certificate is dead."
+}
+
+# Choose the address the certificate is for. Sets DOMAIN to the literal, clears
+# WILDCARD_SAN (an IP certificate has exactly one identifier) and records whether it
+# is IPv6.
+#
+# DOMAIN is reused rather than given a sibling variable on purpose: acme.sh names the
+# certificate directory after the first -d, so the fullchain check and --install-cert
+# further down already address this certificate correctly with no change at all.
+ssl_ip_target() {
+    WILDCARD_SAN=""
+    SSL_IPV6=""
+    ssl_ip_caveats
+
+    local ip="$DOMAIN"
+    if [[ -z "$ip" ]]; then
+        local detected; detected="$(info_get ip)"
+        # GetServerIPv4 reports the literal string N/A when every lookup service
+        # failed, and it only ever resolves IPv4, so an IPv6-only host types its own.
+        [[ "$detected" == "N/A" ]] && detected=""
+        if have_tty; then
+            printf '  %sIP address%s%s: ' "$BLUE" "$R" "${detected:+ [$detected]}" > /dev/tty
+            read -r ip < /dev/tty || ip=""
+            [[ -n "$ip" ]] || ip="$detected"
+        else
+            ip="$detected"
+        fi
+    fi
+
+    [[ -n "$ip" ]] || { warn "no IP address (set DEPLOY_DOMAIN=<public IP>), skipping real SSL."; return 1; }
+    if ! ssl_ip_valid "$ip"; then
+        warn "'${ip}' is not a public IP address. Let's Encrypt issues only for a routable address, so a private, loopback, link-local or carrier-NAT one is refused. Skipping real SSL."
+        return 1
+    fi
+
+    DOMAIN="$ip"
+    [[ "$ip" == *:* ]] && SSL_IPV6="1"
+    act "certificate will cover the address ${TEAL}${DOMAIN}${R}"
+    return 0
+}
+
 # Put acme.sh's Cloudflare hook on disk, given the acme.sh being used. acme.sh 3.1.4
 # does NOT fetch a missing dnsapi plugin: without dns_cf.sh it prints "Cannot find
 # DNS API hook" and asks the operator to add the TXT record by hand, which is no
@@ -286,6 +422,61 @@ ssl_ensure_dns_cf_hook() {
     }
 }
 
+# The address to register the acme.sh account under, or NOTHING.
+#
+# "admin@$DOMAIN" is a reasonable placeholder for a domain and a broken one for an
+# IP: admin@203.0.113.5 is not a valid mailbox, and whether Boulder still syntax
+# checks the contact field is not something worth gambling an issuance on. An
+# account with no address is perfectly legal; it only forgoes expiry reminders,
+# which are useless here anyway (see the caveats: this cert outlives its own
+# reminder window by about a day).
+ssl_account_email() {
+    if [[ -n "$EMAIL" ]]; then
+        printf '%s' "$EMAIL"
+    elif [[ "$SSL_METHOD" != "ip" ]]; then
+        printf '%s' "admin@$DOMAIN"
+    fi
+}
+
+# Install acme.sh from the copy BUNDLED in the panel binary, into $HOME/.acme.sh.
+# Returns non-zero when it did not land.
+#
+# This is the offline path: `curl https://get.acme.sh | sh` fails on a box with no or
+# blocked egress to get.acme.sh, which is exactly why real SSL was silently skipped.
+# The binary writes the pinned client into a scratch dir; running it there as
+# `--install` sets up $HOME/.acme.sh (account.conf, renew cron, shell alias) with NO
+# network fetch. Only `--issue` needs the net, and that reaches Let's Encrypt, not
+# get.acme.sh. `--install` must run from the dir holding the file literally named
+# acme.sh: it does `cp acme.sh ...`.
+# --force: install even when no cron daemon is present (EnsureAcmeDeps could not add
+# one) so a locked-down host still gets its certificate; without it the pre-check
+# fails and issuance is skipped entirely.
+ssl_install_bundled_acme() {
+    local -a args=(--install --force)
+    local acct; acct="$(ssl_account_email)"
+    if [[ -n "$acct" ]]; then
+        args+=(-m "$acct")
+    fi
+
+    local acmedir; acmedir="$(mktemp -d)"
+    if "$BIN" install-acme "$acmedir/acme.sh" >/dev/null 2>&1 && [[ -s "$acmedir/acme.sh" ]]; then
+        ( cd "$acmedir" && sh ./acme.sh "${args[@]}" ) >/dev/null 2>&1 || true
+    fi
+    rm -rf "$acmedir"
+    [[ -x "$HOME/.acme.sh/acme.sh" ]]
+}
+
+# Does the acme.sh at $1 understand --cert-profile? It arrived in acme.sh 3.x, and an
+# IP certificate cannot be issued without it.
+#
+# The help text is captured rather than piped into grep: `grep -q` stops reading at
+# the first match, acme.sh then dies of SIGPIPE, and under `set -o pipefail` that
+# turns a successful probe into a failed one.
+ssl_acme_has_profile() {
+    local help; help="$("$1" --help 2>&1 || true)"
+    [[ "$help" == *"--cert-profile"* ]]
+}
+
 # Obtain a REAL certificate (Let's Encrypt via acme.sh) and point the panel's HTTPS
 # at it. Two ways to prove control of the domain:
 #
@@ -304,23 +495,31 @@ obtain_letsencrypt_cert() {
     # token and a zone, or a domain that already points at this box. Presets win, so
     # an unattended DEPLOY_DOMAIN install behaves exactly as it always has.
     case "$SSL_METHOD" in
-        cloudflare|manual) ;;
+        cloudflare|manual|ip) ;;
         *)
             if [[ -n "$CF_Token" ]]; then
                 SSL_METHOD="cloudflare"
-            elif [[ -n "$DOMAIN" || ! -r /dev/tty ]]; then
+            elif [[ -n "$DOMAIN" ]] && ssl_ip_valid "$DOMAIN"; then
+                # DEPLOY_DOMAIN=<public IP> is already an unambiguous request for a
+                # certificate naming that address, so deploy.sh reaches the IP path
+                # with no new switch and no change of its own.
+                SSL_METHOD="ip"
+            elif [[ -n "$DOMAIN" ]] || ! have_tty; then
                 SSL_METHOD="manual"
             else
                 {
                     printf '%s::%s %sDomain validation%s\n' "$B$BLUE" "$R" "$WHITE" "$R"
                     printf '    %s1)%s Cloudflare API token  (DNS-01: automatic, no port needed, allows a wildcard)\n' "$GREEN" "$R"
                     printf '    %s2)%s Manual                (HTTP-01: the domain must already point here, TCP :80 free) %s[default]%s\n' "$GREEN" "$R" "$D" "$R"
-                    printf '  choose [1/2]: '
+                    printf "    %s3)%s No domain, use the IP (HTTP-01 for this server's address: 6-day cert, so\n" "$GREEN" "$R"
+                    printf '                              TCP :80 must stay reachable for renewal every few days)\n'
+                    printf '  choose [1/2/3]: '
                 } > /dev/tty
                 local how=""
                 read -r how < /dev/tty || how=""
                 case "$how" in
                     1) SSL_METHOD="cloudflare" ;;
+                    3) SSL_METHOD="ip" ;;
                     *) SSL_METHOD="manual" ;;
                 esac
             fi
@@ -330,12 +529,14 @@ obtain_letsencrypt_cert() {
     if [[ "$SSL_METHOD" == "cloudflare" ]]; then
         ssl_cf_token  || return 1
         ssl_cf_domain || return 1
-    elif [[ -z "$DOMAIN" && -r /dev/tty ]]; then
+    elif [[ "$SSL_METHOD" == "ip" ]]; then
+        ssl_ip_target || return 1
+    elif [[ -z "$DOMAIN" ]] && have_tty; then
         printf '  %sdomain%s (DNS A record must point here): ' "$BLUE" "$R" > /dev/tty
         read -r DOMAIN < /dev/tty || DOMAIN=""
     fi
     [[ -n "$DOMAIN" ]] || { warn "no domain (set DEPLOY_DOMAIN=...), skipping real SSL."; return 1; }
-    if [[ -z "$EMAIL" && -r /dev/tty ]]; then
+    if [[ -z "$EMAIL" ]] && have_tty; then
         printf "  %semail%s (Let's Encrypt account, optional): " "$BLUE" "$R" > /dev/tty
         read -r EMAIL < /dev/tty || EMAIL=""
     fi
@@ -345,7 +546,7 @@ obtain_letsencrypt_cert() {
 
     # acme.sh standalone binds :80. Warn (don't fail) if it's already taken. The
     # DNS-01 path never touches the port, so the warning would only mislead there.
-    if [[ "$SSL_METHOD" == "manual" ]] && command -v ss >/dev/null 2>&1 && \
+    if [[ "$SSL_METHOD" == "manual" || "$SSL_METHOD" == "ip" ]] && command -v ss >/dev/null 2>&1 && \
        ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE ':80$'; then
         warn "TCP :80 is in use, acme.sh standalone may fail to bind it."
     fi
@@ -370,23 +571,8 @@ obtain_letsencrypt_cert() {
         if command -v acme.sh >/dev/null 2>&1; then
             ACME="$(command -v acme.sh)"
         else
-            # Install acme.sh from the copy BUNDLED in the panel binary. This is the
-            # offline path: `curl https://get.acme.sh | sh` fails on a box with no or
-            # blocked egress to get.acme.sh, which is exactly why real SSL was silently
-            # skipped. The binary writes the pinned client into a scratch dir; running
-            # it there as `--install` sets up $HOME/.acme.sh (account.conf, renew cron,
-            # shell alias) with NO network fetch. Only `--issue` below needs the net,
-            # and that reaches Let's Encrypt, not get.acme.sh. `--install` must run from
-            # the dir holding the file literally named acme.sh: it does `cp acme.sh ...`.
-            # --force: install even when no cron daemon is present (EnsureAcmeDeps could
-            # not add one) so a locked-down host still gets its certificate; without it
-            # the pre-check fails and issuance is skipped entirely.
             msg "Installing bundled acme.sh"
-            local acmedir; acmedir="$(mktemp -d)"
-            if "$BIN" install-acme "$acmedir/acme.sh" >/dev/null 2>&1 && [[ -s "$acmedir/acme.sh" ]]; then
-                ( cd "$acmedir" && sh ./acme.sh --install --force -m "${EMAIL:-admin@$DOMAIN}" ) >/dev/null 2>&1 || true
-            fi
-            rm -rf "$acmedir"
+            ssl_install_bundled_acme || true
             ACME="$HOME/.acme.sh/acme.sh"
 
             # Network fallback ONLY if the bundled install did not land (older binary
@@ -394,16 +580,33 @@ obtain_letsencrypt_cert() {
             # needs curl/wget, so requiring one here costs nothing extra.
             if ! [[ -x "$ACME" ]]; then
                 msg "Bundled acme.sh unavailable, falling back to get.acme.sh"
+                # Unquoted on purpose: with no account address the whole argument has
+                # to vanish, not become an empty positional the installer then parses.
+                local acct; acct="$(ssl_account_email)"
                 if command -v curl >/dev/null 2>&1; then
-                    curl -fsSL https://get.acme.sh | sh -s email="${EMAIL:-admin@$DOMAIN}" >/dev/null 2>&1 || true
+                    curl -fsSL https://get.acme.sh | sh -s ${acct:+email="$acct"} >/dev/null 2>&1 || true
                 elif command -v wget >/dev/null 2>&1; then
-                    wget -qO- https://get.acme.sh | sh -s email="${EMAIL:-admin@$DOMAIN}" >/dev/null 2>&1 || true
+                    wget -qO- https://get.acme.sh | sh -s ${acct:+email="$acct"} >/dev/null 2>&1 || true
                 fi
                 ACME="$HOME/.acme.sh/acme.sh"
             fi
         fi
     fi
     [[ -x "$ACME" ]] || { warn "acme.sh not found after install, skipping real SSL."; return 1; }
+
+    # An acme.sh that was already on this box wins the resolution above, and a
+    # distro-packaged 2.x has no --cert-profile: the IP issuance would then die on an
+    # unrecognised option, which reads like anything but "your client is too old".
+    # Replace it with the 3.1.4 pinned inside the panel binary.
+    if [[ "$SSL_METHOD" == "ip" ]] && ! ssl_acme_has_profile "$ACME"; then
+        msg "This box's acme.sh predates IP certificates, installing the bundled one"
+        ssl_install_bundled_acme || true
+        ACME="$HOME/.acme.sh/acme.sh"
+        if ! [[ -x "$ACME" ]] || ! ssl_acme_has_profile "$ACME"; then
+            warn "acme.sh here does not support --cert-profile (needs 3.x), which a certificate for an IP requires. Skipping real SSL."
+            return 1
+        fi
+    fi
 
     "$ACME" --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
 
@@ -419,6 +622,31 @@ obtain_letsencrypt_cert() {
         fi
         issue_args+=(--dns dns_cf)
         challenge="Cloudflare DNS-01"
+    elif [[ "$SSL_METHOD" == "ip" ]]; then
+        # Every one of these is load-bearing:
+        #   --server letsencrypt   acme.sh's compiled-in default CA is ZeroSSL, which
+        #                          cannot do IP identifiers over ACME at all. Passing
+        #                          it HERE (not only to --set-default-ca) is also what
+        #                          writes the CA into the per-domain conf, so the
+        #                          unattended renewal goes to the right place.
+        #   --cert-profile         shortlived is the ONLY Let's Encrypt profile whose
+        #                          permitted identifiers include `ip`. Without it the
+        #                          order is refused outright.
+        #   --standalone           an IP identifier cannot use DNS-01 (nothing to put a
+        #                          TXT record on) and tls-alpn-01 wants TCP 443, which
+        #                          is not where this panel listens.
+        #   --days 3               acme.sh's renewal arithmetic assumes 90 days; a
+        #                          160-hour certificate has to be told otherwise.
+        issue_args+=(--standalone --server letsencrypt --cert-profile shortlived --days 3)
+        # Not cosmetic. acme.sh's standalone server is a bare `socat TCP-LISTEN`
+        # unless forced, which comes up IPv6-only, and Let's Encrypt's IPv4 fetch
+        # then gets connection-refused with nothing in the log to explain it.
+        if [[ -n "$SSL_IPV6" ]]; then
+            issue_args+=(--listen-v6)
+        else
+            issue_args+=(--listen-v4)
+        fi
+        challenge="standalone HTTP-01 (IP, shortlived)"
     else
         issue_args+=(--standalone)
     fi
@@ -440,6 +668,12 @@ obtain_letsencrypt_cert() {
             warn "acme.sh could not issue a certificate for ${DOMAIN}."
             if [[ "$SSL_METHOD" == "cloudflare" ]]; then
                 warn "Let's Encrypt validated over DNS: the token needs 'Zone : DNS : Edit' on ${DOMAIN} (not only on another zone), and the zone must be active in Cloudflare, meaning its nameservers are delegated there. The panel's TLS was left unchanged."
+            elif [[ "$SSL_METHOD" == "ip" ]]; then
+                # The manual-path advice below ("must resolve to THIS server's public
+                # IP") is actively misleading here: nothing resolves, and the address
+                # being wrong is a different mistake from the port being unreachable.
+                warn "Let's Encrypt validates by connecting to ${DOMAIN} itself on TCP :80, so that has to be this machine's own public address (not a NAT or CDN front) and the port has to be reachable from the internet. The panel's TLS was left unchanged."
+                act  "Let's Encrypt allows 5 failed validations per hour for one address, so fix the cause before retrying rather than re-running this to see."
             else
                 warn "Let's Encrypt validates over HTTP: ${DOMAIN} must resolve to THIS server's public IP and TCP :80 must be reachable from the internet (not firewalled, not behind a proxy/CDN for a different host). The panel's TLS was left unchanged."
             fi
@@ -449,17 +683,18 @@ obtain_letsencrypt_cert() {
 
     install -d -m 0755 "$CERT_DIR"
     msg "Installing certificate + auto-renew hook"
-    # The unit is resolved, not assumed: an operator who renamed the panel's service
-    # would otherwise get a renew hook that restarts a unit that does not exist.
-    local unit; unit="$(info_get systemdUnit)"; [[ -n "$unit" ]] || unit="vpn-ui"
-    # `|| true` on the reload: acme runs reloadcmd immediately, but on a FRESH
-    # install the systemd unit doesn't exist yet (it's created later by --systemd),
-    # so a bare `systemctl restart` would fail and make install-cert return non-zero.
-    # The tolerant form still restarts correctly on future auto-renewals.
+    # Deliberately NOT a restart. The panel re-reads these two files per TLS
+    # handshake (web/network/cert_reloader.go), so a renewal is picked up in place.
+    # Restarting would take Xray and every VPN daemon the panel parents down with it,
+    # which on a 160-hour IP certificate would mean disconnecting every user every few
+    # days. acme.sh still wants a reloadcmd and `true` is the honest way to say there
+    # is nothing to do. Safe to hardcode because this script is EMBEDDED in the binary
+    # it drives (see the header), so a menu offering this can never be paired with a
+    # panel that lacks the reloader.
     "$ACME" --install-cert -d "$DOMAIN" \
         --key-file       "$CERT_DIR/privkey.pem" \
         --fullchain-file "$CERT_DIR/fullchain.pem" \
-        --reloadcmd      "systemctl restart $unit || true" \
+        --reloadcmd      "true" \
         || { warn "acme.sh install-cert failed, skipping real SSL."; return 1; }
 
     # Point the panel's web server (and subscription server) at the real cert.
@@ -650,7 +885,7 @@ show_menu() {
     printf '    %s5)%s  Change Port            %s14)%s Restart Xray\n'          "$GREEN" "$R" "$GREEN" "$R"
     printf '    %s6)%s  Change Web-Path        %s15)%s Xray Logs\n'             "$GREEN" "$R" "$GREEN" "$R"
     printf '    %s7)%s  Reset Login (random)   %s16)%s Restart All Cores\n'     "$GREEN" "$R" "$GREEN" "$R"
-    printf '    %s8)%s  View login info        %s17)%s Get SSL (Lets Encrypt)\n' "$GREEN" "$R" "$GREEN" "$R"
+    printf '    %s8)%s  View login info        %s17)%s Get SSL (domain / server IP)\n' "$GREEN" "$R" "$GREEN" "$R"
     printf '    %s9)%s  Start     (systemd)    %s0)%s  Exit\n'                  "$GREEN" "$R" "$GREEN" "$R"
     hr
 }
@@ -703,7 +938,16 @@ usage: ${0##*/}            open the management menu
 
 environment:
   VPNUI_BIN         path to the panel binary (default: /opt/vpn-ui/vpn-ui-amd64)
-  DEPLOY_DOMAIN     domain to issue the certificate for (skips the prompt)
+  SSL_METHOD        how to answer the ACME challenge, skipping the question:
+                    'cloudflare' (DNS-01, needs a token, allows a wildcard),
+                    'manual' (standalone HTTP-01, needs :80 and a live A record) or
+                    'ip' (standalone HTTP-01 naming this server's public address)
+  DEPLOY_DOMAIN     domain to issue the certificate for (skips the prompt). A public
+                    IP address here selects 'ip': the certificate then names the
+                    address itself, needs no DNS at all, and lasts 160 hours, so the
+                    panel restarts (dropping every VPN session) about every 3 days.
+                    Private, loopback, link-local and carrier-NAT addresses are
+                    refused, as is anything behind NAT or a CDN.
   DEPLOY_EMAIL      Let's Encrypt account email (optional)
   DEPLOY_CF_TOKEN   Cloudflare API token: validates over DNS-01 instead of HTTP-01.
                     Needs 'Zone : Zone : Read' + 'Zone : DNS : Edit'. Without a

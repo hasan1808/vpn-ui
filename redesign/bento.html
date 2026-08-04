@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Overview: Bento</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<div id="bento-overview">
+<style>
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+    --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+    --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+    --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+    --shadow-sm:none; --shadow-md:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+  --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+  --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+  --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+  --shadow-sm:none; --shadow-md:none;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+}
+
+#bento-overview, #bento-overview *, #bento-overview *::before, #bento-overview *::after{ box-sizing:border-box; }
+#bento-overview{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--bg); color:var(--text);
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  overflow-x:hidden; min-height:100vh;
+}
+#bento-overview svg{ display:block; }
+#bento-overview button{ font-family:inherit; }
+#bento-overview ul, #bento-overview p, #bento-overview h1, #bento-overview h2, #bento-overview h3{ margin:0; padding:0; }
+
+@media (prefers-reduced-motion: reduce){
+  #bento-overview *{ transition-duration:.001ms !important; animation-duration:.001ms !important; }
+}
+#bento-overview button:focus-visible, #bento-overview [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;
+}
+
+/* icons */
+.bo-icon{ width:18px; height:18px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.bo-icon-14{ width:14px; height:14px; }
+.bo-icon-16{ width:16px; height:16px; }
+.bo-icon-fill{ fill:currentColor; stroke:none; }
+
+.bo-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; background:var(--off); }
+.bo-dot--ok{ background:var(--ok); }
+.bo-dot--info{ background:var(--info); }
+.bo-dot--warn{ background:var(--warn); }
+
+/* ===== shell ===== */
+.bo-shell{ display:flex; min-height:100vh; }
+.bo-rail{
+  flex:0 0 84px; width:84px; align-self:flex-start; position:sticky; top:0; height:100vh;
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center; padding:20px 0; gap:26px; overflow-y:auto;
+}
+.bo-rail-brand{ display:flex; flex-direction:column; align-items:center; gap:6px; color:var(--accent); }
+.bo-rail-brand span{ font-size:12px; font-weight:700; color:var(--text); letter-spacing:.01em; }
+.bo-rail-nav{ display:flex; flex-direction:column; gap:6px; width:100%; align-items:center; }
+.bo-rail-item{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  width:68px; padding:8px 4px 7px; border-radius:10px; border:none; background:transparent; color:var(--text-3);
+  cursor:pointer; transition:background .15s ease, color .15s ease;
+}
+.bo-rail-item span{ font-size:10px; font-weight:600; letter-spacing:.01em; }
+.bo-rail-item:hover{ color:var(--text-2); background:var(--surface-2); }
+.bo-rail-item.is-active{ background:var(--accent-weak); color:var(--accent); }
+
+.bo-main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.bo-topbar{ background:var(--surface); border-bottom:1px solid var(--border); }
+.bo-topbar-inner{
+  max-width:1320px; margin:0 auto; padding:14px 28px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+.bo-topbar-left{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-width:0; }
+.bo-host-chip, .bo-health-pill{
+  display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600;
+  padding:6px 12px; border-radius:999px; white-space:nowrap;
+}
+.bo-host-chip{ background:var(--surface-2); color:var(--text-2); }
+.bo-host-chip .bo-icon{ color:var(--text-3); }
+.bo-health-pill{ background:var(--ok-weak); color:var(--ok); }
+
+.bo-theme-toggle{
+  width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:0 0 auto;
+  transition:background .15s ease, border-color .15s ease, color .15s ease;
+}
+.bo-theme-toggle:hover{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+.bo-theme-toggle .bo-i-moon{ display:none; }
+:root[data-theme="dark"] .bo-theme-toggle .bo-i-sun{ display:none; }
+:root[data-theme="dark"] .bo-theme-toggle .bo-i-moon{ display:block; }
+
+.bo-content{ max-width:1320px; width:100%; margin:0 auto; padding:26px 28px 48px; }
+.bo-page-title{ font-size:24px; font-weight:600; margin-bottom:20px; text-wrap:balance; }
+
+/* ===== bento grid ===== */
+.bo-bento{
+  display:grid; grid-template-columns:1fr; gap:16px;
+  grid-template-areas:
+    "ident" "flow" "vit" "svc" "xray" "manage" "vpnui" "process" "conn" "ips";
+}
+@media (min-width:760px){
+  .bo-bento{
+    grid-template-columns:repeat(4,1fr); gap:18px;
+    grid-template-areas:
+      "ident ident ident ident"
+      "flow flow flow flow"
+      "vit vit vit vit"
+      "svc svc svc svc"
+      "xray xray manage manage"
+      "vpnui vpnui vpnui vpnui"
+      "process process conn conn"
+      "ips ips ips ips";
+  }
+}
+@media (min-width:1180px){
+  .bo-bento{
+    grid-template-columns:repeat(12,1fr); gap:20px;
+    grid-template-areas:
+      "ident ident ident ident flow flow flow flow flow vit vit vit"
+      "ident ident ident ident flow flow flow flow flow vit vit vit"
+      "xray xray xray xray flow flow flow flow flow vit vit vit"
+      "xray xray xray xray vpnui vpnui vpnui vpnui vpnui vit vit vit"
+      "manage manage manage manage vpnui vpnui vpnui vpnui vpnui vit vit vit"
+      "svc svc svc svc svc svc svc svc svc svc svc svc"
+      "process process process process conn conn conn conn ips ips ips ips"
+      "process process process process conn conn conn conn ips ips ips ips";
+  }
+}
+
+.bo-t-ident{ grid-area:ident; }
+.bo-t-flow{ grid-area:flow; }
+.bo-t-vit{ grid-area:vit; }
+.bo-t-svc{ grid-area:svc; }
+.bo-t-xray{ grid-area:xray; }
+.bo-t-manage{ grid-area:manage; }
+.bo-t-vpnui{ grid-area:vpnui; }
+.bo-t-process{ grid-area:process; }
+.bo-t-conn{ grid-area:conn; }
+.bo-t-ips{ grid-area:ips; }
+
+.bo-tile{
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:20px 22px; box-shadow:var(--shadow-md); min-width:0;
+  display:flex; flex-direction:column;
+  transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.bo-tile:hover{ transform:translateY(-2px); border-color:var(--border-strong); }
+
+.bo-tile-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+.bo-tile-title{ font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); display:flex; align-items:center; gap:7px; }
+.bo-tile-meta{ font-size:12px; color:var(--text-3); white-space:nowrap; }
+.bo-tile-caption{ font-size:12.5px; color:var(--text-3); line-height:1.5; }
+.bo-divider{ height:1px; background:var(--border); margin:12px 0; }
+
+/* ===== identity tile ===== */
+.bo-t-ident{ justify-content:space-between; }
+.bo-ident-top{ display:flex; align-items:center; gap:16px; }
+.bo-ident-logo{ width:56px; height:56px; flex:0 0 auto; color:#E95420; }
+.bo-ident-logo svg{ width:100%; height:100%; }
+.bo-ident-name{ min-width:0; }
+.bo-ident-os{ font-size:19px; font-weight:700; color:var(--text); line-height:1.25; }
+.bo-ident-kernel{ font-size:12.5px; color:var(--text-3); margin-top:5px; }
+.bo-ident-chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:20px; }
+.bo-chip{ display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; padding:6px 12px; border-radius:999px; background:var(--surface-2); color:var(--text-2); }
+.bo-chip .bo-icon{ color:var(--text-3); }
+.bo-chip--ok{ background:var(--ok-weak); color:var(--ok); }
+.bo-chip--ok .bo-dot{ background:var(--ok); }
+
+/* ===== throughput (large feature) ===== */
+.bo-flow-cols{ display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+@media (max-width:479px){ .bo-flow-cols{ grid-template-columns:1fr; } }
+.bo-flow-label{ display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.bo-flow-col--up .bo-flow-label .bo-icon{ color:var(--accent); }
+.bo-flow-col--down .bo-flow-label .bo-icon{ color:var(--info); }
+.bo-flow-value{ font-size:30px; font-weight:700; letter-spacing:-.01em; margin-top:6px; }
+.bo-flow-col--up .bo-flow-value{ color:var(--accent); }
+.bo-flow-col--down .bo-flow-value{ color:var(--info); }
+.bo-unit{ font-size:13px; font-weight:600; color:var(--text-3); margin-left:3px; }
+.bo-flow-chart{ width:100%; height:130px; margin-top:14px; }
+.bo-flow-chart svg{ display:block; width:100%; height:100%; overflow:visible; }
+.bo-flow-footer{ display:flex; gap:28px; flex-wrap:wrap; }
+.bo-mini-stat{ display:flex; flex-direction:column; gap:3px; }
+.bo-mini-stat-label{ font-size:11.5px; color:var(--text-3); font-weight:600; }
+.bo-mini-stat-value{ font-size:15px; font-weight:700; color:var(--text); }
+
+/* ===== vitals (tall) ===== */
+.bo-vit-list{ display:flex; flex-direction:column; gap:16px; }
+@media (max-width:1179px){ .bo-vit-list{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px 22px; } }
+@media (max-width:479px){ .bo-vit-list{ grid-template-columns:1fr; } }
+.bo-vit-item{ display:flex; flex-direction:column; gap:6px; }
+.bo-vit-row{ display:flex; align-items:center; gap:12px; }
+.bo-ring-wrap{ position:relative; width:44px; height:44px; flex:0 0 auto; }
+.bo-ring-wrap svg{ width:100%; height:100%; transform:rotate(-90deg); }
+.bo-ring-track{ fill:none; stroke:var(--border); stroke-width:4; }
+.bo-ring-progress{ fill:none; stroke:var(--accent); stroke-width:4; stroke-linecap:round; stroke-dasharray:100.5; stroke-dashoffset:100.5; transition:stroke-dashoffset .8s cubic-bezier(.22,1,.36,1); }
+.bo-ring-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--text-2); }
+.bo-ring-icon .bo-icon{ width:15px; height:15px; }
+.bo-vit-info{ flex:1; min-width:0; }
+.bo-vit-top{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.bo-vit-name{ font-size:13px; font-weight:600; color:var(--text); }
+.bo-vit-pct{ font-size:14px; font-weight:700; color:var(--text); }
+.bo-vit-meta{ font-size:11.5px; color:var(--text-3); margin-top:2px; }
+.bo-vit-spark{ width:100%; height:24px; }
+.bo-vit-spark svg{ display:block; width:100%; height:100%; overflow:visible; }
+
+.bo-load-row{ display:flex; align-items:center; gap:8px; padding:4px 0; }
+.bo-load-label{ font-size:11px; color:var(--text-3); width:22px; flex:0 0 22px; }
+.bo-load-bar{ flex:1; height:4px; border-radius:2px; background:var(--border); overflow:hidden; display:block; }
+.bo-load-bar > span{ display:block; height:100%; border-radius:2px; background:var(--accent); }
+.bo-load-val{ font-size:12px; font-weight:600; color:var(--text); width:36px; flex:0 0 36px; text-align:right; }
+
+/* ===== services (wide LED matrix) ===== */
+.bo-svc-grid{
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(178px,1fr)); gap:1px;
+  background:var(--border); border:1px solid var(--border); border-radius:12px; overflow:hidden;
+}
+.bo-svc-cell{ background:var(--surface); padding:13px 14px; display:flex; align-items:center; gap:10px; }
+.bo-svc-led{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; background:var(--off); }
+.bo-svc-cell[data-state="running"] .bo-svc-led{ background:var(--ok); box-shadow:0 0 0 3px var(--ok-weak); }
+.bo-svc-cell[data-state="idle"] .bo-svc-led{ background:var(--info); box-shadow:0 0 0 3px var(--info-weak); }
+.bo-svc-cell[data-state="stopped"] .bo-svc-led{ background:var(--warn); box-shadow:0 0 0 3px var(--warn-weak); }
+.bo-svc-name{ font-size:13.5px; font-weight:600; color:var(--text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bo-svc-state{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--off); }
+.bo-svc-cell[data-state="running"] .bo-svc-state{ color:var(--ok); }
+.bo-svc-cell[data-state="idle"] .bo-svc-state{ color:var(--info); }
+.bo-svc-cell[data-state="stopped"] .bo-svc-state{ color:var(--warn); }
+
+/* ===== xray / manage / vpnui ===== */
+.bo-status-pill{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px 4px 8px; border-radius:999px; }
+.bo-status-pill--ok{ background:var(--ok-weak); color:var(--ok); }
+.bo-kv-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; }
+.bo-kv-label{ font-size:12.5px; color:var(--text-2); font-weight:500; }
+.bo-kv-value{ font-size:14px; font-weight:700; color:var(--text); }
+
+.bo-btn-row{ display:flex; flex-wrap:wrap; gap:8px; }
+.bo-icon-btn{
+  display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600;
+  color:var(--text-2); background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+  padding:7px 12px; cursor:pointer; transition:background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease;
+}
+.bo-icon-btn:hover{ background:var(--accent-weak); color:var(--accent); border-color:var(--accent); transform:translateY(-1px); }
+.bo-icon-btn--danger:hover{ background:var(--error-weak); color:var(--error); border-color:var(--error); }
+.bo-icon-btn--ghost{ background:transparent; border-color:transparent; padding:5px 10px; }
+.bo-icon-btn--ghost:hover{ border-color:var(--accent); }
+
+.bo-vpnui-body{ display:flex; flex-direction:column; justify-content:space-between; gap:18px; flex:1; }
+.bo-vpnui-version{ font-size:28px; font-weight:700; color:var(--text); }
+.bo-status-line{ display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; margin-top:8px; }
+.bo-status-line--ok{ color:var(--ok); }
+.bo-btn{ font-size:13.5px; font-weight:600; border-radius:9px; padding:10px 18px; cursor:pointer; border:1px solid transparent; transition:filter .15s ease, transform .15s ease; }
+.bo-btn--primary{ background:var(--accent); color:var(--on-accent); align-self:flex-start; }
+.bo-btn--primary:hover{ filter:brightness(1.06); transform:translateY(-1px); }
+
+/* ===== process / connections stat grids ===== */
+.bo-stat-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.bo-stat-cell{ background:var(--surface); padding:12px 14px; display:flex; flex-direction:column; gap:4px; }
+.bo-stat-cell-label{ font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.bo-stat-cell-value{ font-size:15.5px; font-weight:700; color:var(--text); }
+
+.bo-conn-body{ display:flex; gap:26px; flex-wrap:wrap; margin-bottom:18px; }
+.bo-conn-stat{ display:flex; flex-direction:column; gap:6px; }
+.bo-conn-label{ display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); }
+.bo-conn-label .bo-icon{ color:var(--text-3); }
+.bo-conn-stat--tcp .bo-conn-label .bo-icon{ color:var(--accent); }
+.bo-conn-stat--udp .bo-conn-label .bo-icon{ color:var(--info); }
+.bo-conn-value{ font-size:26px; font-weight:700; color:var(--text); }
+.bo-conn-ratio{ display:flex; gap:2px; height:6px; border-radius:3px; overflow:hidden; background:var(--surface); margin-top:auto; }
+.bo-conn-ratio-seg{ display:block; height:100%; }
+.bo-conn-ratio-seg--tcp{ background:var(--accent); }
+.bo-conn-ratio-seg--udp{ background:var(--info); }
+
+/* ===== IP addresses ===== */
+.bo-ip-row{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:8px 0; }
+.bo-ip-row + .bo-ip-row{ border-top:1px solid var(--border); }
+.bo-ip-label{ font-size:12.5px; font-weight:500; color:var(--text-2); flex:0 0 auto; }
+.bo-ip-value{ font-size:14px; font-weight:600; color:var(--text); text-align:right; overflow-wrap:anywhere; }
+
+.bo-foot{ margin-top:34px; padding-top:16px; border-top:1px solid var(--border); font-size:11.5px; color:var(--text-3); text-align:left; }
+
+@media (max-width:560px){
+  .bo-rail{ flex-basis:60px; width:60px; padding:16px 0; gap:20px; }
+  .bo-rail-item{ width:52px; }
+  .bo-rail-item span, .bo-rail-brand span{ display:none; }
+}
+</style>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+<symbol id="bo-i-shield" viewBox="0 0 24 24"><path d="M12 3 19 6v5c0 4.8-3.2 8.6-7 10-3.8-1.4-7-5.2-7-10V6l7-3z"/></symbol>
+<symbol id="bo-i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></symbol>
+<symbol id="bo-i-list" viewBox="0 0 24 24"><circle cx="4.5" cy="6" r="1.3"/><line x1="8.5" y1="6" x2="20.5" y2="6"/><circle cx="4.5" cy="12" r="1.3"/><line x1="8.5" y1="12" x2="20.5" y2="12"/><circle cx="4.5" cy="18" r="1.3"/><line x1="8.5" y1="18" x2="20.5" y2="18"/></symbol>
+<symbol id="bo-i-sliders" viewBox="0 0 24 24"><line x1="5" y1="21" x2="5" y2="14"/><line x1="5" y1="10" x2="5" y2="3"/><circle cx="5" cy="12" r="2.1"/><line x1="12" y1="21" x2="12" y2="12.5"/><line x1="12" y1="8.5" x2="12" y2="3"/><circle cx="12" cy="10.5" r="2.1"/><line x1="19" y1="21" x2="19" y2="16"/><line x1="19" y1="12" x2="19" y2="3"/><circle cx="19" cy="14" r="2.1"/></symbol>
+<symbol id="bo-i-zap" viewBox="0 0 24 24"><polygon points="13 2 4.5 13.5 11 13.5 10 22 19.5 10 13 10 13 2"/></symbol>
+<symbol id="bo-i-file" viewBox="0 0 24 24"><path d="M7 3h6.5L18 7.5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M13.5 3v4.5H18"/><line x1="9" y1="12.5" x2="15" y2="12.5"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></symbol>
+<symbol id="bo-i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6.5" rx="1.6"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.6"/><line x1="7" y1="7.25" x2="7.01" y2="7.25"/><line x1="7" y1="16.75" x2="7.01" y2="16.75"/></symbol>
+<symbol id="bo-i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3"/><line x1="12" y1="2" x2="12" y2="4.6"/><line x1="12" y1="19.4" x2="12" y2="22"/><line x1="2" y1="12" x2="4.6" y2="12"/><line x1="19.4" y1="12" x2="22" y2="12"/><line x1="4.7" y1="4.7" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.3" y2="19.3"/><line x1="4.7" y1="19.3" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.3" y2="4.7"/></symbol>
+<symbol id="bo-i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7.3 7.3 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="bo-i-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1.1"/></symbol>
+<symbol id="bo-i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3.1-6.3"/><polyline points="20.5 3 20 8 15 7.3"/></symbol>
+<symbol id="bo-i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c2.4 2.5 3.8 5.7 3.8 9s-1.4 6.5-3.8 9c-2.4-2.5-3.8-5.7-3.8-9s1.4-6.5 3.8-9z"/></symbol>
+<symbol id="bo-i-tag" viewBox="0 0 24 24"><path d="M11.4 3H5a1 1 0 0 0-1 1v6.4a1 1 0 0 0 .3.7l9.1 9.1a1 1 0 0 0 1.4 0l6.4-6.4a1 1 0 0 0 0-1.4l-9.1-9.1a1 1 0 0 0-.7-.3z"/><circle cx="7.8" cy="7.8" r="1.4"/></symbol>
+<symbol id="bo-i-download" viewBox="0 0 24 24"><path d="M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><polyline points="7.5 10 12 14.5 16.5 10"/><line x1="12" y1="3" x2="12" y2="14.5"/></symbol>
+<symbol id="bo-i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.3 10.4 15.2 16.5 9"/></symbol>
+<symbol id="bo-i-arrow-up" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5.5"/><polyline points="6.5 11 12 5.5 17.5 11"/></symbol>
+<symbol id="bo-i-arrow-down" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="18.5"/><polyline points="6.5 13 12 18.5 17.5 13"/></symbol>
+<symbol id="bo-i-eye" viewBox="0 0 24 24"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="bo-i-eye-off" viewBox="0 0 24 24"><path d="M3.3 3.3l17.4 17.4"/><path d="M10.6 5.2A10.5 10.5 0 0 1 12 5c6.2 0 10 7 10 7a17.6 17.6 0 0 1-3.9 4.8"/><path d="M6.5 6.7C3.8 8.6 2 12 2 12s3.8 7 10 7c1.4 0 2.7-.3 3.9-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+<symbol id="bo-i-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><line x1="9" y1="2.5" x2="9" y2="6"/><line x1="12" y1="2.5" x2="12" y2="6"/><line x1="15" y1="2.5" x2="15" y2="6"/><line x1="9" y1="18" x2="9" y2="21.5"/><line x1="12" y1="18" x2="12" y2="21.5"/><line x1="15" y1="18" x2="15" y2="21.5"/><line x1="2.5" y1="9" x2="6" y2="9"/><line x1="2.5" y1="12" x2="6" y2="12"/><line x1="2.5" y1="15" x2="6" y2="15"/><line x1="18" y1="9" x2="21.5" y2="9"/><line x1="18" y1="12" x2="21.5" y2="12"/><line x1="18" y1="15" x2="21.5" y2="15"/></symbol>
+<symbol id="bo-i-ram" viewBox="0 0 24 24"><rect x="2.5" y="8.5" width="19" height="8" rx="1.4"/><line x1="6.5" y1="8.5" x2="6.5" y2="5"/><line x1="10.5" y1="8.5" x2="10.5" y2="5"/><line x1="14.5" y1="8.5" x2="14.5" y2="5"/><line x1="18.5" y1="8.5" x2="18.5" y2="5"/><line x1="6.5" y1="16.5" x2="6.5" y2="19"/><line x1="18.5" y1="16.5" x2="18.5" y2="19"/></symbol>
+<symbol id="bo-i-swap" viewBox="0 0 24 24"><path d="M3.5 8h14.5"/><polyline points="14.5 4.5 18 8 14.5 11.5"/><path d="M20.5 16H6"/><polyline points="9.5 12.5 6 16 9.5 19.5"/></symbol>
+<symbol id="bo-i-disk" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="2.8"/><path d="M4 5.5v6.2c0 1.55 3.58 2.8 8 2.8s8-1.25 8-2.8V5.5"/><path d="M4 11.7v6.2c0 1.55 3.58 2.8 8 2.8s8-1.25 8-2.8v-6.2"/></symbol>
+<symbol id="bo-i-gauge" viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><line x1="12" y1="16" x2="15.3" y2="11.2"/><circle cx="12" cy="16" r="1.4"/></symbol>
+<symbol id="bo-i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 6.4l2.5-2.5a4.5 4.5 0 0 0-6.36-6.37"/><path d="M14 10a4.5 4.5 0 0 0-6.4-6.4L5.1 6.1A4.5 4.5 0 0 0 11.46 12.5"/></symbol>
+</defs>
+</svg>
+
+<div class="bo-shell">
+  <aside class="bo-rail">
+    <div class="bo-rail-brand">
+      <svg class="bo-icon" aria-hidden="true"><use href="#bo-i-shield"></use></svg>
+      <span>vpn-ui</span>
+    </div>
+    <nav class="bo-rail-nav" aria-label="Primary">
+      <button type="button" class="bo-rail-item is-active" aria-current="page">
+        <svg class="bo-icon" aria-hidden="true"><use href="#bo-i-grid"></use></svg>
+        <span>Overview</span>
+      </button>
+      <button type="button" class="bo-rail-item">
+        <svg class="bo-icon" aria-hidden="true"><use href="#bo-i-list"></use></svg>
+        <span>Inbounds</span>
+      </button>
+      <button type="button" class="bo-rail-item">
+        <svg class="bo-icon" aria-hidden="true"><use href="#bo-i-sliders"></use></svg>
+        <span>Settings</span>
+      </button>
+      <button type="button" class="bo-rail-item">
+        <svg class="bo-icon" aria-hidden="true"><use href="#bo-i-zap"></use></svg>
+        <span>Xray</span>
+      </button>
+      <button type="button" class="bo-rail-item">
+        <svg class="bo-icon" aria-hidden="true"><use href="#bo-i-file"></use></svg>
+        <span>Logs</span>
+      </button>
+    </nav>
+  </aside>
+
+  <div class="bo-main">
+    <header class="bo-topbar">
+      <div class="bo-topbar-inner">
+        <div class="bo-topbar-left">
+          <span class="bo-host-chip">
+            <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-server"></use></svg>
+            srv-fra-01
+          </span>
+          <span class="bo-health-pill">
+            <span class="bo-dot bo-dot--ok"></span>
+            All systems operational
+          </span>
+        </div>
+        <button type="button" class="bo-theme-toggle" id="boThemeToggle" aria-label="Toggle color theme">
+          <svg class="bo-icon bo-i-sun" aria-hidden="true"><use href="#bo-i-sun"></use></svg>
+          <svg class="bo-icon bo-i-moon" aria-hidden="true"><use href="#bo-i-moon"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="bo-content">
+      <h1 class="bo-page-title">Overview</h1>
+
+      <div class="bo-bento">
+
+        <article class="bo-tile bo-t-ident" aria-label="Server identity">
+          <div class="bo-ident-top">
+            <span class="bo-ident-logo">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.61.455a3.41 3.41 0 0 0-3.41 3.41 3.41 3.41 0 0 0 3.41 3.41 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41zM12.92.8C8.923.777 5.137 2.941 3.148 6.451a4.5 4.5 0 0 1 .26-.007 4.92 4.92 0 0 1 2.585.737A8.316 8.316 0 0 1 12.688 3.6 4.944 4.944 0 0 1 13.723.834 11.008 11.008 0 0 0 12.92.8zm9.226 4.994a4.915 4.915 0 0 1-1.918 2.246 8.36 8.36 0 0 1-.273 8.303 4.89 4.89 0 0 1 1.632 2.54 11.156 11.156 0 0 0 .559-13.089zM3.41 7.932A3.41 3.41 0 0 0 0 11.342a3.41 3.41 0 0 0 3.41 3.409 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41zm2.027 7.866a4.908 4.908 0 0 1-2.915.358 11.1 11.1 0 0 0 7.991 6.698 11.234 11.234 0 0 0 2.422.249 4.879 4.879 0 0 1-.999-2.85 8.484 8.484 0 0 1-.836-.136 8.304 8.304 0 0 1-5.663-4.32zm11.405.928a3.41 3.41 0 0 0-3.41 3.41 3.41 3.41 0 0 0 3.41 3.41 3.41 3.41 0 0 0 3.41-3.41 3.41 3.41 0 0 0-3.41-3.41z"/></svg>
+            </span>
+            <div class="bo-ident-name">
+              <p class="bo-ident-os">Ubuntu 24.04 LTS</p>
+              <p class="bo-ident-kernel">Kernel <span class="num">6.8.0-31-generic</span></p>
+            </div>
+          </div>
+          <div class="bo-ident-chips">
+            <span class="bo-chip">
+              <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-server"></use></svg>
+              srv-fra-01
+            </span>
+            <span class="bo-chip bo-chip--ok">
+              <span class="bo-dot"></span>
+              All systems operational
+            </span>
+          </div>
+        </article>
+
+        <article class="bo-tile bo-t-flow" aria-label="Throughput">
+          <div class="bo-tile-head">
+            <h3 class="bo-tile-title">Throughput</h3>
+            <span class="bo-tile-meta">Aggregate, all protocols</span>
+          </div>
+          <div class="bo-flow-cols">
+            <div class="bo-flow-col bo-flow-col--up">
+              <div class="bo-flow-label">
+                <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-arrow-up"></use></svg>
+                Upload
+              </div>
+              <div class="bo-flow-value num">2.4<span class="bo-unit">MB/s</span></div>
+              <div class="bo-flow-chart" data-chart="upload"></div>
+            </div>
+            <div class="bo-flow-col bo-flow-col--down">
+              <div class="bo-flow-label">
+                <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-arrow-down"></use></svg>
+                Download
+              </div>
+              <div class="bo-flow-value num">8.1<span class="bo-unit">MB/s</span></div>
+              <div class="bo-flow-chart" data-chart="download"></div>
+            </div>
+          </div>
+          <div class="bo-divider"></div>
+          <div class="bo-flow-footer">
+            <div class="bo-mini-stat"><span class="bo-mini-stat-label">Sent</span><span class="bo-mini-stat-value num">1.24 TB</span></div>
+            <div class="bo-mini-stat"><span class="bo-mini-stat-label">Received</span><span class="bo-mini-stat-value num">4.68 TB</span></div>
+          </div>
+        </article>
+
+        <article class="bo-tile bo-t-vit" aria-label="System vitals">
+          <div class="bo-tile-head"><h3 class="bo-tile-title">System Vitals</h3></div>
+          <div class="bo-vit-list">
+            <div class="bo-vit-item">
+              <div class="bo-vit-row">
+                <div class="bo-ring-wrap">
+                  <svg viewBox="0 0 40 40" aria-hidden="true">
+                    <circle class="bo-ring-track" cx="20" cy="20" r="16"></circle>
+                    <circle class="bo-ring-progress" data-pct="34" cx="20" cy="20" r="16"></circle>
+                  </svg>
+                  <span class="bo-ring-icon"><svg class="bo-icon" aria-hidden="true"><use href="#bo-i-cpu"></use></svg></span>
+                </div>
+                <div class="bo-vit-info">
+                  <div class="bo-vit-top"><span class="bo-vit-name">CPU</span><span class="bo-vit-pct num">34%</span></div>
+                  <p class="bo-vit-meta">8 cores &middot; 3.40 GHz</p>
+                </div>
+              </div>
+              <div class="bo-vit-spark" data-spark="cpu"></div>
+            </div>
+
+            <div class="bo-vit-item">
+              <div class="bo-vit-row">
+                <div class="bo-ring-wrap">
+                  <svg viewBox="0 0 40 40" aria-hidden="true">
+                    <circle class="bo-ring-track" cx="20" cy="20" r="16"></circle>
+                    <circle class="bo-ring-progress" data-pct="33" cx="20" cy="20" r="16"></circle>
+                  </svg>
+                  <span class="bo-ring-icon"><svg class="bo-icon" aria-hidden="true"><use href="#bo-i-ram"></use></svg></span>
+                </div>
+                <div class="bo-vit-info">
+                  <div class="bo-vit-top"><span class="bo-vit-name">RAM</span><span class="bo-vit-pct num">33%</span></div>
+                  <p class="bo-vit-meta">5.2 GB / 16 GB</p>
+                </div>
+              </div>
+              <div class="bo-vit-spark" data-spark="ram"></div>
+            </div>
+
+            <div class="bo-vit-item">
+              <div class="bo-vit-row">
+                <div class="bo-ring-wrap">
+                  <svg viewBox="0 0 40 40" aria-hidden="true">
+                    <circle class="bo-ring-track" cx="20" cy="20" r="16"></circle>
+                    <circle class="bo-ring-progress" data-pct="7" cx="20" cy="20" r="16"></circle>
+                  </svg>
+                  <span class="bo-ring-icon"><svg class="bo-icon" aria-hidden="true"><use href="#bo-i-swap"></use></svg></span>
+                </div>
+                <div class="bo-vit-info">
+                  <div class="bo-vit-top"><span class="bo-vit-name">Swap</span><span class="bo-vit-pct num">7%</span></div>
+                  <p class="bo-vit-meta">0.3 GB / 4.0 GB</p>
+                </div>
+              </div>
+              <div class="bo-vit-spark" data-spark="swap"></div>
+            </div>
+
+            <div class="bo-vit-item">
+              <div class="bo-vit-row">
+                <div class="bo-ring-wrap">
+                  <svg viewBox="0 0 40 40" aria-hidden="true">
+                    <circle class="bo-ring-track" cx="20" cy="20" r="16"></circle>
+                    <circle class="bo-ring-progress" data-pct="51" cx="20" cy="20" r="16"></circle>
+                  </svg>
+                  <span class="bo-ring-icon"><svg class="bo-icon" aria-hidden="true"><use href="#bo-i-disk"></use></svg></span>
+                </div>
+                <div class="bo-vit-info">
+                  <div class="bo-vit-top"><span class="bo-vit-name">Storage</span><span class="bo-vit-pct num">51%</span></div>
+                  <p class="bo-vit-meta">82 GB / 160 GB</p>
+                </div>
+              </div>
+              <div class="bo-vit-spark" data-spark="storage"></div>
+            </div>
+          </div>
+          <div class="bo-divider"></div>
+          <div class="bo-load">
+            <p class="bo-tile-title" style="margin-bottom:10px;">
+              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-gauge"></use></svg>
+              Load Average
+            </p>
+            <div class="bo-load-row"><span class="bo-load-label">1m</span><span class="bo-load-bar"><span style="width:5.3%"></span></span><span class="bo-load-val num">0.42</span></div>
+            <div class="bo-load-row"><span class="bo-load-label">5m</span><span class="bo-load-bar"><span style="width:6.9%"></span></span><span class="bo-load-val num">0.55</span></div>
+            <div class="bo-load-row"><span class="bo-load-label">15m</span><span class="bo-load-bar"><span style="width:6.0%"></span></span><span class="bo-load-val num">0.48</span></div>
+          </div>
+        </article>
+
+        <article class="bo-tile bo-t-svc" aria-label="VPN services">
+          <div class="bo-tile-head">
+            <h3 class="bo-tile-title">VPN Services</h3>
+            <span class="bo-tile-meta">7 running &middot; 2 idle &middot; 1 stopped</span>
+          </div>
+          <div class="bo-svc-grid">
+            <div class="bo-svc-cell" data-state="running"><span class="bo-svc-led"></span><span class="bo-svc-name">Xray</span><span class="bo-svc-state">Running</span></div>
+            <div class="bo-svc-cell" data-state="running"><span class="bo-svc-led"></span><span class="bo-svc-name">OpenVPN</span><span class="bo-svc-state">Running</span></div>
+            <div class="bo-svc-cell" data-state="running"><span class="bo-svc-led"></span><span class="bo-svc-name">WireGuard</span><span class="bo-svc-state">Running</span></div>
+            <div class="bo-svc-cell" data-state="running"><span class="bo-svc-led"></span><span class="bo-svc-name">L2TP/IPsec</span><span class="bo-svc-state">Running</span></div>
+            <div class="bo-svc-cell" data-state="running"><span class="bo-svc-led"></span><span class="bo-svc-name">IKEv2</span><span class="bo-svc-state">Running</span></div>
+            <div class="bo-svc-cell" data-state="running"><span class="bo-svc-led"></span><span class="bo-svc-name">OpenConnect</span><span class="bo-svc-state">Running</span></div>
+            <div class="bo-svc-cell" data-state="running"><span class="bo-svc-led"></span><span class="bo-svc-name">MTProto</span><span class="bo-svc-state">Running</span></div>
+            <div class="bo-svc-cell" data-state="idle"><span class="bo-svc-led"></span><span class="bo-svc-name">SSTP</span><span class="bo-svc-state">Idle</span></div>
+            <div class="bo-svc-cell" data-state="idle"><span class="bo-svc-led"></span><span class="bo-svc-name">SSH</span><span class="bo-svc-state">Idle</span></div>
+            <div class="bo-svc-cell" data-state="stopped"><span class="bo-svc-led"></span><span class="bo-svc-name">PPTP</span><span class="bo-svc-state">Stopped</span></div>
+          </div>
+        </article>
+
+        <article class="bo-tile bo-t-xray" aria-label="Xray core control">
+          <div class="bo-tile-head">
+            <h3 class="bo-tile-title">Xray</h3>
+            <span class="bo-status-pill bo-status-pill--ok"><span class="bo-dot bo-dot--ok"></span>Running</span>
+          </div>
+          <div class="bo-kv-row"><span class="bo-kv-label">Version</span><span class="bo-kv-value num">v25.3.6</span></div>
+          <div class="bo-kv-row"><span class="bo-kv-label">Uptime</span><span class="bo-kv-value num">12d 4h</span></div>
+          <div class="bo-divider"></div>
+          <div class="bo-btn-row">
+            <button type="button" class="bo-icon-btn"><svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-file"></use></svg>Logs</button>
+            <button type="button" class="bo-icon-btn bo-icon-btn--danger"><svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-stop"></use></svg>Stop</button>
+            <button type="button" class="bo-icon-btn"><svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>Restart</button>
+            <button type="button" class="bo-icon-btn"><svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-globe"></use></svg>Geofiles</button>
+            <button type="button" class="bo-icon-btn"><svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-tag"></use></svg>Version</button>
+          </div>
+        </article>
+
+        <article class="bo-tile bo-t-manage" aria-label="Manage panel">
+          <div class="bo-tile-head"><h3 class="bo-tile-title">Manage</h3></div>
+          <p class="bo-tile-caption">Panel logs, configuration file and database backups.</p>
+          <div class="bo-btn-row" style="margin-top:auto;">
+            <button type="button" class="bo-icon-btn"><svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-file"></use></svg>Logs</button>
+            <button type="button" class="bo-icon-btn"><svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-sliders"></use></svg>Config</button>
+            <button type="button" class="bo-icon-btn"><svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-download"></use></svg>Backup</button>
+          </div>
+        </article>
+
+        <article class="bo-tile bo-t-vpnui" aria-label="VPN-UI update status">
+          <div class="bo-tile-head"><h3 class="bo-tile-title">VPN-UI</h3></div>
+          <div class="bo-vpnui-body">
+            <div>
+              <div class="bo-vpnui-version num">v1.7.6</div>
+              <p class="bo-status-line bo-status-line--ok">
+                <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-check-circle"></use></svg>
+                Up to date
+              </p>
+            </div>
+            <button type="button" class="bo-btn bo-btn--primary">Check for Update</button>
+          </div>
+        </article>
+
+        <article class="bo-tile bo-t-process" aria-label="Xray uptime and resource usage">
+          <div class="bo-tile-head"><h3 class="bo-tile-title">Uptime &amp; Usage</h3></div>
+          <div class="bo-stat-grid">
+            <div class="bo-stat-cell"><span class="bo-stat-cell-label">Xray Uptime</span><span class="bo-stat-cell-value num">12d 4h</span></div>
+            <div class="bo-stat-cell"><span class="bo-stat-cell-label">OS Uptime</span><span class="bo-stat-cell-value num">47d 9h</span></div>
+            <div class="bo-stat-cell"><span class="bo-stat-cell-label">RAM</span><span class="bo-stat-cell-value num">84 MB</span></div>
+            <div class="bo-stat-cell"><span class="bo-stat-cell-label">Threads</span><span class="bo-stat-cell-value num">23</span></div>
+          </div>
+        </article>
+
+        <article class="bo-tile bo-t-conn" aria-label="Connection stats">
+          <div class="bo-tile-head"><h3 class="bo-tile-title">Connections</h3></div>
+          <div class="bo-conn-body">
+            <div class="bo-conn-stat bo-conn-stat--tcp">
+              <span class="bo-conn-label"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-link"></use></svg>TCP</span>
+              <span class="bo-conn-value num">1,284</span>
+            </div>
+            <div class="bo-conn-stat bo-conn-stat--udp">
+              <span class="bo-conn-label"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-link"></use></svg>UDP</span>
+              <span class="bo-conn-value num">462</span>
+            </div>
+          </div>
+          <div class="bo-conn-ratio">
+            <span class="bo-conn-ratio-seg bo-conn-ratio-seg--tcp" style="width:73.5%"></span>
+            <span class="bo-conn-ratio-seg bo-conn-ratio-seg--udp" style="width:26.5%"></span>
+          </div>
+        </article>
+
+        <article class="bo-tile bo-t-ips" aria-label="IP addresses">
+          <div class="bo-tile-head">
+            <h3 class="bo-tile-title">IP Addresses</h3>
+            <button type="button" class="bo-icon-btn bo-icon-btn--ghost" id="boIpToggle" aria-label="Hide IP addresses">
+              <svg class="bo-icon bo-icon-16 bo-i-eye" aria-hidden="true"><use href="#bo-i-eye"></use></svg>
+              <svg class="bo-icon bo-icon-16 bo-i-eye-off" aria-hidden="true" style="display:none"><use href="#bo-i-eye-off"></use></svg>
+              <span id="boIpToggleLabel">Hide</span>
+            </button>
+          </div>
+          <div class="bo-ip-row"><span class="bo-ip-label">IPv4</span><span class="bo-ip-value num" data-full="203.0.113.7">203.0.113.7</span></div>
+          <div class="bo-ip-row"><span class="bo-ip-label">IPv6</span><span class="bo-ip-value num" data-full="2a01:4f8:1c1c:abcd::1">2a01:4f8:1c1c:abcd::1</span></div>
+        </article>
+
+      </div>
+
+      <footer class="bo-foot">Design mockup, vpn-ui Overview, Bento</footer>
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root = document.getElementById('bento-overview');
+  if(!root) return;
+  var docEl = document.documentElement;
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* theme toggle - stamps data-theme on the document root */
+  var themeBtn = document.getElementById('boThemeToggle');
+  function effectiveTheme(){
+    var attr = docEl.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function applyTheme(t){
+    docEl.setAttribute('data-theme', t);
+    if(themeBtn) themeBtn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+  }
+  applyTheme(effectiveTheme());
+  if(themeBtn){
+    themeBtn.addEventListener('click', function(){
+      applyTheme(effectiveTheme() === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  /* deterministic pseudo-random history, same generator shape for every series */
+  function seededRand(seed){
+    var s = seed >>> 0;
+    return function(){
+      s = (s + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function synth(seed, n, min, max, endValue){
+    var rand = seededRand(seed);
+    var range = max - min;
+    var v = min + range * 0.5;
+    var out = [];
+    for(var i = 0; i < n; i++){
+      v += (rand() - 0.5) * range * 0.55;
+      if(v < min) v = min;
+      if(v > max) v = max;
+      out.push(v);
+    }
+    if(endValue !== undefined) out[out.length - 1] = endValue;
+    return out;
+  }
+
+  var DATA = {
+    cpu:      synth(11, 24, 28,   42,   34),
+    ram:      synth(22, 24, 30,   36,   33),
+    swap:     synth(33, 24, 4,    9,    7),
+    storage:  synth(44, 24, 49.3, 51.2, 51),
+    upload:   synth(55, 24, 1.5,  3,    2.4),
+    download: synth(66, 24, 5,    11,   8.1)
+  };
+
+  /* compact single-series mark: ~10-15% area wash, 2px line, surface-ringed endpoint dot */
+  function buildMiniSpark(values, w, h, color){
+    var pad = 2;
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    var span = (max - min) || 1;
+    var n = values.length;
+    var stepX = (w - pad * 2) / (n - 1);
+    var pts = values.map(function(v, i){
+      return [pad + i * stepX, pad + (1 - (v - min) / span) * (h - pad * 2)];
+    });
+    var line = pts.map(function(p, i){ return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+    var area = line + ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + (h - pad).toFixed(1) +
+      ' L' + pts[0][0].toFixed(1) + ',' + (h - pad).toFixed(1) + ' Z';
+    var last = pts[pts.length - 1];
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-hidden="true">' +
+      '<path d="' + area + '" style="fill:' + color + ';opacity:.14" stroke="none"/>' +
+      '<path d="' + line + '" fill="none" style="stroke:' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="4.5" style="fill:' + color + ';stroke:var(--surface);stroke-width:2"/>' +
+      '</svg>';
+  }
+
+  /* hero chart: same mark spec plus two solid hairline references (never dashed) */
+  function buildFlowChart(values, w, h, color){
+    var pad = 4;
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    var span = (max - min) || 1;
+    var n = values.length;
+    var innerH = h - pad * 2 - 14;
+    var stepX = (w - pad * 2) / (n - 1);
+    var pts = values.map(function(v, i){
+      return [pad + i * stepX, pad + (1 - (v - min) / span) * innerH];
+    });
+    var baseY = pad + innerH;
+    var midY = pad + innerH * 0.5;
+    var line = pts.map(function(p, i){ return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+    var area = line + ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + baseY.toFixed(1) +
+      ' L' + pts[0][0].toFixed(1) + ',' + baseY.toFixed(1) + ' Z';
+    var last = pts[pts.length - 1];
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-hidden="true">' +
+      '<line x1="' + pad + '" y1="' + midY.toFixed(1) + '" x2="' + (w - pad) + '" y2="' + midY.toFixed(1) + '" stroke="var(--border)" stroke-width="1"/>' +
+      '<line x1="' + pad + '" y1="' + baseY.toFixed(1) + '" x2="' + (w - pad) + '" y2="' + baseY.toFixed(1) + '" stroke="var(--border)" stroke-width="1"/>' +
+      '<path d="' + area + '" style="fill:' + color + ';opacity:.14" stroke="none"/>' +
+      '<path d="' + line + '" fill="none" style="stroke:' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="4.5" style="fill:' + color + ';stroke:var(--surface);stroke-width:2"/>' +
+      '</svg>';
+  }
+
+  var CHART_DEFS = [
+    { sel:'[data-spark="cpu"]',      values:DATA.cpu,      height:24,  color:'var(--accent)', mini:true },
+    { sel:'[data-spark="ram"]',      values:DATA.ram,      height:24,  color:'var(--accent)', mini:true },
+    { sel:'[data-spark="swap"]',     values:DATA.swap,     height:24,  color:'var(--accent)', mini:true },
+    { sel:'[data-spark="storage"]',  values:DATA.storage,  height:24,  color:'var(--accent)', mini:true },
+    { sel:'[data-chart="upload"]',   values:DATA.upload,   height:130, color:'var(--accent)', mini:false },
+    { sel:'[data-chart="download"]', values:DATA.download, height:130, color:'var(--info)',   mini:false }
+  ];
+  function renderCharts(){
+    CHART_DEFS.forEach(function(def){
+      var el = root.querySelector(def.sel);
+      if(!el) return;
+      var w = Math.round(el.clientWidth) || 100;
+      el.innerHTML = def.mini ? buildMiniSpark(def.values, w, def.height, def.color) : buildFlowChart(def.values, w, def.height, def.color);
+    });
+  }
+  renderCharts();
+  var resizeTimer;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderCharts, 150);
+  });
+
+  /* vital rings: circumference for r=16, animated fill-in like the reference gauges */
+  var RING_R = 16;
+  var RING_C = 2 * Math.PI * RING_R;
+  var rings = root.querySelectorAll('.bo-ring-progress');
+  rings.forEach(function(el){
+    var pct = parseFloat(el.getAttribute('data-pct')) || 0;
+    var offset = RING_C * (1 - pct / 100);
+    el.style.strokeDasharray = RING_C.toFixed(2);
+    if(reduceMotion){
+      el.style.strokeDashoffset = offset.toFixed(2);
+      return;
+    }
+    el.style.strokeDashoffset = RING_C.toFixed(2);
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        el.style.strokeDashoffset = offset.toFixed(2);
+      });
+    });
+  });
+
+  /* IP show / hide */
+  var ipBtn = document.getElementById('boIpToggle');
+  var ipLabel = document.getElementById('boIpToggleLabel');
+  var ipValues = root.querySelectorAll('.bo-ip-value');
+  var ipVisible = true;
+  function maskValue(v){ return v.replace(/[^:.]/g, '•'); }
+  function renderIp(){
+    ipValues.forEach(function(el){
+      var full = el.getAttribute('data-full') || el.textContent;
+      el.textContent = ipVisible ? full : maskValue(full);
+    });
+    if(ipBtn){
+      var eye = ipBtn.querySelector('.bo-i-eye');
+      var eyeOff = ipBtn.querySelector('.bo-i-eye-off');
+      if(eye) eye.style.display = ipVisible ? 'none' : '';
+      if(eyeOff) eyeOff.style.display = ipVisible ? '' : 'none';
+      ipBtn.setAttribute('aria-label', ipVisible ? 'Hide IP addresses' : 'Show IP addresses');
+    }
+    if(ipLabel) ipLabel.textContent = ipVisible ? 'Hide' : 'Show';
+  }
+  if(ipBtn){
+    ipBtn.addEventListener('click', function(){
+      ipVisible = !ipVisible;
+      renderIp();
+    });
+  }
+})();
+</script>
+</div>
+</body>
+</html>

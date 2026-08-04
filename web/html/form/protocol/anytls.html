@@ -1,0 +1,99 @@
+{{define "form/anytls"}}
+<a-collapse activeKey="0" v-for="(client, index) in inbound.settings.anytlses.slice(0,1)" v-if="!isEdit">
+    <a-collapse-panel header='{{ i18n "pages.inbounds.client" }}'>
+        {{template "form/client"}}
+    </a-collapse-panel>
+</a-collapse>
+<a-collapse v-else>
+    <a-collapse-panel :header="'{{ i18n "pages.client.clientCount"}} : ' + inbound.settings.anytlses.length">
+        <table width="100%">
+            <tr class="client-table-header">
+                <th>{{ i18n "pages.inbounds.email" }}</th>
+                <th>Password</th>
+            </tr>
+            <tr v-for="(client, index) in inbound.settings.anytlses"
+                :class="index % 2 == 1 ? 'client-table-odd-row' : ''">
+                <td>[[ client.email ]]</td>
+                <td>[[ client.password ]]</td>
+            </tr>
+        </table>
+    </a-collapse-panel>
+</a-collapse>
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
+    <!--
+        Deliberately a warning and not a block. "none" is a real deployment here, not
+        only a mis-click: with nginx or caddy terminating TLS in front and forwarding
+        plaintext to a local port, the client still speaks TLS end to end and Xray
+        simply is not the thing doing it. Refusing that would break a working setup, and
+        trojan (equally TLS-dependent) has always allowed it. So this states the
+        condition and lets the operator judge, rather than deciding for them.
+    -->
+    <a-alert
+        v-if="inbound.stream.security === 'none'"
+        type="warning"
+        show-icon
+        :style="{ marginBottom: '16px' }"
+        message="This inbound is not doing TLS"
+        description="AnyTLS exists to look like an ordinary TLS session, and with security set to none this listener is not one. That is correct if something in front of it terminates TLS and forwards plaintext to this port, which is a normal offload setup. It is wrong if this port is reachable from the internet: the traffic is then neither encrypted nor camouflaged, which defeats the entire point of the protocol and is trivial to fingerprint."
+    ></a-alert>
+
+    <!--
+        Fires only when the transport and security actually chosen below would produce
+        no Clash entry, rather than standing here as advice to be mapped onto a config
+        by hand. The whole problem being warned about is that the loss is invisible:
+        the subscription builds fine, returns 200, and simply has no node in it. See
+        anytlsClashDropReason() in modals/inbound_modal.html, which mirrors the server
+        guard and supplies the reason shown here.
+    -->
+    <a-alert
+        v-if="anytlsClashDropReason(inbound)"
+        type="warning"
+        show-icon
+        :style="{ marginBottom: '16px' }"
+        :message="anytlsClashDropReason(inbound)"
+        description="Nothing reports this. The Clash subscription builds normally and just has no node for this inbound, so the first sign is a user saying the server vanished from their app. The raw subscription is unaffected: its anytls:// link describes this inbound faithfully, REALITY parameters included, and imports correctly into sing-box. So this only matters if any of your users are on Clash or mihomo. If they are, serve AnyTLS over the TCP transport with TLS; if they are not, ignore this."
+    ></a-alert>
+
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Camouflage for the TLS record sizes of the first few records of a
+                    session, which is the part a censor can measure without decrypting
+                    anything. Each line is one rule: "stop=N" ends padding after the Nth
+                    record, and "N=min-max" gives the size range record N is padded into
+                    (commas split one record into several). The server's scheme is the
+                    authoritative one, so a client connecting with a different scheme is
+                    handed this one during the handshake. Leave it empty unless you have a
+                    reason: the built-in default is the scheme everyone else uses, and a
+                    unique scheme is itself a fingerprint.
+                </template>
+                Padding Scheme
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-textarea
+            :value="(inbound.settings.paddingScheme || []).join('\n')"
+            @change="e => { inbound.settings.paddingScheme = e.target.value.split('\n') }"
+            :rows="6"
+            :style="{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '12px' }"
+            placeholder="stop=8"
+        ></a-textarea>
+        <!--
+            This hint is load-bearing, not decoration. A cleared field stays cleared
+            across save and reload (AnytlsSettings.fromJson falls back to [], and
+            toJson omits the key rather than emitting []), so an operator who empties
+            this box sees an empty box forever while the core is in fact running its
+            built-in scheme. Without this line that reads as "padding is off".
+        -->
+        <span :style="{ color: '#888' }">
+            One rule per line. Empty is not "no padding": it means the built-in
+            default scheme, which is what most deployments should stay on.
+        </span>
+    </a-form-item>
+</a-form>
+{{end}}

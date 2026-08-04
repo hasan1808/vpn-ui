@@ -162,7 +162,6 @@
 {{template "modals/fakednsModal"}}
 {{template "modals/warpModal"}}
 {{template "modals/warpSocksModal"}}
-{{template "modals/sshOutboundModal"}}
 {{template "modals/nordModal"}}
 <script>
   const rulesColumns = [
@@ -261,6 +260,22 @@
       // so this is the only way to tell an SSH outbound apart from a real socks
       // one and label it honestly in the table.
       sshOutboundTags: [],
+      // The same tunnels keyed by tag, settings included. Edit rebuilds the SSH
+      // form out of this, because the row it opens from is a socks outbound and
+      // carries none of the tunnel (see sshOutboundModel).
+      sshOutbounds: {},
+      // The client VPN tunnels the panel manages, keyed by tag. Same problem as
+      // the SSH tags and one step worse: a VPN tunnel lands in the config as a
+      // freedom outbound, which is also what a plain direct outbound is, so
+      // without this list a tunnel and `direct` are indistinguishable in the
+      // table. It also carries the settings that Edit re-opens the tunnel form
+      // with, since the config copy no longer holds them.
+      vpnOutbounds: {},
+      // tag -> {up, detail} from the last status sweep.
+      vpnOutboundStatus: {},
+      // What /vpnoutbound/kinds reports: [{kind, available, why}], one per
+      // registered driver, sorted. null means the question could not be asked.
+      vpnOutKindList: null,
       outboundsTraffic: [],
       outboundTestStates: {}, // Track testing state and results for each outbound
       saveBtnDisable: true,
@@ -396,18 +411,91 @@
         try {
           const resp = await axios.post('/panel/xray/sshoutbound/list');
           const list = resp && resp.data ? resp.data.obj : null;
-          this.sshOutboundTags = Array.isArray(list) ? list.map(t => t.tag) : [];
+          const byTag = {};
+          (Array.isArray(list) ? list : []).forEach(t => { if (t && t.tag) byTag[t.tag] = t; });
+          // The whole tunnel and not just its tag: an SSH row in the table is a
+          // socks outbound to a loopback port, so Edit has nothing to rebuild the
+          // SSH form from except this list. Secrets are not in it; the server
+          // strips them and a blank field is what keeps the stored one.
+          this.sshOutbounds = byTag;
+          this.sshOutboundTags = Object.keys(byTag);
         } catch (e) {
+          this.sshOutbounds = {};
           this.sshOutboundTags = [];
         }
       },
+      // The client VPN tunnels, by tag. Raw axios and best effort for the same
+      // reason as the SSH tags: this decides labels and an Edit path, so a failed
+      // fetch should leave rows reading `freedom` rather than red-bar the page.
+      async loadVpnOutbounds() {
+        try {
+          const resp = await axios.post('/panel/xray/vpnoutbound/list');
+          const list = resp && resp.data ? resp.data.obj : null;
+          const byTag = {};
+          (Array.isArray(list) ? list : []).forEach(t => { if (t && t.tag) byTag[t.tag] = t; });
+          this.vpnOutbounds = byTag;
+        } catch (e) {
+          this.vpnOutbounds = {};
+        }
+      },
+      // One status probe per tunnel, in parallel. There are at most a handful of
+      // tunnels, and each one asks a different driver about a different netdev, so
+      // there is nothing to batch server-side.
+      async loadVpnOutboundStatus() {
+        const tags = Object.keys(this.vpnOutbounds);
+        if (!tags.length) return;
+        const states = {};
+        await Promise.all(tags.map(async tag => {
+          try {
+            // Plain object, never a pre-stringified body: the global request
+            // interceptor Qs.stringify's every body, and Qs.stringify of a string
+            // is the empty string, so a hand-encoded one would post nothing.
+            const resp = await axios.post('/panel/xray/vpnoutbound/status', { tag: tag });
+            const obj = resp && resp.data ? resp.data.obj : null;
+            if (obj) states[tag] = { up: !!(obj.running ?? obj.up), detail: obj.detail || obj.log || '' };
+          } catch (e) {
+            // Leave the tunnel without a state: the table then shows no dot at
+            // all, which is honest, rather than claiming it is down.
+          }
+        }));
+        this.vpnOutboundStatus = states;
+      },
+      vpnOutboundOf(outbound) {
+        return outbound && outbound.tag ? this.vpnOutbounds[outbound.tag] : undefined;
+      },
+      sshOutboundOf(outbound) {
+        return outbound && outbound.tag ? this.sshOutbounds[outbound.tag] : undefined;
+      },
+      // Which tunnel protocols this host can actually raise, and why not when it
+      // cannot. The driver registry is the only thing that knows: a kind whose
+      // client binary was never bundled for this arch is a runtime fact, not a
+      // build one. An unavailable protocol is listed and DISABLED rather than
+      // dropped, because a missing row reads as "this panel does not support it"
+      // and gives the operator nothing to act on, while a greyed one carrying its
+      // reason says what to install.
+      async loadVpnOutKinds() {
+        try {
+          const resp = await axios.post('/panel/xray/vpnoutbound/kinds');
+          const list = resp && resp.data ? resp.data.obj : null;
+          // An empty answer is treated as "unknown" rather than "none available":
+          // a picker with nothing in it is a dead form, so the local table is
+          // offered instead and an unusable kind fails loudly at save.
+          this.vpnOutKindList = Array.isArray(list) && list.length ? list : null;
+        } catch (e) {
+          this.vpnOutKindList = null;
+        }
+      },
       // What to call an outbound in the UI. An SSH tunnel is a socks outbound in
-      // the config and must stay one, but calling it "socks" on screen hides what
-      // the operator actually created.
+      // the config and must stay one, and a VPN tunnel is a freedom one, but
+      // calling them "socks" and "freedom" on screen hides what the operator
+      // actually created. The VPN label carries the kind, because "vpn" alone
+      // would not say whether the row dials WireGuard or PPTP.
       outboundProtocolLabel(outbound) {
         if (outbound && outbound.tag && this.sshOutboundTags.includes(outbound.tag)) {
           return Protocols.SSH;
         }
+        const vpn = this.vpnOutboundOf(outbound);
+        if (vpn) return vpnProtocolFor(vpn.kind);
         return outbound ? outbound.protocol : '';
       },
       async getOutboundsTraffic() {
@@ -589,10 +677,46 @@
             return `↑ ${SizeFormatter.sizeFormat(otraffic.up)} / ${SizeFormatter.sizeFormat(otraffic.down)} ↓`
           }
         }
+        // No row for this tag, which is only a zero if something was counting.
+        // Both outbound stats switches ship FALSE, and with them false the core
+        // registers no outbound counter at all, so "0 B / 0 B" here would be a
+        // measurement the panel never took.
+        if (!this.outboundStatsOn()) {
+          return '{{ i18n "pages.xray.outbound.trafficUnmeasured" }}';
+        }
         return `${SizeFormatter.sizeFormat(0)} / ${SizeFormatter.sizeFormat(0)}`
+      },
+      // Whether the core is counting outbound bytes at all right now: either the
+      // operator turned a counter on, or the panel is forcing both on because a
+      // tunnel is pinned. Not the same question as "did this outbound move any
+      // bytes", which is what a row in outboundsTraffic answers.
+      outboundStatsOn() {
+        const policy = this.templateSettings ? this.templateSettings.policy : null;
+        const sys = policy ? policy.system : null;
+        if (sys && (sys.statsOutboundUplink || sys.statsOutboundDownlink)) return true;
+        return this.vpnOutboundCountersForced;
+      },
+      // Green is for a MEASUREMENT, including a measured zero. The absence of one
+      // gets a neutral tag instead: they are different statements and the column
+      // used to make the confident one for both.
+      outboundTrafficMeasured(o) {
+        if (this.outboundsTraffic.some(t => t.tag == o.tag)) return true;
+        return this.outboundStatsOn();
       },
       findOutboundAddress(o) {
         serverObj = null;
+        // A VPN tunnel's row is a freedom outbound and carries no address at all,
+        // so the peer it dials comes from the stored tunnel. Checked before the
+        // switch, which would otherwise fall through to `default` and show the
+        // column empty for every tunnel.
+        const vpn = this.vpnOutboundOf(o);
+        if (vpn) {
+          const s = vpn.settings || {};
+          // `endpoint` is what the wireguard family calls it, `server` what every
+          // other driver does.
+          const peer = s.endpoint || s.server || '';
+          return peer ? [peer] : null;
+        }
         switch (o.protocol) {
           case Protocols.VMess:
             serverObj = o.settings.vnext;
@@ -607,6 +731,20 @@
             break;
           case Protocols.DNS:
             return [o.settings?.address + ':' + o.settings?.port];
+          // Flat settings, like VLESS above and unlike the servers[] group. A
+          // missing case here is not a missing feature, it falls through to
+          // `default` and leaves the Address column empty for every row of the
+          // protocol, which reads as an outbound that has not been configured.
+          //
+          // The servers[] fallback covers a hand-written config: TUIC's upstream
+          // accepts that shape, the panel never writes it, and a row pasted into
+          // the JSON tab still has to show its address.
+          case Protocols.AnyTLS:
+          case Protocols.Tuic:
+          case Protocols.Naive:
+            if (o.settings?.address) return [o.settings.address + ':' + o.settings.port];
+            serverObj = o.settings?.servers;
+            break;
           case Protocols.Wireguard:
             return o.settings.peers.map(peer => peer.endpoint);
           default:
@@ -620,6 +758,26 @@
           okText: '{{ i18n "pages.xray.outbound.addOutbound" }}',
           confirm: async (outbound) => {
             outModal.loading();
+            // A vpn outbound is a panel-managed client tunnel, so the tunnel has
+            // to be raised before the outbound that egresses through it: the
+            // interface it lands on is decided by the driver and is not knowable
+            // until then. If it cannot be raised, nothing is added.
+            if (isVpnProtocol(outModal.outbound.protocol)) {
+              const iface = await this.saveVpnTunnel(outModal.outbound);
+              if (!iface) {
+                outModal.loading(false);
+                return;
+              }
+              // Re-serialised because the copy handed to this callback was built
+              // before the interface existed, and an outbound with no interface
+              // egresses through the host's own default route instead of the
+              // tunnel, with nothing on screen looking wrong.
+              outModal.outbound.settings.iface = iface;
+              outbound = outModal.outbound.toJson();
+              await this.loadVpnOutbounds();
+              // Not awaited: it only fills in the row's up/down tag.
+              this.loadVpnOutboundStatus();
+            }
             // An ssh outbound is a panel-managed tunnel, so the tunnel has to
             // exist before the outbound that points at it. If the save is
             // refused (bad port, port already taken by another tunnel) nothing
@@ -658,11 +816,12 @@
         });
       },
       // Every tag an outbound may not reuse: the ones in the template plus the
-      // ones the SSH tunnels hold. `except` drops the row being edited so it does
-      // not collide with itself.
+      // ones the SSH and VPN tunnels hold. `except` drops the row being edited so
+      // it does not collide with itself.
       outboundAndTunnelTags(except) {
         const tags = this.templateSettings.outbounds.map(obj => obj.tag);
         this.sshOutboundTags.forEach(t => { if (!tags.includes(t)) tags.push(t); });
+        Object.keys(this.vpnOutbounds).forEach(t => { if (!tags.includes(t)) tags.push(t); });
         return except === undefined ? tags : tags.filter(t => t !== except);
       },
       // Creates (or replaces) the SSH tunnel behind an ssh-shaped outbound and
@@ -690,13 +849,68 @@
         if (!msg || !msg.success || !msg.obj) return 0;
         return Number(msg.obj.socksPort) || 0;
       },
+      // Raises (or replaces) the client VPN tunnel behind a vpn-shaped outbound
+      // and returns the netdev the driver landed on, or '' if it could not be
+      // raised. The caller needs the interface to pin egress to it, and needs the
+      // '' to refuse adding an outbound that would otherwise egress through the
+      // host's own default route while looking like a tunnel.
+      //
+      // The secrets travel here and only here: they are never written into the
+      // Xray config. `settings` goes as ONE form field holding JSON, because the
+      // body is form-urlencoded and the server side keeps this blob opaque
+      // (VpnOutboundConfig.Settings is a json.RawMessage each driver unmarshals
+      // for itself).
+      async saveVpnTunnel(model) {
+        const s = model.settings;
+        const msg = await HttpUtil.post('/panel/xray/vpnoutbound/save', {
+          tag: model.tag,
+          kind: s.kind,
+          remark: s.remark || '',
+          // Always enabled: see the form's comment. A stored-but-disabled tunnel
+          // has no interface, and this page has no way to show an outbound that
+          // exists but cannot carry traffic.
+          enable: true,
+          settings: JSON.stringify(s.settingsPayload()),
+        });
+        if (!msg || !msg.success || !msg.obj) return '';
+        return msg.obj.iface || '';
+      },
       editOutbound(index) {
         const editing = app.templateSettings.outbounds[index];
+        // A VPN row is a freedom outbound in the config and an SSH row is a socks
+        // one: the endpoint, keys and credentials are not in there, so re-opening
+        // either from the row alone would show a freedom/socks form and saving it
+        // would strand the tunnel. Rebuild the tunnel form from the panel's own
+        // list instead, which is where the real settings live.
+        const vpn = this.vpnOutboundOf(editing);
+        const ssh = vpn ? undefined : this.sshOutboundOf(editing);
+        let model = editing;
+        if (vpn) model = this.vpnOutboundModel(editing, vpn);
+        else if (ssh) model = this.sshOutboundModel(editing, ssh);
         outModal.show({
           title: '{{ i18n "pages.xray.outbound.editOutbound"}} ' + (index + 1),
-          outbound: editing,
+          outbound: model,
           confirm: async (outbound) => {
             outModal.loading();
+            // Switching an existing row's protocol TO vpn has to raise the tunnel
+            // too, exactly as adding one does.
+            if (isVpnProtocol(outModal.outbound.protocol)) {
+              const iface = await this.saveVpnTunnel(outModal.outbound);
+              if (!iface) {
+                outModal.loading(false);
+                return;
+              }
+              outModal.outbound.settings.iface = iface;
+              outbound = outModal.outbound.toJson();
+              // A renamed tag is a NEW tunnel server-side (Save upserts by tag),
+              // so the old one would keep its netdev up with no row pointing at
+              // it and be raised again at every boot. Drop it.
+              if (vpn && vpn.tag !== outModal.outbound.tag) {
+                await HttpUtil.post('/panel/xray/vpnoutbound/delete', { tag: vpn.tag });
+              }
+              await this.loadVpnOutbounds();
+              this.loadVpnOutboundStatus();
+            }
             // Switching an existing row's protocol TO ssh has to raise the tunnel
             // too, exactly as adding one does. Without this the row is saved as a
             // socks outbound aimed at 127.0.0.1:0, with nothing behind it and no
@@ -709,6 +923,13 @@
               }
               outModal.outbound.settings.socksPort = port;
               outbound = outModal.outbound.toJson();
+              // A renamed tag is a NEW tunnel server-side (Save upserts by tag),
+              // so the old one would keep its loopback port bound with no row
+              // pointing at it and be raised again at every boot. Drop it, as the
+              // vpn path above does.
+              if (ssh && ssh.tag !== outModal.outbound.tag) {
+                await HttpUtil.post('/panel/xray/sshoutbound/delete', { tag: ssh.tag });
+              }
               await this.loadSshOutboundTags();
             }
             this.templateSettings.outbounds[index] = outbound;
@@ -719,9 +940,32 @@
           tags: this.outboundAndTunnelTags(editing ? editing.tag : undefined)
         });
       },
+      // The Outbound the tunnel form edits, built from the stored tunnel rather
+      // than from the config row. Secrets are deliberately not carried across:
+      // the panel API does not echo them back, and a blank field is what tells
+      // the server to keep the stored one.
+      vpnOutboundModel(row, vpn) {
+        const settings = new Outbound.VpnSettings(vpn.kind, vpn.settings || {}, vpn.iface || '', vpn.remark || '');
+        // The row's own stream settings come from the config and not from the
+        // tunnel list, which knows nothing about them: rebuilding from the tunnel
+        // alone would drop the operator's sockopts on the next save.
+        return new Outbound(row.tag, vpnProtocolFor(vpn.kind), settings,
+          StreamSettings.fromJson(row.streamSettings), row.sendThrough);
+      },
+      // The Outbound the SSH form edits, built the same way and for the same
+      // reason: the row is a socks outbound aimed at a loopback port. Secrets are
+      // deliberately not carried across, since the panel API does not echo them
+      // back and a blank field is what tells the server to keep the stored one.
+      sshOutboundModel(row, ssh) {
+        const settings = new Outbound.SshSettings(ssh.address, ssh.port, ssh.username,
+          ssh.authType || 'password', '', '', '', ssh.knownHost || '', ssh.socksPort || 0);
+        return new Outbound(row.tag, Protocols.SSH, settings,
+          StreamSettings.fromJson(row.streamSettings), row.sendThrough);
+      },
       // Removing the row has to remove the tunnel behind it. Splicing alone left
-      // the tunnel in the `sshOutbounds` setting holding its loopback port and
-      // still dialling, invisible on this page and raised again at every boot.
+      // the tunnel in the `sshOutbounds`/`vpnOutbounds` setting still dialling
+      // (holding a loopback port, or a netdev the kernel keeps up), invisible on
+      // this page and raised again at every boot.
       async deleteOutbound(index) {
         const outbounds = this.templateSettings.outbounds;
         const gone = outbounds[index];
@@ -730,6 +974,10 @@
         if (gone && gone.tag && this.sshOutboundTags.includes(gone.tag)) {
           await HttpUtil.post('/panel/xray/sshoutbound/delete', { tag: gone.tag });
           await this.loadSshOutboundTags();
+        }
+        if (gone && gone.tag && this.vpnOutbounds[gone.tag]) {
+          await HttpUtil.post('/panel/xray/vpnoutbound/delete', { tag: gone.tag });
+          await this.loadVpnOutbounds();
         }
       },
       setFirstOutbound(index) {
@@ -1196,9 +1444,6 @@
       showNord() {
         nordModal.show();
       },
-      showSshOutbound() {
-        sshOutboundModal.show();
-      },
       async loadCustomGeoAliases() {
         try {
           const msg = await HttpUtil.get('/panel/api/custom-geo/aliases');
@@ -1238,7 +1483,11 @@
       }
       // In parallel: awaiting the tags AFTER the settings let the table paint once
       // with an empty tag list, so every ssh row flashed "socks" before correcting.
-      await Promise.all([this.getXraySetting(), this.loadSshOutboundTags()]);
+      await Promise.all([this.getXraySetting(), this.loadSshOutboundTags(), this.loadVpnOutbounds(), this.loadVpnOutKinds()]);
+      // Not awaited with the rest: this is one request per tunnel and only decides
+      // a status dot, so the table should not wait on a driver that is slow to
+      // answer (a dialling client, an unreachable peer).
+      this.loadVpnOutboundStatus();
       await this.loadCustomGeoAliases();
       await this.getXrayResult();
       await this.getOutboundsTraffic();
@@ -1488,6 +1737,17 @@
           newTemplateSettings.policy.system.statsInboundDownlink = newValue;
           this.templateSettings = newTemplateSettings;
         }
+      },
+      // True when the panel is force-enabling the two outbound stats counters in
+      // the config it BUILDS, which it does as soon as one client tunnel is
+      // actually pinned to a netdev: a tunnel's bytes are invisible to the core
+      // without those counters, and both ship false. Mirrors the condition the
+      // Go side uses (enabled, tagged, and holding an interface), so the switches
+      // below and the traffic column describe the running config rather than the
+      // stored template.
+      vpnOutboundCountersForced: function () {
+        return Object.values(this.vpnOutbounds || {})
+          .some(t => t && t.enable !== false && t.tag && t.iface);
       },
       statsOutboundUplink: {
         get: function () {

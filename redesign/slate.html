@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Overview: Slate</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<style>
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 10px 24px -10px rgba(16,24,32,.12), 0 2px 6px rgba(16,24,32,.05);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+    --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+    --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+    --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+    --shadow-sm:none; --shadow-md:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+  --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+  --ok-weak:rgba(99,214,126,.16); --info-weak:rgba(74,160,255,.16); --warn-weak:rgba(255,196,77,.16);
+  --error-weak:rgba(255,107,107,.16); --off-weak:rgba(91,107,130,.18);
+  --shadow-sm:none; --shadow-md:none;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+  --accent:#008771; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+  --ok-weak:rgba(82,196,26,.12); --info-weak:rgba(24,144,255,.12); --warn-weak:rgba(250,173,20,.14);
+  --error-weak:rgba(245,34,45,.12); --off-weak:rgba(152,162,179,.14);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 10px 24px -10px rgba(16,24,32,.12), 0 2px 6px rgba(16,24,32,.05);
+}
+
+.sl-root, .sl-root *, .sl-root *::before, .sl-root *::after{ box-sizing:border-box; }
+.sl-root{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--bg); color:var(--text);
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  min-height:100vh; overflow-x:hidden;
+}
+.sl-root .num{ font-variant-numeric:tabular-nums; }
+.sl-root .sl-mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; }
+.sl-root svg{ display:block; }
+.sl-root button{ font-family:inherit; }
+.sl-root ul, .sl-root p, .sl-root h1, .sl-root h2, .sl-root h3{ margin:0; padding:0; }
+
+@media (prefers-reduced-motion: reduce){
+  .sl-root *{ transition-duration:.001ms !important; animation-duration:.001ms !important; }
+}
+.sl-root button:focus-visible, .sl-root [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:6px;
+}
+
+.sl-root .sl-icon{ width:18px; height:18px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.sl-root .sl-icon-14{ width:14px; height:14px; }
+.sl-root .sl-icon-16{ width:16px; height:16px; }
+.sl-root .sl-icon-20{ width:20px; height:20px; }
+.sl-root .sl-icon--fill{ fill:currentColor; stroke:none; }
+
+.sl-root .sl-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; background:var(--off); }
+.sl-root .sl-dot--ok{ background:var(--ok); }
+.sl-root .sl-dot--info{ background:var(--info); }
+.sl-root .sl-dot--warn{ background:var(--warn); }
+.sl-root .sl-dot--error{ background:var(--error); }
+
+/* ===== shell / rail / topbar ===== */
+.sl-root .sl-shell{ display:flex; min-height:100vh; }
+.sl-root .sl-rail{
+  flex:0 0 80px; width:80px; align-self:flex-start; position:sticky; top:0; height:100vh;
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center;
+  padding:22px 0; gap:30px; overflow-y:auto;
+}
+.sl-root .sl-rail-brand{ display:flex; flex-direction:column; align-items:center; gap:7px; color:var(--accent); }
+.sl-root .sl-rail-brand span{ font-size:11.5px; font-weight:700; color:var(--text); letter-spacing:.01em; }
+.sl-root .sl-rail-nav{ display:flex; flex-direction:column; gap:4px; width:100%; align-items:center; }
+.sl-root .sl-rail-item{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  width:64px; padding:9px 4px 8px; border-radius:9px; border:none; background:transparent; color:var(--text-3);
+  cursor:pointer; transition:background .15s ease, color .15s ease;
+}
+.sl-root .sl-rail-item span{ font-size:10px; font-weight:600; letter-spacing:.01em; }
+.sl-root .sl-rail-item:hover{ color:var(--text-2); background:var(--surface-2); }
+.sl-root .sl-rail-item.is-active{ background:var(--accent-weak); color:var(--accent); }
+
+.sl-root .sl-main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.sl-root .sl-topbar{ background:var(--surface); border-bottom:1px solid var(--border); }
+.sl-root .sl-topbar-inner{
+  max-width:1280px; margin:0 auto; padding:12px 32px;
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+}
+.sl-root .sl-topbar-left{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; min-width:0; }
+.sl-root .sl-host-chip, .sl-root .sl-health-pill{
+  display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+  padding:5px 10px; border-radius:7px; white-space:nowrap;
+}
+.sl-root .sl-host-chip{ background:var(--surface-2); color:var(--text-2); }
+.sl-root .sl-host-chip .sl-icon{ color:var(--text-3); }
+.sl-root .sl-health-pill{ background:var(--ok-weak); color:var(--ok); }
+.sl-root .sl-theme-toggle{
+  width:32px; height:32px; border-radius:50%; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex:0 0 auto;
+  transition:background .15s ease, border-color .15s ease, color .15s ease;
+}
+.sl-root .sl-theme-toggle:hover{ background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+.sl-root .sl-theme-toggle .sl-i-moon{ display:none; }
+:root[data-theme="dark"] .sl-theme-toggle .sl-i-sun{ display:none; }
+:root[data-theme="dark"] .sl-theme-toggle .sl-i-moon{ display:block; }
+
+.sl-root .sl-content{ max-width:1280px; width:100%; margin:0 auto; padding:32px 32px 52px; }
+
+/* ===== identity hero ===== */
+.sl-root .sl-hero{
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:28px 32px; margin-bottom:36px;
+  display:flex; align-items:center; justify-content:space-between; gap:28px; flex-wrap:wrap;
+}
+.sl-root .sl-hero-id{ display:flex; align-items:center; gap:18px; min-width:0; }
+.sl-root .sl-hero-logo{
+  width:60px; height:60px; border-radius:16px; background:var(--accent-weak);
+  display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+}
+.sl-root .sl-hero-logo svg{ width:30px; height:30px; }
+.sl-root .sl-hero-text{ min-width:0; }
+.sl-root .sl-hero-title{ font-size:28px; font-weight:650; letter-spacing:-.01em; color:var(--text); text-wrap:balance; }
+.sl-root .sl-hero-meta{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; font-size:13px; color:var(--text-2); }
+.sl-root .sl-hero-kernel{ color:var(--text-2); background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:2px 7px; font-size:12px; }
+.sl-root .sl-hero-host{ display:inline-flex; align-items:center; gap:5px; }
+.sl-root .sl-hero-host .sl-icon{ color:var(--text-3); }
+.sl-root .sl-hero-sep{ color:var(--text-3); }
+.sl-root .sl-hero-health{ display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+.sl-root .sl-hero-status{ display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:650; color:var(--ok); white-space:nowrap; }
+.sl-root .sl-hero-stats{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:12.5px; color:var(--text-2); padding-left:18px; border-left:1px solid var(--border); }
+.sl-root .sl-hero-stats b{ color:var(--text); font-weight:650; }
+@media (max-width:720px){
+  .sl-root .sl-hero{ padding:22px; }
+  .sl-root .sl-hero-stats{ padding-left:0; border-left:none; }
+}
+
+/* ===== sections ===== */
+.sl-root .sl-section{ margin-bottom:36px; }
+.sl-root .sl-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:0 0 14px; }
+.sl-root .sl-section-title{ font-size:12.5px; font-weight:650; text-transform:uppercase; letter-spacing:.05em; color:var(--text-2); }
+.sl-root .sl-section-meta{ font-size:12px; color:var(--text-3); }
+
+/* ===== vitals ===== */
+.sl-root .sl-vitals{ display:grid; grid-template-columns:1fr; gap:14px; }
+@media (min-width:560px){ .sl-root .sl-vitals{ grid-template-columns:repeat(2,1fr); } }
+@media (min-width:1024px){ .sl-root .sl-vitals{ grid-template-columns:repeat(4,1fr); gap:16px; } }
+
+.sl-root .sl-vital-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px;
+  box-shadow:var(--shadow-sm); transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.sl-root .sl-vital-card:hover{ transform:translateY(-2px); border-color:var(--border-strong); box-shadow:var(--shadow-md); }
+.sl-root .sl-vital-label{ display:flex; align-items:center; gap:7px; font-size:11.5px; font-weight:650; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); margin-bottom:12px; }
+.sl-root .sl-vital-main{ display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.sl-root .sl-vital-value{ font-size:30px; font-weight:650; letter-spacing:-.01em; color:var(--text); }
+.sl-root .sl-vital-value .sl-pct{ font-size:16px; font-weight:600; color:var(--text-3); margin-left:1px; }
+.sl-root .sl-vital-graph{ width:84px; height:32px; flex:0 0 auto; }
+.sl-root .sl-vital-foot{ font-size:12.5px; color:var(--text-2); margin-top:12px; }
+.sl-root .sl-vital-load{ display:flex; align-items:center; gap:12px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); }
+.sl-root .sl-vital-load-item{ font-size:11px; color:var(--text-3); }
+.sl-root .sl-vital-load-item b{ color:var(--text-2); font-weight:650; }
+
+/* ===== services matrix ===== */
+.sl-root .sl-services{ display:grid; grid-template-columns:repeat(auto-fill,minmax(176px,1fr)); gap:10px; }
+.sl-root .sl-svc-tile{
+  display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:12px 14px; transition:transform .15s ease, border-color .15s ease;
+}
+.sl-root .sl-svc-tile:hover{ transform:translateY(-1px); border-color:var(--border-strong); }
+.sl-root .sl-svc-led{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; background:var(--off); }
+.sl-root .sl-svc-tile[data-state="running"] .sl-svc-led{ background:var(--ok); box-shadow:0 0 0 3px var(--ok-weak); }
+.sl-root .sl-svc-tile[data-state="idle"] .sl-svc-led{ background:var(--info); box-shadow:0 0 0 3px var(--info-weak); }
+.sl-root .sl-svc-tile[data-state="stopped"] .sl-svc-led{ background:var(--warn); box-shadow:0 0 0 3px var(--warn-weak); }
+.sl-root .sl-svc-body{ min-width:0; }
+.sl-root .sl-svc-name{ font-size:13px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sl-root .sl-svc-state{ font-size:11px; font-weight:650; letter-spacing:.02em; color:var(--off); }
+.sl-root .sl-svc-tile[data-state="running"] .sl-svc-state{ color:var(--ok); }
+.sl-root .sl-svc-tile[data-state="idle"] .sl-svc-state{ color:var(--info); }
+.sl-root .sl-svc-tile[data-state="stopped"] .sl-svc-state{ color:var(--warn); }
+
+/* ===== system card grid ===== */
+.sl-root .sl-grid{ display:grid; grid-template-columns:1fr; gap:14px; }
+@media (min-width:860px){
+  .sl-root .sl-grid{ grid-template-columns:repeat(12,1fr); gap:18px; }
+  .sl-root .sl-span-3{ grid-column:span 3; }
+  .sl-root .sl-span-4{ grid-column:span 4; }
+  .sl-root .sl-span-5{ grid-column:span 5; }
+  .sl-root .sl-span-12{ grid-column:span 12; }
+}
+
+.sl-root .sl-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px 22px;
+  box-shadow:var(--shadow-sm); transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+  display:flex; flex-direction:column;
+}
+.sl-root .sl-card:hover{ transform:translateY(-2px); border-color:var(--border-strong); box-shadow:var(--shadow-md); }
+.sl-root .sl-card-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+.sl-root .sl-card-title{ font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.04em; color:var(--text-2); }
+.sl-root .sl-card-caption{ font-size:12.5px; color:var(--text-3); margin:-8px 0 16px; }
+
+.sl-root .sl-status-pill{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:650; padding:4px 9px; border-radius:7px; }
+.sl-root .sl-status-pill--ok{ background:var(--ok-weak); color:var(--ok); }
+
+.sl-root .sl-eye-btn{ background:none; border:none; color:var(--text-3); cursor:pointer; padding:4px; display:flex; border-radius:6px; transition:color .15s ease; }
+.sl-root .sl-eye-btn:hover{ color:var(--accent); }
+
+.sl-root .sl-stat-row{ display:flex; flex-direction:column; }
+.sl-root .sl-stat{ display:flex; align-items:center; gap:9px; padding:7px 0; }
+.sl-root .sl-stat + .sl-stat{ border-top:1px solid var(--border); }
+.sl-root .sl-stat-label{ flex:1; font-size:12.5px; font-weight:500; color:var(--text-2); min-width:0; }
+.sl-root .sl-stat-value{ font-size:14px; font-weight:650; color:var(--text); text-align:right; }
+
+.sl-root .sl-divider{ height:1px; background:var(--border); margin:14px 0; }
+
+.sl-root .sl-action-row{ display:flex; flex-wrap:wrap; gap:7px; margin-top:auto; padding-top:14px; }
+.sl-root .sl-icon-btn{
+  display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+  color:var(--text-2); background:var(--surface-2); border:1px solid var(--border); border-radius:7px;
+  padding:7px 11px; cursor:pointer; transition:background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease;
+}
+.sl-root .sl-icon-btn:hover{ background:var(--accent-weak); color:var(--accent); border-color:var(--accent); transform:translateY(-1px); }
+.sl-root .sl-icon-btn--danger:hover{ background:var(--error-weak); color:var(--error); border-color:var(--error); }
+
+.sl-root .sl-btn-primary{
+  font-size:13px; font-weight:650; border-radius:8px; padding:9px 15px; cursor:pointer; border:1px solid transparent;
+  background:var(--accent); color:var(--on-accent); align-self:flex-start; margin-top:auto;
+  transition:filter .15s ease, transform .15s ease;
+}
+.sl-root .sl-btn-primary:hover{ filter:brightness(1.06); transform:translateY(-1px); }
+
+.sl-root .sl-xray-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+
+.sl-root .sl-metric-lg{ font-size:25px; font-weight:650; color:var(--text); }
+.sl-root .sl-unit{ font-size:12.5px; font-weight:600; color:var(--text-3); margin-left:3px; }
+.sl-root .sl-status-line{ display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; margin-top:8px; }
+.sl-root .sl-status-line--ok{ color:var(--ok); }
+
+.sl-root .sl-vpnui-body{ display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.sl-root .sl-ring-wrap{ position:relative; width:44px; height:44px; flex:0 0 auto; }
+.sl-root .sl-ring{ width:100%; height:100%; transform:rotate(-90deg); }
+.sl-root .sl-ring-track{ fill:none; stroke:var(--border); stroke-width:4; }
+.sl-root .sl-ring-progress{ fill:none; stroke:var(--accent); stroke-width:4; stroke-linecap:round; transition:stroke-dashoffset .8s cubic-bezier(.22,1,.36,1); }
+.sl-root .sl-ring-check{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--accent); }
+.sl-root .sl-ring-check svg{ width:16px; height:16px; }
+
+.sl-root .sl-bar-compare{ display:flex; flex-direction:column; gap:12px; }
+.sl-root .sl-bar-row{ display:flex; align-items:center; gap:10px; }
+.sl-root .sl-bar-tag{ font-size:12px; color:var(--text-2); flex:0 0 34px; }
+.sl-root .sl-bar-track{ flex:1; height:8px; border-radius:4px; background:var(--surface-2); overflow:hidden; display:block; }
+.sl-root .sl-bar-fill{ display:block; height:100%; border-radius:4px; background:var(--accent); transition:width .8s cubic-bezier(.22,1,.36,1); }
+.sl-root .sl-bar-val{ font-size:12.5px; font-weight:650; color:var(--text); flex:0 0 auto; text-align:right; min-width:52px; }
+
+.sl-root .sl-flow-row{ display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+@media (max-width:520px){ .sl-root .sl-flow-row{ grid-template-columns:1fr; } }
+.sl-root .sl-flow-col{ min-width:0; }
+.sl-root .sl-flow-head{ display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:650; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); margin-bottom:8px; }
+.sl-root .sl-flow-col--up .sl-flow-head svg{ color:var(--accent); }
+.sl-root .sl-flow-col--down .sl-flow-head svg{ color:var(--info); }
+.sl-root .sl-flow-value{ font-size:26px; font-weight:650; letter-spacing:-.01em; color:var(--text); }
+.sl-root .sl-flow-graph{ width:100%; height:38px; margin-top:8px; }
+
+.sl-root .sl-totals-row{ display:flex; gap:32px; flex-wrap:wrap; }
+.sl-root .sl-totals-item{ display:flex; flex-direction:column; gap:3px; }
+.sl-root .sl-totals-label{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); font-weight:650; }
+.sl-root .sl-totals-value{ font-size:15px; font-weight:650; color:var(--text); }
+
+.sl-root .sl-ip-row{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:8px 0; }
+.sl-root .sl-ip-row + .sl-ip-row{ border-top:1px solid var(--border); }
+.sl-root .sl-ip-label{ font-size:12.5px; font-weight:500; color:var(--text-2); flex:0 0 auto; }
+.sl-root .sl-ip-value{ font-size:13.5px; font-weight:650; color:var(--text); text-align:right; overflow-wrap:anywhere; }
+@media (max-width:479px){ .sl-root .sl-ip-row{ flex-direction:column; align-items:flex-start; gap:2px; } .sl-root .sl-ip-value{ text-align:left; } }
+
+.sl-root .sl-foot{ margin-top:40px; padding-top:18px; border-top:1px solid var(--border); font-size:11.5px; color:var(--text-3); }
+
+@media (max-width:520px){
+  .sl-root .sl-rail{ flex-basis:60px; width:60px; padding:18px 0; gap:24px; }
+  .sl-root .sl-rail-item{ width:52px; }
+  .sl-root .sl-rail-item span, .sl-root .sl-rail-brand span{ display:none; }
+}
+</style>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+<defs>
+<symbol id="sl-i-mark" viewBox="0 0 24 24"><path d="M12 2.6 19.4 5.8V11.2C19.4 16.5 16.2 20.7 12 21.9 7.8 20.7 4.6 16.5 4.6 11.2V5.8L12 2.6z"/></symbol>
+<symbol id="sl-i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></symbol>
+<symbol id="sl-i-inbounds" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 13h4.5l1.5 2.4h6l1.5-2.4H21"/></symbol>
+<symbol id="sl-i-sliders" viewBox="0 0 24 24"><line x1="5" y1="21" x2="5" y2="14"/><line x1="5" y1="10" x2="5" y2="3"/><circle cx="5" cy="12" r="2"/><line x1="12" y1="21" x2="12" y2="12.5"/><line x1="12" y1="8.5" x2="12" y2="3"/><circle cx="12" cy="10.5" r="2"/><line x1="19" y1="21" x2="19" y2="16"/><line x1="19" y1="12" x2="19" y2="3"/><circle cx="19" cy="14" r="2"/></symbol>
+<symbol id="sl-i-bolt" viewBox="0 0 24 24"><polygon points="13 2 4.5 13.5 11 13.5 10 22 19.5 10 13 10 13 2"/></symbol>
+<symbol id="sl-i-file" viewBox="0 0 24 24"><path d="M7 3h6.5L18 7.5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M13.5 3v4.5H18"/><line x1="9" y1="12.5" x2="15" y2="12.5"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></symbol>
+<symbol id="sl-i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6.5" rx="1.6"/><rect x="3" y="13.5" width="18" height="6.5" rx="1.6"/><line x1="7" y1="7.25" x2="7.01" y2="7.25"/><line x1="7" y1="16.75" x2="7.01" y2="16.75"/></symbol>
+<symbol id="sl-i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><line x1="12" y1="2" x2="12" y2="4.6"/><line x1="12" y1="19.4" x2="12" y2="22"/><line x1="2" y1="12" x2="4.6" y2="12"/><line x1="19.4" y1="12" x2="22" y2="12"/><line x1="4.7" y1="4.7" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.3" y2="19.3"/><line x1="4.7" y1="19.3" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.3" y2="4.7"/></symbol>
+<symbol id="sl-i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7.3 7.3 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="sl-i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.2"/></symbol>
+<symbol id="sl-i-restart" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3.1-6.3"/><polyline points="20.5 3 20 8 15 7.3"/></symbol>
+<symbol id="sl-i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3c2.4 2.5 3.8 5.7 3.8 9s-1.4 6.5-3.8 9c-2.4-2.5-3.8-5.7-3.8-9s1.4-6.5 3.8-9z"/></symbol>
+<symbol id="sl-i-tag" viewBox="0 0 24 24"><path d="M11.4 3H5a1 1 0 0 0-1 1v6.4a1 1 0 0 0 .3.7l9.1 9.1a1 1 0 0 0 1.4 0l6.4-6.4a1 1 0 0 0 0-1.4l-9.1-9.1a1 1 0 0 0-.7-.3z"/><circle cx="7.8" cy="7.8" r="1.3"/></symbol>
+<symbol id="sl-i-download" viewBox="0 0 24 24"><path d="M4.5 15v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/><polyline points="7.5 10 12 14.5 16.5 10"/><line x1="12" y1="3" x2="12" y2="14.5"/></symbol>
+<symbol id="sl-i-brackets" viewBox="0 0 24 24"><path d="M9 4 4 12l5 8"/><path d="M15 4l5 8-5 8"/></symbol>
+<symbol id="sl-i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.3 10.4 15.2 16.5 9"/></symbol>
+<symbol id="sl-i-check" viewBox="0 0 24 24"><polyline points="5 12.5 9.5 17 19 6.5"/></symbol>
+<symbol id="sl-i-arrow-up" viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5.5"/><polyline points="6.5 11 12 5.5 17.5 11"/></symbol>
+<symbol id="sl-i-arrow-down" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="18.5"/><polyline points="6.5 13 12 18.5 17.5 13"/></symbol>
+<symbol id="sl-i-eye" viewBox="0 0 24 24"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="sl-i-eye-off" viewBox="0 0 24 24"><path d="M3.3 3.3l17.4 17.4"/><path d="M10.6 5.2A10.5 10.5 0 0 1 12 5c6.2 0 10 7 10 7a17.6 17.6 0 0 1-3.9 4.8"/><path d="M6.5 6.7C3.8 8.6 2 12 2 12s3.8 7 10 7c1.4 0 2.7-.3 3.9-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+</defs>
+</svg>
+
+<div class="sl-root">
+  <div class="sl-shell">
+    <aside class="sl-rail">
+      <div class="sl-rail-brand">
+        <svg class="sl-icon sl-icon-20"><use href="#sl-i-mark"></use></svg>
+        <span>vpn-ui</span>
+      </div>
+      <nav class="sl-rail-nav" aria-label="Primary">
+        <button type="button" class="sl-rail-item is-active" aria-current="page">
+          <svg class="sl-icon sl-icon-20"><use href="#sl-i-grid"></use></svg>
+          <span>Overview</span>
+        </button>
+        <button type="button" class="sl-rail-item">
+          <svg class="sl-icon sl-icon-20"><use href="#sl-i-inbounds"></use></svg>
+          <span>Inbounds</span>
+        </button>
+        <button type="button" class="sl-rail-item">
+          <svg class="sl-icon sl-icon-20"><use href="#sl-i-sliders"></use></svg>
+          <span>Settings</span>
+        </button>
+        <button type="button" class="sl-rail-item">
+          <svg class="sl-icon sl-icon-20 sl-icon--fill"><use href="#sl-i-bolt"></use></svg>
+          <span>Xray</span>
+        </button>
+        <button type="button" class="sl-rail-item">
+          <svg class="sl-icon sl-icon-20"><use href="#sl-i-file"></use></svg>
+          <span>Logs</span>
+        </button>
+      </nav>
+    </aside>
+
+    <div class="sl-main">
+      <header class="sl-topbar">
+        <div class="sl-topbar-inner">
+          <div class="sl-topbar-left">
+            <span class="sl-host-chip">
+              <svg class="sl-icon sl-icon-16"><use href="#sl-i-server"></use></svg>
+              srv-fra-01
+            </span>
+            <span class="sl-health-pill">
+              <span class="sl-dot sl-dot--ok"></span>
+              All systems operational
+            </span>
+          </div>
+          <button type="button" class="sl-theme-toggle" id="slThemeToggle" aria-label="Toggle color theme">
+            <svg class="sl-icon sl-i-sun"><use href="#sl-i-sun"></use></svg>
+            <svg class="sl-icon sl-i-moon"><use href="#sl-i-moon"></use></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="sl-content">
+
+        <section class="sl-hero" aria-label="System identity">
+          <div class="sl-hero-id">
+            <div class="sl-hero-logo" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="#10B981"><path d="M23.332 15.957c.433-1.239.668-2.57.668-3.957 0-6.627-5.373-12-12-12S0 5.373 0 12c0 3.28 1.315 6.251 3.447 8.417L15.62 8.245l3.005 3.005zm-2.192 3.819l-5.52-5.52L6.975 22.9c1.528.706 3.23 1.1 5.025 1.1 3.661 0 6.94-1.64 9.14-4.224z"/></svg>
+            </div>
+            <div class="sl-hero-text">
+              <h1 class="sl-hero-title">Rocky Linux 10</h1>
+              <div class="sl-hero-meta">
+                <span class="sl-hero-kernel sl-mono num">6.12.0-55.el10</span>
+                <span class="sl-hero-sep">&middot;</span>
+                <span class="sl-hero-host"><svg class="sl-icon sl-icon-14"><use href="#sl-i-server"></use></svg>srv-fra-01</span>
+              </div>
+            </div>
+          </div>
+          <div class="sl-hero-health">
+            <span class="sl-hero-status"><span class="sl-dot sl-dot--ok"></span>Operational</span>
+            <div class="sl-hero-stats">
+              <span><b class="num">7/10</b> services</span>
+              <span class="sl-hero-sep">&middot;</span>
+              <span>CPU <b class="num">34%</b></span>
+              <span class="sl-hero-sep">&middot;</span>
+              <span>RAM <b class="num">33%</b></span>
+              <span class="sl-hero-sep">&middot;</span>
+              <span>up <b class="num">47d 9h</b></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="sl-section" aria-label="System vitals">
+          <div class="sl-section-head">
+            <h2 class="sl-section-title">System Vitals</h2>
+          </div>
+          <div class="sl-vitals">
+
+            <div class="sl-vital-card">
+              <div class="sl-vital-label"><span class="sl-dot sl-dot--ok"></span>CPU</div>
+              <div class="sl-vital-main">
+                <div class="sl-vital-value num">34<span class="sl-pct">%</span></div>
+                <div class="sl-vital-graph" data-spark="cpu" role="img" aria-label="CPU usage, last 24 minutes"></div>
+              </div>
+              <p class="sl-vital-foot">8 cores &middot; 3.40 GHz</p>
+              <div class="sl-vital-load">
+                <span class="sl-vital-load-item">1m <b class="num">0.42</b></span>
+                <span class="sl-vital-load-item">5m <b class="num">0.55</b></span>
+                <span class="sl-vital-load-item">15m <b class="num">0.48</b></span>
+              </div>
+            </div>
+
+            <div class="sl-vital-card">
+              <div class="sl-vital-label"><span class="sl-dot sl-dot--ok"></span>RAM</div>
+              <div class="sl-vital-main">
+                <div class="sl-vital-value num">33<span class="sl-pct">%</span></div>
+                <div class="sl-vital-graph" data-spark="ram" role="img" aria-label="RAM usage, last 24 minutes"></div>
+              </div>
+              <p class="sl-vital-foot">5.2 GB / 16 GB</p>
+            </div>
+
+            <div class="sl-vital-card">
+              <div class="sl-vital-label"><span class="sl-dot sl-dot--ok"></span>Swap</div>
+              <div class="sl-vital-main">
+                <div class="sl-vital-value num">7<span class="sl-pct">%</span></div>
+                <div class="sl-vital-graph" data-spark="swap" role="img" aria-label="Swap usage, last 24 minutes"></div>
+              </div>
+              <p class="sl-vital-foot">0.3 GB / 4.0 GB</p>
+            </div>
+
+            <div class="sl-vital-card">
+              <div class="sl-vital-label"><span class="sl-dot sl-dot--warn"></span>Storage</div>
+              <div class="sl-vital-main">
+                <div class="sl-vital-value num">51<span class="sl-pct">%</span></div>
+                <div class="sl-vital-graph" data-spark="storage" role="img" aria-label="Storage usage, last 24 minutes"></div>
+              </div>
+              <p class="sl-vital-foot">82 GB / 160 GB</p>
+            </div>
+
+          </div>
+        </section>
+
+        <section class="sl-section" aria-label="VPN services">
+          <div class="sl-section-head">
+            <h2 class="sl-section-title">VPN Services</h2>
+            <span class="sl-section-meta">10 protocols &middot; 7 running &middot; 2 idle &middot; 1 stopped</span>
+          </div>
+          <div class="sl-services">
+            <div class="sl-svc-tile" data-state="running"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">Xray</div><div class="sl-svc-state">Running</div></div></div>
+            <div class="sl-svc-tile" data-state="running"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">OpenVPN</div><div class="sl-svc-state">Running</div></div></div>
+            <div class="sl-svc-tile" data-state="running"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">WireGuard</div><div class="sl-svc-state">Running</div></div></div>
+            <div class="sl-svc-tile" data-state="running"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">L2TP/IPsec</div><div class="sl-svc-state">Running</div></div></div>
+            <div class="sl-svc-tile" data-state="running"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">IKEv2</div><div class="sl-svc-state">Running</div></div></div>
+            <div class="sl-svc-tile" data-state="running"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">OpenConnect</div><div class="sl-svc-state">Running</div></div></div>
+            <div class="sl-svc-tile" data-state="running"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">MTProto</div><div class="sl-svc-state">Running</div></div></div>
+            <div class="sl-svc-tile" data-state="idle"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">SSTP</div><div class="sl-svc-state">Idle</div></div></div>
+            <div class="sl-svc-tile" data-state="idle"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">SSH</div><div class="sl-svc-state">Idle</div></div></div>
+            <div class="sl-svc-tile" data-state="stopped"><span class="sl-svc-led"></span><div class="sl-svc-body"><div class="sl-svc-name">PPTP</div><div class="sl-svc-state">Stopped</div></div></div>
+          </div>
+        </section>
+
+        <section class="sl-section" aria-label="System">
+          <div class="sl-section-head">
+            <h2 class="sl-section-title">System</h2>
+          </div>
+          <div class="sl-grid">
+
+            <div class="sl-card sl-span-5">
+              <div class="sl-card-head">
+                <h3 class="sl-card-title">Xray</h3>
+                <span class="sl-status-pill sl-status-pill--ok"><span class="sl-dot sl-dot--ok"></span>Running</span>
+              </div>
+              <div class="sl-xray-top">
+                <div class="sl-stat-row">
+                  <div class="sl-stat"><span class="sl-stat-label">Version</span><span class="sl-stat-value num">v25.3.6</span></div>
+                  <div class="sl-stat"><span class="sl-stat-label">Uptime</span><span class="sl-stat-value num">12d 4h</span></div>
+                </div>
+                <div class="sl-vital-graph" style="width:96px;height:36px" data-spark="xray" role="img" aria-label="Core load, last 24 minutes"></div>
+              </div>
+              <div class="sl-divider"></div>
+              <div class="sl-action-row" style="padding-top:0">
+                <button type="button" class="sl-icon-btn"><svg class="sl-icon sl-icon-16"><use href="#sl-i-file"></use></svg>Logs</button>
+                <button type="button" class="sl-icon-btn sl-icon-btn--danger"><svg class="sl-icon sl-icon-16"><use href="#sl-i-stop"></use></svg>Stop</button>
+                <button type="button" class="sl-icon-btn"><svg class="sl-icon sl-icon-16"><use href="#sl-i-restart"></use></svg>Restart</button>
+                <button type="button" class="sl-icon-btn"><svg class="sl-icon sl-icon-16"><use href="#sl-i-globe"></use></svg>Geofiles</button>
+                <button type="button" class="sl-icon-btn"><svg class="sl-icon sl-icon-16"><use href="#sl-i-tag"></use></svg>Version</button>
+              </div>
+            </div>
+
+            <div class="sl-card sl-span-3">
+              <div class="sl-card-head"><h3 class="sl-card-title">Manage</h3></div>
+              <p class="sl-card-caption">Panel logs, configuration file and database backups.</p>
+              <div class="sl-action-row">
+                <button type="button" class="sl-icon-btn"><svg class="sl-icon sl-icon-16"><use href="#sl-i-file"></use></svg>Logs</button>
+                <button type="button" class="sl-icon-btn"><svg class="sl-icon sl-icon-16"><use href="#sl-i-brackets"></use></svg>Config</button>
+                <button type="button" class="sl-icon-btn"><svg class="sl-icon sl-icon-16"><use href="#sl-i-download"></use></svg>Backup</button>
+              </div>
+            </div>
+
+            <div class="sl-card sl-span-4">
+              <div class="sl-card-head"><h3 class="sl-card-title">VPN-UI</h3></div>
+              <div class="sl-vpnui-body">
+                <div>
+                  <div class="sl-metric-lg num">v1.7.6</div>
+                  <p class="sl-status-line sl-status-line--ok">
+                    <svg class="sl-icon sl-icon-16"><use href="#sl-i-check-circle"></use></svg>
+                    Up to date
+                  </p>
+                </div>
+                <div class="sl-ring-wrap" aria-hidden="true">
+                  <svg class="sl-ring" viewBox="0 0 44 44">
+                    <circle class="sl-ring-track" cx="22" cy="22" r="18"></circle>
+                    <circle class="sl-ring-progress" data-offset="0" stroke-dasharray="113.1" style="stroke-dashoffset:113.1" cx="22" cy="22" r="18"></circle>
+                  </svg>
+                  <span class="sl-ring-check"><svg class="sl-icon sl-icon-16"><use href="#sl-i-check"></use></svg></span>
+                </div>
+              </div>
+              <button type="button" class="sl-btn-primary">Check for Update</button>
+            </div>
+
+            <div class="sl-card sl-span-4">
+              <div class="sl-card-head"><h3 class="sl-card-title">Uptime</h3></div>
+              <div class="sl-bar-compare">
+                <div class="sl-bar-row">
+                  <span class="sl-bar-tag">Xray</span>
+                  <span class="sl-bar-track"><span class="sl-bar-fill" data-width="25.7%" style="width:0%"></span></span>
+                  <span class="sl-bar-val num">12d 4h</span>
+                </div>
+                <div class="sl-bar-row">
+                  <span class="sl-bar-tag">OS</span>
+                  <span class="sl-bar-track"><span class="sl-bar-fill" data-width="100%" style="width:0%;background:var(--text-3)"></span></span>
+                  <span class="sl-bar-val num">47d 9h</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="sl-card sl-span-4">
+              <div class="sl-card-head"><h3 class="sl-card-title">Usage</h3></div>
+              <div class="sl-vital-main">
+                <div class="sl-metric-lg num">84<span class="sl-unit">MB</span></div>
+                <div class="sl-vital-graph" style="width:88px;height:34px" data-spark="xrayram" role="img" aria-label="Xray memory usage, last 24 minutes"></div>
+              </div>
+              <div class="sl-stat-row" style="margin-top:12px">
+                <div class="sl-stat"><span class="sl-stat-label">Threads</span><span class="sl-stat-value num">23</span></div>
+              </div>
+            </div>
+
+            <div class="sl-card sl-span-4">
+              <div class="sl-card-head">
+                <h3 class="sl-card-title">IP Addresses</h3>
+                <button type="button" class="sl-eye-btn" id="slIpToggle" aria-label="Hide IP addresses">
+                  <svg class="sl-icon sl-icon-16 sl-i-eye"><use href="#sl-i-eye"></use></svg>
+                  <svg class="sl-icon sl-icon-16 sl-i-eye-off" style="display:none"><use href="#sl-i-eye-off"></use></svg>
+                </button>
+              </div>
+              <div class="sl-ip-row"><span class="sl-ip-label">IPv4</span><span class="sl-ip-value num" data-full="203.0.113.7">203.0.113.7</span></div>
+              <div class="sl-ip-row"><span class="sl-ip-label">IPv6</span><span class="sl-ip-value num" data-full="2a01:4f8:1c1c:abcd::1">2a01:4f8:1c1c:abcd::1</span></div>
+              <div class="sl-divider"></div>
+              <div class="sl-stat-row">
+                <div class="sl-stat"><span class="sl-stat-label">TCP connections</span><span class="sl-stat-value num">1,284</span></div>
+                <div class="sl-stat"><span class="sl-stat-label">UDP connections</span><span class="sl-stat-value num">462</span></div>
+              </div>
+            </div>
+
+            <div class="sl-card sl-span-12">
+              <div class="sl-card-head"><h3 class="sl-card-title">Throughput</h3></div>
+              <p class="sl-card-caption">Aggregate, all protocols.</p>
+              <div class="sl-flow-row">
+                <div class="sl-flow-col sl-flow-col--up">
+                  <div class="sl-flow-head"><svg class="sl-icon sl-icon-14"><use href="#sl-i-arrow-up"></use></svg><span>Upload</span></div>
+                  <div class="sl-flow-value num">2.4<span class="sl-unit">MB/s</span></div>
+                  <div class="sl-flow-graph" data-spark="upload" role="img" aria-label="Upload throughput, last 24 minutes"></div>
+                </div>
+                <div class="sl-flow-col sl-flow-col--down">
+                  <div class="sl-flow-head"><svg class="sl-icon sl-icon-14"><use href="#sl-i-arrow-down"></use></svg><span>Download</span></div>
+                  <div class="sl-flow-value num">8.1<span class="sl-unit">MB/s</span></div>
+                  <div class="sl-flow-graph" data-spark="download" role="img" aria-label="Download throughput, last 24 minutes"></div>
+                </div>
+              </div>
+              <div class="sl-divider"></div>
+              <div class="sl-totals-row">
+                <div class="sl-totals-item"><span class="sl-totals-label">Sent</span><span class="sl-totals-value num">1.24 TB</span></div>
+                <div class="sl-totals-item"><span class="sl-totals-label">Received</span><span class="sl-totals-value num">4.68 TB</span></div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <footer class="sl-foot">Design mockup, vpn-ui Overview, Slate</footer>
+      </main>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root = document.querySelector('.sl-root');
+  if(!root) return;
+  var docEl = document.documentElement;
+
+  /* theme toggle - stamps data-theme on the document root */
+  var themeBtn = document.getElementById('slThemeToggle');
+  function effectiveTheme(){
+    var attr = docEl.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function applyTheme(t){
+    docEl.setAttribute('data-theme', t);
+    if(themeBtn) themeBtn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+  }
+  applyTheme(effectiveTheme());
+  if(themeBtn){
+    themeBtn.addEventListener('click', function(){
+      applyTheme(effectiveTheme() === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ring fill-in (VPN-UI up to date) */
+  root.querySelectorAll('.sl-ring-progress').forEach(function(el){
+    var target = el.getAttribute('data-offset');
+    if(target === null) return;
+    if(reduceMotion){ el.style.strokeDashoffset = target; return; }
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){ el.style.strokeDashoffset = target; });
+    });
+  });
+
+  /* bar-compare fill-in (Uptime, Connections) */
+  root.querySelectorAll('.sl-bar-fill').forEach(function(el){
+    var target = el.getAttribute('data-width');
+    if(target === null) return;
+    if(reduceMotion){ el.style.width = target; return; }
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){ el.style.width = target; });
+    });
+  });
+
+  /* deterministic seeded pseudo-random, for a reproducible sparkline history */
+  function seededRand(seed){
+    var s = seed >>> 0;
+    return function(){
+      s = (s + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function synth(seed, n, min, max, endValue){
+    var rand = seededRand(seed);
+    var range = max - min;
+    var v = min + range * 0.5;
+    var out = [];
+    for(var i = 0; i < n; i++){
+      v += (rand() - 0.5) * range * 0.55;
+      if(v < min) v = min;
+      if(v > max) v = max;
+      out.push(v);
+    }
+    if(endValue !== undefined) out[out.length - 1] = endValue;
+    return out;
+  }
+
+  var SERIES = {
+    cpu:      synth(11, 24, 28,   42,   34),
+    ram:      synth(22, 24, 30,   36,   33),
+    swap:     synth(33, 24, 4,    9,    7),
+    storage:  synth(44, 24, 49.2, 51.3, 51),
+    upload:   synth(55, 24, 1.5,  3,    2.4),
+    download: synth(66, 24, 5,    11,   8.1),
+    xrayram:  synth(77, 24, 76,   92,   84)
+  };
+
+  /* thin 2px line + 10% area wash + a ringed end-marker, per the house mark spec */
+  function buildSparkline(values, w, h, color){
+    var pad = 2;
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    var span = (max - min) || 1;
+    var n = values.length;
+    var stepX = (w - pad * 2) / (n - 1);
+
+    var pts = values.map(function(v, i){
+      var x = pad + i * stepX;
+      var y = pad + (1 - (v - min) / span) * (h - pad * 2);
+      return [x, y];
+    });
+
+    var line = pts.map(function(p, i){ return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+    var area = line +
+      ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + (h - pad).toFixed(1) +
+      ' L' + pts[0][0].toFixed(1) + ',' + (h - pad).toFixed(1) + ' Z';
+    var last = pts[pts.length - 1];
+
+    return '<svg class="sl-spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" aria-hidden="true">' +
+      '<line x1="' + pad + '" y1="' + (h - pad) + '" x2="' + (w - pad) + '" y2="' + (h - pad) + '" stroke="var(--border)" stroke-width="1"/>' +
+      '<path d="' + area + '" fill="' + color + '" opacity=".1" stroke="none"/>' +
+      '<path d="' + line + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2"/>' +
+      '</svg>';
+  }
+
+  var SPARK_DEFS = [
+    { key:'cpu',      values:SERIES.cpu,      color:'var(--ok)' },
+    { key:'ram',      values:SERIES.ram,      color:'var(--ok)' },
+    { key:'swap',     values:SERIES.swap,     color:'var(--ok)' },
+    { key:'storage',  values:SERIES.storage,  color:'var(--warn)' },
+    { key:'upload',   values:SERIES.upload,   color:'var(--accent)' },
+    { key:'download', values:SERIES.download, color:'var(--info)' },
+    { key:'xray',     values:SERIES.cpu,      color:'var(--accent)' },
+    { key:'xrayram',  values:SERIES.xrayram,  color:'var(--accent)' }
+  ];
+
+  function renderSparklines(){
+    SPARK_DEFS.forEach(function(def){
+      var el = root.querySelector('[data-spark="' + def.key + '"]');
+      if(!el) return;
+      var w = Math.round(el.clientWidth) || 84;
+      var h = Math.round(el.clientHeight) || 32;
+      el.innerHTML = buildSparkline(def.values, w, h, def.color);
+    });
+  }
+  renderSparklines();
+
+  var resizeTimer;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderSparklines, 150);
+  });
+
+  /* IP show / hide */
+  var ipBtn = document.getElementById('slIpToggle');
+  var ipValues = root.querySelectorAll('.sl-ip-value');
+  var ipVisible = true;
+  function maskValue(v){ return v.replace(/[^:.]/g, '•'); }
+  function renderIp(){
+    ipValues.forEach(function(el){
+      var full = el.getAttribute('data-full') || el.textContent;
+      el.textContent = ipVisible ? full : maskValue(full);
+    });
+    if(ipBtn){
+      var eye = ipBtn.querySelector('.sl-i-eye');
+      var eyeOff = ipBtn.querySelector('.sl-i-eye-off');
+      if(eye) eye.style.display = ipVisible ? 'none' : '';
+      if(eyeOff) eyeOff.style.display = ipVisible ? '' : 'none';
+      ipBtn.setAttribute('aria-label', ipVisible ? 'Hide IP addresses' : 'Show IP addresses');
+    }
+  }
+  if(ipBtn){
+    ipBtn.addEventListener('click', function(){
+      ipVisible = !ipVisible;
+      renderIp();
+    });
+  }
+})();
+</script>
+</body>
+</html>

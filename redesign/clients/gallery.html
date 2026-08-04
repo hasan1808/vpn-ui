@@ -1,0 +1,1069 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clients list — five directions</title>
+<style>
+/* ==================================================================
+   Tokens. Lifted from web/assets/css/tokens.css so these mockups can
+   be judged as "would this look right in the panel" rather than as
+   pretty pictures in a palette the panel cannot ship.
+
+   Three theme signals, in the order they must win: the OS preference,
+   then the viewer's explicit toggle, then nothing else.
+   ================================================================== */
+:root {
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eef2f4;
+  --border:#e4e9ee;
+  --border-strong:#d2dae1;
+
+  --text:#1b2430;
+  --text-2:#5a6675;
+  --text-3:#6b7787;
+
+  --accent:#008771;
+  --accent-strong:#00806b;
+  --accent-weak:#e2f2ee;
+  --on-accent:#ffffff;
+
+  --ok:#1c7a45;
+  --info:#1f6fd0;
+  --warn:#8a6008;
+  --error:#b3261e;
+  --off:#6b7787;
+
+  --ok-weak:rgba(28,122,69,.10);
+  --info-weak:rgba(31,111,208,.10);
+  --warn-weak:rgba(138,96,8,.12);
+  --error-weak:rgba(179,38,30,.10);
+  --off-weak:rgba(107,119,135,.12);
+
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10),0 2px 5px rgba(16,24,32,.05);
+
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+
+  --r:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark) {
+  :root { --_dark:1; }
+}
+:root, :root[data-theme="light"] { --_t:light; }
+
+/* One dark palette, applied from either signal. Written once and pointed at
+   by both selectors, so the toggle and the OS preference cannot drift. */
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0a1222;
+    --surface:#151f31;
+    --surface-2:#1c2740;
+    --border:#2c3950;
+    --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88);
+    --text-2:rgba(255,255,255,.60);
+    --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f;
+    --accent-strong:#1bbf9f;
+    --accent-weak:rgba(27,191,159,.14);
+    --on-accent:#071a16;
+    --ok:#4fd08d;
+    --info:#6fa8f5;
+    --warn:#e0a94a;
+    --error:#f2726a;
+    --off:#8593a8;
+    --ok-weak:rgba(79,208,141,.13);
+    --info-weak:rgba(111,168,245,.13);
+    --warn-weak:rgba(224,169,74,.14);
+    --error-weak:rgba(242,114,106,.13);
+    --off-weak:rgba(133,147,168,.15);
+    --shadow-sm:none;
+    --shadow-md:none;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0a1222;
+  --surface:#151f31;
+  --surface-2:#1c2740;
+  --border:#2c3950;
+  --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88);
+  --text-2:rgba(255,255,255,.60);
+  --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f;
+  --accent-strong:#1bbf9f;
+  --accent-weak:rgba(27,191,159,.14);
+  --on-accent:#071a16;
+  --ok:#4fd08d;
+  --info:#6fa8f5;
+  --warn:#e0a94a;
+  --error:#f2726a;
+  --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13);
+  --info-weak:rgba(111,168,245,.13);
+  --warn-weak:rgba(224,169,74,.14);
+  --error-weak:rgba(242,114,106,.13);
+  --off-weak:rgba(133,147,168,.15);
+  --shadow-sm:none;
+  --shadow-md:none;
+  color-scheme:dark;
+}
+
+*, *::before, *::after { box-sizing:border-box; }
+html, body { margin:0; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:var(--ui); font-size:13.5px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+@media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
+
+.num { font-variant-numeric:tabular-nums; }
+.mono { font-family:var(--mono); }
+.dim { color:var(--text-3); }
+
+/* ================================= page chrome ================================= */
+.page { max-width:1360px; margin:0 auto; padding:36px 24px 80px; }
+
+.masthead { margin-bottom:26px; }
+.eyebrow {
+  font-size:11px; font-weight:700; letter-spacing:.10em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 10px;
+}
+.masthead h1 {
+  font-size:26px; font-weight:600; letter-spacing:-.015em; margin:0 0 8px;
+  text-wrap:balance;
+}
+.masthead p { margin:0; color:var(--text-2); max-width:66ch; }
+
+/* The switcher. Sticky because comparing five layouts means flipping between
+   them repeatedly while scrolled into the middle of one. */
+.switcher {
+  position:sticky; top:0; z-index:20;
+  display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+  padding:12px 0; margin-bottom:20px;
+  background:var(--bg);
+  border-bottom:1px solid var(--border);
+}
+.tabs { display:flex; gap:4px; flex-wrap:wrap; }
+.tab {
+  font:inherit; font-size:13px; font-weight:500; cursor:pointer;
+  padding:7px 13px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  transition:color .15s, border-color .15s, background .15s;
+}
+.tab:hover { color:var(--text); border-color:var(--border-strong); }
+.tab[aria-selected="true"] {
+  background:var(--accent-weak); border-color:var(--accent); color:var(--accent); font-weight:600;
+}
+.tab .n { font-variant-numeric:tabular-nums; opacity:.55; margin-inline-end:5px; }
+.switcher-right { margin-inline-start:auto; display:flex; gap:8px; align-items:center; }
+.ghost {
+  font:inherit; font-size:12.5px; cursor:pointer; color:var(--text-2);
+  padding:6px 11px; border-radius:8px;
+  border:1px solid var(--border); background:var(--surface);
+}
+.ghost:hover { color:var(--text); border-color:var(--border-strong); }
+.ghost[aria-pressed="true"] { color:var(--accent); border-color:var(--accent); background:var(--accent-weak); }
+
+/* The rationale strip. Five templates exist to be CHOSEN between, and a choice
+   needs its cost stated next to its benefit. */
+.rationale {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:0;
+  border:1px solid var(--border); border-radius:var(--r);
+  background:var(--surface); margin-bottom:18px; overflow:hidden;
+}
+.rationale div { padding:12px 16px; border-inline-start:1px solid var(--border); }
+.rationale div:first-child { border-inline-start:0; }
+.rationale dt {
+  font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 4px;
+}
+.rationale dd { margin:0; font-size:12.5px; color:var(--text-2); line-height:1.45; }
+.rationale dd b { color:var(--text); font-weight:600; }
+
+.view { display:none; }
+.view.on { display:block; }
+
+/* ================================= shared atoms ================================= */
+.lamp { width:8px; height:8px; border-radius:50%; flex:0 0 auto; background:var(--off); }
+.lamp.ok { background:var(--ok); }
+.lamp.warn { background:var(--warn); }
+.lamp.error { background:var(--error); }
+.lamp.off { background:var(--off); }
+.lamp.live { box-shadow:0 0 0 3px var(--ok-weak); }
+
+.pill {
+  display:inline-flex; align-items:center; gap:5px; flex:0 0 auto;
+  font-size:11px; font-weight:600; line-height:18px;
+  padding:0 8px; border-radius:999px;
+  background:var(--off-weak); color:var(--off);
+}
+.pill.ok { background:var(--ok-weak); color:var(--ok); }
+.pill.warn { background:var(--warn-weak); color:var(--warn); }
+.pill.error { background:var(--error-weak); color:var(--error); }
+.pill.info { background:var(--info-weak); color:var(--info); }
+
+/* Protocol chips stay NEUTRAL. Hue is reserved for state in this panel: seven
+   protocol colours collapse to a worst-pair dE under 1 for a deuteranope, and
+   the chip already spells the name, so the hue would only re-encode the label. */
+.proto {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:11px; font-weight:600; line-height:18px;
+  padding:0 7px; border-radius:5px;
+  background:var(--surface-2); color:var(--text-2);
+  border:1px solid var(--border);
+}
+.proto .port { font-family:var(--mono); font-weight:400; opacity:.7; }
+
+.meter { height:4px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.meter > i { display:block; height:100%; background:var(--accent); border-radius:999px; }
+.meter.warn > i { background:var(--warn); }
+.meter.error > i { background:var(--error); }
+.meter.inf {
+  background:repeating-linear-gradient(90deg,var(--border) 0 5px,transparent 5px 10px);
+}
+
+.iconbtn {
+  width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  border-radius:7px; cursor:pointer; padding:0;
+}
+.iconbtn:hover { color:var(--accent); border-color:var(--accent); }
+.iconbtn.danger:hover { color:var(--error); border-color:var(--error); }
+.iconbtn svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+
+.switch {
+  width:34px; height:19px; border-radius:999px; border:0; padding:0; cursor:pointer;
+  background:var(--border-strong); position:relative; flex:0 0 auto;
+  transition:background .15s;
+}
+.switch::after {
+  content:""; position:absolute; top:2px; inset-inline-start:2px;
+  width:15px; height:15px; border-radius:50%; background:#fff;
+  transition:inset-inline-start .15s;
+}
+.switch[aria-checked="true"] { background:var(--accent); }
+.switch[aria-checked="true"]::after { inset-inline-start:17px; }
+
+.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); }
+
+/* ================================================================== *
+ * 1 — LEDGER
+ * The table, done properly rather than replaced. Fixed numeric columns,
+ * one lamp instead of a badge-plus-tag-plus-switch, and a single overflow
+ * menu instead of five 28px buttons crammed against the right edge.
+ * ================================================================== */
+.ledger { overflow-x:auto; }
+.ledger table { width:100%; border-collapse:collapse; min-width:900px; }
+.ledger thead th {
+  text-align:start; font-size:10.5px; font-weight:700; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--text-3);
+  padding:11px 14px; background:var(--surface-2);
+  border-bottom:1px solid var(--border); white-space:nowrap;
+}
+.ledger tbody td {
+  padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:middle;
+}
+.ledger tbody tr:last-child td { border-bottom:0; }
+.ledger tbody tr:hover td { background:var(--accent-weak); }
+.ledger .who { display:flex; align-items:center; gap:9px; }
+.ledger .who .name { font-weight:500; }
+.ledger .who .note { font-size:11.5px; color:var(--text-3); }
+.ledger .plan { min-width:150px; }
+.ledger .plan .figs { font-size:12px; color:var(--text-2); margin-bottom:4px; }
+.ledger .plan .figs b { color:var(--text); font-weight:600; }
+.ledger .when .rel { font-size:12.5px; }
+.ledger .when .abs { font-size:11px; color:var(--text-3); }
+.ledger .on { display:flex; gap:4px; flex-wrap:wrap; }
+.ledger td.acts { text-align:end; white-space:nowrap; }
+.ledger .expander {
+  width:22px; height:22px; border-radius:6px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text-2); cursor:pointer; padding:0;
+  display:inline-flex; align-items:center; justify-content:center; font-size:14px; line-height:1;
+}
+.ledger tr.detail td { background:var(--surface-2); padding:0; }
+.ledger.compact tbody td { padding:6px 14px; }
+.ledger.compact .who .note { display:none; }
+
+.memberships { display:flex; flex-direction:column; gap:7px; padding:12px 16px 14px 44px; }
+.mb {
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:9px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface);
+}
+.mb .id { display:flex; align-items:center; gap:8px; flex:1 1 200px; min-width:0; }
+.mb .cred {
+  font-family:var(--mono); font-size:12px; color:var(--text-2);
+  flex:1 1 240px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  cursor:pointer;
+}
+.mb .cred:hover { color:var(--accent); }
+.mb .use { font-size:12px; color:var(--text-2); }
+
+/* ================================================================== *
+ * 2 — ROSTER
+ * No table at all. One row per person, and the middle of the row carries
+ * the idea: a two-track SPINE showing traffic spent against time spent,
+ * so "burning data fast" and "about to lapse" are different shapes rather
+ * than two numbers you have to compare in your head.
+ * ================================================================== */
+.roster { display:flex; flex-direction:column; gap:8px; }
+/* Fixed track widths, not fractions. Each row is its own grid element, so
+   fractional columns size themselves from that row's own content and the spines
+   started at a different x on every line - the one thing a spine cannot do, since
+   comparing them down the column IS the idea. */
+.rrow {
+  display:grid; grid-template-columns:264px 1fr 116px;
+  gap:20px; align-items:center;
+  padding:10px 16px 10px 13px; position:relative; overflow:hidden;
+}
+.rrow::before {
+  content:""; position:absolute; inset-block:0; inset-inline-start:0; width:3px; background:var(--off);
+}
+.rrow.ok::before { background:var(--ok); }
+.rrow.warn::before { background:var(--warn); }
+.rrow.error::before { background:var(--error); }
+.rrow.off::before { background:var(--off); }
+.rrow.off { opacity:.62; }
+.rrow .who { min-width:0; }
+.rrow .name { font-weight:600; font-size:14px; display:flex; align-items:center; gap:7px; }
+.rrow .note { font-size:11.5px; color:var(--text-3); margin-top:1px; }
+.rrow .chips { display:flex; gap:4px; flex-wrap:wrap; margin-top:5px; }
+
+.spine { display:flex; flex-direction:column; gap:5px; }
+.spine .track { display:flex; align-items:center; gap:9px; }
+.spine .lbl {
+  font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--text-3); width:38px; flex:0 0 auto;
+}
+.spine .rail { flex:1 1 auto; height:6px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.spine .rail > i { display:block; height:100%; border-radius:999px; background:var(--accent); }
+.spine .rail.time > i { background:var(--text-3); }
+.spine .rail.warn > i { background:var(--warn); }
+.spine .rail.error > i { background:var(--error); }
+.spine .rail.inf { background:repeating-linear-gradient(90deg,var(--border) 0 5px,transparent 5px 10px); }
+.spine .val { font-size:11.5px; color:var(--text-2); width:96px; flex:0 0 auto; text-align:end; }
+
+/* Always visible, not hover-revealed. A hover reveal reserved a 116px track that
+   was blank the rest of the time, and a control you cannot see is a control you
+   cannot find. */
+.rrow .acts {
+  display:flex; gap:6px;
+  grid-column:3; grid-row:1; align-self:center; justify-content:end;
+}
+@media (max-width:900px) {
+  .rrow { grid-template-columns:1fr; gap:12px; }
+  .rrow .acts { grid-column:1; grid-row:auto; justify-content:start; }
+  .spine .val { width:auto; }
+}
+
+/* ================================================================== *
+ * 3 — WORKBENCH
+ * Master–detail. The list stops being the destination and becomes the
+ * index; everything about one account — memberships, credentials,
+ * per-inbound bytes, every action — is on screen without a modal.
+ * ================================================================== */
+.workbench { display:grid; grid-template-columns:300px 1fr; gap:16px; align-items:start; }
+@media (max-width:900px) { .workbench { grid-template-columns:1fr; } }
+
+.wlist { overflow:hidden; }
+.wlist .search {
+  padding:10px 12px; border-bottom:1px solid var(--border);
+  font-size:12.5px; color:var(--text-3);
+}
+.wlist ul { list-style:none; margin:0; padding:0; max-height:560px; overflow-y:auto; }
+.wlist li + li { border-top:1px solid var(--border); }
+.wlist button {
+  width:100%; text-align:start; font:inherit; cursor:pointer;
+  display:flex; align-items:center; gap:9px;
+  padding:10px 13px; border:0; background:transparent; color:inherit;
+  border-inline-start:3px solid transparent;
+}
+.wlist button:hover { background:var(--surface-2); }
+.wlist button[aria-current="true"] {
+  background:var(--accent-weak); border-inline-start-color:var(--accent);
+}
+.wlist .nm { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+.wlist .qt { font-size:11px; color:var(--text-3); flex:0 0 auto; }
+
+.wdetail { padding:0; overflow:hidden; }
+.wdetail .head {
+  display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap;
+  padding:18px 20px; border-bottom:1px solid var(--border);
+}
+.wdetail .head h2 { font-size:20px; font-weight:600; margin:0; letter-spacing:-.01em; }
+.wdetail .head .note { color:var(--text-3); font-size:12.5px; margin-top:3px; }
+.wdetail .head .acts { margin-inline-start:auto; display:flex; gap:7px; align-items:center; }
+.wstats {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  border-bottom:1px solid var(--border);
+}
+.wstats div { padding:14px 20px; border-inline-start:1px solid var(--border); }
+.wstats div:first-child { border-inline-start:0; }
+.wstats dt {
+  font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 5px;
+}
+.wstats dd { margin:0; font-size:17px; font-weight:600; letter-spacing:-.01em; }
+.wstats dd small { font-size:12px; font-weight:400; color:var(--text-3); }
+.wsection { padding:16px 20px; }
+.wsection > h3 {
+  font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 11px;
+}
+
+/* ================================================================== *
+ * 4 — CARDS
+ * One tile per account. Reads fastest at small counts and on a tablet;
+ * the honest cost is vertical space, which is why the strip above says so.
+ * ================================================================== */
+.cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:14px; }
+.ccard { padding:15px 16px 13px; display:flex; flex-direction:column; gap:12px; }
+.ccard .top { display:flex; align-items:flex-start; gap:9px; }
+.ccard .nm { font-weight:600; font-size:14.5px; flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.ccard .note { font-size:11.5px; color:var(--text-3); margin-top:1px; font-weight:400; }
+.ccard .big { font-size:22px; font-weight:600; letter-spacing:-.02em; }
+.ccard .big small { font-size:12.5px; font-weight:400; color:var(--text-3); letter-spacing:0; }
+.ccard .kv { display:flex; justify-content:space-between; align-items:baseline; font-size:12px; color:var(--text-2); }
+.ccard .kv b { font-weight:600; color:var(--text); }
+.ccard .chips { display:flex; gap:4px; flex-wrap:wrap; }
+.ccard .foot {
+  display:flex; gap:6px; align-items:center;
+  border-top:1px solid var(--border); padding:10px 16px;
+  margin-inline:-16px; margin-block:auto -13px;
+}
+.ccard .foot .sp { margin-inline-start:auto; }
+
+/* ================================================================== *
+ * 5 — TRIAGE
+ * The list sorted by the operator's actual morning question: what needs
+ * me today. Every row in a group carries the REASON it is in that group,
+ * so the group header is not the only explanation.
+ * ================================================================== */
+.triage { display:flex; flex-direction:column; gap:20px; }
+.tgroup { overflow:hidden; }
+.thead {
+  display:flex; align-items:center; gap:10px;
+  padding:11px 16px; border-bottom:1px solid var(--border);
+  background:var(--surface-2);
+}
+.thead h3 { margin:0; font-size:13px; font-weight:600; }
+.thead .count {
+  font-size:11px; font-weight:700; line-height:18px; padding:0 8px; border-radius:999px;
+  background:var(--off-weak); color:var(--off);
+}
+.tgroup.act .thead { background:var(--error-weak); }
+.tgroup.act .thead h3 { color:var(--error); }
+.tgroup.act .count { background:var(--error-weak); color:var(--error); }
+.tgroup.soon .thead { background:var(--warn-weak); }
+.tgroup.soon .thead h3 { color:var(--warn); }
+.tgroup.soon .count { background:var(--warn-weak); color:var(--warn); }
+.thead .hint { margin-inline-start:auto; font-size:11.5px; color:var(--text-3); }
+
+.trow {
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:10px 16px; border-bottom:1px solid var(--border);
+}
+.trow:last-child { border-bottom:0; }
+.trow:hover { background:var(--accent-weak); }
+.trow .who { flex:1 1 190px; min-width:0; display:flex; align-items:center; gap:9px; }
+.trow .nm { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.trow .why { flex:0 0 auto; }
+.trow .figs { font-size:12px; color:var(--text-2); flex:0 0 auto; }
+.trow .acts { display:flex; gap:6px; margin-inline-start:auto; }
+
+.footnote {
+  margin-top:34px; padding-top:16px; border-top:1px solid var(--border);
+  font-size:12px; color:var(--text-3); max-width:66ch;
+}
+</style>
+</head>
+<body>
+
+
+<div class="page">
+  <header class="masthead">
+    <p class="eyebrow">vpn-ui · clients page</p>
+    <h1>Five ways to list accounts</h1>
+    <p>
+      The same twelve accounts, five information architectures. Everything is drawn in the panel's
+      own tokens — teal accent, the four reserved status hues, neutral protocol chips — so what you
+      are choosing between is the <em>structure</em>, not the paint. Pick one and it gets built;
+      pick two and I will graft the better half of the loser onto the winner.
+    </p>
+  </header>
+
+  <div class="switcher">
+    <div class="tabs" role="tablist" aria-label="Direction">
+      <button class="tab" role="tab" data-view="ledger" aria-selected="true"><span class="n">1</span>Ledger</button>
+      <button class="tab" role="tab" data-view="roster" aria-selected="false"><span class="n">2</span>Roster</button>
+      <button class="tab" role="tab" data-view="workbench" aria-selected="false"><span class="n">3</span>Workbench</button>
+      <button class="tab" role="tab" data-view="cards" aria-selected="false"><span class="n">4</span>Cards</button>
+      <button class="tab" role="tab" data-view="triage" aria-selected="false"><span class="n">5</span>Triage</button>
+    </div>
+    <div class="switcher-right">
+      <button class="ghost" id="density" aria-pressed="false">Compact</button>
+      <button class="ghost" id="theme">Dark</button>
+    </div>
+  </div>
+
+  <!-- 1 -->
+  <section class="view on" id="v-ledger" aria-label="Ledger">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Scale.</b> Hundreds of accounts, scanned by column.</dd></div>
+      <div><dt>The change</dt><dd>One lamp for state, one menu for actions, quota and expiry become readable figures.</dd></div>
+      <div><dt>Costs</dt><dd>Still a table. Nothing about it is memorable.</dd></div>
+      <div><dt>Fits on a 1440&times;900 laptop</dt><dd><b>11</b> rows · <b>14</b> compact</dd></div>
+    </dl>
+    <div class="card ledger" id="ledger-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:34px"></th>
+            <th>Account</th>
+            <th style="width:170px">Data</th>
+            <th style="width:150px">Expires</th>
+            <th>Serving</th>
+            <th style="width:96px">Last seen</th>
+            <th style="width:120px"></th>
+          </tr>
+        </thead>
+        <tbody id="ledger-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="view" id="v-roster" aria-label="Roster">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Health at a glance.</b> Spend versus time, on one spine.</dd></div>
+      <div><dt>The change</dt><dd>Two stacked tracks per account: data used against days elapsed. A mismatch is a shape, not arithmetic.</dd></div>
+      <div><dt>Costs</dt><dd>Taller rows, no column sorting.</dd></div>
+      <div><dt>Fits on a 1440&times;900 laptop</dt><dd><b>6</b> rows &mdash; the price of the spine</dd></div>
+    </dl>
+    <div class="roster" id="roster-body"></div>
+  </section>
+
+  <!-- 3 -->
+  <section class="view" id="v-workbench" aria-label="Workbench">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Working on one account.</b> Support, renewals, handing out links.</dd></div>
+      <div><dt>The change</dt><dd>No modal to inspect. Credentials, per-inbound bytes and every action are on screen already.</dd></div>
+      <div><dt>Costs</dt><dd>Half the width goes to one account. Bulk work needs the list to grow a selection mode.</dd></div>
+      <div><dt>Fits on a 1440&times;900 laptop</dt><dd><b>16</b> in the index, 1 in full</dd></div>
+    </dl>
+    <div class="workbench">
+      <div class="card wlist">
+        <div class="search">Search by email, comment or inbound</div>
+        <ul id="wb-list"></ul>
+      </div>
+      <div class="card wdetail" id="wb-detail"></div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="view" id="v-cards" aria-label="Cards">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Small fleets and small screens.</b> Under ~60 accounts.</dd></div>
+      <div><dt>The change</dt><dd>Each account is a tile with its headline figure set large. Reflows to one column without a horizontal scroll.</dd></div>
+      <div><dt>Costs</dt><dd>Worst density here. At 300 accounts it is a very long page.</dd></div>
+      <div><dt>Fits on a 1440&times;900 laptop</dt><dd><b>8</b> tiles (4 across, 2 down)</dd></div>
+    </dl>
+    <div class="cards" id="cards-body"></div>
+  </section>
+
+  <!-- 5 -->
+  <section class="view" id="v-triage" aria-label="Triage">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>The daily question.</b> Who needs me today.</dd></div>
+      <div><dt>The change</dt><dd>Grouped by what is wrong, not by name. Every row states the reason it is in its group.</dd></div>
+      <div><dt>Costs</dt><dd>Finding one named account means searching, never scrolling.</dd></div>
+      <div><dt>Fits on a 1440&times;900 laptop</dt><dd><b>14</b> rows across groups</dd></div>
+    </dl>
+    <div class="triage" id="triage-body"></div>
+  </section>
+
+  <p class="footnote">
+    Sample data only — twelve accounts chosen to cover every state the real page has to render:
+    unlimited, depleted, expired, disabled, frozen, never-connected, and one account served on four
+    inbounds at once.
+  </p>
+</div>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * Sample fleet. Twelve accounts, chosen so every state the real page can
+ * render appears at least once — including the ones that are easy to
+ * forget and ugly when they surface: a negative expiry that has not
+ * started, a frozen account with locked days, and one email served on
+ * four inbounds of three different families.
+ * ------------------------------------------------------------------ */
+const GB = 1;
+const FLEET = [
+  { email:"8ja78jxp7", note:"Ali — office laptop", state:"ok", online:true,
+    used:12.4, total:50, days:12, elapsed:18, sub:true,
+    ib:[["VLESS",11645,"vless-tcp","642a4904-2d2a-4e95-b733-07c7ee61c8a4"],
+        ["Trojan",11707,"trojan-main","3SvMOzx7hr"],
+        ["VMess",47685,"vmess-cdn","642a4904-2d2a-4e95-b733-07c7ee61c8a4"]] },
+
+  { email:"32rctcg2", note:"Maryam — home", state:"ok", online:true,
+    used:88.5, total:0, days:0, elapsed:0, sub:true,
+    ib:[["VLESS",11645,"vless-tcp","1f0c9a77-51b2-4c0e-9e21-4b7a2d3f8c10"],
+        ["Trojan",11707,"trojan-main","Qk3nR7wPzA"],
+        ["VMess",47685,"vmess-cdn","1f0c9a77-51b2-4c0e-9e21-4b7a2d3f8c10"],
+        ["GRE",47,"branch-gre","—"]] },
+
+  { email:"uq0p5rcu", note:"", state:"warn", online:true,
+    used:47.2, total:50, days:3, elapsed:27, sub:true,
+    ib:[["VLESS",11645,"vless-tcp","b8e1d0c3-7a44-4f92-8d61-2c5e9f0a4b73"],
+        ["SSH",2222,"ssh-gw","tunnel-uq0p"]] },
+
+  { email:"jr1qnuap", note:"", state:"error", online:false,
+    used:50, total:50, days:19, elapsed:11, sub:false, why:"Out of data",
+    ib:[["VMess",47685,"vmess-cdn","9d2f6b18-4e53-4a07-b1c8-3f7a5d90e264"]] },
+
+  { email:"x9db2hqn", note:"", state:"error", online:false,
+    used:8.9, total:25, days:-3, elapsed:33, sub:true, why:"Expired 3 days ago",
+    ib:[["Trojan",11707,"trojan-main","Lp9XcVt2Qw"]] },
+
+  { email:"d6htlx0y", note:"Sara — iPhone", state:"warn", online:true,
+    used:6.8, total:15, days:6, elapsed:24, sub:true,
+    ib:[["IKEv2",500,"ikev2-mobile","sara-d6ht"],
+        ["WireGuard",51820,"wg-mobile","—"]] },
+
+  { email:"tp0c8vmk", note:"Branch office router", state:"ok", online:true,
+    used:210.4, total:500, days:88, elapsed:92, sub:false,
+    ib:[["GRE",47,"branch-gre","—"]] },
+
+  { email:"k3m9x2plq", note:"Reseller batch 4", state:"ok", online:false,
+    used:3.1, total:20, days:41, elapsed:19, sub:true,
+    ib:[["VLESS",11645,"vless-tcp","4c7e2a91-6d38-4b15-9f02-8e1c3a6b7d40"]] },
+
+  { email:"qz84nvcp", note:"Telegram bot user", state:"ok", online:false,
+    used:1.2, total:10, days:22, elapsed:8, sub:false,
+    ib:[["MTProto",8443,"mtproto-1","ee7f3c1a9b204d5e6f8a0c2b4d6e8f10"]] },
+
+  { email:"n7w4qz1ba", note:"Frozen — payment overdue", state:"frozen", online:false,
+    used:22.0, total:100, days:46, elapsed:0, sub:true, why:"Frozen, 46 days held",
+    ib:[["L2TP",1701,"l2tp-dialin","n7w4-login"],
+        ["IKEv2",500,"ikev2-mobile","n7w4-login"]] },
+
+  { email:"w5kf3ram", note:"Sold, not yet connected", state:"ok", online:false,
+    used:0, total:30, days:30, elapsed:0, delayed:true, sub:true,
+    ib:[["VLESS",11645,"vless-tcp","0a5b8c2d-3e71-4f96-8a04-6d2b9c1e5f38"],
+        ["AnyTLS",8443,"anytls-1","Rt6WmZ0kBn"]] },
+
+  { email:"aaa", note:"Test account", state:"off", online:false,
+    used:0.2, total:0, days:0, elapsed:0, sub:false, why:"Disabled",
+    ib:[["VLESS",11645,"vless-tcp","c1d4e7f0-8a2b-4c65-9d38-7e0f1a2b3c4d"],
+        ["Trojan",11707,"trojan-main","Zx4Nq8Wr1T"],
+        ["VMess",47685,"vmess-cdn","c1d4e7f0-8a2b-4c65-9d38-7e0f1a2b3c4d"],
+        ["GRE",47,"branch-gre","—"]] },
+];
+
+/* --------------------------------- helpers --------------------------------- */
+const el = (t, cls, txt) => { const n = document.createElement(t); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+const gb = (n) => (n >= 100 ? n.toFixed(0) : n.toFixed(1)) + " GB";
+const pct = (a) => { const c = a.total ? Math.min(100, (a.used / a.total) * 100) : 0; return c; };
+const quotaTone = (a) => { if (!a.total) return ""; const p = pct(a); return p >= 100 ? "error" : p >= 85 ? "warn" : ""; };
+
+// The expiry is three different things wearing one field: a date, a countdown
+// that has not started, and nothing at all. Each has to READ as what it is.
+const expiryText = (a) => {
+  if (a.delayed) return { rel: a.days + "d after first use", abs: "not started", tone:"info" };
+  if (!a.days && a.state !== "frozen") return { rel: "Never", abs: "no deadline", tone:"" };
+  if (a.state === "frozen") return { rel: a.days + "d held", abs: "clock stopped", tone:"info" };
+  if (a.days < 0) return { rel: "Expired", abs: Math.abs(a.days) + " days ago", tone:"error" };
+  const d = new Date(Date.now() + a.days * 864e5);
+  return { rel: "in " + a.days + "d", abs: d.toISOString().slice(0, 10), tone: a.days <= 7 ? "warn" : "" };
+};
+const lastSeen = (a) => a.online ? "now" : a.elapsed ? a.elapsed + "d ago" : "never";
+const stateLamp = (a) => a.state === "frozen" ? "off" : a.state;
+const stateLabel = (a) => {
+  if (a.state === "off") return "Disabled";
+  if (a.state === "frozen") return "Frozen";
+  if (a.state === "error") return a.why || "Blocked";
+  if (a.state === "warn") return "Attention";
+  return a.online ? "Online" : "Idle";
+};
+
+function protoChips(a, max) {
+  const wrap = el("div", "chips");
+  const list = max ? a.ib.slice(0, max) : a.ib;
+  list.forEach(([p, port]) => {
+    const c = el("span", "proto");
+    c.append(document.createTextNode(p));
+    const s = el("span", "port", ":" + port);
+    c.append(s);
+    wrap.append(c);
+  });
+  if (max && a.ib.length > max) wrap.append(el("span", "proto", "+" + (a.ib.length - max)));
+  return wrap;
+}
+
+const ICON = {
+  edit:'<path d="M4 20h4l10-10a2.8 2.8 0 1 0-4-4L4 16v4z"/>',
+  link:'<path d="M10 14a4 4 0 0 0 6 .5l2-2a4 4 0 0 0-6-6l-1 1"/><path d="M14 10a4 4 0 0 0-6-.5l-2 2a4 4 0 0 0 6 6l1-1"/>',
+  reset:'<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4v5h-5"/>',
+  freeze:'<path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9"/>',
+  trash:'<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>',
+  more:'<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+  copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5h10"/>',
+  qr:'<rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h3v3h3v3"/>',
+};
+function icon(name, title, cls) {
+  const b = el("button", "iconbtn" + (cls ? " " + cls : ""));
+  b.type = "button"; b.title = title; b.setAttribute("aria-label", title);
+  b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + ICON[name] + "</svg>";
+  return b;
+}
+function actionRow(a, which) {
+  const w = el("div", "acts");
+  (which || ["edit", "link", "reset", "freeze", "trash"]).forEach((k) => {
+    if (k === "link" && !a.sub) return;
+    w.append(icon(k, { edit:"Edit", link:"Subscription", reset:"Reset traffic",
+                       freeze: a.state === "frozen" ? "Unfreeze" : "Freeze",
+                       trash:"Delete", more:"More", qr:"Share link", copy:"Copy" }[k],
+                  k === "trash" ? "danger" : ""));
+  });
+  return w;
+}
+
+function membershipList(a) {
+  const wrap = el("div", "memberships");
+  a.ib.forEach(([p, port, remark, cred], i) => {
+    const row = el("div", "mb");
+    const id = el("div", "id");
+    const chip = el("span", "proto"); chip.textContent = p;
+    id.append(chip, el("span", "", remark), el("span", "dim mono", ":" + port));
+    const c = el("div", "cred mono", cred);
+    c.title = "Credential · click to copy";
+    const use = el("div", "use num", gb(a.used / a.ib.length));
+    const acts = el("div", ""); acts.style.marginInlineStart = "auto";
+    acts.style.display = "flex"; acts.style.gap = "6px";
+    acts.append(icon("qr", "Share link"), icon("copy", "Copy"));
+    row.append(id, c, use, acts);
+    wrap.append(row);
+  });
+  return wrap;
+}
+
+/* --------------------------------- 1. ledger -------------------------------- */
+function buildLedger() {
+  const body = document.getElementById("ledger-body");
+  body.textContent = "";
+  FLEET.forEach((a, i) => {
+    const tr = el("tr");
+
+    const tdX = el("td");
+    const x = el("button", "expander", "+");
+    x.type = "button"; x.setAttribute("aria-label", "Show inbounds");
+    tdX.append(x); tr.append(tdX);
+
+    const tdWho = el("td");
+    const who = el("div", "who");
+    const lamp = el("span", "lamp " + stateLamp(a) + (a.online ? " live" : ""));
+    lamp.title = stateLabel(a);
+    const names = el("div");
+    names.append(el("div", "name", a.email));
+    if (a.note) names.append(el("div", "note", a.note));
+    who.append(lamp, names); tdWho.append(who); tr.append(tdWho);
+
+    const tdPlan = el("td", "plan");
+    const figs = el("div", "figs num");
+    if (a.total) { figs.innerHTML = "<b>" + gb(a.used) + "</b> / " + gb(a.total); }
+    else { figs.innerHTML = "<b>" + gb(a.used) + "</b> / ∞"; }
+    const m = el("div", "meter " + (a.total ? quotaTone(a) : "inf"));
+    if (a.total) { const f = el("i"); f.style.width = pct(a) + "%"; m.append(f); }
+    tdPlan.append(figs, m); tr.append(tdPlan);
+
+    const e = expiryText(a);
+    const tdWhen = el("td", "when");
+    const rel = el("div", "rel" + (e.tone ? " " : ""), e.rel);
+    if (e.tone) rel.style.color = "var(--" + e.tone + ")";
+    tdWhen.append(rel, el("div", "abs num", e.abs)); tr.append(tdWhen);
+
+    const tdOn = el("td");
+    tdOn.append(protoChips(a, 3)); tr.append(tdOn);
+
+    tr.append(el("td", "num dim", lastSeen(a)));
+
+    const tdA = el("td", "acts");
+    const sw = el("button", "switch"); sw.type = "button";
+    sw.setAttribute("role", "switch");
+    sw.setAttribute("aria-checked", a.state === "off" || a.state === "frozen" ? "false" : "true");
+    sw.setAttribute("aria-label", "Enabled");
+    const grp = el("div"); grp.style.display = "inline-flex"; grp.style.gap = "7px"; grp.style.alignItems = "center";
+    grp.append(sw, icon("more", "Actions"));
+    tdA.append(grp); tr.append(tdA);
+
+    body.append(tr);
+
+    const det = el("tr", "detail");
+    det.hidden = true;
+    const dtd = el("td"); dtd.colSpan = 7;
+    dtd.append(membershipList(a));
+    det.append(dtd); body.append(det);
+
+    x.addEventListener("click", () => {
+      det.hidden = !det.hidden;
+      x.textContent = det.hidden ? "+" : "−";
+    });
+    if (i === 0) { det.hidden = false; x.textContent = "−"; }
+  });
+}
+
+/* --------------------------------- 2. roster -------------------------------- */
+function buildRoster() {
+  const body = document.getElementById("roster-body");
+  body.textContent = "";
+  FLEET.forEach((a) => {
+    const row = el("div", "card rrow " + stateLamp(a));
+
+    const who = el("div", "who");
+    const nm = el("div", "name");
+    nm.append(document.createTextNode(a.email));
+    if (a.online) { const p = el("span", "pill ok", "Online"); nm.append(p); }
+    else if (a.why) { const p = el("span", "pill " + (a.state === "off" ? "" : a.state), a.why); nm.append(p); }
+    who.append(nm);
+    if (a.note) who.append(el("div", "note", a.note));
+    who.append(protoChips(a, 4));
+
+    const spine = el("div", "spine");
+    const dataTrack = el("div", "track");
+    dataTrack.append(el("span", "lbl", "Data"));
+    const db = el("div", "rail " + (a.total ? quotaTone(a) : "inf"));
+    if (a.total) { const f = el("i"); f.style.width = pct(a) + "%"; db.append(f); }
+    dataTrack.append(db);
+    dataTrack.append(el("span", "val num", a.total ? gb(a.used) + " / " + gb(a.total) : gb(a.used) + " / ∞"));
+
+    const e = expiryText(a);
+    const timeTrack = el("div", "track");
+    timeTrack.append(el("span", "lbl", "Time"));
+    const total = (a.days > 0 ? a.days : 0) + a.elapsed;
+    const tb = el("div", "rail time " + (a.days > 0 && a.days <= 7 ? "warn" : a.days < 0 ? "error" : "") + (total ? "" : " inf"));
+    if (total) { const f = el("i"); f.style.width = Math.min(100, (a.elapsed / total) * 100) + "%"; tb.append(f); }
+    timeTrack.append(tb);
+    const tv = el("span", "val num", e.rel);
+    if (e.tone) tv.style.color = "var(--" + e.tone + ")";
+    timeTrack.append(tv);
+
+    spine.append(dataTrack, timeTrack);
+    row.append(who, spine, actionRow(a));
+    body.append(row);
+  });
+}
+
+/* -------------------------------- 3. workbench ------------------------------ */
+let wbSelected = 0;
+function buildWorkbench() {
+  const list = document.getElementById("wb-list");
+  list.textContent = "";
+  FLEET.forEach((a, i) => {
+    const li = el("li");
+    const b = el("button"); b.type = "button";
+    b.setAttribute("aria-current", i === wbSelected ? "true" : "false");
+    const lamp = el("span", "lamp " + stateLamp(a) + (a.online ? " live" : ""));
+    b.append(lamp, el("span", "nm", a.email),
+             el("span", "qt num", a.total ? Math.round(pct(a)) + "%" : "∞"));
+    b.addEventListener("click", () => { wbSelected = i; buildWorkbench(); });
+    li.append(b); list.append(li);
+  });
+  renderWbDetail(FLEET[wbSelected]);
+}
+function renderWbDetail(a) {
+  const d = document.getElementById("wb-detail");
+  d.textContent = "";
+
+  const head = el("div", "head");
+  const t = el("div");
+  const h = el("h2"); h.textContent = a.email;
+  const badges = el("div"); badges.style.display = "flex"; badges.style.gap = "6px"; badges.style.marginTop = "6px";
+  const st = el("span", "pill " + (a.state === "ok" ? (a.online ? "ok" : "") : a.state === "frozen" ? "info" : a.state), stateLabel(a));
+  badges.append(st);
+  if (a.sub) badges.append(el("span", "pill", "Subscription"));
+  t.append(h);
+  if (a.note) t.append(el("div", "note", a.note));
+  t.append(badges);
+  const acts = el("div", "acts");
+  const sw = el("button", "switch"); sw.type = "button"; sw.setAttribute("role", "switch");
+  sw.setAttribute("aria-checked", a.state === "off" || a.state === "frozen" ? "false" : "true");
+  sw.setAttribute("aria-label", "Enabled");
+  acts.append(sw);
+  actionRow(a).childNodes.forEach((n) => acts.append(n.cloneNode(true)));
+  head.append(t, acts);
+
+  const stats = el("dl", "wstats");
+  const e = expiryText(a);
+  const mk = (k, v, sub) => {
+    const w = el("div");
+    w.append(el("dt", "", k));
+    const dd = el("dd", "num");
+    dd.append(document.createTextNode(v));
+    if (sub) { const s = el("small"); s.textContent = " " + sub; dd.append(s); }
+    w.append(dd); return w;
+  };
+  stats.append(
+    mk("Used", gb(a.used)),
+    mk("Left", a.total ? gb(Math.max(0, a.total - a.used)) : "∞", a.total ? "of " + gb(a.total) : "unlimited"),
+    mk("Expires", e.rel, e.abs),
+    mk("Inbounds", String(a.ib.length), a.ib.length === 1 ? "membership" : "memberships"),
+  );
+
+  const sec = el("div", "wsection");
+  sec.append(el("h3", "", "Served on"));
+  const ml = membershipList(a);
+  ml.style.padding = "0";
+  sec.append(ml);
+
+  d.append(head, stats, sec);
+}
+
+/* ---------------------------------- 4. cards -------------------------------- */
+function buildCards() {
+  const body = document.getElementById("cards-body");
+  body.textContent = "";
+  FLEET.forEach((a) => {
+    const c = el("div", "card ccard");
+    const top = el("div", "top");
+    const lamp = el("span", "lamp " + stateLamp(a) + (a.online ? " live" : ""));
+    lamp.style.marginTop = "6px"; lamp.title = stateLabel(a);
+    const nm = el("div", "nm"); nm.append(document.createTextNode(a.email));
+    if (a.note) nm.append(el("div", "note", a.note));
+    top.append(lamp, nm, icon("more", "Actions"));
+
+    const big = el("div", "big num");
+    big.append(document.createTextNode(gb(a.used)));
+    const s = el("small"); s.textContent = a.total ? " of " + gb(a.total) : " of ∞";
+    big.append(s);
+
+    const m = el("div", "meter " + (a.total ? quotaTone(a) : "inf"));
+    if (a.total) { const f = el("i"); f.style.width = pct(a) + "%"; m.append(f); }
+
+    const e = expiryText(a);
+    const kv = el("div", "kv");
+    kv.append(el("span", "", "Expires"));
+    const b = el("b", "num", e.rel);
+    if (e.tone) b.style.color = "var(--" + e.tone + ")";
+    kv.append(b);
+
+    const kv2 = el("div", "kv");
+    kv2.append(el("span", "", "Last seen"));
+    kv2.append(el("b", "num", lastSeen(a)));
+
+    const foot = el("div", "foot");
+    const sw = el("button", "switch"); sw.type = "button"; sw.setAttribute("role", "switch");
+    sw.setAttribute("aria-checked", a.state === "off" || a.state === "frozen" ? "false" : "true");
+    sw.setAttribute("aria-label", "Enabled");
+    foot.append(sw);
+    const sp = el("div", "sp"); foot.append(sp);
+    foot.append(icon("edit", "Edit"));
+    if (a.sub) foot.append(icon("link", "Subscription"));
+    foot.append(icon("trash", "Delete", "danger"));
+
+    c.append(top, big, m, kv, kv2, protoChips(a, 4), foot);
+    body.append(c);
+  });
+}
+
+/* --------------------------------- 5. triage -------------------------------- */
+function buildTriage() {
+  const body = document.getElementById("triage-body");
+  body.textContent = "";
+
+  const reason = (a) => {
+    if (a.state === "off") return { g:0, why:"Disabled", tone:"" };
+    if (a.state === "frozen") return { g:0, why:"Frozen · " + a.days + " days held", tone:"info" };
+    if (a.days < 0) return { g:0, why:"Expired " + Math.abs(a.days) + "d ago", tone:"error" };
+    if (a.total && a.used >= a.total) return { g:0, why:"Out of data", tone:"error" };
+    if (a.days > 0 && a.days <= 7) return { g:1, why:"Expires in " + a.days + "d", tone:"warn" };
+    if (a.total && pct(a) >= 85) return { g:1, why:Math.round(100 - pct(a)) + "% data left", tone:"warn" };
+    if (a.delayed) return { g:3, why:"Never connected", tone:"" };
+    return { g:2, why:a.online ? "Online" : "Idle · " + lastSeen(a), tone:a.online ? "ok" : "" };
+  };
+
+  const GROUPS = [
+    { cls:"act",  title:"Needs attention", hint:"Nobody is being served on these" },
+    { cls:"soon", title:"Running out",     hint:"Under a week, or under 15% of the allowance" },
+    { cls:"",     title:"Healthy",         hint:"" },
+    { cls:"",     title:"Never connected", hint:"Sold but not yet used" },
+  ];
+
+  GROUPS.forEach((g, gi) => {
+    const rows = FLEET.filter((a) => reason(a).g === gi);
+    if (!rows.length) return;
+    const sec = el("div", "card tgroup " + g.cls);
+    const head = el("div", "thead");
+    head.append(el("h3", "", g.title), el("span", "count num", String(rows.length)));
+    if (g.hint) head.append(el("span", "hint", g.hint));
+    sec.append(head);
+
+    rows.forEach((a) => {
+      const r = reason(a);
+      const row = el("div", "trow");
+      const who = el("div", "who");
+      const lamp = el("span", "lamp " + stateLamp(a) + (a.online ? " live" : ""));
+      const nmw = el("div"); nmw.style.minWidth = "0";
+      nmw.append(el("div", "nm", a.email));
+      if (a.note) nmw.append(el("div", "note dim", a.note));
+      who.append(lamp, nmw);
+      const why = el("span", "pill " + r.tone, r.why);
+      const figs = el("span", "figs num",
+        (a.total ? gb(a.used) + " / " + gb(a.total) : gb(a.used) + " / ∞"));
+      row.append(who, why, figs, protoChips(a, 2), actionRow(a, ["edit", "reset", "freeze"]));
+      sec.append(row);
+    });
+    body.append(sec);
+  });
+}
+
+/* --------------------------------- controls -------------------------------- */
+document.querySelectorAll(".tab").forEach((t) => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("on"));
+    document.getElementById("v-" + t.dataset.view).classList.add("on");
+  });
+});
+
+const dens = document.getElementById("density");
+dens.addEventListener("click", () => {
+  const on = dens.getAttribute("aria-pressed") === "true";
+  dens.setAttribute("aria-pressed", String(!on));
+  document.getElementById("ledger-wrap").classList.toggle("compact", !on);
+});
+
+const themeBtn = document.getElementById("theme");
+function syncThemeLabel() {
+  const dark = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  themeBtn.textContent = dark ? "Light" : "Dark";
+}
+themeBtn.addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+  syncThemeLabel();
+});
+syncThemeLabel();
+
+buildLedger();
+buildRoster();
+buildWorkbench();
+buildCards();
+buildTriage();
+</script>
+</body>
+</html>

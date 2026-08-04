@@ -76,7 +76,20 @@
             <template #description>{{ i18n "pages.xray.statsOutboundUplinkDesc"
                 }}</template>
             <template #control>
-                <a-switch v-model="statsOutboundUplink"></a-switch>
+                <!-- Shown ON and locked while a VPN tunnel is pinned: the panel
+                     turns both outbound counters on in the config it BUILDS, so a
+                     switch reading off would report the opposite of what the
+                     running core does. The stored template is not touched, so
+                     removing the tunnels gives the operator their setting back.
+
+                     The span is load-bearing: a disabled button dispatches no
+                     mouse events, so a tooltip attached straight to the switch
+                     never opens and the reason would be unreachable. -->
+                <a-tooltip v-if="vpnOutboundCountersForced"
+                    title='{{ i18n "pages.xray.statsOutboundForced" }}'>
+                    <span><a-switch :checked="true" disabled></a-switch></span>
+                </a-tooltip>
+                <a-switch v-else v-model="statsOutboundUplink"></a-switch>
             </template>
         </a-setting-list-item>
         <a-setting-list-item paddings="small">
@@ -85,7 +98,12 @@
             <template #description>{{ i18n
                 "pages.xray.statsOutboundDownlinkDesc" }}</template>
             <template #control>
-                <a-switch v-model="statsOutboundDownlink"></a-switch>
+                <!-- Same lock as the uplink counter above, for the same reason. -->
+                <a-tooltip v-if="vpnOutboundCountersForced"
+                    title='{{ i18n "pages.xray.statsOutboundForced" }}'>
+                    <span><a-switch :checked="true" disabled></a-switch></span>
+                </a-tooltip>
+                <a-switch v-else v-model="statsOutboundDownlink"></a-switch>
             </template>
         </a-setting-list-item>
     </a-collapse-panel>

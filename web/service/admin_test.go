@@ -499,3 +499,66 @@ func TestMigratedGlobalTwoFactorSecretIsNotServed(t *testing.T) {
 		t.Error("the stale global twoFactorEnable survived the migration")
 	}
 }
+
+// The upgrade path for a permission bit that did not exist yesterday. Every admin
+// could open the overview while it was ungated, so the bit that now gates it has to
+// be handed to the admins who predate it. Without this a plain upgrade-and-restart
+// takes the panel's home page away from every non-super admin, silently, because a
+// new bit reads as 0 on every row already in the database.
+func TestMigrationOverviewAccessBackfillsExistingAdmins(t *testing.T) {
+	s := newAdminDB(t)
+	db := database.GetDB()
+
+	// A delegated admin as it exists before the bit, a reseller (whose mask Can()
+	// ignores in favour of their profile), and the seeded super admin.
+	admin := &model.User{Username: "delegate", Enable: true, Permissions: model.PermAccessInbounds}
+	if err := db.Create(admin).Error; err != nil {
+		t.Fatalf("seeding the admin: %v", err)
+	}
+	seller := &model.User{Username: "seller", Enable: true, IsReseller: true}
+	if err := db.Create(seller).Error; err != nil {
+		t.Fatalf("seeding the reseller: %v", err)
+	}
+
+	s.MigrationOverviewAccess()
+
+	reload := func(id int) *model.User {
+		t.Helper()
+		u := &model.User{}
+		if err := db.Model(model.User{}).Where("id = ?", id).First(u).Error; err != nil {
+			t.Fatalf("reading user %d: %v", id, err)
+		}
+		return u
+	}
+
+	got := reload(admin.Id)
+	if !got.Permissions.Has(model.PermAccessOverview) {
+		t.Error("the existing admin did not get the overview permission, so the upgrade took the page away")
+	}
+	// OR'ed in SQL rather than written wholesale, so what they already held survives.
+	if !got.Permissions.Has(model.PermAccessInbounds) {
+		t.Error("the backfill overwrote the admin's other permissions instead of adding to them")
+	}
+	if p := reload(seller.Id).Permissions; p != 0 {
+		t.Errorf("the reseller's mask was written (%d); their profile booleans are the source of truth", p)
+	}
+	if p := reload(1).Permissions; p != 0 {
+		t.Errorf("the super admin's mask was written (%d); they bypass it entirely", p)
+	}
+
+	// The guard. An operator who takes the permission back must keep it taken back,
+	// which is why this is marked in the settings table rather than inferred from
+	// "does anybody hold the bit": every restart looks like the first one otherwise.
+	var settingService SettingService
+	if !settingService.GetOverviewAccessBackfilled() {
+		t.Fatal("the backfill did not record that it ran, so it repeats on every restart")
+	}
+	if err := db.Model(model.User{}).Where("id = ?", admin.Id).
+		Update("permissions", model.PermAccessInbounds).Error; err != nil {
+		t.Fatalf("simulating the revoke: %v", err)
+	}
+	s.MigrationOverviewAccess()
+	if reload(admin.Id).Permissions.Has(model.PermAccessOverview) {
+		t.Error("a revoked overview permission was granted again on the next start")
+	}
+}

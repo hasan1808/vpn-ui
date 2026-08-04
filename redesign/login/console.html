@@ -1,0 +1,1093 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Login: Console</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--lgc-page)}</style>
+</head>
+<body>
+<div id="lg-console">
+<style>
+/* ==================================================================
+   vpn-ui login, direction 2 of 5: CONSOLE.
+
+   The login screen is a terminal session and authenticating is a
+   command. The voice is lifted from this project's own installer
+   (deploy.sh): a bold blue ":: " step header, a blue "  -> " action
+   arrow, green for success, bold yellow "warning:" and bold red
+   "error:" prefixes. The window chrome follows web/assets/css/
+   terminal.css (bar, title, indeterminate progress, step caret).
+
+   Scope: everything lives under #lg-console. The only unscoped rules
+   are the four token blocks, which must sit on :root so the panel's
+   existing theme switcher (which stamps data-theme on <html>) drives
+   them, exactly as redesign/bento.html does.
+
+   Portability to ant-design-vue 1.7.8: every row is
+   <label> + <input>, which is a-input with the label lifted out of
+   the prefix slot; the reveal is a-input-password's suffix icon; the
+   submit is a-button[html-type=submit] with :loading; the language
+   picker is a-select; the settings sheet is a-popover. Nothing here
+   needs a component this version lacks.
+   ================================================================== */
+
+/* ---- tokens: light (default) ---- */
+:root{
+  color-scheme: light;
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+
+  /* the three tiers of a light terminal: desk, chrome, paper screen */
+  --lgc-page:#eef2f4;
+  --lgc-chrome:#f4f6f8;
+  --lgc-screen:#ffffff;
+
+  --lgc-row-hot:rgba(0,135,113,.055);
+  --lgc-rule:#e4e9ee;
+  --lgc-rule-hover:#d2dae1;
+  --lgc-grid:rgba(27,36,48,.045);
+  --lgc-wash:rgba(0,135,113,.05);
+  --lgc-shadow:0 20px 44px -24px rgba(16,24,32,.32), 0 2px 6px rgba(16,24,32,.05);
+  --lgc-keycap:rgba(255,255,255,.55);
+  --lgc-info-weak:rgba(31,111,208,.10);
+  --lgc-warn-weak:rgba(138,96,8,.11);
+  --lgc-error-weak:rgba(179,38,30,.09);
+}
+/* ---- tokens: dark by system preference ---- */
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+
+    /* dark terminal inverts the tiers: the screen is the darkest surface */
+    --lgc-page:#151f31;
+    --lgc-chrome:#1c2740;
+    --lgc-screen:#0a1222;
+
+    --lgc-row-hot:rgba(27,191,159,.075);
+    --lgc-rule:#2c3950;
+    --lgc-rule-hover:#3c4b68;
+    --lgc-grid:rgba(255,255,255,.035);
+    --lgc-wash:rgba(27,191,159,.07);
+    --lgc-shadow:0 24px 52px -22px rgba(0,0,0,.62), 0 2px 8px rgba(0,0,0,.35);
+    --lgc-keycap:rgba(7,26,22,.38);
+    --lgc-info-weak:rgba(111,168,245,.12);
+    --lgc-warn-weak:rgba(224,169,74,.13);
+    --lgc-error-weak:rgba(242,114,106,.12);
+  }
+}
+/* ---- tokens: dark forced ---- */
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --lgc-page:#151f31;
+  --lgc-chrome:#1c2740;
+  --lgc-screen:#0a1222;
+  --lgc-row-hot:rgba(27,191,159,.075);
+  --lgc-rule:#2c3950;
+  --lgc-rule-hover:#3c4b68;
+  --lgc-grid:rgba(255,255,255,.035);
+  --lgc-wash:rgba(27,191,159,.07);
+  --lgc-shadow:0 24px 52px -22px rgba(0,0,0,.62), 0 2px 8px rgba(0,0,0,.35);
+  --lgc-keycap:rgba(7,26,22,.38);
+  --lgc-info-weak:rgba(111,168,245,.12);
+  --lgc-warn-weak:rgba(224,169,74,.13);
+  --lgc-error-weak:rgba(242,114,106,.12);
+}
+/* ---- tokens: light forced ---- */
+:root[data-theme="light"]{
+  color-scheme: light;
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --lgc-page:#eef2f4;
+  --lgc-chrome:#f4f6f8;
+  --lgc-screen:#ffffff;
+  --lgc-row-hot:rgba(0,135,113,.055);
+  --lgc-rule:#e4e9ee;
+  --lgc-rule-hover:#d2dae1;
+  --lgc-grid:rgba(27,36,48,.045);
+  --lgc-wash:rgba(0,135,113,.05);
+  --lgc-shadow:0 20px 44px -24px rgba(16,24,32,.32), 0 2px 6px rgba(16,24,32,.05);
+  --lgc-keycap:rgba(255,255,255,.55);
+  --lgc-info-weak:rgba(31,111,208,.10);
+  --lgc-warn-weak:rgba(138,96,8,.11);
+  --lgc-error-weak:rgba(179,38,30,.09);
+}
+
+/* ---- non-colour scales, theme independent ---- */
+:root{
+  --lgc-r-sm:8px; --lgc-r-md:10px; --lgc-r-lg:12px; --lgc-r-xl:16px; --lgc-r-pill:999px;
+  --lgc-font-sans:'Vazirmatn UI NL',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif;
+  --lgc-font-mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  --lgc-dur:.16s;
+  --lgc-ease:cubic-bezier(.4,0,.2,1);
+}
+
+/* ================= shell ================= */
+#lg-console, #lg-console *, #lg-console *::before, #lg-console *::after{ box-sizing:border-box; }
+#lg-console{
+  font-family:var(--lgc-font-sans);
+  color:var(--text);
+  background-color:var(--lgc-page);
+  /* a soft accent wash behind the window, over a faint 22px text grid */
+  background-image:
+    radial-gradient(120% 70% at 50% 8%, var(--lgc-wash), transparent 62%),
+    repeating-linear-gradient(to bottom, var(--lgc-grid) 0 1px, transparent 1px 22px);
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  min-height:100vh; min-height:100dvh;
+  width:100%; overflow-x:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:16px; padding:24px 16px 20px;
+}
+#lg-console p, #lg-console h1{ margin:0; }
+#lg-console button{ font-family:inherit; color:inherit; }
+#lg-console svg{ display:block; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+
+#lg-console :focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+  border-radius:4px;
+}
+
+/* ================= the window ================= */
+#lg-console .lgc-win{
+  width:100%; max-width:560px;
+  background:var(--lgc-screen);
+  border:1px solid var(--border-strong);
+  border-radius:var(--lgc-r-lg);
+  box-shadow:var(--lgc-shadow);
+  overflow:hidden;
+}
+
+/* ---- title bar: wordmark + connection target ---- */
+#lg-console .lgc-bar{
+  display:flex; align-items:center; gap:10px;
+  padding:9px 10px 9px 14px;
+  background:var(--lgc-chrome);
+  border-bottom:1px solid var(--border);
+  position:relative;
+}
+#lg-console .lgc-bar-glyph{ color:var(--text-3); flex:0 0 auto; }
+#lg-console .lgc-bar-glyph svg{ width:15px; height:15px; }
+#lg-console .lgc-mark{
+  font-family:var(--lgc-font-mono);
+  font-size:16px; font-weight:700; letter-spacing:.14em;
+  color:var(--accent);
+  flex:0 0 auto; white-space:nowrap;
+  /* the mark is a literal, never mirrored */
+  direction:ltr; unicode-bidi:isolate;
+}
+#lg-console .lgc-bar-target{
+  flex:1 1 auto; min-width:0;
+  display:flex; align-items:baseline; gap:7px;
+  font-family:var(--lgc-font-mono); font-size:12.5px; letter-spacing:.01em;
+  color:var(--text-3);
+  direction:ltr; unicode-bidi:isolate;
+  overflow:hidden;
+}
+#lg-console .lgc-bar-target b{ font-weight:600; color:var(--text-2); flex:0 0 auto; }
+#lg-console .lgc-bar-host{
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;
+}
+#lg-console .lgc-gear{
+  flex:0 0 auto;
+  width:30px; height:30px; border-radius:var(--lgc-r-sm);
+  border:1px solid transparent; background:transparent; color:var(--text-3);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:color var(--lgc-dur) var(--lgc-ease), background-color var(--lgc-dur) var(--lgc-ease), border-color var(--lgc-dur) var(--lgc-ease);
+}
+#lg-console .lgc-gear svg{ width:16px; height:16px; }
+#lg-console .lgc-gear:hover,
+#lg-console .lgc-gear[aria-expanded="true"]{ color:var(--accent); background:var(--accent-weak); border-color:var(--accent); }
+
+/* ---- indeterminate progress, from terminal.css ---- */
+#lg-console .lgc-progress{ height:2px; background:var(--border); overflow:hidden; }
+#lg-console .lgc-progress-bar{
+  height:100%; width:35%; border-radius:2px; background:var(--accent);
+  transform:translateX(-100%);
+  animation:lgc-slide 1.2s ease-in-out infinite;
+}
+#lg-console .lgc-progress[hidden]{ display:none; }
+@keyframes lgc-slide{
+  0%{ transform:translateX(-100%); }
+  100%{ transform:translateX(300%); }
+}
+
+/* ================= settings sheet (theme + language) ================= */
+#lg-console .lgc-sheet{
+  position:absolute; top:calc(100% + 6px); inset-inline-end:10px; z-index:20;
+  width:min(258px, calc(100vw - 44px));
+  background:var(--surface); border:1px solid var(--border-strong);
+  border-radius:var(--lgc-r-md); box-shadow:var(--lgc-shadow);
+  padding:14px; display:grid; gap:12px;
+}
+#lg-console .lgc-sheet[hidden]{ display:none; }
+#lg-console .lgc-sheet-label{
+  font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--text-3); margin-bottom:6px; display:block;
+}
+#lg-console .lgc-seg{
+  display:flex; gap:4px; padding:3px;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:var(--lgc-r-sm);
+}
+#lg-console .lgc-seg button{
+  flex:1 1 0; min-width:0; padding:6px 4px;
+  border:none; border-radius:6px; background:transparent; cursor:pointer;
+  font-family:var(--lgc-font-mono); font-size:12.5px; letter-spacing:.01em;
+  color:var(--text-2);
+  transition:background-color var(--lgc-dur) var(--lgc-ease), color var(--lgc-dur) var(--lgc-ease);
+  /* theme names are enum literals (auto|light|dark), never mirrored, never translated */
+  direction:ltr; unicode-bidi:isolate;
+}
+#lg-console .lgc-seg button:hover{ color:var(--text); }
+#lg-console .lgc-seg button[aria-pressed="true"]{
+  background:var(--accent); color:var(--on-accent); font-weight:700;
+}
+#lg-console .lgc-select{
+  width:100%; padding:8px 10px;
+  font-family:var(--lgc-font-mono); font-size:13px;
+  color:var(--text); background:var(--surface-2);
+  border:1px solid var(--border); border-radius:var(--lgc-r-sm);
+  cursor:pointer;
+}
+
+/* ================= screen ================= */
+#lg-console .lgc-screen{
+  background:var(--lgc-screen);
+  padding:18px 16px 18px;
+  font-family:var(--lgc-font-mono);
+  font-size:14px; line-height:1.7; letter-spacing:.01em;
+  /* THE LTR ISLAND.
+     Console output is a left-to-right construct: the ":: " header and
+     the "  -> " arrow are a gutter, and mirroring them would put the
+     arrow after the thing it points at. So the screen is pinned LTR
+     (the panel ships .ltr-island in tokens.css for exactly this) and
+     every localised run inside it is isolated instead, so Persian and
+     Arabic label text still shapes and orders correctly in place.
+     Chrome outside the screen (bar, sheet, footer) mirrors normally. */
+  direction:ltr;
+  unicode-bidi:isolate;
+}
+#lg-console .lgc-i18n{ unicode-bidi:isolate; }
+
+/* the gutter sigils, straight out of deploy.sh */
+#lg-console .lgc-sig{ color:var(--info); font-weight:700; flex:0 0 auto; }
+#lg-console .lgc-arrow{ color:var(--info); flex:0 0 auto; }
+#lg-console .lgc-line{ display:flex; align-items:baseline; gap:8px; }
+#lg-console .lgc-line + .lgc-line{ margin-top:2px; }
+
+/* ---- the greeting: ":: Hello" / ":: Welcome" ---- */
+#lg-console .lgc-greet{
+  font-size:20px; font-weight:700; letter-spacing:.005em; color:var(--text);
+  min-height:1.5em; align-items:center;
+}
+#lg-console .lgc-greet .lgc-sig{ font-size:20px; }
+#lg-console .lgc-greet-word{ unicode-bidi:isolate; }
+#lg-console .lgc-greet-caret{
+  display:inline-block; width:.55em; height:1.05em; flex:0 0 auto;
+  background:var(--accent); border-radius:1px;
+  transform:translateY(.14em);
+  animation:lgc-blink 1.06s step-end infinite;
+}
+@keyframes lgc-blink{ 50%{ opacity:0; } }
+
+/* ---- honest preamble: version and this page's own transport ---- */
+#lg-console .lgc-pre{
+  margin-top:8px; font-size:12.5px; color:var(--text-2);
+}
+#lg-console .lgc-pre b{ color:var(--text); font-weight:600; }
+#lg-console .lgc-transport[data-state="tls"]{ color:var(--ok); }
+#lg-console .lgc-transport[data-state="tls"] .lgc-arrow{ color:var(--ok); }
+#lg-console .lgc-transport[data-state="plain"]{ color:var(--warn); }
+#lg-console .lgc-transport[data-state="plain"] .lgc-arrow{ color:var(--warn); font-weight:700; }
+#lg-console .lgc-transport[data-state="unknown"]{ color:var(--off); }
+#lg-console .lgc-transport[data-state="unknown"] .lgc-arrow{ color:var(--off); }
+#lg-console .lgc-tag{ font-weight:700; flex:0 0 auto; }
+
+#lg-console .lgc-hr{
+  height:1px; background:var(--border); border:0; margin:16px 0 4px;
+}
+
+/* ================= notices: warning:, error:, -> ================= */
+#lg-console .lgc-notice{
+  display:flex; align-items:baseline; gap:8px;
+  font-size:12.5px; line-height:1.6;
+  padding:9px 11px; border-radius:var(--lgc-r-sm);
+  border-inline-start:2px solid currentColor;
+}
+#lg-console .lgc-notice[hidden]{ display:none; }
+#lg-console .lgc-notice + .lgc-notice{ margin-top:6px; }
+#lg-console .lgc-notice b{ font-weight:700; flex:0 0 auto; }
+#lg-console .lgc-notice span{ color:var(--text-2); }
+#lg-console .lgc-notice--warn{ color:var(--warn); background:var(--lgc-warn-weak); }
+#lg-console .lgc-notice--error{ color:var(--error); background:var(--lgc-error-weak); }
+#lg-console .lgc-notice--info{ color:var(--info); background:var(--lgc-info-weak); }
+#lg-console .lgc-notice--warn span,
+#lg-console .lgc-notice--error span,
+#lg-console .lgc-notice--info span{ color:var(--text); }
+
+#lg-console .lgc-expired{ margin-bottom:14px; }
+
+/* ================= prompt rows ================= */
+#lg-console .lgc-form{ display:block; }
+#lg-console .lgc-rows{ display:grid; gap:2px; margin:6px 0 4px; }
+
+#lg-console .lgc-row{
+  display:flex; align-items:center; gap:12px;
+  padding:7px 10px;
+  border-radius:var(--lgc-r-sm);
+  background:transparent;
+  /* physical inset is safe: the screen is a permanent LTR island */
+  box-shadow:inset 2px 0 0 transparent;
+  transition:background-color var(--lgc-dur) var(--lgc-ease), box-shadow var(--lgc-dur) var(--lgc-ease);
+  cursor:text;
+}
+#lg-console .lgc-row[hidden]{ display:none; }
+#lg-console .lgc-row:hover .lgc-val{ border-bottom-color:var(--lgc-rule-hover); }
+#lg-console .lgc-row:focus-within{
+  background:var(--lgc-row-hot);
+  box-shadow:inset 2px 0 0 var(--accent);
+}
+
+#lg-console .lgc-key{
+  flex:0 0 auto; min-width:96px;
+  display:flex; align-items:baseline; gap:8px;
+  font-size:14px; color:var(--text-2);
+  cursor:text; user-select:none;
+}
+#lg-console .lgc-row:focus-within .lgc-key{ color:var(--text); }
+#lg-console .lgc-key-text{ unicode-bidi:isolate; }
+
+#lg-console .lgc-val{
+  position:relative;
+  flex:1 1 auto; min-width:0;
+  display:flex; align-items:center;
+  border-bottom:1px solid var(--lgc-rule);
+  transition:border-color var(--lgc-dur) var(--lgc-ease);
+}
+#lg-console .lgc-row:focus-within .lgc-val{ border-bottom-color:var(--accent); }
+
+#lg-console .lgc-input{
+  flex:1 1 auto; width:auto; min-width:0;
+  border:0; background:transparent; padding:3px 0 4px; margin:0;
+  font-family:var(--lgc-font-mono);
+  /* 16px is not decoration: below it iOS Safari zooms the viewport on focus */
+  font-size:16px; line-height:1.45; letter-spacing:.01em;
+  color:var(--text);
+  caret-color:var(--accent);
+  caret-shape:block; /* progressive: real block caret where supported */
+  outline:none;
+  direction:ltr; text-align:start;
+}
+#lg-console .lgc-input::placeholder{ color:transparent; }
+#lg-console .lgc-input:focus-visible{
+  outline:2px solid var(--accent); outline-offset:3px; border-radius:3px;
+}
+#lg-console .lgc-input:-webkit-autofill{
+  -webkit-text-fill-color:var(--text);
+  -webkit-box-shadow:0 0 0 40px var(--lgc-screen) inset;
+}
+#lg-console #lgcCode{ letter-spacing:.3em; }
+
+/* the resting block caret. Exactly one is ever on screen: it marks the
+   next field to fill, and it yields to the browser's own caret the
+   moment anything is focused, so it can never point at the wrong spot. */
+#lg-console .lgc-caret{
+  position:absolute; inset-inline-start:0; top:50%;
+  width:.58em; height:1.1em; font-size:16px;
+  transform:translateY(-50%);
+  background:var(--accent); border-radius:1px;
+  opacity:0; pointer-events:none;
+}
+#lg-console .lgc-row.is-cursor .lgc-input:placeholder-shown:not(:focus) + .lgc-caret{
+  opacity:1; animation:lgc-blink 1.06s step-end infinite;
+}
+#lg-console .lgc-form.is-typing .lgc-caret{ opacity:0 !important; animation:none !important; }
+
+/* reveal, mapping onto a-input-password's suffix icon */
+#lg-console .lgc-reveal{
+  flex:0 0 auto; width:28px; height:26px; margin-inline-start:6px;
+  border:1px solid transparent; border-radius:6px; background:transparent;
+  color:var(--text-3); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:color var(--lgc-dur) var(--lgc-ease), border-color var(--lgc-dur) var(--lgc-ease);
+}
+#lg-console .lgc-reveal svg{ width:16px; height:16px; }
+#lg-console .lgc-reveal:hover{ color:var(--accent); border-color:var(--border-strong); }
+#lg-console .lgc-reveal .lgc-eye-off{ display:none; }
+#lg-console .lgc-reveal[aria-pressed="true"]{ color:var(--accent); }
+#lg-console .lgc-reveal[aria-pressed="true"] .lgc-eye{ display:none; }
+#lg-console .lgc-reveal[aria-pressed="true"] .lgc-eye-off{ display:block; }
+
+/* per field validation, printed like command output under the line */
+#lg-console .lgc-fielderr{
+  display:flex; align-items:baseline; gap:8px;
+  padding:1px 10px 5px 10px;
+  font-size:12.5px; color:var(--error);
+}
+#lg-console .lgc-fielderr[hidden]{ display:none; }
+#lg-console .lgc-fielderr b{ font-weight:700; flex:0 0 auto; }
+#lg-console .lgc-fielderr span{ color:var(--text-2); unicode-bidi:isolate; }
+#lg-console .lgc-row.is-bad .lgc-val{ border-bottom-color:var(--error); }
+#lg-console .lgc-row.is-bad .lgc-arrow{ color:var(--error); }
+#lg-console .lgc-row.is-bad .lgc-caret{ background:var(--error); }
+
+/* ================= submit: the return key, made explicit ================= */
+#lg-console .lgc-actions{ margin-top:14px; }
+#lg-console .lgc-submit{
+  width:100%; min-height:46px;
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  padding:11px 16px;
+  border:1px solid var(--accent); border-radius:var(--lgc-r-sm);
+  background:var(--accent); color:var(--on-accent);
+  font-family:var(--lgc-font-mono); font-size:16px; font-weight:700; letter-spacing:.02em;
+  cursor:pointer;
+  transition:background-color var(--lgc-dur) var(--lgc-ease), border-color var(--lgc-dur) var(--lgc-ease), opacity var(--lgc-dur) var(--lgc-ease);
+}
+#lg-console .lgc-submit:hover:not(:disabled){ background:var(--accent-strong); border-color:var(--accent-strong); }
+#lg-console .lgc-submit:disabled{ cursor:default; opacity:.82; }
+#lg-console .lgc-submit-label{ unicode-bidi:isolate; }
+#lg-console .lgc-keycap{
+  flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  width:24px; height:20px; border-radius:5px;
+  border:1px solid var(--lgc-keycap);
+  background:var(--lgc-keycap);
+}
+#lg-console .lgc-keycap svg{ width:13px; height:13px; }
+#lg-console .lgc-spin{
+  font-size:16px; font-weight:700;
+  width:1.1em; text-align:center;
+  direction:ltr; unicode-bidi:isolate;
+}
+
+/* ================= footer, mockup controls ================= */
+#lg-console .lgc-foot{
+  width:100%; max-width:560px;
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+  font-family:var(--lgc-font-mono); font-size:11px; color:var(--text-3);
+}
+#lg-console .lgc-foot-label{
+  margin-inline-end:4px; letter-spacing:.02em;
+  direction:ltr; unicode-bidi:isolate;
+}
+#lg-console .lgc-chip{
+  padding:4px 9px; border-radius:var(--lgc-r-pill);
+  border:1px solid var(--border-strong); background:var(--surface);
+  color:var(--text-2); font-family:var(--lgc-font-mono); font-size:11px;
+  cursor:pointer; white-space:nowrap;
+  transition:background-color var(--lgc-dur) var(--lgc-ease), color var(--lgc-dur) var(--lgc-ease), border-color var(--lgc-dur) var(--lgc-ease);
+}
+#lg-console .lgc-chip:hover{ color:var(--text); border-color:var(--text-3); }
+#lg-console .lgc-chip[aria-pressed="true"]{
+  background:var(--accent-weak); color:var(--accent); border-color:var(--accent);
+}
+
+/* ================= responsive ================= */
+@media (max-width:430px){
+  #lg-console{ padding:16px 12px 16px; }
+  #lg-console .lgc-screen{ padding:16px 12px; }
+  #lg-console .lgc-greet{ font-size:20px; }
+  /* the prompt breaks into two lines, which is what a real prompt does
+     when the terminal is narrow: label line, then the input under it */
+  #lg-console .lgc-row{ flex-wrap:wrap; row-gap:0; padding:6px 8px 7px; }
+  #lg-console .lgc-key{ min-width:0; width:100%; }
+  #lg-console .lgc-val{ margin-inline-start:24px; }
+  #lg-console .lgc-input{ padding:1px 0 3px; }
+  #lg-console .lgc-fielderr{ padding-inline:8px; }
+  #lg-console .lgc-bar{ padding-inline:10px; gap:8px; }
+  #lg-console .lgc-mark{ font-size:14px; letter-spacing:.12em; }
+  #lg-console .lgc-bar-target{ font-size:11px; }
+}
+@media (max-width:360px){
+  #lg-console .lgc-bar-target b{ display:none; }
+}
+
+/* ================= reduced motion ================= *
+   Everything that moves is neutralised, including the caret blink and
+   the greeting typewriter, which the script also switches to a plain
+   static swap. The loading bar becomes a full, still bar. */
+@media (prefers-reduced-motion: reduce){
+  #lg-console *, #lg-console *::before, #lg-console *::after{
+    transition-duration:.001ms !important;
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+  }
+  #lg-console .lgc-caret,
+  #lg-console .lgc-greet-caret{ animation:none !important; opacity:.75; }
+  #lg-console .lgc-row.is-cursor .lgc-input:placeholder-shown:not(:focus) + .lgc-caret{ opacity:.75; }
+  #lg-console .lgc-progress-bar{ width:100%; transform:none; opacity:.55; }
+}
+</style>
+
+<main class="lgc-win" aria-labelledby="lgcGreetLine">
+
+  <!-- title bar: wordmark and the connection target this page is on -->
+  <header class="lgc-bar">
+    <span class="lgc-bar-glyph" aria-hidden="true">
+      <svg viewBox="0 0 20 20"><path d="M4 6.5 7.5 10 4 13.5"/><path d="M10.5 14h5.5"/></svg>
+    </span>
+    <span class="lgc-mark">[VPN-UI]</span>
+    <span class="lgc-bar-target">
+      <b>login</b>
+      <span class="lgc-bar-host" id="lgcHost">local file</span>
+    </span>
+    <button type="button" class="lgc-gear" id="lgcGear" aria-expanded="false" aria-controls="lgcSheet" aria-label="Settings">
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M3 6.5h6M13 6.5h4M3 13.5h4M11 13.5h6"/>
+        <circle cx="11" cy="6.5" r="2"/>
+        <circle cx="9" cy="13.5" r="2"/>
+      </svg>
+    </button>
+
+    <!-- settings sheet: theme and language. Maps onto a-popover -->
+    <div class="lgc-sheet" id="lgcSheet" role="group" aria-label="Settings" hidden>
+      <div>
+        <span class="lgc-sheet-label" id="lgcThemeLabel">Theme</span>
+        <div class="lgc-seg" role="group" aria-labelledby="lgcThemeLabel">
+          <button type="button" data-theme-set="auto" aria-pressed="true">auto</button>
+          <button type="button" data-theme-set="light" aria-pressed="false">light</button>
+          <button type="button" data-theme-set="dark" aria-pressed="false">dark</button>
+        </div>
+      </div>
+      <div>
+        <label class="lgc-sheet-label" for="lgcLang" id="lgcLangLabel">Language</label>
+        <!-- the 13 locales the panel actually ships (web/translation).
+             No flag emoji: the locale code is the terminal-native label. -->
+        <select class="lgc-select" id="lgcLang">
+          <option value="ar-EG">ar-EG&nbsp;&nbsp;العربية</option>
+          <option value="en-US" selected>en-US&nbsp;&nbsp;English</option>
+          <option value="es-ES">es-ES&nbsp;&nbsp;Español</option>
+          <option value="fa-IR">fa-IR&nbsp;&nbsp;فارسی</option>
+          <option value="id-ID">id-ID&nbsp;&nbsp;Indonesian</option>
+          <option value="ja-JP">ja-JP&nbsp;&nbsp;日本語</option>
+          <option value="pt-BR">pt-BR&nbsp;&nbsp;Português</option>
+          <option value="ru-RU">ru-RU&nbsp;&nbsp;Русский</option>
+          <option value="tr-TR">tr-TR&nbsp;&nbsp;Türkçe</option>
+          <option value="uk-UA">uk-UA&nbsp;&nbsp;Український</option>
+          <option value="vi-VN">vi-VN&nbsp;&nbsp;Tiếng Việt</option>
+          <option value="zh-CN">zh-CN&nbsp;&nbsp;简体中文</option>
+          <option value="zh-TW">zh-TW&nbsp;&nbsp;繁體中文</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <div class="lgc-progress" id="lgcProgress" hidden aria-hidden="true">
+    <div class="lgc-progress-bar"></div>
+  </div>
+
+  <div class="lgc-screen">
+
+    <!-- session expired -->
+    <p class="lgc-notice lgc-notice--warn lgc-expired" id="lgcExpired" role="status" hidden>
+      <b>warning:</b>
+      <span class="lgc-i18n" data-t="loginAgain">Your session has expired, please log in again</span>
+    </p>
+
+    <!-- greeting. The live moment: the word retypes itself, Hello then
+         Welcome, which is the terminal reading of the panel's word swap -->
+    <h1 class="lgc-line lgc-greet" id="lgcGreetLine">
+      <span class="lgc-sig" aria-hidden="true">::</span>
+      <span class="lgc-greet-word lgc-i18n" id="lgcGreet">Hello</span>
+      <span class="lgc-greet-caret" id="lgcGreetCaret" aria-hidden="true"></span>
+    </h1>
+
+    <!-- preamble. Only facts this unauthenticated page actually holds:
+         the panel version (server template) and this page's own transport -->
+    <div class="lgc-pre">
+      <p class="lgc-line">
+        <span class="lgc-arrow" aria-hidden="true">-&gt;</span>
+        <span>vpn-ui <b>v1.8.1</b></span>
+      </p>
+      <p class="lgc-line lgc-transport" id="lgcTransport" data-state="tls">
+        <span class="lgc-arrow" aria-hidden="true">-&gt;</span>
+        <span id="lgcTransportText">connection secured with TLS</span>
+      </p>
+    </div>
+
+    <hr class="lgc-hr">
+
+    <form class="lgc-form" id="lgcForm" novalidate>
+      <div class="lgc-rows">
+
+        <!-- username -->
+        <div class="lgc-row is-cursor" id="lgcRowUser">
+          <label class="lgc-key" for="lgcUsername">
+            <span class="lgc-arrow" aria-hidden="true">-&gt;</span>
+            <span class="lgc-key-text lgc-i18n" data-t="username">Username</span>
+          </label>
+          <span class="lgc-val">
+            <input class="lgc-input" id="lgcUsername" name="username" type="text"
+                   autocomplete="username" placeholder=" " spellcheck="false"
+                   autocapitalize="off" autocorrect="off"
+                   aria-describedby="lgcErrUser" required>
+            <span class="lgc-caret" aria-hidden="true"></span>
+          </span>
+        </div>
+        <p class="lgc-fielderr" id="lgcErrUser" hidden>
+          <b>error:</b><span class="lgc-i18n" data-t="emptyUsername">Username is required</span>
+        </p>
+
+        <!-- password -->
+        <div class="lgc-row" id="lgcRowPass">
+          <label class="lgc-key" for="lgcPassword">
+            <span class="lgc-arrow" aria-hidden="true">-&gt;</span>
+            <span class="lgc-key-text lgc-i18n" data-t="password">Password</span>
+          </label>
+          <span class="lgc-val">
+            <input class="lgc-input" id="lgcPassword" name="password" type="password"
+                   autocomplete="current-password" placeholder=" " spellcheck="false"
+                   aria-describedby="lgcErrPass" required>
+            <span class="lgc-caret" aria-hidden="true"></span>
+            <button type="button" class="lgc-reveal" id="lgcReveal" aria-pressed="false"
+                  aria-controls="lgcPassword" aria-label="Show password">
+            <svg class="lgc-eye" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M1.8 10S4.9 4.6 10 4.6 18.2 10 18.2 10 15.1 15.4 10 15.4 1.8 10 1.8 10Z"/>
+              <circle cx="10" cy="10" r="2.4"/>
+            </svg>
+            <svg class="lgc-eye-off" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M8.2 5c.58-.12 1.18-.18 1.8-.18 5.1 0 8.2 5.18 8.2 5.18a15 15 0 0 1-2.5 3.06M4.7 6.3A15 15 0 0 0 1.8 10S4.9 15.2 10 15.2c1.24 0 2.35-.3 3.32-.76"/>
+              <path d="M8.4 8.5a2.4 2.4 0 0 0 3.28 3.28"/>
+              <path d="m3.4 3.4 13.2 13.2"/>
+            </svg>
+            </button>
+          </span>
+        </div>
+        <p class="lgc-fielderr" id="lgcErrPass" hidden>
+          <b>error:</b><span class="lgc-i18n" data-t="emptyPassword">Password is required</span>
+        </p>
+
+        <!-- two factor. Hidden until the server answers twoFactorRequired -->
+        <div class="lgc-row" id="lgcRowCode" hidden>
+          <label class="lgc-key" for="lgcCode">
+            <span class="lgc-arrow" aria-hidden="true">-&gt;</span>
+            <span class="lgc-key-text lgc-i18n" data-t="twoFactorCode">Code</span>
+          </label>
+          <span class="lgc-val">
+            <input class="lgc-input" id="lgcCode" name="twoFactorCode" type="text"
+                   autocomplete="one-time-code" inputmode="numeric" placeholder=" "
+                   spellcheck="false" autocapitalize="off" autocorrect="off">
+            <span class="lgc-caret" aria-hidden="true"></span>
+          </span>
+        </div>
+      </div>
+
+      <!-- 2FA prompt, printed as output rather than thrown as a toast -->
+      <p class="lgc-notice lgc-notice--info" id="lgcTwoFaHint" role="status" hidden>
+        <b>-&gt;</b>
+        <span class="lgc-i18n" data-t="twoFactorRequired">Enter the code from your authenticator app to finish signing in.</span>
+      </p>
+
+      <!-- wrong credentials -->
+      <p class="lgc-notice lgc-notice--error" id="lgcError" role="alert" hidden>
+        <b>error:</b>
+        <span class="lgc-i18n" data-t="wrongUsernameOrPassword">Invalid username or password or two-factor code.</span>
+      </p>
+
+      <div class="lgc-actions">
+        <button type="submit" class="lgc-submit" id="lgcSubmit" aria-label="Log In">
+          <span class="lgc-submit-label lgc-i18n" id="lgcSubmitLabel" data-t="login">Log In</span>
+          <span class="lgc-keycap" id="lgcKeycap" aria-hidden="true">
+            <svg viewBox="0 0 20 20"><path d="M16.5 5v5.5H5"/><path d="M8.2 7.8 5 11l3.2 3.2"/></svg>
+          </span>
+        </button>
+      </div>
+    </form>
+  </div>
+</main>
+
+<!-- mockup controls, not part of the design -->
+<footer class="lgc-foot">
+  <span class="lgc-foot-label">mockup states:</span>
+  <button type="button" class="lgc-chip" data-toggle="twofa" aria-pressed="false">2fa</button>
+  <button type="button" class="lgc-chip" data-toggle="error" aria-pressed="false">error</button>
+  <button type="button" class="lgc-chip" data-toggle="loading" aria-pressed="false">loading</button>
+  <button type="button" class="lgc-chip" data-toggle="expired" aria-pressed="false">expired</button>
+  <button type="button" class="lgc-chip" data-toggle="transport" aria-pressed="false">no tls</button>
+  <button type="button" class="lgc-chip" data-toggle="rtl" aria-pressed="false">rtl / fa-IR</button>
+</footer>
+</div>
+
+<script>
+(function(){
+  var root = document.getElementById('lg-console');
+  if(!root) return;
+
+  var docEl   = document.documentElement;
+  var motionQ = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function reduced(){ return motionQ.matches; }
+
+  var form      = document.getElementById('lgcForm');
+  var rowUser   = document.getElementById('lgcRowUser');
+  var rowPass   = document.getElementById('lgcRowPass');
+  var rowCode   = document.getElementById('lgcRowCode');
+  var iUser     = document.getElementById('lgcUsername');
+  var iPass     = document.getElementById('lgcPassword');
+  var iCode     = document.getElementById('lgcCode');
+  var errUser   = document.getElementById('lgcErrUser');
+  var errPass   = document.getElementById('lgcErrPass');
+  var errBox    = document.getElementById('lgcError');
+  var twoFaHint = document.getElementById('lgcTwoFaHint');
+  var expired   = document.getElementById('lgcExpired');
+  var submit    = document.getElementById('lgcSubmit');
+  var subLabel  = document.getElementById('lgcSubmitLabel');
+  var keycap    = document.getElementById('lgcKeycap');
+  var progress  = document.getElementById('lgcProgress');
+  var reveal    = document.getElementById('lgcReveal');
+  var greet     = document.getElementById('lgcGreet');
+  var gear      = document.getElementById('lgcGear');
+  var sheet     = document.getElementById('lgcSheet');
+
+  var fields = [
+    { row:rowUser, input:iUser },
+    { row:rowPass, input:iPass },
+    { row:rowCode, input:iCode }
+  ];
+
+  /* ---------------- copy ----------------
+     Every string below is a literal from web/translation. The RTL
+     control swaps to the shipped fa_IR strings so the bidi isolation
+     is proved against real right-to-left text, not a mirrored guess. */
+  var COPY = {
+    en: {
+      hello:'Hello', welcome:'Welcome',
+      username:'Username', password:'Password', twoFactorCode:'Code', login:'Log In',
+      loginAgain:'Your session has expired, please log in again',
+      emptyUsername:'Username is required',
+      emptyPassword:'Password is required',
+      wrongUsernameOrPassword:'Invalid username or password or two-factor code.',
+      twoFactorRequired:'Enter the code from your authenticator app to finish signing in.',
+      theme:'Theme', language:'Language',
+      showPassword:'Show password', hidePassword:'Hide password', settings:'Settings'
+    },
+    fa: {
+      hello:'سلام', welcome:'خوش‌آمدید',
+      username:'نام‌کاربری',
+      password:'رمزعبور',
+      twoFactorCode:'کد',
+      login:'ورود',
+      loginAgain:'مدت زمان استفاده به‌اتمام‌رسیده، لطفا دوباره وارد شوید',
+      emptyUsername:'لطفا یک نام‌کاربری وارد کنید',
+      emptyPassword:'لطفا یک رمزعبور وارد کنید',
+      wrongUsernameOrPassword:'نام کاربری، رمز عبور یا کد دو مرحله‌ای نامعتبر است.',
+      twoFactorRequired:'برای تکمیل ورود، کد را از برنامه احرازهویت خود وارد کنید.',
+      theme:'تم', language:'زبان',
+      showPassword:'نمایش رمزعبور',
+      hidePassword:'پنهان‌کردن رمزعبور',
+      settings:'تنظیمات'
+    }
+  };
+  var locale = 'en';
+  function t(key){ return COPY[locale][key]; }
+
+  function applyCopy(){
+    root.querySelectorAll('.lgc-i18n[data-t]').forEach(function(el){
+      el.textContent = t(el.getAttribute('data-t'));
+    });
+    document.getElementById('lgcThemeLabel').textContent = t('theme');
+    document.getElementById('lgcLangLabel').textContent  = t('language');
+    gear.setAttribute('aria-label', t('settings'));
+    submit.setAttribute('aria-label', t('login'));
+    syncReveal();
+    if(!greetRunning) greet.textContent = t('hello');
+  }
+
+  /* ---------------- theme ---------------- */
+  var themePref = 'auto';
+  function applyTheme(pref){
+    themePref = pref;
+    if(pref === 'auto') docEl.removeAttribute('data-theme');
+    else docEl.setAttribute('data-theme', pref);
+    sheet.querySelectorAll('[data-theme-set]').forEach(function(b){
+      b.setAttribute('aria-pressed', b.getAttribute('data-theme-set') === pref ? 'true' : 'false');
+    });
+  }
+  sheet.querySelectorAll('[data-theme-set]').forEach(function(b){
+    b.addEventListener('click', function(){ applyTheme(b.getAttribute('data-theme-set')); });
+  });
+  applyTheme('auto');
+
+  /* ---------------- settings sheet ---------------- */
+  function openSheet(open){
+    sheet.hidden = !open;
+    gear.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  gear.addEventListener('click', function(e){
+    e.stopPropagation();
+    openSheet(sheet.hidden);
+  });
+  sheet.addEventListener('click', function(e){ e.stopPropagation(); });
+  document.addEventListener('click', function(){ openSheet(false); });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && !sheet.hidden){ openSheet(false); gear.focus(); }
+  });
+  document.getElementById('lgcLang').addEventListener('change', function(){
+    /* the mockup carries two of the thirteen locales, enough to prove
+       the layout in both directions */
+    setDirection(this.value === 'fa-IR' || this.value === 'ar-EG');
+  });
+
+  /* ---------------- transport, only what this page honestly knows -------- */
+  var transportEl   = document.getElementById('lgcTransport');
+  var transportText = document.getElementById('lgcTransportText');
+  var forcePlain    = false;
+  function applyTransport(){
+    var p = location.protocol;
+    if(forcePlain){
+      transportEl.dataset.state = 'plain';
+      transportEl.querySelector('.lgc-arrow').textContent = 'warning:';
+      transportText.textContent = 'this page is not encrypted (HTTP)';
+    } else if(p === 'https:'){
+      transportEl.dataset.state = 'tls';
+      transportEl.querySelector('.lgc-arrow').textContent = '->';
+      transportText.textContent = 'connection secured with TLS';
+    } else if(p === 'http:'){
+      transportEl.dataset.state = 'plain';
+      transportEl.querySelector('.lgc-arrow').textContent = 'warning:';
+      transportText.textContent = 'this page is not encrypted (HTTP)';
+    } else {
+      transportEl.dataset.state = 'unknown';
+      transportEl.querySelector('.lgc-arrow').textContent = '->';
+      transportText.textContent = 'transport unknown (design preview)';
+    }
+  }
+  document.getElementById('lgcHost').textContent = location.host || 'local file';
+  applyTransport();
+
+  /* ---------------- the resting caret ----------------
+     Marks the next field to fill. Yields to the browser's own caret as
+     soon as anything is focused, so there is never a second, wrong one. */
+  function updateCursor(){
+    var target = null;
+    for(var i = 0; i < fields.length; i++){
+      var f = fields[i];
+      if(f.row.hidden) continue;
+      if(!f.input.value){ target = f; break; }
+    }
+    fields.forEach(function(f){ f.row.classList.toggle('is-cursor', f === target); });
+  }
+  form.addEventListener('focusin',  function(){ form.classList.add('is-typing'); });
+  form.addEventListener('focusout', function(){ form.classList.remove('is-typing'); updateCursor(); });
+  form.addEventListener('input', function(e){
+    updateCursor();
+    var row = e.target.closest('.lgc-row');
+    if(row && row.classList.contains('is-bad')){
+      row.classList.remove('is-bad');
+      if(row === rowUser) errUser.hidden = true;
+      if(row === rowPass) errPass.hidden = true;
+    }
+  });
+  /* the whole prompt line is the hit target, not just the value box */
+  fields.forEach(function(f){
+    f.row.addEventListener('mousedown', function(e){
+      if(e.target.closest('button') || e.target === f.input) return;
+      e.preventDefault();
+      f.input.focus();
+    });
+  });
+  updateCursor();
+
+  /* ---------------- reveal ---------------- */
+  function syncReveal(){
+    var on = iPass.type === 'text';
+    reveal.setAttribute('aria-pressed', on ? 'true' : 'false');
+    reveal.setAttribute('aria-label', on ? t('hidePassword') : t('showPassword'));
+  }
+  reveal.addEventListener('click', function(){
+    iPass.type = iPass.type === 'password' ? 'text' : 'password';
+    syncReveal();
+    iPass.focus();
+  });
+
+  /* ---------------- states ---------------- */
+  function setTwoFa(on){
+    rowCode.hidden = !on;
+    twoFaHint.hidden = !on;
+    updateCursor();
+  }
+  function setError(on){
+    errBox.hidden = !on;
+    rowUser.classList.toggle('is-bad', on);
+    rowPass.classList.toggle('is-bad', on);
+    if(on && !rowCode.hidden) rowCode.classList.add('is-bad');
+    else rowCode.classList.remove('is-bad');
+  }
+  function setExpired(on){ expired.hidden = !on; }
+
+  var spinTimer = null;
+  var SPIN = ['-', '\\', '|', '/'];
+  function setLoading(on){
+    submit.disabled = on;
+    submit.setAttribute('aria-busy', on ? 'true' : 'false');
+    progress.hidden = !on;
+    keycap.style.display = on ? 'none' : '';
+    if(spinTimer){ clearInterval(spinTimer); spinTimer = null; }
+    if(on){
+      subLabel.className = 'lgc-spin';
+      if(reduced()){
+        subLabel.textContent = '...';
+      } else {
+        var i = 0;
+        subLabel.textContent = SPIN[0];
+        spinTimer = setInterval(function(){
+          i = (i + 1) % SPIN.length;
+          subLabel.textContent = SPIN[i];
+        }, 90);
+      }
+    } else {
+      subLabel.className = 'lgc-submit-label lgc-i18n';
+      subLabel.textContent = t('login');
+    }
+  }
+
+  /* ---------------- direction ----------------
+     The console screen stays a left-to-right island; only the chrome
+     around it mirrors. Localised runs inside the screen are isolated
+     so they still shape and order correctly where they sit. */
+  function setDirection(rtl){
+    docEl.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+    locale = rtl ? 'fa' : 'en';
+    applyCopy();
+    /* the greeting beat differs per script, so restart it in the new one */
+    if(greetRunning){ stopGreeting(); runGreeting(); }
+    var sel = document.getElementById('lgcLang');
+    if(rtl && sel.value !== 'fa-IR' && sel.value !== 'ar-EG') sel.value = 'fa-IR';
+    if(!rtl && (sel.value === 'fa-IR' || sel.value === 'ar-EG')) sel.value = 'en-US';
+    var chip = root.querySelector('[data-toggle="rtl"]');
+    if(chip) chip.setAttribute('aria-pressed', rtl ? 'true' : 'false');
+  }
+
+  /* ---------------- submit ---------------- */
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    settleGreeting('welcome');
+    var bad = false;
+    var emptyUser = !iUser.value.trim();
+    var emptyPass = !iPass.value;
+    errUser.hidden = !emptyUser;
+    errPass.hidden = !emptyPass;
+    rowUser.classList.toggle('is-bad', emptyUser);
+    rowPass.classList.toggle('is-bad', emptyPass);
+    bad = emptyUser || emptyPass;
+    if(bad){
+      errBox.hidden = true;
+      (emptyUser ? iUser : iPass).focus();
+      return;
+    }
+    errBox.hidden = true;
+    setLoading(true);
+    /* no server behind a mockup: land on the failure the real page
+       would show, so the error state is reachable by actually trying */
+    setTimeout(function(){
+      setLoading(false);
+      setError(true);
+      syncChip('error', true);
+    }, 1400);
+  });
+
+  /* ---------------- greeting typewriter ----------------
+     One live moment. It retypes Hello, then Welcome, because that is
+     what the shipped page's word swap looks like in a terminal. It
+     stops for good the first time the operator touches a field, so it
+     never competes with the task, and it does not run at all under
+     prefers-reduced-motion.
+
+     Arabic script joins, so revealing a Persian word letter by letter
+     reshapes it as it grows. In an RTL locale the same beat plays as a
+     whole word swap on the same rhythm, which is also what the shipped
+     page does. */
+  var greetRunning = false;
+  var greetTimer = null;
+  function stopGreeting(){
+    greetRunning = false;
+    if(greetTimer){ clearTimeout(greetTimer); greetTimer = null; }
+  }
+  function settleGreeting(word){
+    stopGreeting();
+    greet.textContent = t(word || 'welcome');
+  }
+  function runGreeting(){
+    if(reduced()){ greet.textContent = t('hello'); return; }
+    greetRunning = true;
+    var words = ['hello', 'welcome'];
+    var w = 0, i = 0, erasing = false;
+
+    if(locale !== 'en'){
+      greet.textContent = t(words[0]);
+      (function swap(){
+        if(!greetRunning) return;
+        greetTimer = setTimeout(function(){
+          if(!greetRunning) return;
+          w = (w + 1) % words.length;
+          greet.textContent = t(words[w]);
+          swap();
+        }, 2600);
+      })();
+      return;
+    }
+
+    greet.textContent = '';
+    (function step(){
+      if(!greetRunning) return;
+      var chars = Array.from(t(words[w]));
+      if(!erasing){
+        i++;
+        greet.textContent = chars.slice(0, i).join('');
+        if(i >= chars.length){ erasing = true; greetTimer = setTimeout(step, 2600); return; }
+        greetTimer = setTimeout(step, 52);
+      } else {
+        i--;
+        greet.textContent = chars.slice(0, i).join('');
+        if(i <= 0){ erasing = false; w = (w + 1) % words.length; greetTimer = setTimeout(step, 340); return; }
+        greetTimer = setTimeout(step, 26);
+      }
+    })();
+  }
+  ['keydown','pointerdown'].forEach(function(ev){
+    form.addEventListener(ev, function(){ if(greetRunning) settleGreeting('welcome'); }, { once:true });
+  });
+  runGreeting();
+  function onMotionChange(){
+    stopGreeting();
+    if(reduced()) greet.textContent = t('hello');
+    else runGreeting();
+  }
+  if(motionQ.addEventListener) motionQ.addEventListener('change', onMotionChange);
+  else if(motionQ.addListener) motionQ.addListener(onMotionChange);
+
+  /* ---------------- mockup controls ---------------- */
+  function syncChip(name, on){
+    var c = root.querySelector('[data-toggle="' + name + '"]');
+    if(c) c.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  root.querySelectorAll('.lgc-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      var name = chip.getAttribute('data-toggle');
+      var on   = chip.getAttribute('aria-pressed') !== 'true';
+      if(name === 'twofa')     setTwoFa(on);
+      if(name === 'error')     setError(on);
+      if(name === 'loading')   setLoading(on);
+      if(name === 'expired')   setExpired(on);
+      if(name === 'transport'){ forcePlain = on; applyTransport(); }
+      if(name === 'rtl'){ setDirection(on); return; }
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  });
+
+  applyCopy();
+})();
+</script>
+</body>
+</html>

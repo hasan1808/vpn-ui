@@ -39,11 +39,21 @@ func swanctlBin() string {
 // charonNeeded reports whether the shared charon should be running: true when any
 // enabled IKEv2 inbound exists, or any enabled L2TP inbound has IPsec enabled, or any
 // enabled GRE inbound has IPsec enabled (GRE-over-IPsec is ESP transport on this same
-// daemon).
+// daemon), or any enabled client-side OUTBOUND needs it.
+//
+// The outbound clause is not symmetry for its own sake. syncCharon runs from every
+// inbound save, and this daemon is shared: on a box that dials out over IKEv2 but
+// serves no IPsec inbound of its own, counting inbounds alone answers "not needed"
+// and stops charon out from under a live outbound. The tunnel then drops on an
+// unrelated edit to some other protocol's inbound, which is about as far from the
+// apparent cause as a failure gets.
 func charonNeeded() bool {
 	db := database.GetDB()
 	if db == nil {
 		return false
+	}
+	if vpnOutboundNeedsCharon() {
+		return true
 	}
 	var ikev2Count int64
 	db.Model(&model.Inbound{}).Where("protocol = ? AND enable = ?", "ikev2", true).Count(&ikev2Count)
@@ -62,6 +72,60 @@ func charonNeeded() bool {
 	for _, ib := range gres {
 		if greInboundHasIpsec(ib) {
 			return true
+		}
+	}
+	return false
+}
+
+// vpnOutboundNeedsCharon reports whether any enabled client tunnel rides this daemon:
+// an IKEv2 outbound always does, an L2TP one does when it carries a PSK (which is how
+// the L2TP/IPsec transport leg is configured on both sides), and a GRE one does when
+// it is wrapped in IPsec.
+//
+// Every kind whose settings decide it reads ONE field, matched against the driver's
+// own json tag. Keep this switch in step with the drivers: a kind that rides charon
+// and is missing here fails silently, as a tunnel that dies on an unrelated inbound
+// save rather than as anything pointing at this function.
+//
+// Read off the stored tunnel list rather than asked of the drivers, because the answer
+// is needed while deciding whether to STOP charon, which is exactly when a driver may
+// already have been torn down and would report nothing.
+func vpnOutboundNeedsCharon() bool {
+	var svc VpnOutboundService
+	// listRaw, not List: List masks driver-declared secrets for the panel, and the psk
+	// below is exactly such a secret. Reading it through the masked view would find
+	// nothing, answer "no IPsec outbound", and stop charon under a live tunnel.
+	for _, c := range svc.listRaw() {
+		if !c.Enable {
+			continue
+		}
+		switch c.Kind {
+		case VpnOutIKEv2:
+			return true
+		case VpnOutL2TP:
+			// The settings blob is the driver's shape, so this looks only for the one
+			// field that decides it rather than unmarshalling something this file
+			// would then have to keep in step.
+			//
+			// The tag has to match l2tpOutSettings.IpsecPsk exactly. A near miss here
+			// does not fail loudly: the branch simply never fires, and the symptom is
+			// a live L2TP/IPsec tunnel dropping when somebody saves an unrelated
+			// inbound, which points nowhere near this line.
+			var s struct {
+				IpsecPsk string `json:"ipsecPsk"`
+			}
+			if len(c.Settings) > 0 && json.Unmarshal(c.Settings, &s) == nil && s.IpsecPsk != "" {
+				return true
+			}
+		case VpnOutGre:
+			// GRE-over-IPsec is ESP transport on this same daemon, exactly as the GRE
+			// INBOUND clause above already accounts for.
+			var s struct {
+				IpsecEnable bool `json:"ipsecEnable"`
+			}
+			if len(c.Settings) > 0 && json.Unmarshal(c.Settings, &s) == nil && s.IpsecEnable {
+				return true
+			}
 		}
 	}
 	return false

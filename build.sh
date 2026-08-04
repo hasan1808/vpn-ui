@@ -94,11 +94,43 @@ if [[ "${SKIP_CORE:-0}" != "1" ]]; then
 fi
 
 # 2. Static VPN daemon bundle (built in Docker/Alpine — pinned + slow, so cached).
-#    Rebuild when the daemons OR the libreswan (ALL_ALGS / MODP1024) OR the
-#    accel-ppp (SSTP) OR the strongswan (IKEv2) OR the telemt (MTProto Proxy) bundle
-#    are missing, so a checkout that predates any bundle still picks it up.
-#    telemt is a flat binary, not a .tgz tree, so it is checked by its own name.
-if ! compgen -G "backend/bin/$ARCH/*" > /dev/null 2>&1 || [[ ! -f "backend/bin/$ARCH/libreswan-bundle.tgz" ]] || [[ ! -f "backend/bin/$ARCH/accel-ppp-bundle.tgz" ]] || [[ ! -f "backend/bin/$ARCH/strongswan-bundle.tgz" ]] || [[ ! -f "backend/bin/$ARCH/telemt" ]]; then
+#    The cache is keyed on the artifacts themselves: every bundle added since the
+#    original build is named here, so a checkout that predates one still picks it
+#    up instead of quietly shipping a binary that is missing a whole protocol.
+#    Each entry is either a .tgz relocatable tree or a flat binary, by its own name.
+BUNDLE_ARTIFACTS=(
+    libreswan-bundle.tgz     # IPsec, ALL_ALGS / MODP1024
+    accel-ppp-bundle.tgz     # SSTP server
+    strongswan-bundle.tgz    # IKEv2
+    telemt                   # MTProto Proxy
+    pptp                     # PPTP client
+    openconnect              # OpenConnect client
+    vpnc-script              # its routing/DNS hook
+    sstpc-bundle.tgz         # SSTP client (a tree: sstpc needs a dlopen'd OpenSSL provider)
+    sstp-pppd-plugin.so      # and the pppd plugin it cannot handshake without
+)
+bundle_stale=0
+if ! compgen -G "backend/bin/$ARCH/*" > /dev/null 2>&1; then
+    bundle_stale=1
+else
+    for a in "${BUNDLE_ARTIFACTS[@]}"; do
+        [[ -f "backend/bin/$ARCH/$a" ]] || { bundle_stale=1; info "bundle artifact missing: $a"; }
+    done
+    # Presence is not enough for openvpn: a bundle built before compression was
+    # turned on has the file but cannot dial a server that insists on comp-lzo,
+    # and an existence-only check would keep that binary forever. --version exits
+    # non-zero by design, hence the `|| true`.
+    if [[ -x "backend/bin/$ARCH/openvpn" && "$ARCH" == "$(go env GOARCH)" ]]; then
+        ovpn_ver="$("backend/bin/$ARCH/openvpn" --version 2>&1 || true)"
+        for feat in "[LZO]" "[LZ4]"; do
+            if [[ "$ovpn_ver" != *"$feat"* ]]; then
+                bundle_stale=1
+                info "bundled openvpn was built without $feat"
+            fi
+        done
+    fi
+fi
+if (( bundle_stale )); then
     step "VPN daemon bundle"
     bash build/backend/build.sh "$ARCH"
 else

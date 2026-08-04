@@ -426,7 +426,8 @@ func TestEveryVpnProtocolMapsToItsCore(t *testing.T) {
 	// Protocols that genuinely need no host setup: the Xray-native ones and the
 	// in-binary cores. Gating these would block an inbound that works perfectly.
 	for _, protocol := range []string{
-		"ssh", "xray", "vmess", "vless", "trojan", "shadowsocks", "hysteria", "",
+		"ssh", "xray", "vmess", "vless", "trojan", "shadowsocks", "hysteria",
+		"anytls", "tuic", "naive", "",
 	} {
 		if got := protocolCoreName(protocol); got != "" {
 			t.Errorf("protocolCoreName(%q) = %q, want \"\": it needs no core install", protocol, got)

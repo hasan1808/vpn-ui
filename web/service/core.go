@@ -12,6 +12,8 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v2/backend"
 	"github.com/mhsanaei/3x-ui/v2/config"
+	"github.com/mhsanaei/3x-ui/v2/database"
+	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 )
 
@@ -387,8 +389,53 @@ func coreInstalled(name string, installed map[string]bool, installedNames []stri
 	return spec.builtin || installed[name]
 }
 
+// xrayServedProtocols are the protocols the Overview lists as services of their
+// own even though no daemon of theirs exists: one Xray process serves all of
+// them, so their health IS Xray's health, qualified by whether an inbound of that
+// protocol has been configured at all.
+//
+// They are deliberately NOT cores. A core is something the operator installs,
+// starts and stops (see corecatalog.go), and none of that is true here - a card on
+// the Core Settings page offering to stop AnyTLS would be offering to stop
+// something that does not exist as a process.
+var xrayServedProtocols = []string{"anytls", "tuic", "naive"}
+
+// xrayProtocolInbounds counts the inbounds of each Xray-served protocol, so the
+// Overview can tell "serving accounts" from "available but unused" without
+// fetching the whole inbound list into a page that lists no inbounds.
+func xrayProtocolInbounds() map[string]any {
+	out := make(map[string]any, len(xrayServedProtocols))
+	for _, p := range xrayServedProtocols {
+		out[p] = 0
+	}
+	db := database.GetDB()
+	if db == nil {
+		return out
+	}
+	var rows []struct {
+		Protocol string
+		N        int
+	}
+	if err := db.Model(model.Inbound{}).
+		Select("protocol, count(*) as n").
+		Where("protocol IN (?) AND enable = ?", xrayServedProtocols, true).
+		Group("protocol").Scan(&rows).Error; err != nil {
+		logger.Warning("counting Xray-served protocol inbounds: ", err)
+		return out
+	}
+	for _, r := range rows {
+		out[r.Protocol] = r.N
+	}
+	return out
+}
+
 func (s *CoreService) xrayStatus() CoreStatus {
 	cs := CoreStatus{Name: "xray"}
+	// Carried on the Xray status rather than as statuses of their own: these
+	// protocols have no separate process to report on, and inventing a core for
+	// each would put a start/stop card on the Core Settings page for something
+	// with nothing to start.
+	cs.Extra = map[string]any{"protocolInbounds": xrayProtocolInbounds()}
 	if s.xrayService.IsXrayRunning() {
 		cs.State = CoreRunning
 		cs.Version = s.xrayService.GetXrayVersion()

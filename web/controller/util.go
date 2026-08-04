@@ -164,7 +164,34 @@ func templatePerms(c *gin.Context) map[string]bool {
 		perms[d.Slug] = user.Can(d.Bit)
 	}
 	perms["superAdmin"] = user.IsSuperAdmin
+	// The overview asks two questions -- "may this page be opened?" and "may it
+	// act?" -- and the two roles answer them from different columns: an admin from
+	// the permission bits, a reseller from their profile, whose stored mask Can()
+	// ignores by design. Resolving that here keeps it out of the templates, which
+	// would otherwise have to spell the disjunction at every control and at the nav
+	// entry, and would get it wrong once.
+	if user.IsReseller {
+		perms["accessOverview"], perms["manageOverview"] = resellerOverviewGrants(user)
+	}
 	return perms
+}
+
+// resellerOverviewGrants reports whether this reseller's profile opens the overview
+// and, separately, its management controls. Both come out of ONE profile read: the
+// two answers are always wanted together (page plus controls), and a second lookup
+// per render only creates the chance of answering them from two different rows.
+//
+// Manage requires AllowOverview too: it scopes a page they have to be able to reach
+// first, and a profile carrying only the second is a half-saved form, not a grant.
+func resellerOverviewGrants(user *model.User) (access, manage bool) {
+	var svc service.ResellerService
+	p, err := svc.ProfileFor(user.Id)
+	if err != nil {
+		// Same reading as templateReseller: a reseller with no profile row is a
+		// broken account, not a privileged one.
+		return false, false
+	}
+	return p.AllowOverview, p.AllowOverview && p.AllowOverviewManage
 }
 
 // templateReseller is the caller's own reseller limits and balance, shaped for
@@ -202,6 +229,7 @@ func templateReseller(c *gin.Context) map[string]any {
 	out["minAddGb"] = p.MinAddGB
 	out["allowExternalProxy"] = p.AllowExternalProxy
 	out["allowOverview"] = p.AllowOverview
+	out["allowOverviewManage"] = p.AllowOverviewManage
 	return out
 }
 

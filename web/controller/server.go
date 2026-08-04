@@ -61,12 +61,21 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.GET("/panelLocation", a.panelLocation)
 	g.GET("/cpuHistory/:bucket", a.getCpuHistoryBucket)
 	g.GET("/getXrayVersion", a.getXrayVersion)
-	// Escalation-class: these hand over the whole panel regardless of any
-	// permission bit, so they are super-admin only. getConfigJson and getDb expose
-	// every admin's data (getDb includes the users table and its bcrypt hashes);
-	// importDB replaces it wholesale; updatePanel swaps the running binary.
-	g.GET("/getConfigJson", requireSuperAdmin(), a.getConfigJson)
-	g.GET("/getDb", requireSuperAdmin(), a.getDb)
+	// Escalation-class, and DELEGABLE since 2026-07-31: these answer to
+	// PermOverviewManage (requireOverviewManage, which also resolves a reseller's
+	// profile columns) rather than to the super admin role.
+	//
+	// They are still escalation-class. getConfigJson and getDb expose every admin's
+	// data and getDb carries the users table with its bcrypt hashes; importDB replaces
+	// the database wholesale; updatePanel swaps the running binary as root. Anyone
+	// holding that bit can therefore take the panel, which the operator chose
+	// deliberately with the consequence stated. Do not "tidy" this back to
+	// requireSuperAdmin, and do not widen the bit's reach any further without asking:
+	// the line drawn was "everything the overview offers", which is why admin
+	// management, the host reboot, core uninstall and the systemd unit stayed behind
+	// requireSuperAdmin. See overviewManage in permission.go.
+	g.GET("/getConfigJson", requireOverviewManage(), a.getConfigJson)
+	g.GET("/getDb", requireOverviewManage(), a.getDb)
 	g.GET("/getNewUUID", a.getNewUUID)
 	g.GET("/getNewX25519Cert", a.getNewX25519Cert)
 	g.GET("/getNewmldsa65", a.getNewmldsa65)
@@ -76,36 +85,48 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.GET("/geofileStatus", a.geofileStatus)
 	g.GET("/checkUpdate", a.checkUpdate)
 	g.GET("/updateProgress", a.updateProgress)
-	// Reports (once) that the panel came back from a self-update. Super-admin only
-	// to match updatePanel: reading it CLEARS it, so an ordinary admin loading the
+	// Reports (once) that the panel came back from a self-update. Gated to match
+	// updatePanel: reading it CLEARS it, so an admin without the bit loading the
 	// dashboard first would otherwise consume the notice meant for whoever ran the
 	// update.
-	g.GET("/updateResult", requireSuperAdmin(), a.updateResult)
+	g.GET("/updateResult", requireOverviewManage(), a.updateResult)
 
-	// Renaming the server relabels the panel for every admin, so it follows the panel
-	// settings permission. Reading it stays open: the overview shows the label, and
-	// every admin can see the overview.
-	g.POST("/serverName", requirePerm(model.PermPanelSettings), a.setServerName)
+	// Renaming the server relabels the panel for every admin. Offered only from the
+	// overview, so it answers to the bit that says this overview may act. Reading it
+	// stays open: the overview shows the label to anyone who may open the page.
+	//
+	// This used to AND the panel-settings bit on top. That is gone deliberately: the
+	// AND made the grant unreachable for a reseller, whose derived mask never carries
+	// a settings bit, so their AllowOverviewManage column could never do anything.
+	g.POST("/serverName", requireOverviewManage(), a.setServerName)
 
 	// Panel-wide effects rather than per-inbound, so they follow the Xray permission.
 	g.POST("/stopXrayService", requirePerm(model.PermXraySettings), a.stopXrayService)
-	g.POST("/updatePanel", requireSuperAdmin(), a.updatePanel)
-	g.POST("/cancelUpdate", requireSuperAdmin(), a.cancelUpdate)
-	// Update from a locally chosen binary. Same escalation class as updatePanel: it
-	// ends in the same binary swap. Split in two so the operator confirms against a
-	// version the server read out of the file, not against its name.
-	g.POST("/uploadPanelBinary", requireSuperAdmin(), a.uploadPanelBinary)
-	g.POST("/applyPanelBinary", requireSuperAdmin(), a.applyPanelBinary)
-	g.POST("/discardPanelBinary", requireSuperAdmin(), a.discardPanelBinary)
+	g.POST("/updatePanel", requireOverviewManage(), a.updatePanel)
+	g.POST("/cancelUpdate", requireOverviewManage(), a.cancelUpdate)
+	// Manual update: a binary the operator names, either uploaded from their machine
+	// or downloaded by the panel from a URL they give. Same escalation class as
+	// updatePanel, since both end in the same binary swap. Split in two so the
+	// operator confirms against a version the server read out of the file itself,
+	// not against its name or its address.
+	g.POST("/uploadPanelBinary", requireOverviewManage(), a.uploadPanelBinary)
+	g.POST("/fetchPanelBinary", requireOverviewManage(), a.fetchPanelBinary)
+	g.POST("/applyPanelBinary", requireOverviewManage(), a.applyPanelBinary)
+	g.POST("/discardPanelBinary", requireOverviewManage(), a.discardPanelBinary)
 	g.POST("/restartXrayService", requirePerm(model.PermXraySettings), a.restartXrayService)
 	g.POST("/installXray/:version", requirePerm(model.PermXraySettings), a.installXray)
-	g.POST("/updateGeofile", requirePerm(model.PermXraySettings), a.updateGeofile)
-	g.POST("/updateGeofile/:fileName", requirePerm(model.PermXraySettings), a.updateGeofile)
+	// Geofile updates are reached only from the overview's geofiles dialog, so they
+	// answer to the overview's acting bit alone, for the same reason serverName does.
+	// stopXrayService and restartXrayService above deliberately do NOT: those are also
+	// driven from the Xray settings page, where this bit has no business being
+	// consulted, and where the Xray permission is the right question.
+	g.POST("/updateGeofile", requireOverviewManage(), a.updateGeofile)
+	g.POST("/updateGeofile/:fileName", requireOverviewManage(), a.updateGeofile)
 	// Panel and Xray logs name other admins' inbounds, clients and IPs.
-	g.POST("/logs/:count", requireSuperAdmin(), a.getLogs)
-	g.POST("/xraylogs/:count", requireSuperAdmin(), a.getXrayLogs)
-	g.POST("/importDB", requireSuperAdmin(), a.importDB)
-	g.POST("/importForeignDB", requireSuperAdmin(), a.importForeignDB)
+	g.POST("/logs/:count", requireOverviewManage(), a.getLogs)
+	g.POST("/xraylogs/:count", requireOverviewManage(), a.getXrayLogs)
+	g.POST("/importDB", requireOverviewManage(), a.importDB)
+	g.POST("/importForeignDB", requireOverviewManage(), a.importForeignDB)
 	g.POST("/getNewEchCert", a.getNewEchCert)
 }
 
@@ -397,6 +418,24 @@ func (a *ServerController) uploadPanelBinary(c *gin.Context) {
 		return
 	}
 	jsonMsg(c, I18nWeb(c, "pages.index.panelUpdate"), errors.New("no binary was uploaded"))
+}
+
+// fetchPanelBinary downloads a binary from an operator-supplied URL and stages it, so
+// the confirmation modal and applyPanelBinary below serve both manual sources. The
+// answer is the same StagedPanelInfo an upload produces, read out of the downloaded
+// file rather than out of the address, because an address proves nothing about what is
+// at the other end of it.
+//
+// This one may block for a long time (the asset is around 315MB and the point of the
+// feature is a box on a slow or restricted link), so the service bounds it rather than
+// leaving it to the client giving up.
+func (a *ServerController) fetchPanelBinary(c *gin.Context) {
+	info, err := service.StagePanelBinaryFromURL(c.PostForm("url"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.index.panelUpdate"), err)
+		return
+	}
+	jsonObj(c, info, nil)
 }
 
 // applyPanelBinary installs the staged upload and restarts the panel. Like

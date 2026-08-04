@@ -24,6 +24,41 @@ const (
 	// inserted: the values are positional, so inserting a bit would shift every
 	// mask already stored in the database by one.
 	PermManageResellers
+	// PermOverviewManage turns the overview from a read-only showcase into a page
+	// that can act. Seeing the overview used to be ungated (it was where a denial
+	// redirects to), so before this bit existed anyone who could log in was offered
+	// its whole management column and found out which parts they held by clicking
+	// and reading the refusal.
+	//
+	// It scopes a PAGE, not a capability: every action it reveals still needs its
+	// own bit underneath, and this one grants none of them on its own. Deliberately
+	// reaches nothing escalation-class either -- backup, restore, DB export/import,
+	// logs, config.json and the panel update stay super-admin-only and stay hidden,
+	// because those hand over the panel outright and no delegated bit should.
+	//
+	// APPENDED, for the reason above.
+	PermOverviewManage
+	// PermAccessOverview gates the overview page itself, which nothing gated before:
+	// the overview is a HOST dashboard (kernel, CPU, disk, public IP, panel updates)
+	// and an admin who only sells accounts has no business reading it.
+	//
+	// It stayed ungated only because deny() redirected every refusal to it, so gating
+	// it would have looped. That is why this bit could not be added without a landing
+	// page resolver first (see landingPath in web/controller/permission.go), which
+	// sends a denial to the first page the caller can actually open and refuses
+	// outright rather than redirecting when there is none.
+	//
+	// Deliberately NOT implied by PermOverviewManage, and it does not imply it
+	// either: they are two answers ("may this page be opened", "may it act") and each
+	// action behind the second still needs its own bit underneath.
+	//
+	// A reseller never holds this. Can() derives their whole mask from resellerPerms
+	// and ignores the stored column, so their AllowOverview / AllowOverviewManage
+	// profile booleans stay the source of truth for the role; the two columns are
+	// resolved into one slug map for templates in web/controller/util.go.
+	//
+	// APPENDED, for the reason above.
+	PermAccessOverview
 )
 
 // resellerPerms is what a reseller may do, derived from the role rather than
@@ -54,6 +89,11 @@ type PermissionDef struct {
 }
 
 // AllPermissions is the canonical list, in the order the Admins UI renders it.
+//
+// Slice order is RENDER order and is independent of bit position, which is why the
+// two overview entries sit together at the end while their bits are appended: the
+// pair reads as one group in the checkbox column ("may open it", "may act on it")
+// even though inserting either bit would have shifted every stored mask.
 var AllPermissions = []PermissionDef{
 	{PermAccessInbounds, "accessInbounds"},
 	{PermCreateInbound, "createInbound"},
@@ -67,6 +107,8 @@ var AllPermissions = []PermissionDef{
 	{PermXraySettings, "accessXraySettings"},
 	{PermPanelSettings, "accessPanelSettings"},
 	{PermManageResellers, "manageResellers"},
+	{PermOverviewManage, "manageOverview"},
+	{PermAccessOverview, "accessOverview"},
 }
 
 // Has reports whether every bit in q is set in p.

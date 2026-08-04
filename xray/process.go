@@ -205,7 +205,20 @@ func (p *process) GetVersion() string {
 }
 
 // GetAPIPort returns the API port used by the Xray process.
+//
+// Nil-safe on purpose. The package global this is called through is nil until a
+// core has been started, and of its call sites in web/service only about half
+// check that first, so the rest panicked on a panel whose core never came up
+// (a config the core refused, a missing binary, a port conflict). A panic there
+// is not a failed request, it kills the panel process on the request goroutine.
+//
+// 0 is the right answer for "no API to talk to": XrayAPI.Init refuses that port
+// before it dials, and the handler methods then report that they are not
+// connected rather than dereferencing a client that was never built.
 func (p *Process) GetAPIPort() int {
+	if p == nil {
+		return 0
+	}
 	return p.apiPort
 }
 

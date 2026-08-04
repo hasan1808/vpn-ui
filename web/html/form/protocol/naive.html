@@ -1,0 +1,160 @@
+{{define "form/naive"}}
+<a-collapse activeKey="0" v-for="(client, index) in inbound.settings.naives.slice(0,1)" v-if="!isEdit">
+    <a-collapse-panel header='{{ i18n "pages.inbounds.client" }}'>
+        {{template "form/client"}}
+    </a-collapse-panel>
+</a-collapse>
+<a-collapse v-else>
+    <a-collapse-panel :header="'{{ i18n "pages.client.clientCount"}} : ' + inbound.settings.naives.length">
+        <!-- Username shows what the server will actually match, so an account that has
+             none reads as its email here rather than as a blank cell: that IS the
+             credential it authenticates with. -->
+        <table width="100%">
+            <tr class="client-table-header">
+                <th>{{ i18n "pages.inbounds.email" }}</th>
+                <th>Username</th>
+                <th>Password</th>
+            </tr>
+            <tr v-for="(client, index) in inbound.settings.naives"
+                :class="index % 2 == 1 ? 'client-table-odd-row' : ''">
+                <td>[[ client.email ]]</td>
+                <td>[[ client.username || client.email ]]</td>
+                <td>[[ client.password ]]</td>
+            </tr>
+        </table>
+    </a-collapse-panel>
+</a-collapse>
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
+    <!--
+        The sharpest of the three security=none cases, because naive's credential is not
+        merely exposed, it is the ONLY thing guarding the proxy and it is sent in full on
+        every request. Still a warning rather than a block: the TLS-offload deployment is
+        legitimate and common, and the panel cannot tell from here whether this port faces
+        the internet or a local terminator. See the matching note in tls_settings.html for
+        why tuic, by contrast, gets no such choice at all.
+    -->
+    <a-alert
+        v-if="inbound.stream.security === 'none'"
+        type="warning"
+        show-icon
+        :style="{ marginBottom: '16px' }"
+        message="Without TLS, every account password is sent in the clear"
+        description="naive authenticates with one Proxy-Authorization: Basic header, and Basic is base64, which is encoding, not encryption. With security set to none, anything on the network path can read the username and password of every account on this inbound, and replay them. This is fine when a TLS terminator in front forwards plaintext to this port. If the port is reachable from the internet, treat every credential on this inbound as already disclosed."
+    ></a-alert>
+
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Which HTTP version the listener speaks. TCP serves HTTP/2 over TLS,
+                    which is what the naive client uses by default and what blends in
+                    everywhere. UDP serves HTTP/3 over QUIC: faster on a lossy path, but
+                    some networks throttle or block UDP/443 outright. Serving both lets a
+                    client pick and fall back on its own.
+                </template>
+                Network
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-select
+            v-model="inbound.settings.network"
+            :style="{ width: '190px' }"
+            :dropdown-class-name="themeSwitcher.currentTheme"
+        >
+            <a-select-option value="tcp">TCP (HTTP/2)</a-select-option>
+            <a-select-option value="udp">UDP (HTTP/3)</a-select-option>
+            <a-select-option value="tcp,udp">TCP,UDP (both)</a-select-option>
+        </a-select>
+    </a-form-item>
+
+    <a-divider>Masquerade</a-divider>
+
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    What unauthenticated visitors get. 404 returns a plain Not Found.
+                    Static Files serves a directory from this server's disk. Reverse Proxy
+                    fetches a real site and relays it, which is the most convincing option
+                    and the one to pick if you have a site to point at. Fixed String
+                    returns one canned body for every path.
+                </template>
+                Type
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-select
+            v-model="inbound.settings.masquerade.type"
+            :style="{ width: '190px' }"
+            :dropdown-class-name="themeSwitcher.currentTheme"
+        >
+            <a-select-option value="404">404 Not Found</a-select-option>
+            <a-select-option value="file">Static Files</a-select-option>
+            <a-select-option value="proxy">Reverse Proxy</a-select-option>
+            <a-select-option value="string">Fixed String</a-select-option>
+        </a-select>
+    </a-form-item>
+
+    <a-form-item v-if="inbound.settings.masquerade.type === 'file'">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    A directory on this server, served as a static site. It needs an
+                    index.html or the root path returns a directory listing, which no real
+                    website does. Everything in the directory is publicly readable, so do
+                    not point it at anything you would not publish.
+                </template>
+                Directory
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input
+            v-model.trim="inbound.settings.masquerade.file"
+            placeholder="/var/www/html"
+        ></a-input>
+    </a-form-item>
+
+    <a-form-item v-if="inbound.settings.masquerade.type === 'proxy'">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    The site to relay. Pick one that is plausible for this server's
+                    hostname, loads quickly and is not itself blocked where your users
+                    are: every unauthenticated request, including a censor's, is fetched
+                    live from it. Requests are made from this server, so its address is
+                    what the upstream site sees.
+                </template>
+                Upstream URL
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input
+            v-model.trim="inbound.settings.masquerade.url"
+            placeholder="https://example.com"
+        ></a-input>
+    </a-form-item>
+
+    <a-form-item v-if="inbound.settings.masquerade.type === 'string'">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Returned verbatim for every path, so the whole site is one page. Fine
+                    as a quick placeholder, weak as camouflage: a host that answers every
+                    URL with identical bytes is easy to spot.
+                </template>
+                Response Body
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-textarea
+            v-model="inbound.settings.masquerade.string"
+            :rows="4"
+            placeholder="&lt;html&gt;&lt;body&gt;It works!&lt;/body&gt;&lt;/html&gt;"
+        ></a-textarea>
+    </a-form-item>
+</a-form>
+{{end}}

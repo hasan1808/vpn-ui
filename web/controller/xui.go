@@ -1,11 +1,7 @@
 package controller
 
 import (
-	"net/http"
-
 	"github.com/mhsanaei/3x-ui/v2/database/model"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
-	"github.com/mhsanaei/3x-ui/v2/web/session"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,10 +29,15 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	g = g.Group("/panel")
 	g.Use(a.checkLogin)
 
-	// The overview is the one page every admin may see; it is where a permission
-	// denial redirects to, so gating it would loop.
-	g.GET("/", a.index)
+	// Not requirePerm: the overview is the one page whose grant lives in two columns
+	// (an admin's PermAccessOverview, a reseller's AllowOverview), and
+	// requireOverviewAccess reads both. A denial here goes to landingPath, never
+	// blindly back to this route, which is what used to make gating it impossible.
+	g.GET("/", requireOverviewAccess(), a.index)
 	g.GET("/inbounds", requirePerm(model.PermAccessInbounds), a.inbounds)
+	// The account-centric view of the same data the Inbounds page shows, so it
+	// takes the same claim.
+	g.GET("/clients", requirePerm(model.PermAccessInbounds), a.clients)
 	g.GET("/settings", requirePerm(model.PermPanelSettings), a.settings)
 	g.GET("/xray", requirePerm(model.PermXraySettings), a.xraySettings)
 	g.GET("/core", requirePerm(model.PermCoreSettings), a.coreSettings)
@@ -54,26 +55,14 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 }
 
 // index renders the main panel index page.
+//
+// Who may be here at all is decided by requireOverviewAccess above, for both roles.
+// A reseller used to be turned away by a redirect written out here, and the outcome
+// is unchanged: their profile's allowOverview still decides, and without it
+// landingPath sends them to the accounts page the role exists for. The check moved
+// so that one function answers "may this caller open the overview" for the route,
+// the landing resolver and the nav entry alike.
 func (a *XUIController) index(c *gin.Context) {
-	// A reseller's home is the accounts they sell, not the machine they sell them
-	// on. The overview is a host dashboard (kernel, CPU, disk, public IP, panel
-	// updates) and none of it is theirs to act on, so by default they are sent to
-	// the one page the role exists for. An operator can hand it back per reseller
-	// with the allowOverview toggle, and the nav entry follows the same flag.
-	//
-	// The redirect is the control and the hidden nav entry is only the courtesy:
-	// this route stays reachable by typing the URL.
-	//
-	// Safe as the denial target that every deny() redirects to: a reseller always
-	// holds PermAccessInbounds, which resellerPerms derives rather than stores, so
-	// this hop can never bounce back here and loop.
-	if user := session.GetLoginUser(c); user != nil && user.IsReseller {
-		var svc service.ResellerService
-		if p, err := svc.ProfileFor(user.Id); err != nil || !p.AllowOverview {
-			c.Redirect(http.StatusTemporaryRedirect, c.GetString("base_path")+"panel/inbounds")
-			return
-		}
-	}
 	// The donate dialog on the VPN-UI tile. Rendered server-side rather than
 	// fetched: the list is static, so a round trip would only add a spinner.
 	html(c, "index.html", "pages.index.title", gin.H{"donate": donateAddresses})
@@ -82,6 +71,11 @@ func (a *XUIController) index(c *gin.Context) {
 // inbounds renders the inbounds management page.
 func (a *XUIController) inbounds(c *gin.Context) {
 	html(c, "inbounds.html", "pages.inbounds.title", nil)
+}
+
+// clients renders the account-centric Clients page.
+func (a *XUIController) clients(c *gin.Context) {
+	html(c, "clients.html", "pages.clients.title", nil)
 }
 
 // settings renders the settings management page.

@@ -43,13 +43,14 @@
                 // This is presentation only: the routes themselves are gated by
                 // middleware, which is what actually enforces access.
                 tabs: [
-                    // The overview reports the whole server, so a reseller only gets
-                    // the entry when their profile carries the allowOverview toggle.
-                    // Everyone else keeps it unconditionally. Like the permission
-                    // gates below this is the courtesy and not the control: the page
-                    // itself redirects a reseller who lacks the toggle, which is what
-                    // actually keeps them out of it.
-                    {{ if or (not .reseller.isReseller) .reseller.allowOverview }}
+                    // The overview reports the whole server, so it is offered only to
+                    // whoever may open it: an admin holding accessOverview, a reseller
+                    // whose profile carries the allowOverview toggle. templatePerms
+                    // resolves those two columns into this one slug, so the entry and
+                    // the route can never disagree. Like the permission gates below
+                    // this is the courtesy and not the control: the route itself
+                    // refuses anyone else.
+                    {{ if .perms.accessOverview }}
                     {
                         key: '{{ .base_path }}panel/',
                         icon: 'dashboard',
@@ -61,6 +62,13 @@
                         key: '{{ .base_path }}panel/inbounds',
                         icon: 'user',
                         title: '{{ i18n "menu.inbounds"}}'
+                    },
+                    {{ end }}
+                    {{ if .perms.accessInbounds }}
+                    {
+                        key: '{{ .base_path }}panel/clients',
+                        icon: 'idcard',
+                        title: '{{ i18n "menu.clients"}}'
                     },
                     {{ end }}
                     {{ if .perms.accessPanelSettings }}

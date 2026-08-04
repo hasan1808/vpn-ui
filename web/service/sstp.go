@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -683,23 +684,43 @@ func (s *SstpService) getDisabledEmails() map[string]bool {
 // ECDSA P-384 cert suffices. Returns PEM strings: serverCert, serverKey. (Identical
 // to OcservService.GenerateSelfSignedCert; the Windows SSTP client's stricter trust
 // requirements are surfaced by a warning in the UI, not changed here.)
-func (s *SstpService) GenerateSelfSignedCert() (string, string, error) {
+//
+// serverAddr names the gateway and becomes the CN and the SANs; empty means the
+// address this host egresses with. See OcservService.GenerateSelfSignedCert for why
+// a certificate with no subjectAltName is not verifiable by any client, this
+// panel's own SSTP outbound included.
+func (s *SstpService) GenerateSelfSignedCert(serverAddr string) (string, string, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate server key: %w", err)
+	}
+
+	host := strings.TrimSpace(serverAddr)
+	if host == "" {
+		host = (&OcservService{}).getServerIP()
+	}
+	cn := host
+	if cn == "" {
+		cn = "vpn-ui SSTP Server"
 	}
 
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject: pkix.Name{
 			Organization: []string{"vpn-ui"},
-			CommonName:   "vpn-ui SSTP Server",
+			CommonName:   cn,
 		},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour), // 10 years
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
+	}
+	if host != "" {
+		template.DNSNames = []string{host}
+		if ip := net.ParseIP(host); ip != nil {
+			template.IPAddresses = []net.IP{ip}
+		}
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)

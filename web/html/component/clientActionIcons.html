@@ -1,0 +1,58 @@
+{{define "component/clientActionIcons"}}
+<!-- The actions that belong to ONE MEMBERSHIP: the account as it is served on one
+     inbound. Everything that is true of the whole account - enable, quota reset,
+     freeze, delete, edit - lives on the account row instead, because doing it per
+     inbound would leave the same customer half-suspended.
+
+     It reads two names out of the surrounding scope: `record` (the DBInbound) and
+     `client` (the account's entry in it). -->
+  <div class="bo-client-actions">
+    <a-tooltip>
+      <template slot="title">{{ i18n "qrCode" }}</template>
+      <!-- MTProto: an account with every mode off has no usable link, so it gets no QR
+           at all rather than a QR modal that opens empty. -->
+      <a-icon class="normal-icon" type="qrcode" v-if="record.hasLink() && (record.protocol !== Protocols.MTPROTO || client.modeClassic || client.modeSecure || client.modeTls)" @click="showQrcode(record.id,client);"></a-icon>
+    </a-tooltip>
+    <a-tooltip>
+      <template slot="title">WireGuard Config</template>
+      <a-icon class="normal-icon" type="qrcode" v-if="record.protocol === Protocols.WGC" @click="showWgcConfig(record.id,client);"></a-icon>
+    </a-tooltip>
+    <a-tooltip>
+      <template slot="title">AmneziaWG Config</template>
+      <a-icon class="normal-icon" type="qrcode" v-if="record.protocol === Protocols.AWG" @click="showAwgConfig(record.id,client);"></a-icon>
+    </a-tooltip>
+    <a-tooltip>
+      <template slot="title">GRE Setup</template>
+      <a-icon class="normal-icon" type="setting" v-if="record.protocol === Protocols.GRE" @click="showGreConfig(record.id,client);"></a-icon>
+    </a-tooltip>
+    <a-tooltip>
+      <template slot="title">SSH Config</template>
+      <a-icon class="normal-icon" type="qrcode" v-if="record.protocol === Protocols.SSH" @click="showSshConfig(record.id,client);"></a-icon>
+    </a-tooltip>
+    <a-tooltip>
+      <template slot="title">{{ i18n "info" }}</template>
+      <a-icon class="normal-icon" type="info-circle" @click="showInfo(record.id,client);"></a-icon>
+    </a-tooltip>
+    <a-tooltip>
+      <template slot="title">{{ i18n "pages.inbounds.exportTxt" }}</template>
+      <a-icon class="normal-icon" type="file-text" @click="exportClientTxt(record,client);"></a-icon>
+    </a-tooltip>
+    <a-tooltip>
+      <template slot="title">{{ i18n "pages.inbounds.exportPdf" }}</template>
+      <a-icon class="normal-icon" type="file-pdf" @click="exportClientPdf(record,client);"></a-icon>
+    </a-tooltip>
+    <!-- Removes the account from THIS inbound only, which is the one destructive
+         act that is genuinely per-membership. The whole account is deleted from the
+         row above. Hidden when it would be the inbound's last client, which the
+         panel refuses anyway. -->
+    <a-tooltip>
+      <template slot="title">
+        <span :style="{ color: 'var(--error)' }">{{ i18n "pages.clients.removeFromInbound" }}</span>
+      </template>
+      <a-popconfirm @confirm="delClient(record.id,client,false)" title='{{ i18n "pages.clients.removeFromInboundContent"}}' :overlay-class-name="themeSwitcher.currentTheme" ok-text='{{ i18n "delete"}}' ok-type="danger" cancel-text='{{ i18n "cancel"}}'>
+        <a-icon slot="icon" type="question-circle-o" :style="{ color: 'var(--error)' }"></a-icon>
+        <a-icon :style="{ cursor: 'pointer' }" class="delete-icon" type="disconnect" v-if="isRemovable(record.id)"></a-icon>
+      </a-popconfirm>
+    </a-tooltip>
+  </div>
+{{end}}

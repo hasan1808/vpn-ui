@@ -7,9 +7,11 @@ server. Asserts, per feature × per protocol:
   * stats — the `Subscription-Userinfo` header carries the account's quota + expiry for
     EVERY protocol (the remaining-days/traffic the subscriber page renders);
   * raw link — the right per-protocol representation is present: native `vmess://`,
-    MTProto `tg://`, SSH `ssh://`, wg-c/awg `wireguard://`, and the credential VPNs
+    MTProto `tg://`, SSH `ssh://`, wg-c/awg `wireguard://`, the Xray-native three
+    `anytls://` / `tuic://` / `naive+…://`, and the credential VPNs
     (openvpn/l2tp/pptp/openconnect/sstp/ikev2) a `trojan://` connection card whose name
-    carries "<Label> user=… pass=…";
+    carries "<Label> user=… pass=…". Where a link is useless without a specific
+    parameter, that parameter is asserted too (LINK_MUST_CARRY: tuic's `alpn=h3`);
   * importable — EVERY protocol leaves at least one entry a subscription client can
     parse, so the group is never imported empty and the quota header has something to
     attach to (mtproto/ssh carry their native link plus that card);
@@ -45,11 +47,30 @@ RAW_MARKER = {
     "ssh": "ssh://",
     "wg-c": "wireguard://",
     "awg": "wireguard://",
+    # Xray-native: their own native schemes, so no connection card is involved.
+    "anytls": "anytls://",
+    "tuic": "tuic://",
+    # `naive+https://` (h2) or `naive+quic://` (h3): the scheme half is decided by the
+    # inbound's `network`, so match the prefix both share rather than pinning the one
+    # this harness happens to configure.
+    "naive": "naive+",
 }
+# TUIC's server side pins ALPN to h3, and sing-box / mihomo / the Rust tuic-client all
+# default to sending NO ALPN, which fails the handshake with an opaque
+# "tls: no application protocol" that names nothing an operator can act on. So the
+# share link carrying alpn=h3 is not cosmetic, it is what makes the link usable at all,
+# and it is asserted separately from the scheme above.
+LINK_MUST_CARRY = {"tuic": ("alpn=h3",)}
 # Every protocol must leave at least one line a subscription client can actually parse,
 # or the account imports as an empty group with no quota attached.
 IMPORTABLE_SCHEMES = ("vmess://", "vless://", "trojan://", "ss://", "wireguard://",
-                      "hysteria://", "hysteria2://")
+                      "hysteria://", "hysteria2://",
+                      # The Xray-native three carry their OWN scheme and no connection
+                      # card: unlike a credential VPN (whose "link" is just a name with
+                      # user=/pass= in it) these are real proxy URIs that sing-box,
+                      # mihomo and v2rayN import directly, so the scheme IS the
+                      # importable entry.
+                      "anytls://", "tuic://", "naive+https://", "naive+quic://")
 CLASH_WG = {"wg-c", "awg"}
 
 
@@ -167,12 +188,16 @@ def run(panel, sc, cfg: dict, result, log=None) -> None:
             # stats above have no group to land on.
             imp_ok = any(line.strip().startswith(IMPORTABLE_SCHEMES)
                          for line in rt.splitlines())
-            if not (clash_ok and imp_ok):
+            # Per-protocol parameters a link is USELESS without (see LINK_MUST_CARRY).
+            missing = [p for p in LINK_MUST_CARRY.get(proto, ()) if p not in decoded]
+            if not (clash_ok and imp_ok and not missing):
                 return (False, f"stats={stat_ok} rep[{marker!r}]={rep_ok} "
-                               f"importable={imp_ok} clash={clash_ok}")
+                               f"importable={imp_ok} clash={clash_ok} "
+                               f"missing_link_params={missing}")
             return (stat_ok and rep_ok,
                     f"stats={stat_ok}(total={ui.get('total')},expire={ui.get('expire')}) "
                     f"rep[{marker!r}]={rep_ok} importable=True"
+                    + (f" carries={list(LINK_MUST_CARRY[proto])}" if proto in LINK_MUST_CARRY else "")
                     + (f" clash_wireguard={clash_ok}" if proto in CLASH_WG else ""))
 
         subtest(f"{proto} sub", _one)

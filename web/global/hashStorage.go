@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+var md5Re = regexp.MustCompile(`^[a-f0-9]{32}$`)
+
 // HashEntry represents a stored hash entry with its value and timestamp.
 type HashEntry struct {
 	Hash      string    // MD5 hash string
@@ -61,8 +63,7 @@ func (h *HashStorage) GetValue(hash string) (string, bool) {
 
 // IsMD5 checks if the given string is a valid 32-character MD5 hash.
 func (h *HashStorage) IsMD5(hash string) bool {
-	match, _ := regexp.MatchString("^[a-f0-9]{32}$", hash)
-	return match
+	return md5Re.MatchString(hash)
 }
 
 // RemoveExpiredHashes removes all hash entries that have exceeded the expiration duration.

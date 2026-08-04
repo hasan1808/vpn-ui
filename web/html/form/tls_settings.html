@@ -2,7 +2,25 @@
 <!-- tls enable -->
 <a-form v-if="inbound.canEnableTls()" :colon="false"
   :label-col="{ md: {span:8} }" :wrapper-col="{ md: {span:14} }">
-  <template v-if="inbound.protocol !== Protocols.HYSTERIA">
+  <!--
+    Hidden for the protocols with no choice to make: both hysteria and tuic run over
+    QUIC, and QUIC's handshake IS TLS 1.3 (RFC 9001). No plaintext QUIC wire format
+    exists, so "none" on either could only ever describe a listener that cannot work.
+
+    This is NOT the argument for anytls or naive, which are equally TLS-dependent on
+    paper but run over TCP: there, "none" is a legitimate TLS-offload setup (nginx or
+    caddy terminates TLS and forwards plaintext to a local port), so they keep the radio
+    and carry a conditional warning on their own forms instead. QUIC has no equivalent,
+    because you cannot terminate QUIC TLS and forward "plain QUIC" to a backend. That
+    distinction is the thing to preserve if this list ever looks like it wants tidying.
+
+    Gated on requiresTls() rather than naming the pair, because Inbound.fromJson
+    NORMALISES a stored non-tls security to tls for exactly this set. Hiding the radio
+    for a protocol the model does not normalise would strand an inbound: stream.isTls
+    stays false, so no SNI or certificate fields render and there is no control left to
+    fix it. One predicate keeps the two in step.
+  -->
+  <template v-if="!inbound.requiresTls()">
     <a-divider :style="{ margin: '3px 0' }"></a-divider>
     <a-form-item label='{{ i18n "security" }}'>
       <a-radio-group v-model="inbound.stream.security" button-style="solid">
@@ -13,7 +31,13 @@
       </a-radio-group>
     </a-form-item>
   </template>
-  <template v-else><a-divider style="margin:0;">TLS</a-divider></template>
+  <!--
+    A plain rule, deliberately unlabelled. These protocols have no security choice to
+    present, so a heading reading "TLS" only names the one state they can be in. The
+    divider itself stays: without it the certificate fields below run straight on from
+    the client section with nothing separating them.
+  -->
+  <template v-else><a-divider :style="{ margin: '3px 0' }"></a-divider></template>
 
   <!-- tls settings -->
   <template v-if="inbound.stream.isTls">

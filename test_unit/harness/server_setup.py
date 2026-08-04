@@ -15,9 +15,14 @@ Tunnel IPs are deterministic (radius.go computeVpnClientIP / vpnrange.go):
 """
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
+
 from dataclasses import dataclass, field
 
 from . import ikev2_certs
+from .clients.xraytun import tuic_uuid
 from .model import JobResult, SubTest, Status, PHASE_SETUP
 from .panel import Panel
 
@@ -53,6 +58,32 @@ SSH_USER_LIMIT = 2
 # on 22. Stored in the Inbound.udp_port field (a port label, so multi-inbound's per-proto
 # `.udp_port` reads work) even though the SSH listener is TCP.
 SSH_PORT = 2222
+
+# ---- Xray-native proxy protocols (anytls / tuic / naive) ---------------------
+# The odd ones out among the recent additions: no daemon, no RADIUS, no tunnel and no
+# 10.x block; xray itself terminates them, matches the account and dispatches. So they
+# have NO BASE entry (client_ip() raises for them), they are NOT in corecatalog (an
+# Xray-native protocol maps to no core), and their per-client routing is by the account
+# EMAIL carried on the session, which the panel's routing rules match directly without
+# any email->source-IP translation.
+#
+# Ports are picked clear of every other inbound in a full run (443/500/1194/1443/1701/
+# 1723/2222/4443/4500/8443 primaries, the SECOND_PORTS block below, and the panel's own
+# 2083/2097). tuic listens on UDP (QUIC); anytls and naive on TCP.
+ANYTLS_PORT = 8447
+TUIC_PORT = 8448
+NAIVE_PORT = 8449
+# NOTE the inbound pins NO serverName: it accepts whatever SNI the client sends (which
+# clients/xraytun.py's Spec.sni supplies) and presents a self-signed certificate the
+# client is told to accept, so there is no name to keep in step on this side.
+# naive serves BOTH carriers on the primary inbound (h2 over TLS/TCP and h3 over QUIC/
+# UDP on the same port number). The client dials h2; serving h3 as well means a broken
+# h3 listener still shows up here as a failed inbound rather than going unnoticed.
+NAIVE_NETWORK = "tcp,udp"
+# AnyTLS padding scheme: left EMPTY on purpose so the inbound takes the library default.
+# A custom scheme is itself a fingerprint, and the default is the interoperable one.
+ANYTLS_PADDING_SCHEME: list = []
+
 # WireGuard (C): gateway model. ONE keypair per account; the User Limit sizes the account's
 # aligned IP block (rounded up to a power of two), and the single config's Address is that
 # whole block (e.g. 6 -> a /29 of 8 addresses) which a router hands out to its LAN. 6 -> /29.
@@ -146,6 +177,13 @@ SECOND_PORTS = {
     # (like l2tp/pptp/ikev2 above). A 2nd GRE inbound is distinguished purely by its own
     # /16 block, which is exactly what this test exercises.
     "gre":        {"udp": 48},
+    # Xray-native: each inbound really is its OWN listener inside the one xray process
+    # (a second listen socket, not a second daemon), so these bind for real, which is
+    # the point of the multi-inbound test for them: two inbounds of one protocol must
+    # coexist in a single core config.
+    "anytls":     {"udp": 8457},
+    "tuic":       {"udp": 8458},
+    "naive":      {"udp": 8459},
 }
 
 # Nominal DB port labels for the EXTRA ikev2 auth-mode inbounds (psk / eap-tls).
@@ -158,6 +196,73 @@ IKEV2_EXTRA_PORTS = {"psk": 4501, "eap-tls": 4502}
 # not just a connect smoke. The shared charon admits multiple SAs per identity (proven
 # by the eap-mschapv2 K=2 test), so the 2 devices share the single account.
 IKEV2_EXTRA_USER_LIMIT = 2
+
+
+def _xray_stream(panel: Panel, network: str = "tcp", extra: dict | None = None) -> dict:
+    """streamSettings for an Xray-native inbound: TLS carrying a throwaway self-signed
+    certificate. `extra` merges in a per-transport settings block (naiveSettings).
+
+    All three protocols need TLS (tuic's hub refuses to start without it, naive is
+    HTTP/2 or /3 over TLS, and AnyTLS is named after it), and TLS for an Xray-native
+    inbound lives in streamSettings rather than in the protocol's own settings, which
+    is exactly why panel.add_inbound had to grow a `stream` argument.
+
+    The cert comes from the panel's own generator (no openssl on the host, no material
+    checked into the repo) and is NOT persisted anywhere: called with no inbound id,
+    generate-ocserv-cert just mints a pair and returns it. The client sets
+    allowInsecure, so a self-signed cert with no matching SAN is fine.
+
+    ALPN is deliberately NOT pinned here: each protocol's own hub sets what it needs
+    (tuic forces h3), and a value set here would fight it."""
+    c = panel.generate_ocserv_cert() or {}
+    stream = {
+        "network": network,
+        "security": "tls",
+        "tlsSettings": {
+            "certificates": [{
+                "certificate": [c.get("certificate", "")],
+                "key": [c.get("key", "")],
+            }],
+        },
+    }
+    stream.update(extra or {})
+    return stream
+
+
+def stream_cert_sha256(stream: dict) -> str:
+    """SHA-256 of the DER form of the certificate an _xray_stream is carrying, hex.
+
+    This is what a client has to pin now. Xray REMOVED "allowInsecure" outright: after
+    2026-06-01 a config carrying it is refused with "The feature allowInsecure has been
+    removed and migrated to pinnedPeerCertSha256", so every TLS client driver in this
+    harness stopped being able to start on that date. Pinning is also strictly better
+    here: it verifies the exact certificate the panel minted instead of accepting any,
+    and it sets InsecureSkipVerify itself (tls/config.go:398), so a self-signed cert
+    with no matching SAN still connects.
+
+    Parsed by hand rather than with cryptography: a PEM body IS base64 of the DER, and
+    the harness already avoids adding host-side dependencies for one hash."""
+    try:
+        pem = (((stream.get("tlsSettings") or {}).get("certificates") or [{}])[0]
+               .get("certificate") or [""])[0]
+    except (IndexError, AttributeError, TypeError):
+        return ""
+    body = "".join(ln.strip() for ln in (pem or "").splitlines()
+                   if ln.strip() and not ln.startswith("-----"))
+    if not body:
+        return ""
+    try:
+        return hashlib.sha256(base64.b64decode(body)).hexdigest()
+    except (ValueError, binascii.Error):
+        return ""
+
+
+def _tuic_client(a: Account) -> dict:
+    """A TUIC client as the panel API expects it. Identity is `id` (a UUID) alongside
+    the password, so the id is NOT the username here: it is derived from the email by
+    the same helper the client driver uses, so the two ends can never drift."""
+    return {"id": tuic_uuid(a.email), "password": a.password,
+            "email": a.email, "enable": True}
 
 
 def build_second_inbound(panel: Panel, proto: str) -> Inbound:
@@ -321,6 +426,36 @@ def build_second_inbound(panel: Panel, proto: str) -> Inbound:
         return Inbound(
             protocol="ssh", inbound_id=inb["id"], udp_port=ports["udp"],
             tcp_port=0, accounts={"A": acct}, user_limit=1)
+    if proto in ("anytls", "tuic", "naive"):
+        # A SECOND Xray-native inbound: a second listener inside the SAME xray process,
+        # on its own port with its own account and its OWN self-signed certificate.
+        # There is no IP pool to differ (these hand out no client address), so what the
+        # multi-inbound test proves for them is that one core config carries two
+        # inbounds of one protocol and both serve: a config the panel renders, so a
+        # collision (duplicate tag, reused port, one settings block overwriting the
+        # other) would take the whole core down, not just the second inbound.
+        if proto == "anytls":
+            settings = {"clients": [_dict_client(acct)],
+                        "paddingScheme": ANYTLS_PADDING_SCHEME}
+            stream = _xray_stream(panel, "tcp")
+        elif proto == "tuic":
+            settings = {"clients": [_tuic_client(acct)],
+                        "congestionControl": "cubic", "authTimeout": 3,
+                        "zeroRttHandshake": False, "heartbeat": 10, "udpTimeout": 60}
+            stream = _xray_stream(panel, "tuic")
+        else:
+            # h2 only for the second naive inbound: the primary is the one that also
+            # serves h3, so a second QUIC listener is not what this test is about.
+            # settings.network and naiveSettings.network must agree (see the primary).
+            settings = {"clients": [_dict_client(acct)], "network": "tcp",
+                        "masquerade": {"type": "404", "file": "", "url": "", "string": ""}}
+            stream = _xray_stream(panel, "naive", {"naiveSettings": {"network": "tcp"}})
+        inb = panel.add_inbound(f"test-{proto}-2", ports["udp"], proto, settings,
+                                stream=stream)
+        return Inbound(
+            protocol=proto, inbound_id=inb["id"], udp_port=ports["udp"],
+            tcp_port=0, accounts={"A": acct}, user_limit=1,
+            tls_sha256=stream_cert_sha256(stream))
     raise ValueError(proto)
 
 
@@ -388,6 +523,15 @@ class Account:
     password: str
     email: str
     index: int      # zero-based position in clients[]
+    # Credentials the harness READS BACK off the panel rather than choosing, which is
+    # only how the multi-inbound phase builds its accounts: there the panel mints each
+    # field itself when the account joins an inbound whose protocol keys on it
+    # (accountproject.go::ensureCredentialsFor), so dialling with anything else would
+    # test the harness's guess instead of the projection. Empty everywhere else, and
+    # every reader falls back to the historical value, so no existing phase changes.
+    uuid: str = ""       # vmess / vless / tuic
+    security: str = ""   # vmess cipher ("auto")
+    secret: str = ""     # mtproto
 
 
 @dataclass
@@ -401,6 +545,9 @@ class Inbound:
     ovpn_udp: str = ""     # exported .ovpn profile text (openvpn)
     ovpn_tcp: str = ""
     user_limit: int = 1    # devices-per-account (User Limit feature); >1 = block mode
+    # Hex SHA-256 of the DER certificate this inbound presents, for the client to pin
+    # (see stream_cert_sha256). Empty for every inbound that serves no TLS.
+    tls_sha256: str = ""
     ca_cert: str = ""      # ikev2: PEM CA the CLIENT must trust (server presents a leaf signed by it)
     server_addr: str = ""  # ikev2: the cert SAN the client sets as `remote id` ("" -> use server IP)
     auth_mode: str = "eap-mschapv2"  # ikev2: eap-mschapv2 (default) | psk | eap-tls
@@ -431,11 +578,12 @@ class Inbound:
         """Tunnel IP for account A/B on this inbound. With user_limit K>1 each
         account owns an aligned K-block: host base = (index+1)*K, device d = base+d
         (mirrors Go vpnAccountDeviceIP). K==1 keeps the legacy 2+index host."""
-        if self.protocol in ("mtproto", "ssh"):
-            # Relays: the panel assigns no tunnel address (mtproto keeps the client's own
-            # IP; ssh routes per-client by the socks username=email, not a source IP).
-            # Returning a plausible-looking 10.x here would be a lie the routing/dns-leak
-            # checks would then act on, so fail loudly instead.
+        if self.protocol in ("mtproto", "ssh", "anytls", "tuic", "naive"):
+            # Relays and proxies: the panel assigns no tunnel address (mtproto keeps the
+            # client's own IP; ssh routes per-client by the socks username=email; the
+            # Xray-native three are matched by the account email carried on the session,
+            # again not a source IP). Returning a plausible-looking 10.x here would be a
+            # lie the routing/dns-leak checks would then act on, so fail loudly instead.
             raise AssertionError(
                 f"{self.protocol} has no tunnel IP: client_ip() must not be called for it")
         acct = self.accounts[which]
@@ -466,6 +614,12 @@ class ServerConfig:
     # assert, bulk-ops and backup all iterate `inbounds`, so extras stay invisible to
     # them and only the ikev2 phase's per-mode block (protocols.py) consumes these.
     ikev2_extra: dict = field(default_factory=dict)
+    # The classic Xray inbounds (vmess/vless/trojan/shadowsocks) the multi-inbound
+    # phase builds for itself. Kept OUT of `inbounds` for the same reason as
+    # ikev2_extra: bulk-ops, backup, subscription and the routing-translation assert
+    # all iterate that dict, and widening it would change phases that have nothing to
+    # do with this one.
+    multi_inbounds: dict = field(default_factory=dict)
 
 
 def _acct(prefix: str, idx: int) -> Account:
@@ -891,6 +1045,69 @@ def run(panel: Panel, server_ip: str, cfg: dict, result: JobResult,
 
     log(f"-> ssh-inbound [{shs.status.value}] {shs.detail}")
 
+    # ---- Xray-native inbounds: anytls / tuic / naive ---------------------
+    # Nothing in this harness had ever driven a client through an Xray-NATIVE inbound
+    # before these three: every protocol above is served by a bundled daemon or an
+    # in-binary Go server, with xray only ever downstream of it. Here xray IS the
+    # server, so the account matching, the per-user stats and the limiter all run on
+    # the core's own path (the contract's "set session.Inbound.User before dispatch").
+    #
+    # Shape per protocol comes straight from the integration contract; the trap it
+    # exists to prevent is `users` vs `clients`: with the wrong tag xray prints
+    # "Configuration OK", listens, ACCEPTS the connection and then fails every account,
+    # while quota/expiry/disable enforcement is silently disabled too. The panel writes
+    # `clients` everywhere, so that is what these post.
+    #
+    # 2 accounts each (A -> freedom, B -> blackhole) and NO userLimit: a device cap for
+    # an Xray-native protocol is the core's per-account IP limiter (`limitIp`), a
+    # different mechanism from the VPN account-slot User Limit, so leaving it at 1 keeps
+    # the phase from claiming to test a feature it is not wired to.
+    #
+    # Transport per protocol (the `network` of streamSettings, NOT of settings):
+    #   anytls -> plain tcp; TLS is an ordinary xray transport concern for it
+    #   tuic   -> its own transport (QUIC), which refuses to start without TLS
+    #   naive  -> its own transport, whose naiveSettings.network MUST AGREE with the
+    #             proxy settings' `network`: one owns the sockets, the other the protocol
+    for proto, port, remark, mk_settings, network, stream_extra in (
+        ("anytls", ANYTLS_PORT, "test-anytls",
+         lambda a, b: {"clients": [_dict_client(a), _dict_client(b)],
+                       "paddingScheme": ANYTLS_PADDING_SCHEME},
+         "tcp", None),
+        ("tuic", TUIC_PORT, "test-tuic",
+         lambda a, b: {"clients": [_tuic_client(a), _tuic_client(b)],
+                       "congestionControl": "cubic", "authTimeout": 3,
+                       "zeroRttHandshake": False, "heartbeat": 10, "udpTimeout": 60},
+         "tuic", None),
+        ("naive", NAIVE_PORT, "test-naive",
+         lambda a, b: {"clients": [_dict_client(a), _dict_client(b)],
+                       "network": NAIVE_NETWORK,
+                       "masquerade": {"type": "404", "file": "", "url": "", "string": ""}},
+         "naive", {"naiveSettings": {"network": NAIVE_NETWORK}}),
+    ):
+        log(f"-> creating {proto} inbound (xray-native, TLS, 2 accounts)...")
+        xs = phase.add(SubTest(f"{proto}-inbound"))
+        try:
+            acct_a, acct_b = _acct(proto, 0), _acct(proto, 1)
+            stream = _xray_stream(panel, network, stream_extra)
+            inb = panel.add_inbound(remark, port, proto, mk_settings(acct_a, acct_b),
+                                    stream=stream)
+            iid = inb["id"]
+            sc.inbounds[proto] = Inbound(
+                # udp_port carries the listen port for every protocol whose Inbound has
+                # no transport split (the ssh convention: a port LABEL), so
+                # multi-inbound's per-proto `.udp_port` reads keep working. tuic really
+                # is UDP (QUIC); anytls/naive are TCP.
+                protocol=proto, inbound_id=iid, udp_port=port, tcp_port=0,
+                accounts={"A": acct_a, "B": acct_b}, user_limit=1,
+                tls_sha256=stream_cert_sha256(stream))
+            xs.status = Status.PASS
+            xs.detail = (f"inbound {iid}, port {port} ({network}/tls), 2 accounts "
+                         f"(A freedom / B blackhole), self-signed cert")
+        except Exception as e:  # noqa: BLE001
+            xs.status = Status.ERROR
+            xs.detail = str(e)[:300]
+        log(f"-> {proto}-inbound [{xs.status.value}] {xs.detail}")
+
     # ---- source-IP routing rules (built-in outbounds, no external link) ----
     # Prove Xray routes by source IP using the two outbounds every config already
     # ships: `direct` (freedom) and `blocked` (blackhole). Author by email (the
@@ -914,6 +1131,10 @@ def run(panel: Panel, server_ip: str, cfg: dict, result: JobResult,
         # username (= email), so the untranslated `user` rule matches the SSH socks account
         # directly (A->freedom, B->blackhole), which is exactly the per-client routing the
         # ssh phase asserts. So ssh joins these rules while mtproto does not.
+        # anytls/tuic/naive are kept for the same reason and match even more directly: an
+        # Xray-native inbound puts the account on the session itself (session.Inbound.User),
+        # which is precisely what a `user` rule is compared against, so for those three
+        # the rule below needs no translation of any kind to work per client.
         _routable = [ib for p, ib in sc.inbounds.items() if p != "mtproto"]
         a_emails = [ib.accounts["A"].email for ib in _routable]
         b_emails = [ib.accounts["B"].email for ib in _routable]
@@ -940,10 +1161,13 @@ def run(panel: Panel, server_ip: str, cfg: dict, result: JobResult,
     try:
         want_ips = set()
         for ib in sc.inbounds.values():
-            if ib.protocol in ("mtproto", "ssh"):
-                # Relays own no tunnel IP: mtproto is excluded from the rules entirely,
-                # and ssh matches by an untranslated socks-username `user` rule (not a
-                # `source` one), so neither contributes a source-IP to assert here.
+            if ib.protocol in ("mtproto", "ssh", "anytls", "tuic", "naive"):
+                # Relays and Xray-native proxies own no tunnel IP: mtproto is excluded
+                # from the rules entirely; ssh matches by an untranslated socks-username
+                # `user` rule (not a `source` one); anytls/tuic/naive match by the
+                # account email xray puts on the session, which is what a `user` rule
+                # compares against natively. None of them contributes a source-IP to
+                # assert here.
                 continue
             if ib.protocol == "openvpn":
                 want_ips.add(ib.client_ip("B", "udp"))
@@ -1005,7 +1229,8 @@ def run(panel: Panel, server_ip: str, cfg: dict, result: JobResult,
     # succeeded would still be declared a total failure and throw the good inbound
     # away. ("wg-c" was missing until now: mtproto would have hit the same trap.)
     if all(p not in sc.inbounds for p in ("openvpn", "l2tp", "pptp", "openconnect",
-                                          "sstp", "ikev2", "wg-c", "awg", "mtproto", "ssh")):
+                                          "sstp", "ikev2", "wg-c", "awg", "mtproto", "ssh",
+                                          "anytls", "tuic", "naive")):
         return None
     return sc
 

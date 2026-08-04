@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,10 +24,12 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/util/random"
 )
 
-// Update from a local file: the operator picks a vpn-ui binary in the browser and the
-// panel installs it, instead of fetching the release from GitHub. Same installer, same
-// rollback copy, same restart; only the source of the bytes differs, which is why this
-// ends in installPanelBinary rather than repeating the swap sequence.
+// Manual update: the operator names a vpn-ui binary themselves, either by picking a
+// file in the browser or by giving a URL the panel downloads, instead of fetching the
+// release from GitHub. Same installer, same rollback copy, same restart; only the
+// source of the bytes differs, which is why this ends in installPanelBinary rather than
+// repeating the swap sequence, and why the two sources meet at StagePanelBinary rather
+// than each growing their own copy of the checks.
 //
 // It is deliberately TWO requests. The first uploads and INSPECTS, and answers with the
 // version it read out of the file itself; the second applies what inspection staged.
@@ -54,6 +59,11 @@ const (
 	// action seconds apart, so anything older is an abandoned upload: it gets deleted
 	// rather than installed, and it is the size of a whole panel binary.
 	stagedPanelTTL = 30 * time.Minute
+
+	// How long a URL fetch may take end to end. Generous because the operator chose a
+	// mirror this panel can actually reach, which on the networks this feature exists
+	// for is often a slow one, and the asset is the better part of a gigabyte.
+	panelURLFetchTimeout = 30 * time.Minute
 )
 
 // ErrNoStagedPanelBinary reports an apply with nothing staged: the upload failed, the
@@ -232,6 +242,147 @@ func ApplyStagedPanelBinary(token string) error {
 	}
 	logger.Infof("panel update: applied uploaded binary v%s", info.New)
 	return nil
+}
+
+// StagePanelBinaryFromURL fetches a binary from an operator-supplied URL and stages it
+// exactly as an upload does, so the confirmation and the apply step below are the same
+// code for both manual sources. It exists for the box that cannot reach GitHub but can
+// reach some other mirror: the release check is precisely what fails there, so an
+// update path that does not depend on it has to name its own address.
+//
+// The bytes are handed straight to StagePanelBinary rather than downloaded to a file
+// first: every check it makes (size cap, ELF magic, arch, Go build info, -v probe) is
+// what a stranger's URL needs most, and duplicating the download would only add a
+// second place for the staging path to drift.
+//
+// There is deliberately no private-address (SSRF) guard. The caller is already a super
+// admin, which on this panel means "may replace the running binary and have it exec'd
+// as root" -- the very next step of this flow. Refusing a 10.x mirror would block the
+// air-gapped install this feature is for while stopping nothing an operator with these
+// rights cannot do anyway.
+func StagePanelBinaryFromURL(rawURL string) (StagedPanelInfo, error) {
+	var info StagedPanelInfo
+
+	target, err := validatePanelBinaryURL(rawURL)
+	if err != nil {
+		return info, err
+	}
+	// Checked before the transfer as well as inside StagePanelBinary, which only sees
+	// it once the last byte has landed. Both guard the same clash, but finding out
+	// after pulling several hundred megabytes is a long wait for an answer that was
+	// available at the start.
+	if panelUpdateInFlight.Load() {
+		return info, fmt.Errorf("a panel update is already in progress")
+	}
+
+	// The ctx bounds the whole transfer; the transport below bounds the parts that
+	// hang without transferring anything. A release asset is ~315MB, so a fixed
+	// client timeout generous enough for a slow link would be uselessly long for a
+	// server that accepts the connection and then says nothing.
+	ctx, cancel := context.WithTimeout(context.Background(), panelURLFetchTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return info, fmt.Errorf("that URL could not be requested: %w", err)
+	}
+	req.Header.Set("User-Agent", "vpn-ui")
+
+	resp, err := panelFetchClient().Do(req)
+	if err != nil {
+		return info, fmt.Errorf("downloading from that URL failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return info, fmt.Errorf("that URL answered HTTP %d, not a file", resp.StatusCode)
+	}
+
+	// A wrong link most often answers 200 with an HTML page (a login wall, a repo
+	// page, a "file not found" template). StagePanelBinary's ELF check catches that,
+	// but naming it here turns "not a linux binary" into something the operator can
+	// act on.
+	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/html") {
+		return info, errors.New("that URL served a web page, not a binary: use the direct download link to the asset")
+	}
+
+	// Feed the overview's % bar and speed readout while the panel pulls the file. The
+	// upload path measures this in the browser, which is the end that knows what it
+	// has put on the wire; here the transfer happens entirely server-side, so the
+	// same counters the GitHub updater publishes are what the page polls. Without
+	// them a 300MB fetch is several silent minutes, which reads as a hang.
+	resetUpdateCounters()
+	setUpdateProgress(updatePhaseDownloading, 0)
+
+	info, err = StagePanelBinary(
+		&phaseFlipReader{r: newProgressReader(resp.Body, resp.ContentLength)},
+		resp.ContentLength,
+	)
+	if err != nil {
+		setUpdateProgress(updatePhaseError, 0)
+		return info, err
+	}
+	// Staged, not installed: the phase belongs to the confirmation dialog now. The
+	// counters are left alone so the bar keeps the size it just moved.
+	setUpdateProgress(updatePhaseStaged, 100)
+	return info, nil
+}
+
+// phaseFlipReader moves the published phase on from "downloading" the moment the body
+// is exhausted. What follows is not instant on a file this size (an ELF check, a build
+// info parse, and a -v probe that execs it), and reporting a download through all of
+// that shows a bar frozen at 99% with the speed decaying to zero.
+type phaseFlipReader struct {
+	r      io.Reader
+	flipped bool
+}
+
+func (p *phaseFlipReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if err != nil && !p.flipped {
+		p.flipped = true
+		setUpdateProgress(updatePhaseChecking, 99)
+	}
+	return n, err
+}
+
+// validatePanelBinaryURL rejects what cannot be a download before a connection is
+// opened. Only http and https: the fetch below is a plain HTTP GET, and a scheme it
+// cannot speak (file://, ftp://) should be refused by name rather than as a transport
+// error the operator has to decode.
+func validatePanelBinaryURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("enter the URL of the binary to install")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("that is not a valid URL: %w", err)
+	}
+	switch u.Scheme {
+	case "http", "https":
+	case "":
+		return "", errors.New("that URL is missing its scheme, it has to start with http:// or https://")
+	default:
+		return "", fmt.Errorf("%s:// cannot be downloaded from, use http:// or https://", u.Scheme)
+	}
+	if u.Host == "" {
+		return "", errors.New("that URL has no host")
+	}
+	return u.String(), nil
+}
+
+// panelFetchClient is the client StagePanelBinaryFromURL downloads with. Stall guards
+// only, no overall deadline: the context carries that. Proxy settings are taken from
+// the environment, which is how a panel behind one already reaches GitHub.
+func panelFetchClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           (&net.Dialer{Timeout: 15 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   15 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
+		},
+	}
 }
 
 // StagedPanelBinaryInfo reports what is waiting, if anything.

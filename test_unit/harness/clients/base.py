@@ -202,6 +202,23 @@ class Client:
             "pkill -f '[b]advpn-tun2socks' 2>/dev/null; "
             "pkill -f '[s]sh -N -D 127.0.0.1:1080' 2>/dev/null; ip link del tun0 2>/dev/null; "
             "rm -f /run/tun2socks.pid /run/ssh-vpn.pid 2>/dev/null; "
+            # Xray-native protocols (anytls/tuic/naive): the CLIENT is an xray of its
+            # own (clients/xraytun.py), driving the same tun0 + tun2socks pair killed
+            # just above. Kill it by saved PID, then sweep orphans by config path,
+            # bracketed for the same reason as every pattern here (an unbracketed
+            # 'xray run -c' matches this teardown's own shell and would kill it
+            # mid-string, silently skipping everything after this line).
+            # The four classic ones (vmess/vless/trojan/shadowsocks, clients/xrayclassic.py)
+            # ride the same driver and so are listed here too; the pkill sweep below
+            # already covered them by config path, but a stale pid file would make the
+            # next `kill $(cat …)` target whatever now owns that pid.
+            "kill $(cat /run/xray-anytls.pid /run/xray-tuic.pid /run/xray-naive.pid "
+            "/run/xray-vmess.pid /run/xray-vless.pid /run/xray-trojan.pid "
+            "/run/xray-shadowsocks.pid 2>/dev/null) 2>/dev/null; "
+            "pkill -f '[x]ray run -c /etc/xray-' 2>/dev/null; "
+            "rm -f /run/xray-anytls.pid /run/xray-tuic.pid /run/xray-naive.pid "
+            "/run/xray-vmess.pid /run/xray-vless.pid /run/xray-trojan.pid "
+            "/run/xray-shadowsocks.pid 2>/dev/null; "
             # WireGuard (C): tear the wg-quick interface down (and force-remove a stray link).
             "wg-quick down wgc 2>/dev/null; ip link del wgc 2>/dev/null; "
             # AmneziaWG: same teardown via awg-quick (and force-remove a stray awg link).

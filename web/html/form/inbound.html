@@ -403,7 +403,7 @@
       would blank the label in the other 12 locales (see web/i18n_toml_test.go).
     -->
     <a-form-item
-        v-if="inbound.protocol === Protocols.VMESS || inbound.protocol === Protocols.VLESS || inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.SHADOWSOCKS"
+        v-if="inbound.protocol === Protocols.VMESS || inbound.protocol === Protocols.VLESS || inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.SHADOWSOCKS || inbound.protocol === Protocols.ANYTLS || inbound.protocol === Protocols.TUIC || inbound.protocol === Protocols.NAIVE"
     >
         <template slot="label">
             <a-tooltip>
@@ -428,7 +428,7 @@
     </a-form-item>
 
     <a-form-item
-        v-if="inbound.protocol === Protocols.VMESS || inbound.protocol === Protocols.VLESS || inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.SHADOWSOCKS"
+        v-if="inbound.protocol === Protocols.VMESS || inbound.protocol === Protocols.VLESS || inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.SHADOWSOCKS || inbound.protocol === Protocols.ANYTLS || inbound.protocol === Protocols.TUIC || inbound.protocol === Protocols.NAIVE"
     >
         <template slot="label">
             <a-tooltip>
@@ -638,6 +638,21 @@
 <!-- hysteria -->
 <template v-if="inbound.protocol === Protocols.HYSTERIA">
     {{template "form/hysteria"}}
+</template>
+
+<!-- anytls -->
+<template v-if="inbound.protocol === Protocols.ANYTLS">
+    {{template "form/anytls"}}
+</template>
+
+<!-- tuic -->
+<template v-if="inbound.protocol === Protocols.TUIC">
+    {{template "form/tuic"}}
+</template>
+
+<!-- naive -->
+<template v-if="inbound.protocol === Protocols.NAIVE">
+    {{template "form/naive"}}
 </template>
 
 <!-- stream settings -->

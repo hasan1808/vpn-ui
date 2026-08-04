@@ -1,0 +1,74 @@
+{{define "component/bulkOpsModal"}}
+<!-- Rendered INSIDE the page's own #app, not as a standalone modal instance: it
+     is driven entirely by bulkOps state and methods that come from
+     component/clientActions, so it has no data of its own to own. -->
+  <a-modal id="bulk-ops-modal"
+    title='{{ i18n "pages.inbounds.bulkOperations" }}'
+    :visible="bulkOps.visible"
+    :confirm-loading="bulkOps.confirmLoading"
+    ok-text='{{ i18n "pages.inbounds.apply" }}'
+    cancel-text='{{ i18n "close" }}'
+    :class="themeSwitcher.currentTheme"
+    :closable="true"
+    :mask-closable="false"
+    @ok="() => runBulkOps()"
+    @cancel="() => bulkOps.visible = false">
+    <a-form layout="vertical">
+      <a-form-item label='{{ i18n "pages.inbounds.bulkTargetCount" }}'>
+        <a-tag color="purple">[[ selectedCount() ]]</a-tag>
+      </a-form-item>
+      <a-form-item label='{{ i18n "pages.inbounds.operation" }}'>
+        <a-select v-model="bulkOps.op"
+          :dropdown-class-name="themeSwitcher.currentTheme">
+          <!-- Withheld from a reseller: subDays is refused by the server, and addDays
+               is meaningless once their profile derives duration from traffic. See
+               isBulkOpAllowed; bulkOps.op is snapped back to a rendered option in
+               openBulkOps so the select can never point at a hidden one. -->
+          <a-select-option v-if="bulkOpAllowed('addDays')" value="addDays">{{ i18n "pages.inbounds.opAddDays" }}</a-select-option>
+          <a-select-option v-if="bulkOpAllowed('subDays')" value="subDays">{{ i18n "pages.inbounds.opSubDays" }}</a-select-option>
+          <a-select-option value="addTraffic">{{ i18n "pages.inbounds.opAddTraffic" }}</a-select-option>
+          <a-select-option value="subTraffic">{{ i18n "pages.inbounds.opSubTraffic" }}</a-select-option>
+          <a-select-option value="enable">{{ i18n "pages.inbounds.opEnable" }}</a-select-option>
+          <a-select-option value="disable">{{ i18n "pages.inbounds.opDisable" }}</a-select-option>
+          <a-select-option value="freeze">{{ i18n "pages.inbounds.opFreeze" }}</a-select-option>
+          <a-select-option value="unfreeze">{{ i18n "pages.inbounds.opUnfreeze" }}</a-select-option>
+          <a-select-option value="delete">{{ i18n "pages.inbounds.opDelete" }}</a-select-option>
+        </a-select>
+      </a-form-item>
+      <a-form-item v-if="bulkIsNumericOp()" label='{{ i18n "pages.inbounds.amount" }}'>
+        <a-input-number v-model="bulkOps.amount" :min="0"
+          :style="{ width: bulkIsTrafficOp() ? '58%' : '100%' }"></a-input-number>
+        <a-select v-if="bulkIsTrafficOp()" v-model="bulkOps.unit"
+          :style="{ width: '38%', marginInlineStart: '4%' }"
+          :dropdown-class-name="themeSwitcher.currentTheme">
+          <a-select-option value="GB">GB</a-select-option>
+          <a-select-option value="MB">MB</a-select-option>
+        </a-select>
+        <span v-else :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.days" }}</span>
+      </a-form-item>
+      <a-divider :style="{ margin: '8px 0' }"></a-divider>
+      <a-space direction="vertical" :size="10" :style="{ width: '100%' }">
+        <div>
+          <a-switch v-model="bulkOps.skipFirstUse" size="small"></a-switch>
+          <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipFirstUse" }}</span>
+        </div>
+        <div>
+          <a-switch v-model="bulkOps.skipUnlimited" size="small"></a-switch>
+          <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipUnlimited" }}</span>
+        </div>
+        <div>
+          <a-switch v-model="bulkOps.skipDisabled" size="small"></a-switch>
+          <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipDisabled" }}</span>
+        </div>
+      </a-space>
+      <div v-if="bulkOps.progress.running || bulkOps.progress.done > 0" :style="{ marginTop: '14px' }">
+        <a-progress :percent="bulkProgressPercent()"
+          :status="bulkOps.progress.running ? 'active' : 'success'"></a-progress>
+        <div :style="{ marginTop: '4px', fontSize: '12px', opacity: 0.75 }">
+          [[ bulkOps.progress.done ]] / [[ bulkOps.progress.total ]]
+          <span v-if="bulkOps.progress.etaText"> · {{ i18n "pages.inbounds.eta" }} [[ bulkOps.progress.etaText ]]</span>
+        </div>
+      </div>
+    </a-form>
+  </a-modal>
+{{end}}

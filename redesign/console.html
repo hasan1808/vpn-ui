@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Overview: Console</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<style>
+  #console-overview, #console-overview *{ box-sizing:border-box; }
+
+  :root{
+    --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee;
+    --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+    --accent:#008771; --accent-weak:#e2f2ee;
+    --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+    --ok-glow:rgba(82,196,26,.18); --info-glow:rgba(24,144,255,.18);
+    --warn-glow:rgba(250,173,20,.18); --error-glow:rgba(245,34,45,.16);
+    --accent-glow:rgba(0,135,113,.16);
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 1px rgba(16,24,40,.03);
+    --font:-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  #console-overview{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--font);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    width:100%;
+    overflow-x:hidden;
+  }
+
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950;
+      --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+      --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14);
+      --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+      --ok-glow:rgba(99,214,126,.22); --info-glow:rgba(74,160,255,.22);
+      --warn-glow:rgba(255,196,77,.22); --error-glow:rgba(255,107,107,.20);
+      --accent-glow:rgba(27,191,159,.22);
+      --shadow:0 1px 2px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.40);
+    --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14);
+    --ok:#63d67e; --info:#4aa0ff; --warn:#ffc44d; --error:#ff6b6b; --off:#5b6b82;
+    --ok-glow:rgba(99,214,126,.22); --info-glow:rgba(74,160,255,.22);
+    --warn-glow:rgba(255,196,77,.22); --error-glow:rgba(255,107,107,.20);
+    --accent-glow:rgba(27,191,159,.22);
+    --shadow:0 1px 2px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee;
+    --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2;
+    --accent:#008771; --accent-weak:#e2f2ee;
+    --ok:#52c41a; --info:#1890ff; --warn:#faad14; --error:#f5222d; --off:#98a2b3;
+    --ok-glow:rgba(82,196,26,.18); --info-glow:rgba(24,144,255,.18);
+    --warn-glow:rgba(250,173,20,.18); --error-glow:rgba(245,34,45,.16);
+    --accent-glow:rgba(0,135,113,.16);
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 1px rgba(16,24,40,.03);
+  }
+
+  /* ---------- layout shell ---------- */
+  #console-overview .shell{ display:flex; max-width:1280px; margin:0 auto; min-height:100vh; }
+
+  #console-overview .nav-rail{
+    flex:0 0 84px; width:84px;
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    display:flex; flex-direction:column; align-items:center;
+    padding:18px 0; gap:3px;
+  }
+  #console-overview .nav-mark{
+    font-size:13px; font-weight:700; color:var(--accent);
+    letter-spacing:-.01em; margin-bottom:22px;
+  }
+  #console-overview .nav-item{
+    width:64px; display:flex; flex-direction:column; align-items:center; gap:5px;
+    padding:8px 4px 9px; border-radius:8px; border:none; background:none;
+    color:var(--text-3); font-family:inherit; font-size:10px; letter-spacing:.02em;
+    cursor:pointer; text-align:center; line-height:1.2;
+    transition:color .15s ease, background-color .15s ease;
+  }
+  #console-overview .nav-item svg{ width:18px; height:18px; }
+  #console-overview .nav-item:hover{ color:var(--text-2); background:var(--surface-2); }
+  #console-overview .nav-item.active{ color:var(--accent); background:var(--accent-weak); font-weight:600; }
+
+  #console-overview .main{
+    flex:1; min-width:0; padding:20px 28px 44px;
+    display:flex; flex-direction:column; gap:20px;
+  }
+
+  /* ---------- top bar ---------- */
+  #console-overview .topbar{
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap;
+    gap:14px; padding-bottom:16px; border-bottom:1px solid var(--border);
+  }
+  #console-overview .topbar-left{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  #console-overview .host-chip{
+    display:flex; align-items:center; gap:7px;
+    font-size:13px; color:var(--text-2);
+    padding:6px 12px; border:1px solid var(--border); border-radius:999px; background:var(--surface);
+  }
+  #console-overview .host-chip svg{ width:14px; height:14px; color:var(--text-3); }
+  #console-overview .host-chip strong{ color:var(--text); font-weight:650; }
+  #console-overview .health-readout{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    font-size:12.5px; color:var(--text-2);
+    padding-left:14px; border-left:1px solid var(--border);
+  }
+  #console-overview .health-readout .dot{
+    width:7px; height:7px; border-radius:50%; background:var(--ok);
+    box-shadow:0 0 0 3px var(--ok-glow); flex:0 0 auto;
+  }
+  #console-overview .health-readout b{ color:var(--text); font-weight:650; }
+  #console-overview .hr-sep{ color:var(--text-3); }
+  #console-overview .theme-toggle{
+    width:32px; height:32px; border-radius:50%; border:1px solid var(--border);
+    background:var(--surface); color:var(--text-2);
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    transition:color .15s ease, border-color .15s ease;
+    flex:0 0 auto;
+  }
+  #console-overview .theme-toggle svg{ width:16px; height:16px; }
+  #console-overview .theme-toggle:hover{ color:var(--accent); border-color:var(--accent); }
+
+  /* ---------- page head ---------- */
+  #console-overview .page-head{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  #console-overview .page-title{ font-size:22px; font-weight:700; letter-spacing:-.01em; margin:0; text-wrap:balance; }
+  #console-overview .page-sub{ font-size:13px; color:var(--text-3); }
+
+  /* ---------- panel base ---------- */
+  #console-overview .panel{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow);
+  }
+  #console-overview .panel-head{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+    padding:13px 18px; border-bottom:1px solid var(--border);
+  }
+  #console-overview .panel-title{
+    font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); font-weight:700; margin:0;
+  }
+  #console-overview .panel-caption{ font-size:12px; color:var(--text-3); }
+
+  /* ---------- vitals ---------- */
+  #console-overview .vitals{ display:grid; grid-template-columns:repeat(4,1fr) 220px; }
+  #console-overview .vital{
+    padding:16px 18px; border-right:1px solid var(--border);
+    display:flex; flex-direction:column; gap:9px; min-width:0;
+  }
+  #console-overview .vitals .vital:last-child{ border-right:none; }
+  #console-overview .vital-top{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  #console-overview .vital-name{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); font-weight:700; }
+  #console-overview .vital-pct{ font-size:19px; font-weight:650; }
+  #console-overview .bar-track{ height:5px; border-radius:3px; background:var(--border); overflow:hidden; }
+  #console-overview .bar-fill{ height:100%; border-radius:3px; }
+  #console-overview .vital-meta{ font-size:12px; color:var(--text-2); }
+  #console-overview .vital-spark{ width:100%; height:26px; margin-top:auto; }
+  #console-overview .vital-spark svg{ display:block; width:100%; height:100%; overflow:visible; }
+
+  #console-overview .vital.load{ gap:7px; }
+  #console-overview .load-row{ display:flex; align-items:center; gap:8px; }
+  #console-overview .load-label{ font-size:11px; color:var(--text-3); width:24px; flex:0 0 24px; }
+  #console-overview .load-bar{ flex:1; height:4px; border-radius:2px; background:var(--border); overflow:hidden; display:block; }
+  #console-overview .load-bar > span{ display:block; height:100%; border-radius:2px; }
+  #console-overview .load-val{ font-size:12.5px; color:var(--text); width:36px; flex:0 0 36px; text-align:right; font-weight:600; }
+
+  @media (max-width:980px){
+    #console-overview .vitals{ grid-template-columns:repeat(2,1fr); }
+    #console-overview .vital{ border-right:none; border-bottom:1px solid var(--border); }
+    #console-overview .vital:nth-child(odd){ border-right:1px solid var(--border); }
+  }
+  @media (max-width:560px){
+    #console-overview .vitals{ grid-template-columns:1fr; }
+    #console-overview .vital, #console-overview .vital:nth-child(odd){ border-right:none; border-bottom:1px solid var(--border); }
+    #console-overview .vital:last-child{ border-bottom:none; }
+  }
+
+  /* ---------- services matrix ---------- */
+  #console-overview .services{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(196px,1fr)); gap:1px;
+    background:var(--border); border:1px solid var(--border); border-radius:0 0 10px 10px; overflow:hidden;
+  }
+  #console-overview .svc-tile{ background:var(--surface); padding:13px 16px; display:flex; align-items:flex-start; gap:11px; }
+  #console-overview .svc-led{ width:9px; height:9px; border-radius:50%; margin-top:5px; flex:0 0 9px; background:var(--off); }
+  #console-overview .svc-tile[data-state="running"] .svc-led{
+    background:var(--ok); box-shadow:0 0 0 3px var(--ok-glow), 0 0 7px 0 var(--ok-glow);
+  }
+  #console-overview .svc-tile[data-state="idle"] .svc-led{ background:var(--info); }
+  #console-overview .svc-tile[data-state="stopped"] .svc-led{ background:var(--warn); }
+  #console-overview .svc-body{ min-width:0; display:flex; flex-direction:column; gap:3px; }
+  #console-overview .svc-name{ font-size:13.5px; font-weight:600; color:var(--text); }
+  #console-overview .svc-state{ font-size:11px; font-weight:650; text-transform:uppercase; letter-spacing:.03em; color:var(--off); }
+  #console-overview .svc-tile[data-state="running"] .svc-state{ color:var(--ok); }
+  #console-overview .svc-tile[data-state="idle"] .svc-state{ color:var(--info); }
+  #console-overview .svc-tile[data-state="stopped"] .svc-state{ color:var(--warn); }
+  #console-overview .svc-note{ font-size:11.5px; color:var(--text-3); margin-top:1px; }
+
+  /* ---------- lower grid ---------- */
+  #console-overview .lower{ display:grid; grid-template-columns:1fr 340px; gap:20px; align-items:start; }
+  @media (max-width:980px){ #console-overview .lower{ grid-template-columns:1fr; } }
+
+  #console-overview .throughput-body{ padding:18px; display:flex; flex-direction:column; gap:18px; }
+  #console-overview .flow-row{ display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  @media (max-width:640px){ #console-overview .flow-row{ grid-template-columns:1fr; } }
+  #console-overview .flow-col{ display:flex; flex-direction:column; gap:9px; min-width:0; }
+  #console-overview .flow-head{ display:flex; align-items:center; gap:7px; }
+  #console-overview .flow-head svg{ width:14px; height:14px; }
+  #console-overview .flow-label{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); font-weight:700; }
+  #console-overview .flow-col.up .flow-head svg{ color:var(--accent); }
+  #console-overview .flow-col.down .flow-head svg{ color:var(--info); }
+  #console-overview .flow-value{ font-size:27px; font-weight:700; letter-spacing:-.01em; }
+  #console-overview .flow-col.up .flow-value{ color:var(--accent); }
+  #console-overview .flow-col.down .flow-value{ color:var(--info); }
+  #console-overview .flow-value .unit{ font-size:13px; font-weight:600; color:var(--text-3); margin-left:2px; }
+  #console-overview .flow-spark{ width:100%; height:56px; }
+  #console-overview .flow-spark svg{ display:block; width:100%; height:100%; overflow:visible; }
+
+  #console-overview .stat-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+    background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden;
+  }
+  @media (max-width:640px){ #console-overview .stat-grid{ grid-template-columns:repeat(2,1fr); } }
+  #console-overview .stat-cell{ background:var(--surface); padding:11px 14px; display:flex; flex-direction:column; gap:4px; }
+  #console-overview .stat-label{ font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); font-weight:700; }
+  #console-overview .stat-value{ font-size:15px; font-weight:650; }
+
+  /* ---------- control rail ---------- */
+  #console-overview .rail{ display:flex; flex-direction:column; gap:20px; }
+  #console-overview .rail-body{ padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+  #console-overview .rail-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  #console-overview .rail-row .k{ font-size:12.5px; color:var(--text-2); }
+  #console-overview .rail-row .v{ font-size:13px; font-weight:650; color:var(--text); }
+
+  #console-overview .status-line{ display:flex; align-items:center; gap:9px; }
+  #console-overview .status-line .led{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
+  #console-overview .status-text{ font-weight:700; font-size:13.5px; }
+
+  #console-overview .chip{
+    display:inline-flex; align-items:center; font-size:11.5px; font-weight:650; color:var(--text-2);
+    background:var(--surface-2); border:1px solid var(--border); padding:2px 8px; border-radius:999px;
+  }
+
+  #console-overview .pill{
+    display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:650;
+    padding:3px 9px; border-radius:999px;
+  }
+  #console-overview .pill svg{ width:11px; height:11px; }
+  #console-overview .pill.ok{ color:var(--ok); background:var(--ok-glow); }
+
+  #console-overview .divider{ height:1px; background:var(--border); border:none; margin:2px 0; }
+  #console-overview .sub-label{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); font-weight:700;
+  }
+  #console-overview .panel-title-row{ display:flex; align-items:center; justify-content:space-between; }
+
+  #console-overview .btn-row{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  #console-overview .icon-btn{
+    display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:7px;
+    border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+    font-size:12px; font-family:inherit; cursor:pointer; white-space:nowrap;
+    transition:color .15s ease, border-color .15s ease, background-color .15s ease;
+  }
+  #console-overview .icon-btn svg{ width:14px; height:14px; flex:0 0 auto; }
+  #console-overview .icon-btn:hover{ border-color:var(--accent); color:var(--accent); }
+  #console-overview .icon-btn.danger:hover{ border-color:var(--error); color:var(--error); }
+  #console-overview .icon-btn.full{ width:100%; justify-content:center; padding:8px 10px; }
+
+  #console-overview .eye-btn{
+    background:none; border:none; color:var(--text-3); cursor:pointer; padding:3px; display:flex; flex:0 0 auto;
+    border-radius:5px; transition:color .15s ease;
+  }
+  #console-overview .eye-btn svg{ width:15px; height:15px; }
+  #console-overview .eye-btn:hover{ color:var(--accent); }
+  #console-overview .ip-value{ font-size:12px; word-break:break-all; text-align:right; max-width:180px; }
+
+  #console-overview button{ font:inherit; }
+  #console-overview button:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  #console-overview .footer-note{ text-align:center; font-size:11.5px; color:var(--text-3); padding:10px 0 2px; }
+
+  @media (prefers-reduced-motion: reduce){
+    #console-overview *{ transition:none !important; animation:none !important; }
+  }
+</style>
+
+<div id="console-overview">
+  <div class="shell">
+
+    <nav class="nav-rail" aria-label="Primary">
+      <div class="nav-mark">vpn-ui</div>
+
+      <button class="nav-item active" type="button" aria-current="page">
+        <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="6" height="6" rx="1"/><rect x="10" y="2" width="6" height="6" rx="1"/><rect x="2" y="10" width="6" height="6" rx="1"/><rect x="10" y="10" width="6" height="6" rx="1"/></svg>
+        <span>Overview</span>
+      </button>
+
+      <button class="nav-item" type="button">
+        <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8.5V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v4.5"/><path d="M2.5 8.5h3.8l1 2h3.4l1-2h3.8"/><path d="M2.5 8.5v5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-5"/></svg>
+        <span>Inbounds</span>
+      </button>
+
+      <button class="nav-item" type="button">
+        <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><line x1="2" y1="4.5" x2="16" y2="4.5"/><circle cx="7" cy="4.5" r="1.7" fill="currentColor" stroke="none"/><line x1="2" y1="9" x2="16" y2="9"/><circle cx="12" cy="9" r="1.7" fill="currentColor" stroke="none"/><line x1="2" y1="13.5" x2="16" y2="13.5"/><circle cx="5.5" cy="13.5" r="1.7" fill="currentColor" stroke="none"/></svg>
+        <span>Settings</span>
+      </button>
+
+      <button class="nav-item" type="button">
+        <svg viewBox="0 0 18 18" fill="currentColor" stroke="none" aria-hidden="true"><path d="M9.8 1.5L3.5 10.2h4l-1 6.3 6.9-9.4h-4.2l1.6-5.6z"/></svg>
+        <span>Xray</span>
+      </button>
+
+      <button class="nav-item" type="button">
+        <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="14" height="13" rx="1.5"/><path d="M5 6.5l2.3 2-2.3 2"/><line x1="9" y1="10.5" x2="13" y2="10.5"/></svg>
+        <span>Logs</span>
+      </button>
+    </nav>
+
+    <div class="main">
+
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="host-chip">
+            <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3" width="13" height="4.5" rx="1"/><rect x="2.5" y="10.5" width="13" height="4.5" rx="1"/><circle cx="5" cy="5.25" r=".6" fill="currentColor" stroke="none"/><circle cx="5" cy="12.75" r=".6" fill="currentColor" stroke="none"/></svg>
+            <strong>srv-fra-01</strong>
+          </div>
+          <div class="health-readout">
+            <span class="dot" aria-hidden="true"></span>
+            <span><b>7/10</b> services running</span>
+            <span class="hr-sep">&middot;</span>
+            <span>CPU <b>34%</b></span>
+            <span class="hr-sep">&middot;</span>
+            <span>RAM <b>33%</b></span>
+          </div>
+        </div>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme"></button>
+      </header>
+
+      <div class="page-head">
+        <h1 class="page-title">Overview</h1>
+        <span class="page-sub">Status snapshot for srv-fra-01</span>
+      </div>
+
+      <section class="panel" aria-label="System vitals">
+        <div class="panel-head">
+          <h2 class="panel-title">System Vitals</h2>
+        </div>
+        <div class="vitals">
+          <div class="vital">
+            <div class="vital-top"><span class="vital-name">CPU</span><span class="vital-pct">34%</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:34%; background:var(--ok);"></div></div>
+            <div class="vital-meta">8 cores @ 3.40 GHz</div>
+            <div class="vital-spark" data-spark="cpu"></div>
+          </div>
+          <div class="vital">
+            <div class="vital-top"><span class="vital-name">RAM</span><span class="vital-pct">33%</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:33%; background:var(--ok);"></div></div>
+            <div class="vital-meta">5.2 GB / 16 GB</div>
+            <div class="vital-spark" data-spark="ram"></div>
+          </div>
+          <div class="vital">
+            <div class="vital-top"><span class="vital-name">Swap</span><span class="vital-pct">7%</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:7%; background:var(--ok);"></div></div>
+            <div class="vital-meta">0.3 GB / 4.0 GB</div>
+            <div class="vital-spark" data-spark="swap"></div>
+          </div>
+          <div class="vital">
+            <div class="vital-top"><span class="vital-name">Storage</span><span class="vital-pct">51%</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:51%; background:var(--ok);"></div></div>
+            <div class="vital-meta">82 GB / 160 GB</div>
+            <div class="vital-spark" data-spark="storage"></div>
+          </div>
+          <div class="vital load">
+            <div class="vital-top"><span class="vital-name">Load Average</span></div>
+            <div class="load-row"><span class="load-label">1m</span><span class="load-bar"><span style="width:5.3%; background:var(--ok);"></span></span><span class="load-val">0.42</span></div>
+            <div class="load-row"><span class="load-label">5m</span><span class="load-bar"><span style="width:6.9%; background:var(--ok);"></span></span><span class="load-val">0.55</span></div>
+            <div class="load-row"><span class="load-label">15m</span><span class="load-bar"><span style="width:6.0%; background:var(--ok);"></span></span><span class="load-val">0.48</span></div>
+            <div class="vital-meta">8 cores, low load</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="VPN services">
+        <div class="panel-head">
+          <h2 class="panel-title">Services</h2>
+          <span class="panel-caption">7 running &middot; 2 idle &middot; 1 stopped</span>
+        </div>
+        <div class="services">
+          <div class="svc-tile" data-state="running"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">Xray</span><span class="svc-state">Running</span><span class="svc-note">up 12d 4h</span></div></div>
+          <div class="svc-tile" data-state="running"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">OpenVPN</span><span class="svc-state">Running</span><span class="svc-note">up 9d 16h</span></div></div>
+          <div class="svc-tile" data-state="running"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">WireGuard</span><span class="svc-state">Running</span><span class="svc-note">up 12d 4h</span></div></div>
+          <div class="svc-tile" data-state="running"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">L2TP/IPsec</span><span class="svc-state">Running</span><span class="svc-note">up 6d 2h</span></div></div>
+          <div class="svc-tile" data-state="running"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">IKEv2</span><span class="svc-state">Running</span><span class="svc-note">up 6d 2h</span></div></div>
+          <div class="svc-tile" data-state="running"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">OpenConnect</span><span class="svc-state">Running</span><span class="svc-note">up 3d 20h</span></div></div>
+          <div class="svc-tile" data-state="running"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">MTProto</span><span class="svc-state">Running</span><span class="svc-note">up 12d 4h</span></div></div>
+          <div class="svc-tile" data-state="idle"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">SSTP</span><span class="svc-state">Idle</span><span class="svc-note">no active clients</span></div></div>
+          <div class="svc-tile" data-state="idle"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">SSH</span><span class="svc-state">Idle</span><span class="svc-note">no active clients</span></div></div>
+          <div class="svc-tile" data-state="stopped"><span class="svc-led"></span><div class="svc-body"><span class="svc-name">PPTP</span><span class="svc-state">Stopped</span><span class="svc-note">manually stopped</span></div></div>
+        </div>
+      </section>
+
+      <div class="lower">
+        <section class="panel" aria-label="Throughput">
+          <div class="panel-head">
+            <h2 class="panel-title">Throughput</h2>
+            <span class="panel-caption">Aggregate, all protocols</span>
+          </div>
+          <div class="throughput-body">
+            <div class="flow-row">
+              <div class="flow-col up">
+                <div class="flow-head">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14L14 4"/><path d="M6 4h8v8"/></svg>
+                  <span class="flow-label">Upload</span>
+                </div>
+                <div class="flow-value">2.4<span class="unit">MB/s</span></div>
+                <div class="flow-spark" data-spark="upload"></div>
+              </div>
+              <div class="flow-col down">
+                <div class="flow-head">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4L4 14"/><path d="M12 14H4V6"/></svg>
+                  <span class="flow-label">Download</span>
+                </div>
+                <div class="flow-value">8.1<span class="unit">MB/s</span></div>
+                <div class="flow-spark" data-spark="download"></div>
+              </div>
+            </div>
+            <div class="stat-grid">
+              <div class="stat-cell"><span class="stat-label">Sent</span><span class="stat-value">1.24 TB</span></div>
+              <div class="stat-cell"><span class="stat-label">Received</span><span class="stat-value">4.68 TB</span></div>
+              <div class="stat-cell"><span class="stat-label">TCP</span><span class="stat-value">1,284</span></div>
+              <div class="stat-cell"><span class="stat-label">UDP</span><span class="stat-value">462</span></div>
+            </div>
+          </div>
+        </section>
+
+        <div class="rail">
+          <section class="panel rail-panel" aria-label="Xray core control">
+            <div class="panel-head"><h2 class="panel-title">Xray Core</h2></div>
+            <div class="rail-body">
+              <div class="status-line">
+                <span class="led" style="background:var(--ok); box-shadow:0 0 0 3px var(--ok-glow), 0 0 7px 0 var(--ok-glow);"></span>
+                <span class="status-text" style="color:var(--ok);">Running</span>
+                <span class="chip">v25.3.6</span>
+              </div>
+              <div class="rail-row"><span class="k">Uptime</span><span class="v">12d 4h</span></div>
+
+              <hr class="divider"/>
+              <div class="sub-label">Actions</div>
+              <div class="btn-row">
+                <button class="icon-btn" type="button" title="View Xray logs">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="14" height="13" rx="1.5"/><path d="M5 6.5l2.3 2-2.3 2"/><line x1="9" y1="10.5" x2="13" y2="10.5"/></svg>
+                  <span>Logs</span>
+                </button>
+                <button class="icon-btn danger" type="button" title="Stop the Xray core">
+                  <svg viewBox="0 0 18 18" fill="currentColor" stroke="none" aria-hidden="true"><rect x="4" y="4" width="10" height="10" rx="1.5"/></svg>
+                  <span>Stop</span>
+                </button>
+                <button class="icon-btn" type="button" title="Restart the Xray core">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 9a6 6 0 1 1-1.8-4.3"/><path d="M15 2.5v3.7h-3.7"/></svg>
+                  <span>Restart</span>
+                </button>
+                <button class="icon-btn" type="button" title="Manage geo IP / site files">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="9" r="7"/><ellipse cx="9" cy="9" rx="3" ry="7"/><line x1="2" y1="9" x2="16" y2="9"/></svg>
+                  <span>Geofiles</span>
+                </button>
+                <button class="icon-btn" type="button" title="Switch Xray core version">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2.5H15a.5.5 0 0 1 .5.5v5.5a1 1 0 0 1-.3.7l-6.6 6.6a1 1 0 0 1-1.4 0L2.4 11a1 1 0 0 1 0-1.4l6.6-6.6a1 1 0 0 1 .5-.5Z"/><circle cx="12" cy="6" r="1.1" fill="currentColor" stroke="none"/></svg>
+                  <span>Version</span>
+                </button>
+              </div>
+
+              <hr class="divider"/>
+              <div class="sub-label">Manage</div>
+              <div class="btn-row">
+                <button class="icon-btn" type="button" title="View panel logs">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.5" width="14" height="13" rx="1.5"/><path d="M5 6.5l2.3 2-2.3 2"/><line x1="9" y1="10.5" x2="13" y2="10.5"/></svg>
+                  <span>Logs</span>
+                </button>
+                <button class="icon-btn" type="button" title="Edit Xray configuration">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5l-4 5.5 4 5.5"/><path d="M11.5 3.5l4 5.5-4 5.5"/></svg>
+                  <span>Config</span>
+                </button>
+                <button class="icon-btn" type="button" title="Backup panel database">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v9"/><path d="M5.5 7.5L9 11l3.5-3.5"/><path d="M3 13.5v1a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-1"/></svg>
+                  <span>Backup</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel rail-panel" aria-label="VPN-UI update status">
+            <div class="panel-head"><h2 class="panel-title">VPN-UI</h2></div>
+            <div class="rail-body">
+              <div class="rail-row"><span class="k">Version</span><span class="v">v1.7.6</span></div>
+              <div class="rail-row">
+                <span class="k">Status</span>
+                <span class="pill ok">
+                  <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9.5l3.5 3.5 7.5-8"/></svg>
+                  Up to date
+                </span>
+              </div>
+              <button class="icon-btn full" type="button" title="Check for a newer vpn-ui release">
+                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="7"/><path d="M9 12V6"/><path d="M6.3 8.4L9 5.7l2.7 2.7"/></svg>
+                <span>Check for Update</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="panel rail-panel" aria-label="System status">
+            <div class="panel-head"><h2 class="panel-title">System</h2></div>
+            <div class="rail-body">
+              <div class="sub-label">Uptime</div>
+              <div class="rail-row"><span class="k">Xray</span><span class="v">12d 4h</span></div>
+              <div class="rail-row"><span class="k">OS</span><span class="v">47d 9h</span></div>
+
+              <hr class="divider"/>
+              <div class="sub-label">Usage</div>
+              <div class="rail-row"><span class="k">RAM</span><span class="v">84 MB</span></div>
+              <div class="rail-row"><span class="k">Threads</span><span class="v">23</span></div>
+
+              <hr class="divider"/>
+              <div class="panel-title-row">
+                <span class="sub-label">IP Addresses</span>
+                <button class="eye-btn" id="ip-eye" type="button"></button>
+              </div>
+              <div class="rail-row"><span class="k">IPv4</span><span class="v ip-value" id="ip4">203.0.113.7</span></div>
+              <div class="rail-row"><span class="k">IPv6</span><span class="v ip-value" id="ip6">2a01:4f8:1c1c:abcd::1</span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="footer-note">Design mockup, vpn-ui Overview, Console</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root = document.getElementById('console-overview');
+  if(!root) return;
+
+  /* ---------- icon strings ---------- */
+  var SUN_SVG = '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="3.4"/><line x1="9" y1="1" x2="9" y2="3"/><line x1="9" y1="15" x2="9" y2="17"/><line x1="1" y1="9" x2="3" y2="9"/><line x1="15" y1="9" x2="17" y2="9"/><line x1="3.5" y1="3.5" x2="4.9" y2="4.9"/><line x1="13.1" y1="13.1" x2="14.5" y2="14.5"/><line x1="3.5" y1="14.5" x2="4.9" y2="13.1"/><line x1="13.1" y1="4.9" x2="14.5" y2="3.5"/></svg>';
+  var MOON_SVG = '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 10.4A6 6 0 1 1 7.6 3.5a5 5 0 0 0 6.9 6.9z"/></svg>';
+  var EYE_SVG = '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 9S4.5 3.5 9 3.5 16.5 9 16.5 9 13.5 14.5 9 14.5 1.5 9 1.5 9Z"/><circle cx="9" cy="9" r="2.4"/></svg>';
+  var EYE_OFF_SVG = '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.3 2.3l13.4 13.4"/><path d="M7.6 4.1C8 4 8.5 3.9 9 3.9c4.5 0 7.5 5.1 7.5 5.1s-.9 1.6-2.5 3.1M4.8 5.4C2.9 6.8 1.5 9 1.5 9s3 5.1 7.5 5.1c1.1 0 2.1-.3 3-.8"/><path d="M7.1 7.1a2.4 2.4 0 0 0 3.3 3.3"/></svg>';
+
+  /* ---------- theme toggle ---------- */
+  var docEl = document.documentElement;
+  var toggleBtn = document.getElementById('theme-toggle');
+
+  function currentTheme(){
+    var explicit = docEl.getAttribute('data-theme');
+    if(explicit === 'dark' || explicit === 'light') return explicit;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  function paintToggle(){
+    var t = currentTheme();
+    toggleBtn.innerHTML = t === 'dark' ? SUN_SVG : MOON_SVG;
+    toggleBtn.setAttribute('aria-label', t === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+  }
+  toggleBtn.addEventListener('click', function(){
+    docEl.setAttribute('data-theme', currentTheme() === 'dark' ? 'light' : 'dark');
+    paintToggle();
+  });
+  paintToggle();
+
+  /* ---------- IP mask toggle ---------- */
+  var IP4 = '203.0.113.7';
+  var IP6 = '2a01:4f8:1c1c:abcd::1';
+  var ipHidden = false;
+  var eyeBtn = document.getElementById('ip-eye');
+  var ip4El = document.getElementById('ip4');
+  var ip6El = document.getElementById('ip6');
+
+  function maskIp(ip){ return ip.replace(/[0-9a-zA-Z]+/g, '•••'); }
+  function paintEye(){
+    ip4El.textContent = ipHidden ? maskIp(IP4) : IP4;
+    ip6El.textContent = ipHidden ? maskIp(IP6) : IP6;
+    eyeBtn.innerHTML = ipHidden ? EYE_OFF_SVG : EYE_SVG;
+    eyeBtn.setAttribute('aria-pressed', String(ipHidden));
+    eyeBtn.title = ipHidden ? 'Show IP addresses' : 'Hide IP addresses';
+  }
+  eyeBtn.addEventListener('click', function(){ ipHidden = !ipHidden; paintEye(); });
+  paintEye();
+
+  /* ---------- deterministic pseudo-random history ---------- */
+  function seededRand(seed){
+    var s = seed >>> 0;
+    return function(){
+      s = (s + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function synth(seed, n, min, max, endValue){
+    var rand = seededRand(seed);
+    var range = max - min;
+    var v = min + range * 0.5;
+    var out = [];
+    for(var i = 0; i < n; i++){
+      v += (rand() - 0.5) * range * 0.55;
+      if(v < min) v = min;
+      if(v > max) v = max;
+      out.push(v);
+    }
+    if(endValue !== undefined) out[out.length - 1] = endValue;
+    return out;
+  }
+
+  var DATA = {
+    cpu:      synth(11, 24, 28,  42,  34),
+    ram:      synth(22, 24, 30,  36,  33),
+    swap:     synth(33, 24, 4,   9,   7),
+    storage:  synth(44, 24, 49.3,51.2,51),
+    upload:   synth(55, 24, 1.5, 3,   2.4),
+    download: synth(66, 24, 5,   11,  8.1)
+  };
+
+  /* ---------- sparkline renderer ---------- */
+  function buildSparkline(values, w, h, color){
+    var pad = 2;
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    var span = (max - min) || 1;
+    var n = values.length;
+    var stepX = (w - pad * 2) / (n - 1);
+
+    var pts = values.map(function(v, i){
+      var x = pad + i * stepX;
+      var y = pad + (1 - (v - min) / span) * (h - pad * 2);
+      return [x, y];
+    });
+
+    var line = pts.map(function(p, i){ return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+    var area = line +
+      ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + (h - pad).toFixed(1) +
+      ' L' + pts[0][0].toFixed(1) + ',' + (h - pad).toFixed(1) + ' Z';
+    var last = pts[pts.length - 1];
+    var mid = pad + (h - pad * 2) / 2;
+
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-hidden="true">' +
+      '<line x1="' + pad + '" y1="' + mid.toFixed(1) + '" x2="' + (w - pad) + '" y2="' + mid.toFixed(1) + '" style="stroke:var(--border)" stroke-width="1" stroke-dasharray="2,2" opacity=".7"/>' +
+      '<line x1="' + pad + '" y1="' + (h - pad) + '" x2="' + (w - pad) + '" y2="' + (h - pad) + '" style="stroke:var(--border)" stroke-width="1"/>' +
+      '<path d="' + area + '" style="fill:' + color + ';opacity:.14" stroke="none"/>' +
+      '<path d="' + line + '" fill="none" style="stroke:' + color + '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="3.6" style="fill:' + color + ';opacity:.18"/>' +
+      '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="2" style="fill:' + color + '"/>' +
+      '</svg>';
+  }
+
+  var SPARK_DEFS = [
+    { key:'cpu',      values:DATA.cpu,      height:26, color:'var(--ok)' },
+    { key:'ram',      values:DATA.ram,      height:26, color:'var(--ok)' },
+    { key:'swap',     values:DATA.swap,     height:26, color:'var(--ok)' },
+    { key:'storage',  values:DATA.storage,  height:26, color:'var(--ok)' },
+    { key:'upload',   values:DATA.upload,   height:56, color:'var(--accent)' },
+    { key:'download', values:DATA.download, height:56, color:'var(--info)' }
+  ];
+
+  function renderSparklines(){
+    SPARK_DEFS.forEach(function(def){
+      var el = root.querySelector('[data-spark="' + def.key + '"]');
+      if(!el) return;
+      var w = Math.round(el.clientWidth) || 100;
+      el.innerHTML = buildSparkline(def.values, w, def.height, def.color);
+    });
+  }
+  renderSparklines();
+
+  var resizeTimer;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderSparklines, 150);
+  });
+})();
+</script>
+</body>
+</html>

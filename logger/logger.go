@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
@@ -21,6 +22,7 @@ const (
 var (
 	logger  *logging.Logger
 	logFile *os.File
+	bufMu   sync.Mutex
 
 	// logBuffer maintains recent log entries in memory for web UI retrieval
 	logBuffer []struct {
@@ -179,11 +181,15 @@ func Errorf(format string, args ...any) {
 // addToBuffer adds a log entry to the in-memory ring buffer for web UI retrieval.
 func addToBuffer(level string, newLog string) {
 	t := time.Now()
+	logLevel, _ := logging.LogLevel(level)
+
+	bufMu.Lock()
+	defer bufMu.Unlock()
+
 	if len(logBuffer) >= maxLogBufferSize {
 		logBuffer = logBuffer[1:]
 	}
 
-	logLevel, _ := logging.LogLevel(level)
 	logBuffer = append(logBuffer, struct {
 		time  string
 		level logging.Level
@@ -197,9 +203,12 @@ func addToBuffer(level string, newLog string) {
 
 // GetLogs retrieves up to c log entries from the buffer that are at or below the specified level.
 func GetLogs(c int, level string) []string {
-	var output []string
 	logLevel, _ := logging.LogLevel(level)
 
+	bufMu.Lock()
+	defer bufMu.Unlock()
+
+	var output []string
 	for i := len(logBuffer) - 1; i >= 0 && len(output) <= c; i-- {
 		if logBuffer[i].level <= logLevel {
 			output = append(output, fmt.Sprintf("%s %s - %s", logBuffer[i].time, logBuffer[i].level, logBuffer[i].log))

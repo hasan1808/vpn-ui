@@ -1,0 +1,779 @@
+{{define "modals/clientMembershipModal"}}
+<!-- @cancel is what Close, the X and Escape all arrive as, and it is here because
+     the modal is not the only thing on screen: the calendar's dropdown is a portal
+     on <body>, so closing the modal with it open left it floating over the page
+     with nothing to dismiss it. close() unmounts the picker with the modal. -->
+<a-modal id="client-membership-modal" v-model="clientMembershipModal.visible"
+  :title="clientMembershipModal.title" @ok="() => clientMembershipModal.ok()"
+  @cancel="() => clientMembershipModal.close()"
+  :confirm-loading="clientMembershipModal.confirmLoading" :closable="true" :mask-closable="false"
+  :ok-text="clientMembershipModal.okText" cancel-text='{{ i18n "close" }}'
+  :width="820" :class="themeSwitcher.currentTheme" wrap-class-name="bo-client-modal">
+
+  <div class="bo-cf">
+    <!-- The rail is the account at a glance, and it stays put while the operator
+         moves between sections. On ADD it has nothing stored to report, so it
+         previews what is being typed instead of sitting there empty. -->
+    <div class="bo-cf-rail">
+      <div class="bo-cf-summary">
+        <div class="bo-cf-who">
+          [[ clientMembershipModal.client.email || '{{ i18n "pages.clients.summaryNew" }}' ]]
+        </div>
+        <div class="bo-cf-sub">
+          <template v-if="clientMembershipModal.isEdit">
+            [[ clientMembershipModal.client.comment
+               || (clientMembershipModal.selected.length + ' {{ i18n "pages.clients.summaryInbounds" }}') ]]
+          </template>
+          <template v-else>{{ i18n "pages.clients.summaryNewHint" }}</template>
+        </div>
+
+        <a-progress v-if="clientMembershipModal.quotaBytes > 0"
+          :percent="clientMembershipModal.usedPercent" :show-info="false" size="small"
+          :status="clientMembershipModal.usedPercent >= 100 ? 'exception' : 'normal'"></a-progress>
+
+        <div class="bo-cf-kv">
+          <span>{{ i18n "pages.clients.summaryUsed" }}</span>
+          <b>[[ clientMembershipModal.usedText ]]</b>
+        </div>
+        <div class="bo-cf-kv">
+          <span>{{ i18n "pages.clients.summaryLeft" }}</span>
+          <b>[[ clientMembershipModal.leftText ]]</b>
+        </div>
+        <div class="bo-cf-kv">
+          <span>{{ i18n "pages.clients.summaryExpires" }}</span>
+          <b>[[ clientMembershipModal.expiresText ]]</b>
+        </div>
+        <div class="bo-cf-kv">
+          <span>{{ i18n "pages.clients.inbounds" }}</span>
+          <b>[[ clientMembershipModal.selected.length ]]</b>
+        </div>
+      </div>
+
+      <div class="bo-cf-tabs" role="tablist">
+        <button v-for="t in clientMembershipModal.tabs" :key="t.key"
+          class="bo-cf-tab" type="button" role="tab"
+          :aria-selected="clientMembershipModal.tab === t.key"
+          @click="clientMembershipModal.tab = t.key">
+          <a-icon :type="t.icon"></a-icon>
+          <span>[[ t.label ]]</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="bo-cf-pane">
+      <!-- Identity: who the account is AND what it is allowed. The two were
+           split across two tabs and did not need to be: an operator setting up a
+           customer sets the quota in the same breath as the name. -->
+      <template v-if="clientMembershipModal.tab === 'identity'">
+        <div class="bo-cf-field">
+          <label>{{ i18n "pages.inbounds.email" }}</label>
+          <a-input v-model.trim="clientMembershipModal.client.email"
+                   :disabled="clientMembershipModal.isEdit">
+            <a-tooltip slot="addonAfter" v-if="!clientMembershipModal.isEdit">
+              <template slot="title">{{ i18n "pages.clients.regenerate" }}</template>
+              <a-icon type="reload" @click="clientMembershipModal.regenerate('email')"></a-icon>
+            </a-tooltip>
+          </a-input>
+          <div class="bo-cf-hint" v-if="clientMembershipModal.isEdit">{{ i18n "pages.clients.emailLocked" }}</div>
+        </div>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <div class="bo-cf-field">
+              <label>{{ i18n "pages.clients.telegramId" }}</label>
+              <a-input-number v-model="clientMembershipModal.client.tgId" :min="0"
+                placeholder='{{ i18n "pages.clients.telegramNotLinked" }}'
+                :style="{ width: '100%' }"></a-input-number>
+            </div>
+          </a-col>
+          <a-col :span="12">
+            <div class="bo-cf-field">
+              <label>{{ i18n "subscription.subId" }}</label>
+              <a-input v-model.trim="clientMembershipModal.client.subId">
+                <a-tooltip slot="addonAfter">
+                  <template slot="title">{{ i18n "pages.clients.regenerate" }}</template>
+                  <a-icon type="reload" @click="clientMembershipModal.regenerate('subId')"></a-icon>
+                </a-tooltip>
+              </a-input>
+            </div>
+          </a-col>
+        </a-row>
+        <div class="bo-cf-field">
+          <label>{{ i18n "comment" }}</label>
+          <a-input v-model="clientMembershipModal.client.comment"></a-input>
+        </div>
+
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <div class="bo-cf-field">
+              <label>{{ i18n "pages.inbounds.totalFlow" }}</label>
+              <a-input-number v-model="clientMembershipModal.totalGb" :min="0"
+                :style="{ width: '100%' }"></a-input-number>
+              <div class="bo-cf-hint">{{ i18n "pages.clients.zeroUnlimited" }}</div>
+            </div>
+          </a-col>
+          <a-col :span="12">
+            <!-- Days-per-GB makes the duration a function of the traffic, so a
+                 reseller on that plan gets no expiry control at all: the backend
+                 overwrites whatever is posted (ResellerService.forcedExpiry).
+                 Showing the field would only invite an edit that silently does
+                 nothing, so the derived figure is shown in its place. -->
+            <div class="bo-cf-field" v-if="clientMembershipModal.resellerForcedDays">
+              <label>{{ i18n "pages.resellers.daysPerGb" }}</label>
+              <div><a-tag color="blue">[[ clientMembershipModal.resellerForcedDaysText ]]</a-tag></div>
+            </div>
+            <div class="bo-cf-field" v-else>
+              <label>{{ i18n "pages.client.expireDays" }}</label>
+              <!-- Two ways into ONE stored value. A duration is what an operator
+                   selling a 30-day plan actually knows; a date is what someone
+                   matching an existing invoice knows. The calendar switches
+                   between them and the day count is recomputed from the date. -->
+              <div class="bo-cf-withicon">
+                <a-input-number v-if="!clientMembershipModal.dateMode"
+                  :value="clientMembershipModal.days" :min="0"
+                  @change="v => clientMembershipModal.setDays(v)"
+                  :style="{ width: '100%' }"></a-input-number>
+                <!-- The picker owns its own open state. It was CONTROLLED through
+                     `:open` + `@openChange`, and this template is compiled from the
+                     DOM, where the HTML parser lowercases attribute names: the
+                     listener registered as `openchange` and a-date-picker emits
+                     `openChange`, so nothing ever set the flag back. The calendar
+                     could be opened and then never closed, by Ok or by clicking
+                     away, and it covers the modal footer, so the form could not be
+                     submitted at all. Left alone, it closes on select and on an
+                     outside click. Every camelCase EVENT is unreachable here; props
+                     are fine, Vue converts those from kebab-case.
+
+                     show-time went with it: the deadline is stored as a day count,
+                     so a time of day was collected and then thrown away. Today and
+                     everything before it are unpickable because they round to zero
+                     days, which this form reads as "never expires". -->
+                <a-date-picker v-else
+                  format="YYYY-MM-DD"
+                  :dropdown-class-name="themeSwitcher.currentTheme"
+                  :value="clientMembershipModal.expiryMoment"
+                  :disabled-date="d => clientMembershipModal.isPastDate(d)"
+                  @change="d => clientMembershipModal.setExpiryDate(d)"
+                  :style="{ width: '100%' }"></a-date-picker>
+                <!-- Hidden while the deadline is a delay rather than a date: with
+                     Start After First Use on, the stored value counts from a
+                     connection that has not happened yet, so no calendar day names
+                     it. The toggle used to stay, and picking the 1st on an account
+                     with the delay on stored "expires 29 days after they first
+                     connect" - a different promise from the one that was clicked. -->
+                <a-tooltip v-if="!clientMembershipModal.delayedStart">
+                  <template slot="title">
+                    [[ clientMembershipModal.pickDate
+                       ? '{{ i18n "pages.clients.useDuration" }}'
+                       : '{{ i18n "pages.clients.usePickDate" }}' ]]
+                  </template>
+                  <button type="button" class="bo-cf-iconbtn"
+                    @click="clientMembershipModal.toggleDatePicker()">
+                    <a-icon :type="clientMembershipModal.pickDate ? 'field-time' : 'calendar'"></a-icon>
+                  </button>
+                </a-tooltip>
+              </div>
+              <div class="bo-cf-hint">{{ i18n "pages.clients.zeroNoExpiry" }}</div>
+              <!-- An account whose deadline has already passed cannot be shown as a
+                   positive number of days left, and 0 in this box means "never
+                   expires". So it is said in words instead, and the stored deadline
+                   is kept untouched unless the box itself is edited. -->
+              <div class="bo-cf-hint" v-if="clientMembershipModal.expiredAlready"
+                :style="{ color: 'var(--error)' }">
+                {{ i18n "pages.clients.alreadyExpired" }}
+              </div>
+            </div>
+          </a-col>
+        </a-row>
+
+        <div class="bo-cf-switch" v-if="!clientMembershipModal.resellerForcedDays">
+          <div>
+            <div class="bo-cf-t">{{ i18n "pages.client.delayedStart" }}</div>
+            <div class="bo-cf-d">{{ i18n "pages.clients.delayedStartDesc" }}</div>
+          </div>
+          <a-switch :checked="clientMembershipModal.delayedStart"
+            @change="v => clientMembershipModal.setDelayedStart(v)"></a-switch>
+        </div>
+        <div class="bo-cf-switch">
+          <div>
+            <div class="bo-cf-t">{{ i18n "pages.clients.renewEvery" }}</div>
+            <div class="bo-cf-d">{{ i18n "pages.clients.renewDesc" }}</div>
+          </div>
+          <a-input-number v-model="clientMembershipModal.client.reset" :min="0"
+            :style="{ width: '96px' }"></a-input-number>
+        </div>
+        <div class="bo-cf-switch">
+          <div>
+            <div class="bo-cf-t">{{ i18n "pages.inbounds.enable" }}</div>
+            <div class="bo-cf-d">{{ i18n "pages.clients.enabledDesc" }}</div>
+          </div>
+          <a-switch v-model="clientMembershipModal.client.enable"></a-switch>
+        </div>
+      </template>
+
+      <!-- Inbounds -->
+      <template v-if="clientMembershipModal.tab === 'inbounds'">
+        <div :style="{ marginBottom: '8px' }">
+          <a-checkbox
+            :checked="clientMembershipModal.allChecked"
+            :indeterminate="clientMembershipModal.someChecked"
+            @change="e => clientMembershipModal.toggleAll(e)">
+            {{ i18n "pages.clients.selectAll" }}
+          </a-checkbox>
+        </div>
+        <a-checkbox-group v-model="clientMembershipModal.selected" :style="{ width: '100%' }">
+          <div class="bo-cf-ib" v-for="ib in clientMembershipModal.assignable" :key="ib.inboundId"
+            :class="{ on: clientMembershipModal.selected.includes(ib.inboundId) }">
+            <a-checkbox :value="ib.inboundId">
+              [[ ib.remark || ('#' + ib.inboundId) ]]
+              <a-tag>[[ ib.protocol ]]</a-tag>
+              <span class="bo-dim">:[[ ib.port ]]</span>
+            </a-checkbox>
+          </div>
+        </a-checkbox-group>
+        <!-- Refused by the server, so saying so here saves a round trip that comes
+             back as an opaque failure. l2tp, pptp and ikev2 authenticate through a
+             shared daemon that does not name the inbound, so an account on two of
+             the same kind is always served by whichever has the lower id. -->
+        <a-alert v-if="clientMembershipModal.protocolClash" type="error" show-icon
+          :style="{ marginTop: '12px' }"
+          message='{{ i18n "pages.clients.sameProtocolRefused" }}'></a-alert>
+      </template>
+      <!-- Credentials: field-first, because the account stores ONE of each and
+           several protocols share them. -->
+      <template v-if="clientMembershipModal.tab === 'credentials'">
+        <a-alert type="info" show-icon :style="{ marginBottom: '14px' }"
+          message='{{ i18n "pages.clients.credentialsHint" }}'></a-alert>
+        <div class="bo-cf-field" v-for="f in clientMembershipModal.credentialFields" :key="f.key"
+          :class="{ 'bo-cf-unused': !clientMembershipModal.fieldUsed(f) }">
+          <label>
+            [[ f.label ]]
+            <a-tag v-if="clientMembershipModal.fieldUsed(f)" color="green">
+              [[ clientMembershipModal.usersOf(f).join(' \u00b7 ') ]]
+            </a-tag>
+            <a-tag v-else>{{ i18n "pages.clients.unusedHere" }}</a-tag>
+          </label>
+          <a-input v-model.trim="clientMembershipModal.client[f.key]"
+            :placeholder="f.protocols.join(', ')" class="bo-cf-mono">
+            <a-tooltip slot="addonAfter">
+              <template slot="title">{{ i18n "pages.clients.regenerate" }}</template>
+              <a-icon type="reload" @click="clientMembershipModal.regenerate(f.key)"></a-icon>
+            </a-tooltip>
+          </a-input>
+        </div>
+        <a-alert v-if="clientMembershipModal.strictSsBytes" type="info" show-icon
+          :style="{ marginTop: '4px' }"
+          message='{{ i18n "pages.clients.ssStrictPassword" }}'></a-alert>
+        <a-alert v-if="clientMembershipModal.isEdit" type="warning" show-icon
+          :style="{ marginTop: '8px' }"
+          message='{{ i18n "pages.clients.credentialWarn" }}'></a-alert>
+      </template>
+    </div>
+  </div>
+</a-modal>
+
+<script>
+  const clientMembershipModal = {
+    visible: false,
+    confirmLoading: false,
+    isEdit: false,
+    title: '',
+    okText: '',
+    assignable: [],
+    selected: [],
+    totalGb: 0,
+    days: 0,
+    client: {},
+    row: null,
+    tab: 'identity',
+    // A negative expiryTime means "N days from first use" and the clock has not
+    // started, which is what this switch writes.
+    delayedStart: false,
+    // Identity first because it is what an operator fills in; inbounds next
+    // because the answer decides which credentials matter; credentials last
+    // because the server mints every one of them and most operators never look.
+    tabs: [
+      { key: 'identity',    icon: 'user',    label: '{{ i18n "pages.clients.tabIdentity" }}' },
+      { key: 'inbounds',    icon: 'cluster', label: '{{ i18n "pages.clients.inbounds" }}' },
+      { key: 'credentials', icon: 'key',     label: '{{ i18n "pages.clients.credentials" }}' },
+    ],
+    // Entering the deadline as a date rather than a day count.
+    pickDate: false,
+    // The deadline exactly as it is stored, and whether the operator has touched
+    // the field since the form opened.
+    //
+    // Both exist because a stored deadline does not survive a round trip through a
+    // whole number of days. An account with 10 days and 5 hours left shows "11"
+    // (it has to round SOMEWHERE, and rounding down would report ten days to
+    // someone who has more), and saving with the field untouched wrote back
+    // now + 11 days: every save silently bought the customer several more hours.
+    // An account already past its deadline was worse - it can only show 0, which
+    // this form reads as "never expires", so opening an expired account and
+    // pressing Save handed out an account with no deadline at all.
+    //
+    // So the number is a VIEW of the stored value, and the stored value is what is
+    // posted back until the operator actually edits it.
+    storedExpiry: 0,
+    daysTouched: false,
+    // Where toggleDatePicker looks for the picker it just revealed.
+    pickerRoot: '#client-membership-modal',
+    // The account's stored entry on EACH inbound serving it, keyed by inbound id
+    // and handed in by the page. Per inbound, not one entry, because the identity
+    // field differs by protocol and the write is addressed to whichever inbound
+    // ends up as the anchor. Empty on add, where the server mints the credentials.
+    storedBy: {},
+    onDone: null,
+
+    // Only these three cannot tell two of their own inbounds apart (bare
+    // NAS-Identifier), which is exactly the set the server refuses.
+    ambiguous: ['l2tp', 'pptp', 'ikev2'],
+
+    get allChecked() {
+      return this.assignable.length > 0 && this.selected.length === this.assignable.length;
+    },
+    get someChecked() {
+      return this.selected.length > 0 && this.selected.length < this.assignable.length;
+    },
+    get protocolClash() {
+      const seen = {};
+      for (const id of this.selected) {
+        const ib = this.assignable.find(x => x.inboundId === id);
+        if (!ib || this.ambiguous.indexOf(ib.protocol) === -1) continue;
+        if (seen[ib.protocol]) return true;
+        seen[ib.protocol] = true;
+      }
+      return false;
+    },
+    toggleAll(e) {
+      this.selected = e.target.checked ? this.assignable.map(i => i.inboundId) : [];
+    },
+
+    show({ row = null, storedBy = {}, assignable = [], onDone = null }) {
+      this.assignable = assignable;
+      this.onDone = onDone;
+      this.isEdit = !!row;
+      this.row = row;
+      this.storedBy = storedBy || {};
+      this.title = row ? '{{ i18n "pages.clients.editTitle" }}' : '{{ i18n "pages.clients.addTitle" }}';
+      this.okText = row ? '{{ i18n "sure" }}' : '{{ i18n "pages.clients.add" }}';
+      this.tab = 'identity';
+      this.pickDate = false;
+      this.daysTouched = false;
+      this.storedExpiry = row ? (Number(row.expiryTime) || 0) : 0;
+      if (row) {
+        this.client = {
+          email: row.email, enable: row.enable, limitIp: row.limitIp,
+          comment: row.comment, subId: row.subId, reset: row.reset,
+          tgId: row.tgId || 0,
+          // Initialize credential fields so Vue 2 makes them reactive
+          id: '', password: '', vpnUsername: '',
+          auth: '', secret: '', naiveUsername: '', security: '',
+        };
+        this.delayedStart = row.expiryTime < 0;
+        // The account's credentials as they are stored TODAY, read off its
+        // memberships: whichever entry carries a field, carries the account's
+        // value for it, because the projection writes the same account onto all
+        // of them. Nothing is generated here - an edit must show the operator
+        // what the customer currently has installed.
+        this.loadCredentialsFrom(row);
+        this.totalGb = row.totalGB ? Math.round(row.totalGB / 1073741824) : 0;
+        // A negative expiry means "N days from first use" and has not started, so it
+        // is shown as that many days rather than as a date in 1970.
+        this.days = row.expiryTime > 0
+          ? Math.max(0, Math.ceil((row.expiryTime - Date.now()) / 86400000))
+          : (row.expiryTime < 0 ? Math.round(Math.abs(row.expiryTime) / 86400000) : 0);
+        this.selected = (row.memberships || []).map(m => m.inboundId);
+      } else {
+        this.client = { email: this.mint('email'), enable: true, limitIp: 0,
+                        comment: '', subId: '', reset: 0, tgId: 0,
+                        // Initialize credential fields so Vue 2 makes them reactive
+                        id: '', password: '', vpnUsername: '',
+                        auth: '', secret: '', naiveUsername: '', security: '' };
+        this.totalGb = 0;
+        this.days = 0;
+        this.delayedStart = false;
+        this.selected = [];
+        this.seedCredentials();
+      }
+      this.visible = true;
+    },
+
+    // --- the summary rail -------------------------------------------------
+    // On an edit these are the account's real figures; on an add they preview
+    // what is being typed, which is the only way the rail earns its space before
+    // the account exists.
+    get quotaBytes() { return (this.totalGb || 0) * 1073741824; },
+    get usedBytes() { return this.row ? ((this.row.up || 0) + (this.row.down || 0)) : 0; },
+    get usedPercent() {
+      if (!this.quotaBytes) return 0;
+      return Math.min(100, Math.round((this.usedBytes / this.quotaBytes) * 100));
+    },
+    get usedText() { return SizeFormatter.sizeFormat(this.usedBytes); },
+    get leftText() {
+      if (!this.quotaBytes) return '{{ i18n "pages.clients.summaryUnlimited" }}';
+      return SizeFormatter.sizeFormat(Math.max(0, this.quotaBytes - this.usedBytes));
+    },
+    // Whether this account's duration is a function of its traffic rather than
+    // something the operator picks. True only for a reseller on a days-per-GB
+    // plan, where the backend overwrites any posted expiry.
+    get resellerForcedDays() {
+      return !!(RESELLER.isReseller && RESELLER.daysPerGb > 0);
+    },
+    // The derived duration, shown in place of the controls so the reseller can see
+    // what they are selling before they save.
+    get resellerForcedDaysText() {
+      const days = NumberFormatter.toFixed((this.totalGb || 0) * RESELLER.daysPerGb, 1);
+      return days + ' ' + '{{ i18n "pages.client.expireDays" }}';
+    },
+    // Already past its deadline, so the day count cannot describe it.
+    get expiredAlready() {
+      return this.isEdit && this.storedExpiry > 0 && this.storedExpiry < Date.now();
+    },
+    // The calendar is only offered while the deadline IS a date.
+    get dateMode() { return this.pickDate && !this.delayedStart; },
+    // The deadline as a moment, for the picker. A NEGATIVE expiry is a delayed
+    // start and has no date yet, so the picker shows nothing rather than 1970. An
+    // untouched deadline shows the stored date exactly, not the rounded day count
+    // read back out.
+    get expiryMoment() {
+      if (this.delayedStart) return null;
+      if (!this.daysTouched && this.storedExpiry > 0) return moment(this.storedExpiry);
+      if (!this.days) return null;
+      return moment(Date.now() + this.days * 86400000);
+    },
+    setDays(v) {
+      this.days = Math.max(0, Number(v) || 0);
+      this.daysTouched = true;
+    },
+    setDelayedStart(v) {
+      this.delayedStart = v;
+      // A delay cannot be expressed as a calendar day, so the toggle disappears
+      // with it; leaving pickDate on would strand the form on a hidden control.
+      if (v) this.pickDate = false;
+      this.daysTouched = true;
+    },
+    // Picking a date sets the same day count the number input edits, so the two
+    // inputs stay one value however the operator switches between them.
+    toggleDatePicker() {
+      this.pickDate = !this.pickDate;
+      if (!this.pickDate) return;
+      // Opened on the same click that revealed it, by clicking the input the way
+      // an operator would. A real click rather than an `open` prop, because that
+      // prop is what made the calendar impossible to close (see the template).
+      // Deferred a tick: the picker does not exist yet when this runs.
+      Vue.nextTick(() => {
+        const input = document.querySelector(this.pickerRoot + ' .ant-calendar-picker input');
+        if (input) input.click();
+      });
+    },
+    // Today rounds to zero days, which this form stores as "never expires", so it
+    // is refused rather than silently meaning the opposite of what was clicked.
+    //
+    // Compared at day granularity. The end-of-day comparison this replaces left
+    // TODAY selectable right up to midnight - the one date the form cannot mean
+    // what it says - and it read as an ordinary available day.
+    isPastDate(d) {
+      return !!d && d.clone().startOf('day').valueOf() <= moment().startOf('day').valueOf();
+    },
+    // Whole calendar days ahead, so picking tomorrow is 1 and the date the picker
+    // shows back (now + N days) lands on the day that was clicked.
+    setExpiryDate(d) {
+      this.daysTouched = true;
+      if (!d) { this.days = 0; return; }
+      const days = d.clone().startOf('day').diff(moment().startOf('day'), 'days');
+      this.days = Math.max(0, days);
+    },
+    get expiresText() {
+      if (this.expiredAlready && !this.daysTouched) return '{{ i18n "pages.clients.summaryExpired" }}';
+      if (!this.days) return '{{ i18n "pages.clients.summaryNever" }}';
+      return this.days + ' {{ i18n "pages.clients.summaryDays" }}';
+    },
+    // What to store for the deadline. Untouched, that is whatever was already
+    // there, byte for byte: a form that only DISPLAYS a value must not rewrite it
+    // on the way past. Touched, the number means days from now, or - with a
+    // delayed start - days from the first connection, which is stored negative.
+    postedExpiry() {
+      if (!this.daysTouched && this.isEdit) return this.storedExpiry;
+      if (!this.days) return 0;
+      return this.delayedStart ? -(this.days * 86400000) : Date.now() + this.days * 86400000;
+    },
+
+    // The account's own credential columns, and which protocols read each one.
+    //
+    // This list IS the schema (see model.Account): uuid, password, vpn_username,
+    // auth, secret, naive_username. Not a per-protocol view of them, because
+    // there is no per-protocol storage - trojan, shadowsocks, anytls and all
+    // seven credential VPNs genuinely share one password column.
+    //
+    // `identity` marks the field a protocol is ADDRESSED by (clientIdentityKey in
+    // web/service/inbound.go): the write is refused outright if that one is blank.
+    // wg-c, awg, gre and mtproto are addressed by "id", which for them IS the
+    // email, so they need nothing here and appear on no row.
+    credentialFields: [
+      { key: 'id', label: '{{ i18n "pages.clients.uuid" }}',
+        protocols: ['vmess', 'vless', 'tuic'], identity: ['vmess', 'vless', 'tuic'] },
+      { key: 'password', label: '{{ i18n "password" }}',
+        protocols: ['trojan', 'shadowsocks', 'anytls', 'naive', 'tuic', 'l2tp', 'pptp',
+                    'openvpn', 'openconnect', 'sstp', 'ikev2', 'ssh'],
+        identity: ['trojan', 'anytls', 'naive', 'l2tp', 'pptp', 'openvpn',
+                   'openconnect', 'sstp', 'ikev2'] },
+      { key: 'vpnUsername', label: '{{ i18n "pages.clients.vpnUsername" }}',
+        protocols: ['l2tp', 'pptp', 'openvpn', 'openconnect', 'sstp', 'ikev2', 'ssh'],
+        identity: ['ssh'] },
+      { key: 'auth', label: '{{ i18n "pages.clients.auth" }}',
+        protocols: ['hysteria', 'hysteria2'], identity: ['hysteria', 'hysteria2'] },
+      { key: 'secret', label: '{{ i18n "pages.clients.secret" }}',
+        protocols: ['mtproto'], identity: [] },
+      { key: 'naiveUsername', label: '{{ i18n "pages.clients.naiveUsername" }}',
+        protocols: ['naive'], identity: [] },
+    ],
+
+    // The protocols currently ticked, deduplicated.
+    get selectedProtocols() {
+      const seen = {};
+      this.selected.forEach(id => {
+        const ib = this.assignable.find(x => x.inboundId === id);
+        if (ib) seen[ib.protocol] = true;
+      });
+      return Object.keys(seen);
+    },
+    usersOf(field) {
+      return this.selectedProtocols.filter(p => field.protocols.includes(p));
+    },
+    fieldUsed(field) { return this.usersOf(field).length > 0; },
+    // Required means "some ticked protocol is ADDRESSED by this field". A field a
+    // ticked protocol merely uses (the l2tp password beside its username) still
+    // has to be filled, but the server mints it, so only the identity blocks save.
+    fieldRequired(field) {
+      return this.selectedProtocols.some(p => field.identity.includes(p));
+    },
+    // The key length a ticked shadowsocks-2022 inbound demands, or 0.
+    //
+    // Only this family constrains the shared password: it must be base64 of
+    // exactly 16 or 32 bytes. Everything else takes any string, so generating in
+    // the strict shape when one is present satisfies all of them at once, which
+    // is the only way one column can serve both.
+    get strictSsBytes() {
+      for (const id of this.selected) {
+        const ib = this.assignable.find(x => x.inboundId === id);
+        if (!ib || ib.protocol !== 'shadowsocks') continue;
+        const method = (ib.method || '').toLowerCase().trim();
+        if (method === '2022-blake3-aes-128-gcm') return 16;
+        if (method === '2022-blake3-aes-256-gcm' || method === '2022-blake3-chacha20-poly1305') return 32;
+      }
+      return 0;
+    },
+
+    mint(key) {
+      switch (key) {
+        case 'id': return RandomUtil.randomUUID();
+        case 'password': {
+          const n = this.strictSsBytes;
+          if (!n) return RandomUtil.randomSeq(10);
+          const buf = new Uint8Array(n);
+          window.crypto.getRandomValues(buf);
+          return btoa(String.fromCharCode(...buf));
+        }
+        case 'vpnUsername': return RandomUtil.randomLowerAndNum(8);
+        case 'auth': return RandomUtil.randomSeq(10);
+        case 'secret': return RandomUtil.randomSeq(32, { type: 'hex' });
+        case 'naiveUsername': return '';
+        case 'subId': return RandomUtil.randomLowerAndNum(16);
+        // The same generator the client form's own dice button has always used
+        // (form/client.html), so a name made here is indistinguishable from one
+        // made there.
+        case 'email': return RandomUtil.randomLowerAndNum(9);
+        default: return '';
+      }
+    },
+    regenerate(key) { this.$set ? this.$set(this.client, key, this.mint(key)) : (this.client[key] = this.mint(key)); },
+
+    // Lift the account's current credentials out of its stored entries. Each
+    // protocol's entry carries only its own fields, so the whole set is assembled
+    // by walking every membership: the vmess entry supplies the uuid, the l2tp one
+    // the login name, and both name the same shared password.
+    loadCredentialsFrom(row) {
+      const c = this.client;
+      for (const m of (row.memberships || [])) {
+        const e = (this.storedBy && this.storedBy[m.inboundId]) || {};
+        const vpnLike = ['l2tp', 'pptp', 'openvpn', 'openconnect', 'sstp', 'ikev2', 'ssh']
+          .includes(m.protocol);
+        const emailId = ['wg-c', 'awg', 'gre', 'mtproto'].includes(m.protocol);
+        if (e.id && vpnLike) c.vpnUsername = c.vpnUsername || e.id;
+        else if (e.id && !emailId) c.id = c.id || e.id;
+        if (e.password) c.password = c.password || e.password;
+        if (e.auth) c.auth = c.auth || e.auth;
+        if (e.secret) c.secret = c.secret || e.secret;
+        if (e.username) c.naiveUsername = c.naiveUsername || e.username;
+        if (e.security) c.security = c.security || e.security;
+      }
+    },
+
+    // Fill every credential a new account could need, so the common case is one
+    // click. Nothing is overwritten: an edit keeps what the customer already has
+    // installed, and a blank is only ever filled in.
+    seedCredentials() {
+      for (const f of this.credentialFields) {
+        if (f.key === 'naiveUsername') continue;
+        if (!this.client[f.key]) this.client[f.key] = this.mint(f.key);
+      }
+      if (!this.client.subId) this.client.subId = this.mint('subId');
+    },
+
+    async ok() {
+      const email = (this.client.email || '').trim();
+      if (!email) return;
+      if (!this.selected.length) return;
+      if (this.protocolClash) return;
+
+      const ids = this.selected.slice().sort((a, b) => a - b);
+      // Ticking a protocol whose identity field the account does not hold yet - a
+      // vmess inbound on an account that has only ever been trojan - leaves that
+      // field blank. Fill it rather than refuse: the server would mint one anyway
+      // (ensureCredentialsFor), and a value minted here is at least visible in the
+      // form the next time the account is opened.
+      //
+      // Deliberately NOT a dialog. This object is not a Vue instance, so it has no
+      // $message, and the fallback that reached for window.alert() blocked the
+      // whole renderer: in a headless browser nothing ever dismisses it and the
+      // page stops responding entirely.
+      for (const f of this.credentialFields) {
+        if (this.fieldRequired(f) && !(this.client[f.key] || '').trim()) {
+          this.client[f.key] = this.mint(f.key);
+        }
+      }
+
+      this.confirmLoading = true;
+      const msg = this.isEdit ? await this.saveEdit(email, ids)
+                              : await this.saveNew(email, ids);
+      this.confirmLoading = false;
+      if (msg && msg.success) {
+        this.close();
+        if (this.onDone) this.onDone();
+      }
+    },
+
+    // Every way out of this form goes through here. pickDate is the important
+    // half: it is what the calendar is rendered behind, so clearing it unmounts
+    // the picker and takes its body-level dropdown with it. Left set, the dropdown
+    // survived the modal and sat over the page swallowing clicks.
+    close() {
+      this.visible = false;
+      this.pickDate = false;
+      this.confirmLoading = false;
+    },
+
+    // The entry to post, in the shape the ADDRESSED inbound's protocol expects.
+    //
+    // The form is field-first (one uuid, one password, one VPN username on the
+    // account), but a client ENTRY is protocol-shaped: its "id" is the uuid on
+    // vmess, the login name on l2tp and the email on wg-c. So the account's fields
+    // are mapped onto whichever protocol the write is addressed to, and the whole
+    // set is carried alongside for the accounts layer to lift
+    // (overwriteAccountCredential), which is what makes a value typed here reach
+    // an inbound of a completely different family in the same request.
+    entryFor(protocol, email, inboundId) {
+      const c = this.client;
+      const base = Object.assign({}, (this.storedBy && this.storedBy[inboundId]) || {}, {
+        email,
+        enable: c.enable !== false,
+        // Carried through, never edited here: the device cap belongs to the
+        // inbound (userLimit), and this form must not silently zero a value some
+        // other page set.
+        limitIp: Number(c.limitIp) || 0,
+        comment: c.comment || '',
+        subId: c.subId || '',
+        reset: Number(c.reset) || 0,
+        tgId: Number(c.tgId) || 0,
+        totalGB: (this.totalGb || 0) * 1073741824,
+        // A NEGATIVE expiry is not a date. It is "this many days from first use",
+        // and the server starts the clock on the first connection.
+        expiryTime: this.postedExpiry(),
+        // Read by the accounts layer, ignored by every daemon. `id` cannot carry
+        // the VPN login name here because this entry may be a vmess one, where it
+        // already means the uuid.
+        vpnUsername: c.vpnUsername || '',
+        auth: c.auth || '',
+        secret: c.secret || '',
+        naiveUsername: c.naiveUsername || '',
+        // Carried on EVERY entry, not just the ones addressed by them. The write
+        // lands on whichever inbound is the anchor, and with a vless anchor the
+        // password went nowhere: the account was created without one and the
+        // server minted a different one the moment it was projected onto a trojan
+        // inbound, so the Credentials tab had shown the operator a password that
+        // never existed. The uuid has the same problem through a trojan anchor,
+        // and needs its own key because "id" already means the login name on l2tp
+        // and the email on wg-c. liftCarriedCredentials reads both.
+        password: c.password || '',
+        uuid: c.id || '',
+      });
+      switch (protocol) {
+        case 'vmess':
+          return Object.assign(base, { id: c.id, security: c.security || 'auto' });
+        case 'vless':
+          return Object.assign(base, { id: c.id });
+        case 'tuic':
+          return Object.assign(base, { id: c.id, password: c.password });
+        case 'trojan': case 'shadowsocks': case 'anytls':
+          return Object.assign(base, { password: c.password });
+        case 'naive':
+          return Object.assign(base, { password: c.password, username: c.naiveUsername || '' });
+        case 'hysteria': case 'hysteria2':
+          return Object.assign(base, { auth: c.auth });
+        case 'l2tp': case 'pptp': case 'openvpn': case 'openconnect':
+        case 'sstp': case 'ikev2': case 'ssh':
+          return Object.assign(base, { id: c.vpnUsername, password: c.password });
+        // Identity IS the email for these, so "id" carries it rather than a uuid.
+        case 'wg-c': case 'awg': case 'gre':
+          return Object.assign(base, { id: email });
+        case 'mtproto':
+          return Object.assign(base, { id: email, secret: c.secret });
+        default:
+          return Object.assign(base, { id: c.id });
+      }
+    },
+
+    // A NEW account, addressed to the first inbound it will land on. The other
+    // memberships are the server's to fill, and the credential columns it fills
+    // them from are the ones this entry just carried.
+    async saveNew(email, ids) {
+      const first = this.assignable.find(x => x.inboundId === ids[0]);
+      const client = this.entryFor(first ? first.protocol : '', email, ids[0]);
+      return await HttpUtil.post('/panel/api/inbounds/addClient',
+        { id: ids[0], inboundIds: ids, settings: JSON.stringify({ clients: [client] }) });
+    },
+
+    // The anchor also decides which stored entry the posted client is built from:
+    // an account on vmess and trojan has a uuid on one and a password on the
+    // other, and only the anchor's own credential can address it.
+    async saveEdit(email, ids) {
+      const memberships = (this.row && this.row.memberships) || [];
+      const anchor = memberships.find(m => ids.includes(m.inboundId)) || memberships[0];
+      if (!anchor) return { success: false };
+      const anchorIb = this.assignable.find(x => x.inboundId === anchor.inboundId);
+      const client = this.entryFor(anchorIb ? anchorIb.protocol : anchor.protocol,
+                                   email, anchor.inboundId);
+
+      const msg = await HttpUtil.post(
+        '/panel/api/inbounds/updateClient/' + encodeURIComponent(anchor.clientId || email),
+        { id: anchor.inboundId, inboundIds: ids, settings: JSON.stringify({ clients: [client] }) });
+      if (!msg || !msg.success) return msg;
+
+      // Every current membership was kept, so nothing is left to drop.
+      if (ids.includes(anchor.inboundId)) return msg;
+      // Otherwise the anchor is the one inbound the update could not remove, and
+      // it comes off on its own.
+      return await HttpUtil.post(
+        `/panel/api/inbounds/${anchor.inboundId}/delClientByEmail/${encodeURIComponent(email)}`);
+    },
+  };
+
+  const clientMembershipModalApp = new Vue({
+    delimiters: ['[[', ']]'],
+    el: '#client-membership-modal',
+    data: {
+      clientMembershipModal,
+      themeSwitcher,
+    },
+  });
+</script>
+{{end}}

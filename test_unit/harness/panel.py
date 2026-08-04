@@ -21,6 +21,31 @@ class PanelError(RuntimeError):
     pass
 
 
+# The panel-wide client identity: the value that goes in the URL of
+# /panel/api/inbounds/updateClient/:clientId and /:id/delClient/:clientId.
+#
+# Mirrors clientIdentityKey() in web/service/inbound.go (and its browser twin,
+# getClientIdentity in web/assets/js/model/inbound.js). Posting the wrong field is not
+# an error the caller sees as a mismatch: the panel answers "empty client ID", or
+# worse, HTTP 200 with success:false, so a test that ignored the envelope would read a
+# silently skipped write as a pass.
+_IDENTITY_PASSWORD = ("trojan", "l2tp", "pptp", "openvpn", "openconnect", "sstp",
+                      "ikev2", "anytls", "naive")
+
+
+def client_identity(protocol: str, client: dict) -> str:
+    """The field `client` is addressed by under `protocol`."""
+    if protocol in _IDENTITY_PASSWORD:
+        return client.get("password", "") or ""
+    if protocol == "shadowsocks":
+        return client.get("email", "") or ""
+    if protocol in ("hysteria", "hysteria2"):
+        return client.get("auth", "") or ""
+    # vmess/vless/tuic (uuid) and the email-identity protocols (wg-c, awg, gre,
+    # mtproto, ssh), whose settings JSON carries id=email.
+    return client.get("id", "") or client.get("email", "") or ""
+
+
 class Panel:
     def __init__(self, host: str, port: int = 2083, base_path: str = "/",
                  scheme: str = "http", username: str = "admin",
@@ -142,8 +167,15 @@ class Panel:
 
     # ---- inbounds / clients --------------------------------------------
     def add_inbound(self, remark: str, port: int, protocol: str,
-                    settings: dict, listen: str = "") -> dict:
-        """Create an inbound. Returns the created inbound dict (has 'id')."""
+                    settings: dict, listen: str = "",
+                    stream: dict | None = None) -> dict:
+        """Create an inbound. Returns the created inbound dict (has 'id').
+
+        `stream` is the Xray streamSettings block. Every VPN/relay protocol leaves
+        it empty (they are served by their own daemon, not by a transport), but the
+        Xray-NATIVE protocols carry theirs there: it is where TLS lives, and for
+        tuic it also selects the transport ("network": "tuic"). Defaults to {} so
+        every existing caller is unchanged."""
         body = self._post("/panel/api/inbounds/add", {
             "remark": remark,
             "enable": "true",
@@ -151,7 +183,7 @@ class Panel:
             "port": str(port),
             "protocol": protocol,
             "settings": json.dumps(settings),
-            "streamSettings": "{}",
+            "streamSettings": json.dumps(stream or {}),
             "sniffing": "{}",
         })
         return body.get("obj", {})
@@ -165,14 +197,27 @@ class Panel:
     def update_inbound(self, inbound_id: int, remark: str, port: int,
                        protocol: str, settings: dict, listen: str = "",
                        extra: dict | None = None) -> dict:
-        """Update an inbound.
+        """Update an inbound. Partial: an omitted field keeps its stored value.
 
-        The panel binds this POST into a FRESH struct and copies an allowlist onto
-        the stored row unconditionally, so ANY column this body omits is written
-        back as its zero value. The traffic-multiplier columns are therefore read
-        from the current row and echoed back, or every update here would silently
-        wipe them (the same reason the web UI's five payload builders all carry
-        them). `extra` overrides that pass-through.
+        The panel binds this POST onto the STORED row, so a body only has to carry
+        what it means to change. An explicitly sent falsy value still wins, which
+        is how a flag gets turned off.
+
+        That was not always true. The panel used to bind into a fresh struct and
+        copy an allowlist onto the stored row unconditionally, so any column this
+        body omitted was written back as its zero value: the traffic multiplier and
+        its threshold, all four speed-limit columns, the IP limit and strategy, the
+        inbound's own total and expiry, and the reset schedule. Twelve fields, with
+        nothing reported. Fixed in a59b0585.
+
+        The three traffic-multiplier columns below are still read from the current
+        row and echoed back. They are redundant against a current panel and are
+        kept deliberately, because this harness is also pointed at older builds
+        during upgrade testing, where the echo is the only thing protecting them.
+        Note it never covered the other nine, so an update through this helper
+        against a pre-a59b0585 panel did silently wipe those.
+
+        `extra` overrides the pass-through.
         """
         cur = self.get_inbound(inbound_id) or {}
         body = {
@@ -183,8 +228,24 @@ class Panel:
             "port": str(port),
             "protocol": protocol,
             "settings": json.dumps(settings),
-            "streamSettings": "{}",
-            "sniffing": "{}",
+            # Echoed from the current row, NOT hardcoded to "{}".
+            #
+            # It used to be hardcoded, and that was the sharpest edge in this file:
+            # the panel copied it onto the stored row unconditionally, so every
+            # update through this helper stripped the inbound's whole transport,
+            # TLS included. It went unnoticed because every VPN and relay protocol
+            # leaves streamSettings empty; on an Xray-native inbound (vless, vmess,
+            # trojan, shadowsocks, hysteria, anytls, tuic, naive) the next client
+            # got "connection reset by peer", which reads as a broken protocol
+            # rather than a wiped transport. Callers had to remember to pass it in
+            # `extra`, and a caller who forgot got no warning.
+            #
+            # Echoing rather than omitting on purpose: omitting is correct against
+            # a current panel (a59b0585 makes an absent field mean "leave alone")
+            # but would still wipe against an older build, and this harness is
+            # pointed at older builds during upgrade testing.
+            "streamSettings": cur.get("streamSettings", "{}") or "{}",
+            "sniffing": cur.get("sniffing", "{}") or "{}",
             "trafficMultiplierEnable": "true" if cur.get("trafficMultiplierEnable") else "false",
             "trafficMultiplierAfter": str(int(cur.get("trafficMultiplierAfter") or 0)),
             "trafficMultiplier": str(cur.get("trafficMultiplier") or 1),
@@ -199,7 +260,12 @@ class Panel:
         times against the client's quota; below it, 1:1.
 
         Re-saving an inbound restarts its daemon, so callers must (re)connect after
-        this, not before."""
+        this, not before.
+
+        streamSettings no longer has to be echoed here: update_inbound carries it
+        from the current row itself. It used to hardcode "{}", which silently
+        stripped the transport (TLS included) off every Xray-native inbound this
+        touched."""
         ib = self.get_inbound(inbound_id)
         return self.update_inbound(
             inbound_id,
@@ -233,12 +299,81 @@ class Panel:
             ib.get("listen", "") or "",
         )
 
-    def add_client(self, inbound_id: int, client: dict):
-        """Add one client (username/password account) to an inbound."""
-        self._post("/panel/api/inbounds/addClient", {
+    def add_client(self, inbound_id: int, client: dict, inbound_ids=None):
+        """Add one client (username/password account) to an inbound.
+
+        `inbound_ids` names every inbound the ACCOUNT should be served on (the
+        multi-inbound membership set). It is posted as a REPEATED `inboundIds` form
+        key, which is what Qs.stringify emits with arrayFormat 'repeat' and what the
+        panel binds with c.PostFormArray. Omitting it entirely is the legacy
+        single-inbound path and is what every existing caller does; the target
+        inbound is always in the set whether or not it is repeated here."""
+        data = {
             "id": str(inbound_id),
             "settings": json.dumps({"clients": [client]}),
-        })
+        }
+        if inbound_ids is not None:
+            # requests encodes a list value as repeated keys, exactly the wire shape
+            # postedMembershipIds reads. An EMPTY list must still post one empty value:
+            # that is the panel's "the group was explicitly cleared" sentinel, and
+            # sending no key at all would instead mean "don't touch memberships".
+            data["inboundIds"] = [str(i) for i in inbound_ids] or [""]
+        return self._post("/panel/api/inbounds/addClient", data)
+
+    def update_client(self, inbound_id: int, email: str, changes: dict,
+                      inbound_ids=None) -> dict:
+        """Change fields on ONE existing client through /updateClient/:clientId.
+
+        Reads the stored entry first and posts it back with `changes` overlaid, so a
+        field this caller does not mention keeps its value. That matters more here
+        than it looks: the endpoint takes the whole client object, so a caller that
+        rebuilt it from scratch would blank the account's credentials.
+
+        Returns the client dict as posted, for the caller to assert against."""
+        ib = self.get_inbound(inbound_id)
+        settings = json.loads(ib.get("settings") or "{}")
+        target = None
+        for c in settings.get("clients", []):
+            if c.get("email") == email:
+                target = dict(c)
+                break
+        if target is None:
+            raise PanelError(f"client {email} not found on inbound {inbound_id}")
+        target.update(changes)
+        proto = ib.get("protocol", "")
+        data = {
+            "id": str(inbound_id),
+            "remark": ib.get("remark", ""),
+            "enable": "true",
+            "listen": ib.get("listen", "") or "",
+            "port": str(ib.get("port", 0)),
+            "protocol": proto,
+            "settings": json.dumps({"clients": [target]}),
+            "streamSettings": "{}",
+            "sniffing": "{}",
+        }
+        if inbound_ids is not None:
+            data["inboundIds"] = [str(i) for i in inbound_ids] or [""]
+        self._post(f"/panel/api/inbounds/updateClient/{client_identity(proto, target)}", data)
+        return target
+
+    def set_membership_enable(self, inbound_id: int, email: str, enable: bool) -> dict:
+        """Switch one account on or off on ONE inbound, leaving the others serving.
+
+        Its own route rather than a shape of updateClient because `enable` inside a
+        posted client entry is the ACCOUNT's flag: the panel writes it through to
+        client_traffics, which RADIUS and the rbridge sweep both read panel-wide."""
+        return self._post(
+            f"/panel/api/inbounds/{inbound_id}/setMembershipEnable/{email}",
+            {"enable": "true" if enable else "false"})
+
+    def list_accounts(self, search: str = "", page: int = 1, size: int = 200) -> dict:
+        """The accounts read model behind the Clients page: one row per ACCOUNT with
+        its memberships, rather than one row per inbound client entry."""
+        q = f"?page={page}&size={size}"
+        if search:
+            q += f"&search={search}"
+        return self._get(f"/panel/api/clients/list{q}").get("obj", {}) or {}
 
     def del_inbound(self, inbound_id: int):
         """Delete an inbound by id (POST /panel/api/inbounds/del/:id). Triggers the
@@ -277,16 +412,8 @@ class Panel:
         target["enable"] = True
         proto = ib.get("protocol", "")
         # UpdateInboundClient matches clientId by the protocol's identity field
-        # (clientIdentityKey in web/service/inbound.go): the username/password VPNs
-        # — l2tp/pptp/openvpn/trojan AND openconnect/sstp/ikev2 — are keyed on the
-        # PASSWORD (sending the id/email mis-keys them -> "empty client ID").
-        if proto in ("l2tp", "pptp", "openvpn", "trojan",
-                     "openconnect", "sstp", "ikev2"):
-            client_id = target.get("password", "")
-        elif proto == "shadowsocks":
-            client_id = target.get("email", "")
-        else:
-            client_id = target.get("id", "") or target.get("email", "")
+        # (clientIdentityKey in web/service/inbound.go); see client_identity above.
+        client_id = client_identity(proto, target)
         self._post(f"/panel/api/inbounds/updateClient/{client_id}", {
             "id": str(inbound_id),
             "remark": ib.get("remark", ""),
@@ -626,9 +753,10 @@ class Panel:
         target["enable"] = True
         proto = ib.get("protocol", "")
         # clientId key per protocol (clientIdentityKey in web/service/inbound.go), same
-        # mapping as set_client_total.
+        # mapping as set_client_total, including anytls/naive, which are keyed on
+        # the password because neither carries a uuid.
         if proto in ("l2tp", "pptp", "openvpn", "trojan",
-                     "openconnect", "sstp", "ikev2"):
+                     "openconnect", "sstp", "ikev2", "anytls", "naive"):
             client_id = target.get("password", "")
         elif proto == "shadowsocks":
             client_id = target.get("email", "")

@@ -1,10 +1,20 @@
 {{define "form/streamSettings"}}
+<!--
+  select stream network
+
+  Hidden for hysteria and tuic: both pin stream.network to their own transport
+  ('hysteria' / 'tuic'), which is deliberately absent from the options below. Rendering
+  the picker for them is worse than useless: the select finds no option matching the
+  current value and draws BLANK, which reads as an unset field and invites the operator
+  to pick one of the listed transports, silently turning the inbound into something that
+  is no longer that protocol.
+-->
 <!-- select stream network -->
 <a-form
   :colon="false"
   :label-col="{ md: {span:8} }"
   :wrapper-col="{ md: {span:14} }"
-  v-if="inbound.protocol != Protocols.HYSTERIA"
+  v-if="inbound.protocol != Protocols.HYSTERIA && inbound.protocol != Protocols.TUIC"
 >
   <a-form-item label='{{ i18n "transmission" }}'>
     <a-select
@@ -14,12 +24,47 @@
       :dropdown-class-name="themeSwitcher.currentTheme"
     >
       <a-select-option value="tcp">TCP (RAW)</a-select-option>
-      <a-select-option value="kcp">mKCP</a-select-option>
+      <!--
+        Hidden for anytls and naive because TLS is not optional for either: they ARE
+        TLS protocols, and the protocol setter forces stream.security = 'tls'. mKCP is
+        not in canEnableTls()'s transport list, so picking it here would hide the whole
+        TLS panel while security stayed 'tls', a config that looks configured and is
+        not. Unlike trojan or vmess, where mKCP without TLS is a legitimate setup, there
+        is nothing left of anytls or naive once the TLS is gone.
+      -->
+      <a-select-option
+        value="kcp"
+        v-if="inbound.protocol !== Protocols.ANYTLS && inbound.protocol !== Protocols.NAIVE"
+        >mKCP</a-select-option
+      >
       <a-select-option value="ws">WebSocket</a-select-option>
       <a-select-option value="grpc">gRPC</a-select-option>
       <a-select-option value="httpupgrade">HTTPUpgrade</a-select-option>
       <a-select-option value="xhttp">XHTTP</a-select-option>
+      <!--
+        The inbound's stored transport, when it is not one of the options above. Without
+        this the select renders BLANK for such an inbound, which reads as an unset field
+        and invites the operator to pick one of the listed transports, silently changing
+        what the server is running. Disabled, so it shows the truth without becoming a
+        thing you can select. See streamNetworkOffered() in modals/inbound_modal.html for
+        how an inbound reaches this state (fromJson keeps streamSettings verbatim).
+      -->
+      <a-select-option
+        v-if="!streamNetworkOffered(inbound)"
+        :value="inbound.stream.network"
+        disabled
+        >[[ inbound.stream.network ]] (stored, not valid for this
+        protocol)</a-select-option
+      >
     </a-select>
+    <div
+      v-if="!streamNetworkOffered(inbound)"
+      :style="{ color: 'var(--error)', marginTop: '4px' }"
+    >
+      This inbound is running a transport this protocol does not support. Pick one
+      above to fix it. Doing so changes what the server runs, so leave it alone if
+      the inbound is working.
+    </div>
   </a-form-item>
 </a-form>
 

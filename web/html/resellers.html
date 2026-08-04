@@ -132,6 +132,18 @@
                         [[ reseller.allowOverview ? '{{ i18n "enabled" }}' : '{{ i18n "disabled" }}' ]]
                       </dd>
                     </div>
+                    <!-- Reported as the AND the server resolves it by, not as the stored
+                         column: the manage flag scopes the page above it, so with the
+                         overview withheld it grants nothing and reading "Enabled" here
+                         would describe a reseller who has it. -->
+                    <div class="bo-spec-row">
+                      <span class="bo-spec-ico bo-spec-ico--os"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-pencil"></use></svg></span>
+                      <dt class="bo-spec-key">{{ i18n "pages.resellers.allowOverviewManage" }}</dt>
+                      <dd class="bo-spec-val"
+                        :class="reseller.allowOverview && reseller.allowOverviewManage ? 'bo-ok' : 'bo-muted'">
+                        [[ reseller.allowOverview && reseller.allowOverviewManage ? '{{ i18n "enabled" }}' : '{{ i18n "disabled" }}' ]]
+                      </dd>
+                    </div>
                   </dl>
                 </article>
               </div>

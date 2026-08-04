@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Login: Keyplate</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;min-height:100vh;overflow-x:hidden}
+  body{background:var(--bg)}
+</style>
+</head>
+<body>
+<div id="lg-keyplate">
+<style>
+/* ==================================================================== *
+ * KEYPLATE - login, direction 5.
+ *
+ * One structural idea: a single 1px vertical KEYLINE running the full
+ * height of the viewport. Everything on the page registers to it, and a
+ * short accent segment riding on it is the page's entire state channel:
+ *
+ *     rest     accent, aligned to the wordmark
+ *     focus    accent, aligned to the field you are in
+ *     expired  warn,   spanning wordmark + status line
+ *     error    error,  spanning the whole field stack
+ *
+ * No card, no shadow, no ornament. Elevation is the panel's own hairline
+ * convention (see redesign/bento.html). Whitespace does the rest.
+ * ==================================================================== */
+
+/* ---- non-colour tiers (theme-independent) ------------------------- */
+:root{
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+  --sp-6:24px; --sp-8:32px; --sp-10:40px;
+
+  --radius-sm:8px; --radius-md:10px; --radius-lg:12px; --radius-xl:16px; --radius-pill:999px;
+
+  --font-sans:'Vazirmatn UI NL',-apple-system,BlinkMacSystemFont,'Segoe UI',
+              system-ui,Roboto,'Helvetica Neue',Arial,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,
+              'Liberation Mono',monospace;
+
+  --fs-xs:11px; --fs-sm:12.5px; --fs-base:14px; --fs-md:16px; --fs-lg:20px; --fs-xl:26px;
+  /* The wordmark is a mark, not UI text. It sits above the UI scale on
+     purpose and is the only size on the page that does. */
+  --fs-mark:clamp(30px,6.6vw,42px);
+
+  --fw-normal:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700;
+
+  --dur-fast:.15s; --dur-med:.25s; --dur-slow:.32s;
+  --ease:cubic-bezier(.4,0,.2,1);
+
+  /* gap between the keyline and the content that registers to it */
+  --kp-gap:28px;
+}
+
+/* ---- colour: LIGHT (default) ------------------------------------- */
+:root{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  /* same hue, darker on hover so white button text gains contrast */
+  --btn-hover:brightness(.90);
+  color-scheme:light dark;
+}
+
+/* ---- colour: DARK (system preference) ---------------------------- */
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+    --btn-hover:brightness(1.12);
+  }
+}
+
+/* ---- colour: DARK (explicit) ------------------------------------- */
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --btn-hover:brightness(1.12);
+}
+
+/* ---- colour: LIGHT (explicit) ------------------------------------ */
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --btn-hover:brightness(.90);
+}
+
+/* ---- colour: ULTRA-DARK ------------------------------------------ *
+ * The panel's third theme. Values are the production ones from
+ * web/assets/css/tokens.css, so setting data-theme="ultra-dark" on the
+ * root works. The visible toggle stays binary on purpose. */
+:root[data-theme="ultra-dark"]{
+  --bg:#21242a; --surface:#0c0e12; --surface-2:#222327; --border:#32353b; --border-strong:#505663;
+  --text:rgba(255,255,255,.85); --text-2:rgba(255,255,255,.58); --text-3:rgba(255,255,255,.48);
+  --accent:#59cbac; --accent-strong:#59cbac; --accent-weak:rgba(89,203,172,.14); --on-accent:#06140f;
+  --ok:#59cbac; --info:#3c89e8; --warn:#e89a3c; --error:#e84749; --off:#5a5f6b;
+  --btn-hover:brightness(1.12);
+}
+
+/* ================================================================== *
+ * scope root
+ * ================================================================== */
+#lg-keyplate,#lg-keyplate *,#lg-keyplate *::before,#lg-keyplate *::after{ box-sizing:border-box; }
+#lg-keyplate{
+  font-family:var(--font-sans);
+  background:var(--bg); color:var(--text);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+}
+#lg-keyplate p,#lg-keyplate h1,#lg-keyplate form{ margin:0; padding:0; }
+#lg-keyplate button,#lg-keyplate input,#lg-keyplate select{ font-family:inherit; }
+#lg-keyplate svg{ display:block; }
+#lg-keyplate [hidden]{ display:none !important; }
+
+#lg-keyplate .kp-sr{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0;
+}
+
+@media (prefers-reduced-motion:reduce){
+  #lg-keyplate *{
+    transition-duration:.001ms !important;
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+  }
+}
+
+/* focus. Every control that has no indicator of its own gets the ring.
+   Text inputs deliberately do NOT: a rounded ring around an underline
+   field redraws it as a boxed field, and Chrome matches :focus-visible
+   on text inputs for pointer focus too, so it would fire on every
+   click. They carry three simultaneous --accent signals instead: the
+   underline thickens and fills in, the label goes accent, and the
+   keyline segment jumps to the field. */
+#lg-keyplate :is(button,select,a,[tabindex]):focus-visible{
+  outline:2px solid var(--accent); outline-offset:3px; border-radius:var(--radius-sm);
+}
+
+/* ================================================================== *
+ * page: one column, hung off the keyline, sitting left of centre
+ * ================================================================== */
+.kp-page{
+  display:flex;
+  min-height:100vh; min-height:100dvh;
+  padding-inline:20px;
+}
+@media (min-width:720px){
+  .kp-page{ padding-inline:clamp(56px,26vw,460px) 40px; }
+}
+
+.kp-column{
+  position:relative;
+  flex:0 0 auto;
+  width:min(380px,100%);
+  display:grid;
+  grid-template-rows:1fr auto;
+}
+
+/* THE KEYLINE. --border-strong, not --border: at 1px against --bg the
+   softer stroke disappears in light mode and the page loses its spine. */
+.kp-column::before{
+  content:'';
+  position:absolute; inset-block:0; inset-inline-start:0;
+  width:1px; background:var(--border-strong);
+}
+/* the segment that rides it. top/height are written by script. */
+.kp-keymark{
+  position:absolute; inset-inline-start:0; width:1px;
+  top:0; height:0; background:var(--accent);
+  transition:top var(--dur-slow) var(--ease),
+             height var(--dur-slow) var(--ease),
+             background-color var(--dur-fast) linear;
+}
+.kp-keymark[data-tone="warn"]{ background:var(--warn); }
+.kp-keymark[data-tone="error"]{ background:var(--error); }
+.kp-keymark.is-tracking{ transition:background-color var(--dur-fast) linear; }
+
+/* ================================================================== *
+ * stage. Top-anchored, never vertically centred: the 2FA field grows
+ * the stack downwards and the wordmark does not move by one pixel.
+ * ================================================================== */
+.kp-stage{
+  grid-row:1;
+  align-self:start;
+  padding-inline-start:var(--kp-gap);
+  padding-block:clamp(64px,19vh,200px) var(--sp-10);
+  min-width:0;
+}
+@media (max-width:719px){ :root{ --kp-gap:22px; } }
+@media (max-height:640px){ .kp-stage{ padding-block-start:var(--sp-10); } }
+
+/* ---- wordmark ---------------------------------------------------- *
+ * dir/isolate: the brackets are bidi-neutral and would mirror to
+ * "]VPN-UI[" inside an RTL paragraph. This is the panel's own
+ * .ltr-island trick from tokens.css.
+ * The margins are PHYSICAL on purpose, the one place on the page they
+ * are: this mark never mirrors, so '[' is always the left edge and ']'
+ * always the right. Left pulls back the bracket's sidebearing; right
+ * pulls back the trailing tracking space letter-spacing leaves after
+ * the final glyph. Both make it read flush to the keyline instead of a
+ * hair inset from it, in either direction.
+ * width:fit-content lets the box hug whichever edge is the start. */
+.kp-mark{
+  display:block;
+  width:fit-content;
+  font-size:var(--fs-mark);
+  font-weight:var(--fw-bold);
+  letter-spacing:.115em;
+  line-height:1;
+  color:var(--accent);
+  margin-left:-.055em;
+  margin-right:-.115em;
+  white-space:nowrap;
+  direction:ltr; unicode-bidi:isolate;
+}
+
+/* ---- status line -------------------------------------------------- *
+ * ONE slot serves three jobs: the greeting, the expired-session notice
+ * and the credential error. Two lines are always reserved, so no state
+ * change and no locale can shift the form below it. */
+.kp-status{
+  /* optical, not mathematical: the mark's line-height:1 box already sits
+     ~6px above its cap line, so 20px reads as 14px under a 42px mark. */
+  margin-block-start:26px;
+  font-size:var(--fs-base);
+  line-height:1.5;
+  color:var(--text-2);
+  min-block-size:calc(var(--fs-base) * 3);
+  text-align:start;
+  text-wrap:pretty;
+}
+.kp-status .kp-hello{ color:var(--text); font-weight:var(--fw-medium); }
+.kp-status .kp-welcome{ color:var(--text-2); font-weight:var(--fw-normal); }
+.kp-status[data-tone="warn"]{ color:var(--warn); font-weight:var(--fw-medium); }
+.kp-status[data-tone="error"]{ color:var(--error); font-weight:var(--fw-medium); }
+
+/* ================================================================== *
+ * fields. Underline-ruled, never boxed.
+ * ================================================================== */
+/* Rhythm: the gap BETWEEN fields (38) has to beat the space inside one
+   (label to rule, ~54 when the field is empty), or proximity reads a
+   label as belonging to the rule above it rather than the one below.
+   The rule is a hard terminator, which is what closes the gap the rest
+   of the way. */
+.kp-fields{ display:grid; margin-block-start:var(--sp-4); }
+.kp-fields > * + *{ margin-block-start:38px; }
+.kp-fields > .kp-collapse{ margin-block-start:0; }
+
+.kp-field{ display:block; min-width:0; }
+.kp-field-head{
+  display:flex; align-items:baseline; justify-content:space-between; gap:var(--sp-3);
+}
+
+/* the page has exactly ONE label style, and it labels fields and
+   settings alike. */
+.kp-label{
+  display:block;
+  font-size:var(--fs-xs); font-weight:var(--fw-semibold);
+  letter-spacing:.14em; text-transform:uppercase;
+  line-height:1.4; color:var(--text-3);
+  transition:color var(--dur-fast) var(--ease);
+}
+.kp-field.is-filled .kp-label{ color:var(--text-2); }
+.kp-field:focus-within .kp-label{ color:var(--accent); }
+
+.kp-input-wrap{
+  position:relative;
+  display:flex; align-items:baseline; gap:var(--sp-3);
+  margin-block-start:7px;
+}
+/* the rule */
+.kp-input-wrap::before{
+  content:''; position:absolute; inset-inline:0; bottom:0; height:1px;
+  background:var(--border-strong); pointer-events:none;
+  transition:background-color var(--dur-fast) var(--ease);
+}
+/* the accent rule, drawn in from the start edge on focus */
+.kp-input-wrap::after{
+  content:''; position:absolute; inset-inline:0; bottom:0; height:2px;
+  background:var(--accent); pointer-events:none;
+  transform:scaleX(0); transform-origin:left center;
+  transition:transform var(--dur-med) var(--ease);
+}
+#lg-keyplate[dir="rtl"] .kp-input-wrap::after{ transform-origin:right center; }
+.kp-field:focus-within .kp-input-wrap::after{ transform:scaleX(1); }
+
+.kp-input{
+  flex:1 1 auto; min-width:0;
+  font-size:var(--fs-md); font-weight:var(--fw-medium); line-height:1.4;
+  color:var(--text); background:transparent;
+  border:0; border-radius:0; margin:0;
+  padding:0 0 9px;
+  appearance:none; -webkit-appearance:none;
+  text-align:start;
+}
+/* suppressing the UA ring is only defensible because the three signals
+   above replace it. Do not remove one of them without restoring this. */
+.kp-input:focus{ outline:none; }
+.kp-input:-webkit-autofill{
+  -webkit-text-fill-color:var(--text);
+  transition:background-color 9999s;
+}
+/* the only machine-set string on the page, so the only mono one */
+.kp-input--otp{
+  font-family:var(--font-mono);
+  letter-spacing:.34em;
+  font-variant-numeric:tabular-nums;
+}
+
+/* reveal. Sits in the field as a suffix, which is exactly where ant's
+   a-input-password puts its own control. */
+.kp-reveal{
+  flex:0 0 auto;
+  padding:0 0 9px; margin:0; border:0; background:none; cursor:pointer;
+  font-size:var(--fs-xs); font-weight:var(--fw-semibold);
+  letter-spacing:.12em; text-transform:uppercase; line-height:1.4;
+  color:var(--text-3);
+  transition:color var(--dur-fast) var(--ease);
+}
+.kp-reveal:hover{ color:var(--accent); }
+
+/* error. The rules go red; the labels stay quiet. */
+.kp-form.is-error .kp-input-wrap::before{ background:var(--error); }
+
+/* ---- 2FA reveal --------------------------------------------------- *
+ * The collapse carries its own top margin INSIDE the clipped box, so a
+ * closed field contributes exactly zero height and zero gap. */
+.kp-collapse{
+  display:grid; grid-template-rows:0fr;
+  transition:grid-template-rows var(--dur-slow) var(--ease);
+}
+.kp-collapse > .kp-collapse-inner{
+  overflow:hidden; min-height:0;
+  opacity:0; transform:translateY(-6px);
+  transition:opacity var(--dur-med) var(--ease), transform var(--dur-med) var(--ease);
+}
+.kp-collapse[data-open="true"]{ grid-template-rows:1fr; }
+.kp-collapse[data-open="true"] > .kp-collapse-inner{ opacity:1; transform:none; }
+/* the spacing sits on the clipped wrapper, not on the field, so the
+   OTP field's box stays the same height as the other two and the
+   keyline segment measures the same for all three. */
+.kp-collapse .kp-collapse-inner{ padding-block-start:38px; }
+
+/* ---- submit ------------------------------------------------------- */
+.kp-actions{ display:flex; margin-block-start:40px; }
+.kp-submit{
+  position:relative; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:44px; padding-inline:28px;
+  font-size:var(--fs-sm); font-weight:var(--fw-bold);
+  letter-spacing:.14em; text-transform:uppercase;
+  color:var(--on-accent); background:var(--accent-strong);
+  border:0; border-radius:var(--radius-sm); cursor:pointer;
+  transition:filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.kp-submit:hover{ filter:var(--btn-hover); }
+.kp-submit:active{ transform:translateY(1px); }
+.kp-submit[aria-disabled="true"]{ cursor:progress; }
+.kp-submit[aria-disabled="true"]:hover{ filter:none; }
+.kp-submit-label{ transition:opacity var(--dur-fast) var(--ease); }
+.kp-submit[data-loading="true"] .kp-submit-label{ opacity:.5; }
+
+.kp-submit-sweep{
+  position:absolute; inset-inline-start:0; bottom:0;
+  width:34%; height:2px; background:var(--on-accent);
+  opacity:0;
+}
+.kp-submit[data-loading="true"] .kp-submit-sweep{
+  opacity:.9; animation:kp-sweep 1.05s var(--ease) infinite;
+}
+#lg-keyplate[dir="rtl"] .kp-submit[data-loading="true"] .kp-submit-sweep{
+  animation-name:kp-sweep-rtl;
+}
+@keyframes kp-sweep{ from{ transform:translateX(-100%); } to{ transform:translateX(294%); } }
+@keyframes kp-sweep-rtl{ from{ transform:translateX(100%); } to{ transform:translateX(-294%); } }
+
+@media (max-width:559px){
+  .kp-actions{ display:block; }
+  .kp-submit{ width:100%; }
+}
+
+/* ================================================================== *
+ * utilities. Bottom of the viewport, registered to the same keyline,
+ * wearing the same label type as the fields so they read as part of
+ * the system rather than as floating chrome.
+ * ================================================================== */
+.kp-utility{
+  grid-row:2;
+  padding-inline-start:var(--kp-gap);
+  padding-block:var(--sp-5) var(--sp-8);
+  display:flex; align-items:center; gap:var(--sp-6) 28px; flex-wrap:wrap;
+}
+.kp-util{ display:flex; align-items:center; gap:var(--sp-3); min-width:0; }
+
+.kp-select{ position:relative; display:inline-flex; align-items:center; }
+.kp-select select{
+  appearance:none; -webkit-appearance:none;
+  font-size:var(--fs-sm); font-weight:var(--fw-medium);
+  color:var(--text-2); background:transparent;
+  border:0; border-bottom:1px solid var(--border-strong); border-radius:0;
+  padding-block:4px 5px; padding-inline:0 22px;
+  cursor:pointer; text-align:start;
+  transition:color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.kp-select select:hover{ color:var(--text); border-color:var(--accent); }
+.kp-select select option{ background:var(--surface); color:var(--text); }
+.kp-select-caret{
+  position:absolute; inset-inline-end:2px; width:12px; height:12px;
+  pointer-events:none; color:var(--text-3);
+  fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
+}
+
+.kp-theme{
+  display:inline-flex; gap:2px; padding:2px;
+  border:1px solid var(--border); border-radius:var(--radius-pill);
+}
+.kp-theme-btn{
+  width:30px; height:24px;
+  display:grid; place-items:center;
+  border:0; border-radius:var(--radius-pill); background:transparent;
+  color:var(--text-3); cursor:pointer;
+  transition:background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.kp-theme-btn:hover{ color:var(--text-2); }
+.kp-theme-btn[aria-pressed="true"]{ background:var(--accent-weak); color:var(--accent); }
+.kp-theme-btn svg{
+  width:14px; height:14px; fill:none; stroke:currentColor;
+  stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;
+}
+
+/* ---- RTL ---------------------------------------------------------- *
+ * Tracking and uppercasing are Latin devices. Letter-spacing breaks
+ * Arabic and Persian joining outright, so both come off in RTL. */
+#lg-keyplate[dir="rtl"] .kp-label,
+#lg-keyplate[dir="rtl"] .kp-reveal,
+#lg-keyplate[dir="rtl"] .kp-submit{
+  letter-spacing:0; text-transform:none;
+}
+/* 11px is a Latin small-caps size. Persian and Arabic need the next
+   step up to stay legible once the tracking and casing come off. */
+#lg-keyplate[dir="rtl"] .kp-label{ font-size:var(--fs-sm); }
+#lg-keyplate[dir="rtl"] .kp-input--otp{ letter-spacing:.34em; }
+
+/* ================================================================== *
+ * MOCKUP SCAFFOLDING. Not part of the design. Delete on port.
+ * ================================================================== */
+.kp-mock{
+  position:fixed; inset-block-end:14px; inset-inline-end:14px; z-index:30;
+  border:1px dashed var(--border-strong); border-radius:var(--radius-md);
+  background:var(--surface); padding:8px;
+  max-width:calc(100vw - 28px);
+}
+.kp-mock-toggle{
+  display:block; width:100%; border:0; background:none; cursor:pointer;
+  font-size:var(--fs-xs); font-weight:var(--fw-semibold); letter-spacing:.12em;
+  text-transform:uppercase; color:var(--text-3); padding:4px 6px; text-align:start;
+}
+.kp-mock-body{ display:flex; flex-wrap:wrap; gap:6px; padding:8px 6px 4px; max-width:280px; }
+.kp-mock[data-open="false"] .kp-mock-body{ display:none; }
+.kp-mock-btn{
+  font-size:var(--fs-xs); font-weight:var(--fw-semibold); letter-spacing:.06em;
+  color:var(--text-2); background:var(--surface-2);
+  border:1px solid var(--border); border-radius:var(--radius-sm);
+  padding:5px 9px; cursor:pointer;
+}
+.kp-mock-btn[aria-pressed="true"]{ background:var(--accent-weak); color:var(--accent); border-color:var(--accent); }
+</style>
+
+<div class="kp-page">
+  <div class="kp-column" id="kpColumn">
+
+    <span class="kp-keymark" id="kpKeymark" data-tone="accent" aria-hidden="true"></span>
+
+    <main class="kp-stage">
+      <div id="kpHead">
+        <h1 class="kp-mark" id="kpMark" dir="ltr">[VPN-UI]</h1>
+
+        <p class="kp-status" id="kpStatus" data-tone="rest" aria-live="polite" aria-atomic="true">
+          <span id="kpGreeting"><span class="kp-hello" data-i18n="hello">Hello</span>. <span class="kp-welcome" data-i18n="welcome">Welcome</span>.</span>
+          <span id="kpExpired" data-i18n="expired" hidden>Your session has expired, please log in again</span>
+          <span id="kpError" data-i18n="wrong" hidden>Invalid username or password or two-factor code.</span>
+        </p>
+      </div>
+
+      <form class="kp-form" id="kpForm" novalidate>
+        <div class="kp-fields" id="kpFields">
+
+          <div class="kp-field" data-field="username">
+            <div class="kp-field-head">
+              <label class="kp-label" for="kpUsername" data-i18n="username">Username</label>
+            </div>
+            <div class="kp-input-wrap">
+              <input class="kp-input" id="kpUsername" name="username" type="text"
+                     autocomplete="username" autocapitalize="none" autocorrect="off"
+                     spellcheck="false" required>
+            </div>
+          </div>
+
+          <div class="kp-field" data-field="password">
+            <div class="kp-field-head">
+              <label class="kp-label" for="kpPassword" data-i18n="password">Password</label>
+            </div>
+            <div class="kp-input-wrap">
+              <input class="kp-input" id="kpPassword" name="password" type="password"
+                     autocomplete="current-password" required>
+              <!-- Port note: this maps onto a-input-password's suffix slot, or
+                   onto a-input with :type bound. Needs two new i18n keys for
+                   "Show" / "Hide"; the repo has none today, so fa_IR and ar_EG
+                   fall back to English below. -->
+              <button type="button" class="kp-reveal" id="kpReveal" aria-controls="kpPassword">
+                <span data-i18n="show">Show</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2FA. Hidden until the server reports the account has a second
+               factor. The stage is top-anchored, so this opening cannot move
+               the wordmark or the status line. -->
+          <div class="kp-collapse" id="kpOtp" data-open="false" inert>
+            <div class="kp-collapse-inner">
+              <div class="kp-field" data-field="code">
+                <div class="kp-field-head">
+                  <label class="kp-label" for="kpCode" data-i18n="code">Code</label>
+                </div>
+                <div class="kp-input-wrap">
+                  <input class="kp-input kp-input--otp" id="kpCode" name="twoFactorCode" type="text"
+                         autocomplete="one-time-code" inputmode="numeric" maxlength="6" spellcheck="false">
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="kp-actions">
+          <button type="submit" class="kp-submit" id="kpSubmit" data-loading="false">
+            <span class="kp-submit-label" data-i18n="login">Log In</span>
+            <span class="kp-submit-sweep" aria-hidden="true"></span>
+          </button>
+        </div>
+      </form>
+    </main>
+
+    <div class="kp-utility">
+      <div class="kp-util">
+        <label class="kp-label" for="kpLang" data-i18n="language">Language</label>
+        <span class="kp-select">
+          <select id="kpLang">
+            <option value="ar-EG">العربية</option>
+            <option value="en-US" selected>English</option>
+            <option value="fa-IR">فارسی</option>
+            <option value="zh-CN">简体中文</option>
+            <option value="zh-TW">繁體中文</option>
+            <option value="ja-JP">日本語</option>
+            <option value="ru-RU">Русский</option>
+            <option value="vi-VN">Tiếng Việt</option>
+            <option value="es-ES">Español</option>
+            <option value="id-ID">Indonesian</option>
+            <option value="uk-UA">Український</option>
+            <option value="tr-TR">Türkçe</option>
+            <option value="pt-BR">Português</option>
+          </select>
+          <svg class="kp-select-caret" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9.5 12 15.5 18 9.5"/></svg>
+        </span>
+      </div>
+
+      <div class="kp-util">
+        <span class="kp-label" id="kpThemeLabel" data-i18n="theme">Theme</span>
+        <div class="kp-theme" role="group" aria-labelledby="kpThemeLabel">
+          <button type="button" class="kp-theme-btn" id="kpLight" aria-pressed="true">
+            <span class="kp-sr">Light</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.3"/><line x1="12" y1="2" x2="12" y2="4.6"/><line x1="12" y1="19.4" x2="12" y2="22"/><line x1="2" y1="12" x2="4.6" y2="12"/><line x1="19.4" y1="12" x2="22" y2="12"/><line x1="4.7" y1="4.7" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.3" y2="19.3"/><line x1="4.7" y1="19.3" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.3" y2="4.7"/></svg>
+          </button>
+          <button type="button" class="kp-theme-btn" id="kpDark" aria-pressed="false">
+            <span class="kp-sr">Dark</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7.3 7.3 0 0 0 9.8 9.8z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MOCKUP SCAFFOLDING. Delete on port. -->
+<div class="kp-mock" id="kpMock" data-open="true">
+  <button type="button" class="kp-mock-toggle" id="kpMockToggle" aria-expanded="true" aria-controls="kpMockBody">Mockup states</button>
+  <div class="kp-mock-body" id="kpMockBody">
+    <button type="button" class="kp-mock-btn" id="kpMock2fa" aria-pressed="false">2FA field</button>
+    <button type="button" class="kp-mock-btn" id="kpMockErr" aria-pressed="false">Error</button>
+    <button type="button" class="kp-mock-btn" id="kpMockExp" aria-pressed="false">Session expired</button>
+    <button type="button" class="kp-mock-btn" id="kpMockLoad" aria-pressed="false">Loading</button>
+    <button type="button" class="kp-mock-btn" id="kpMockDir" aria-pressed="false">RTL</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var root    = document.getElementById('lg-keyplate');
+  var docEl   = document.documentElement;
+  var column  = document.getElementById('kpColumn');
+  var keymark = document.getElementById('kpKeymark');
+  var head    = document.getElementById('kpHead');
+  var mark    = document.getElementById('kpMark');
+  var statusEl= document.getElementById('kpStatus');
+  var greeting= document.getElementById('kpGreeting');
+  var expired = document.getElementById('kpExpired');
+  var errorEl = document.getElementById('kpError');
+  var form    = document.getElementById('kpForm');
+  var fields  = document.getElementById('kpFields');
+  var otp     = document.getElementById('kpOtp');
+  var codeIn  = document.getElementById('kpCode');
+  var pwdIn   = document.getElementById('kpPassword');
+  var reveal  = document.getElementById('kpReveal');
+  var submit  = document.getElementById('kpSubmit');
+
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  var state = { twoFactor:false, error:false, expired:false, loading:false, revealed:false };
+
+  /* ---------------------------------------------------------------- *
+   * i18n. Real panel copy, lifted from web/translation/*.toml. Only
+   * the two RTL locales are filled in here; the other eleven ship the
+   * same keys in production and fall back to English in this mockup.
+   * ---------------------------------------------------------------- */
+  var STRINGS = {
+    'en-US':{
+      hello:'Hello', welcome:'Welcome',
+      username:'Username', password:'Password', code:'Code', login:'Log In',
+      expired:'Your session has expired, please log in again',
+      wrong:'Invalid username or password or two-factor code.',
+      language:'Language', theme:'Theme', show:'Show', hide:'Hide'
+    },
+    'fa-IR':{
+      hello:'سلام', welcome:'خوش‌آمدید',
+      username:'نام‌کاربری', password:'رمزعبور', code:'کد', login:'ورود',
+      expired:'مدت زمان استفاده به‌اتمام‌رسیده، لطفا دوباره وارد شوید',
+      wrong:'نام کاربری، رمز عبور یا کد دو مرحله‌ای نامعتبر است.',
+      language:'زبان', theme:'تم', show:'Show', hide:'Hide'
+    },
+    'ar-EG':{
+      hello:'أهلا', welcome:'أهلاً وسهلاً',
+      username:'اسم المستخدم', password:'الباسورد', code:'الكود', login:'تسجيل الدخول',
+      expired:'انتهت صلاحية الجلسة، سجل دخول تاني',
+      wrong:'اسم المستخدم أو كلمة المرور أو كود المصادقة الثنائية غير صحيح.',
+      language:'اللغة', theme:'الثيم', show:'Show', hide:'Hide'
+    }
+  };
+  var RTL_LOCALES = ['fa-IR','ar-EG'];
+  var dirOverride = null;
+
+  function applyLocale(loc){
+    var dict = STRINGS[loc] || STRINGS['en-US'];
+    var base = STRINGS['en-US'];
+    root.querySelectorAll('[data-i18n]').forEach(function(el){
+      var key = el.getAttribute('data-i18n');
+      if(key === 'show' || key === 'hide') return;   /* handled by the reveal */
+      el.textContent = dict[key] || base[key] || '';
+    });
+    reveal.querySelector('span').textContent =
+      state.revealed ? (dict.hide || base.hide) : (dict.show || base.show);
+    reveal.setAttribute('aria-label',
+      state.revealed ? (dict.hide || base.hide) : (dict.show || base.show));
+
+    var rtl = dirOverride ? dirOverride === 'rtl' : RTL_LOCALES.indexOf(loc) !== -1;
+    root.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+    docEl.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+    docEl.setAttribute('lang', loc);
+    mockDir.setAttribute('aria-pressed', rtl ? 'true' : 'false');
+    place();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * theme
+   * ---------------------------------------------------------------- */
+  var lightBtn = document.getElementById('kpLight');
+  var darkBtn  = document.getElementById('kpDark');
+  function effectiveTheme(){
+    var attr = docEl.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark') return attr;
+    return window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light';
+  }
+  function applyTheme(t){
+    docEl.setAttribute('data-theme', t);
+    lightBtn.setAttribute('aria-pressed', t === 'light' ? 'true' : 'false');
+    darkBtn.setAttribute('aria-pressed',  t === 'dark'  ? 'true' : 'false');
+  }
+  lightBtn.addEventListener('click', function(){ applyTheme('light'); });
+  darkBtn.addEventListener('click',  function(){ applyTheme('dark'); });
+
+  /* ---------------------------------------------------------------- *
+   * the keyline segment. This is the whole state channel.
+   * ---------------------------------------------------------------- */
+  function target(){
+    var focused = root.querySelector('.kp-field:focus-within');
+    if(focused && !state.loading) return { el:focused, tone:'accent' };
+    if(state.error)   return { el:fields, tone:'error' };
+    if(state.expired) return { el:head,   tone:'warn' };
+    return { el:mark, tone:'accent' };
+  }
+  function place(){
+    var t = target();
+    if(!t.el) return;
+    var cr = column.getBoundingClientRect();
+    var er = t.el.getBoundingClientRect();
+    keymark.style.top    = (er.top - cr.top).toFixed(1) + 'px';
+    keymark.style.height = Math.max(er.height, 2).toFixed(1) + 'px';
+    keymark.setAttribute('data-tone', t.tone);
+  }
+  /* follow a layout that is mid-transition (the 2FA reveal) without the
+     segment running its own competing animation on top of it. */
+  function track(ms){
+    if(reduceMotion){ place(); return; }
+    keymark.classList.add('is-tracking');
+    var end = performance.now() + ms;
+    (function step(now){
+      place();
+      if(now < end) requestAnimationFrame(step);
+      else keymark.classList.remove('is-tracking');
+    })(performance.now());
+  }
+
+  root.addEventListener('focusin', place);
+  root.addEventListener('focusout', function(){ requestAnimationFrame(place); });
+  window.addEventListener('resize', place);
+  if(window.ResizeObserver) new ResizeObserver(place).observe(column);
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(place);
+
+  /* ---------------------------------------------------------------- *
+   * field states
+   * ---------------------------------------------------------------- */
+  root.querySelectorAll('.kp-input').forEach(function(input){
+    input.addEventListener('input', function(){
+      input.closest('.kp-field').classList.toggle('is-filled', input.value.length > 0);
+      if(state.error) setError(false);
+    });
+  });
+
+  reveal.addEventListener('click', function(){
+    state.revealed = !state.revealed;
+    pwdIn.type = state.revealed ? 'text' : 'password';
+    applyLocale(langSel.value);
+    pwdIn.focus();
+  });
+
+  /* ---------------------------------------------------------------- *
+   * status slot: greeting / expired / error, one line, no shift
+   * ---------------------------------------------------------------- */
+  function renderStatus(){
+    var tone = state.error ? 'error' : (state.expired ? 'warn' : 'rest');
+    statusEl.setAttribute('data-tone', tone);
+    greeting.hidden = tone !== 'rest';
+    expired.hidden  = tone !== 'warn';
+    errorEl.hidden  = tone !== 'error';
+    place();
+  }
+  function setError(on){
+    state.error = on;
+    form.classList.toggle('is-error', on);
+    [document.getElementById('kpUsername'), pwdIn, codeIn].forEach(function(el){
+      if(on){ el.setAttribute('aria-invalid','true'); el.setAttribute('aria-describedby','kpError'); }
+      else  { el.removeAttribute('aria-invalid'); el.removeAttribute('aria-describedby'); }
+    });
+    mockErr.setAttribute('aria-pressed', on ? 'true' : 'false');
+    renderStatus();
+  }
+  function setExpired(on){
+    state.expired = on;
+    mockExp.setAttribute('aria-pressed', on ? 'true' : 'false');
+    renderStatus();
+  }
+
+  /* ---------------------------------------------------------------- *
+   * 2FA
+   * ---------------------------------------------------------------- */
+  function setTwoFactor(on, focusIt){
+    state.twoFactor = on;
+    otp.setAttribute('data-open', on ? 'true' : 'false');
+    if(on) otp.removeAttribute('inert'); else otp.setAttribute('inert','');
+    if(on) codeIn.setAttribute('required',''); else codeIn.removeAttribute('required');
+    mock2fa.setAttribute('aria-pressed', on ? 'true' : 'false');
+    track(420);
+    if(on && focusIt) setTimeout(function(){ codeIn.focus(); }, reduceMotion ? 0 : 200);
+  }
+
+  /* ---------------------------------------------------------------- *
+   * submit + loading
+   * ---------------------------------------------------------------- */
+  function setLoading(on){
+    state.loading = on;
+    submit.setAttribute('data-loading', on ? 'true' : 'false');
+    submit.setAttribute('aria-busy', on ? 'true' : 'false');
+    if(on) submit.setAttribute('aria-disabled','true'); else submit.removeAttribute('aria-disabled');
+    mockLoad.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  form.addEventListener('submit', function(e){
+    e.preventDefault();                       /* mockup: nothing is posted */
+    if(state.loading) return;
+    setLoading(true);
+    setTimeout(function(){
+      setLoading(false);
+      if(!state.twoFactor) setTwoFactor(true, true);   /* the real two-step */
+      else setError(true);
+    }, 1400);
+  });
+
+  /* ---------------------------------------------------------------- *
+   * MOCKUP SCAFFOLDING. Delete on port.
+   * ---------------------------------------------------------------- */
+  var mock      = document.getElementById('kpMock');
+  var mockTog   = document.getElementById('kpMockToggle');
+  var mock2fa   = document.getElementById('kpMock2fa');
+  var mockErr   = document.getElementById('kpMockErr');
+  var mockExp   = document.getElementById('kpMockExp');
+  var mockLoad  = document.getElementById('kpMockLoad');
+  var mockDir   = document.getElementById('kpMockDir');
+  var langSel   = document.getElementById('kpLang');
+
+  mockTog.addEventListener('click', function(){
+    var open = mock.getAttribute('data-open') !== 'true';
+    mock.setAttribute('data-open', open ? 'true' : 'false');
+    mockTog.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  mock2fa.addEventListener('click',  function(){ setTwoFactor(!state.twoFactor, false); });
+  mockErr.addEventListener('click',  function(){ setError(!state.error); });
+  mockExp.addEventListener('click',  function(){ setExpired(!state.expired); });
+  mockLoad.addEventListener('click', function(){ setLoading(!state.loading); });
+  mockDir.addEventListener('click',  function(){
+    dirOverride = root.getAttribute('dir') === 'rtl' ? 'ltr' : 'rtl';
+    applyLocale(langSel.value);
+  });
+  langSel.addEventListener('change', function(){
+    dirOverride = null;                       /* locale decides direction again */
+    applyLocale(langSel.value);
+  });
+
+  if(!window.matchMedia('(min-width:900px)').matches){
+    mock.setAttribute('data-open','false');
+    mockTog.setAttribute('aria-expanded','false');
+  }
+
+  /* ---------------------------------------------------------------- */
+  applyTheme(effectiveTheme());
+  applyLocale('en-US');
+  renderStatus();
+  place();
+})();
+</script>
+</div>
+</body>
+</html>

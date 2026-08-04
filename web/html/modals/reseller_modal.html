@@ -56,7 +56,24 @@
           <a-icon type="question-circle"></a-icon>
         </a-tooltip>
       </template>
-      <a-switch v-model="resellerModal.reseller.allowOverview"></a-switch>
+      <a-switch v-model="resellerModal.reseller.allowOverview"
+        @change="resellerModal.onAllowOverviewChange"></a-switch>
+    </a-form-item>
+
+    <!-- Scopes the page above rather than a page of its own: with the overview
+         withheld there is nothing here to manage, so the switch is dead until it
+         is granted. The server reads it the same way and ignores this flag on its
+         own. -->
+    <a-form-item>
+      <template slot="label">
+        <a-tooltip>
+          <template slot="title">{{ i18n "pages.resellers.allowOverviewManageDesc" }}</template>
+          {{ i18n "pages.resellers.allowOverviewManage" }}
+          <a-icon type="question-circle"></a-icon>
+        </a-tooltip>
+      </template>
+      <a-switch v-model="resellerModal.reseller.allowOverviewManage"
+        :disabled="!resellerModal.reseller.allowOverview"></a-switch>
     </a-form-item>
 
     <a-form-item>
@@ -175,7 +192,8 @@
     reseller: {
       id: 0, username: '', password: '', nickname: '', enable: true,
       unlimited: false, allowanceGb: 0, daysPerGb: 0, minCreateGb: 0, minAddGb: 0,
-      allowExternalProxy: false, allowOverview: false, inboundIds: [],
+      allowExternalProxy: false, allowOverview: false, allowOverviewManage: false,
+      inboundIds: [],
     },
 
     get allChecked() {
@@ -191,6 +209,12 @@
       resellerModal.reseller.inboundIds = e.target.checked
         ? resellerModal.allInbounds.map(ib => ib.id)
         : [];
+    },
+    // Taking the overview away takes the management grant with it. Leaving a true
+    // parked behind the disabled switch would save a grant nobody can see, and
+    // re-granting the page later would hand back its controls with it.
+    onAllowOverviewChange(checked) {
+      if (!checked) resellerModal.reseller.allowOverviewManage = false;
     },
     ok() {
       ObjectUtil.execute(resellerModal.confirm, resellerModal.reseller);
@@ -217,13 +241,15 @@
           minAddGb: Number(reseller.minAddGb) || 0,
           allowExternalProxy: !!reseller.allowExternalProxy,
           allowOverview: !!reseller.allowOverview,
+          allowOverviewManage: !!reseller.allowOverviewManage,
           inboundIds: (reseller.inboundIds || []).slice(),
         };
       } else {
         this.reseller = {
           id: 0, username: '', password: '', nickname: '', enable: true,
           unlimited: false, allowanceGb: 0, daysPerGb: 0, minCreateGb: 0, minAddGb: 0,
-          allowExternalProxy: false, allowOverview: false, inboundIds: [],
+          allowExternalProxy: false, allowOverview: false, allowOverviewManage: false,
+          inboundIds: [],
         };
       }
       this.visible = true;
@@ -247,6 +273,7 @@
         minAddGb: Number(reseller.minAddGb) || 0,
         allowExternalProxy: reseller.allowExternalProxy,
         allowOverview: reseller.allowOverview,
+        allowOverviewManage: reseller.allowOverviewManage,
         // A blank entry is how "none" is sent: an omitted key binds as nil server-side and
         // cannot be told apart from "leave the existing grants alone".
         inboundIds: (reseller.inboundIds || []).length ? reseller.inboundIds : [''],

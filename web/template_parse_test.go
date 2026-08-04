@@ -42,7 +42,7 @@ func TestAllTemplatesParseAndProtocolFormsDefined(t *testing.T) {
 		t.Fatalf("walk htmlFS: %v", walkErr)
 	}
 	// every VPN protocol form must be defined (form/mtproto is the new one)
-	for _, name := range []string{"form/ssh", "form/mtproto", "form/wgc", "form/ikev2", "form/sstp", "form/openconnect", "form/openvpn", "form/pptp", "form/l2tp"} {
+	for _, name := range []string{"form/ssh", "form/mtproto", "form/wgc", "form/ikev2", "form/sstp", "form/openconnect", "form/openvpn", "form/pptp", "form/l2tp", "form/anytls", "form/tuic", "form/naive"} {
 		if tpl.Lookup(name) == nil {
 			t.Errorf("template %q not defined — its protocol form failed to parse or is mis-named", name)
 		}
@@ -60,7 +60,11 @@ func TestEditedTemplatesParse(t *testing.T) {
 	}
 	files := []string{
 		"html/inbounds.html",
-		"html/component/aClientTable.html",
+		"html/clients.html",
+		"html/component/clientActions.html", // the shared client mixin
+		"html/component/clientActionIcons.html",
+		"html/component/bulkOpsModal.html",
+		"html/modals/client_membership_modal.html",
 		"html/index.html", // dashboard incl. the unsupported-distro warning modal
 		"html/admins.html",
 		"html/modals/admin_modal.html",

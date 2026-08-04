@@ -25,13 +25,19 @@ func NewCustomGeoController(g *gin.RouterGroup, customGeo *service.CustomGeoServ
 }
 
 func (a *CustomGeoController) initRouter(g *gin.RouterGroup) {
+	// Reads stay on the group's Xray permission alone. /list backs the overview's
+	// geofiles dialog, which is part of the read-only showcase, and /aliases is read
+	// by the Xray routing editor, which has nothing to do with the overview.
 	g.GET("/list", a.list)
 	g.GET("/aliases", a.aliases)
-	g.POST("/add", a.add)
-	g.POST("/update/:id", a.update)
-	g.POST("/delete/:id", a.delete)
-	g.POST("/download/:id", a.download)
-	g.POST("/update-all", a.updateAll)
+	// The writes are offered only from that dialog, so they additionally require the
+	// bit that turns the overview into a page that can act. An AND on top of the
+	// group's PermXraySettings, never a way around it.
+	g.POST("/add", requireOverviewManage(), a.add)
+	g.POST("/update/:id", requireOverviewManage(), a.update)
+	g.POST("/delete/:id", requireOverviewManage(), a.delete)
+	g.POST("/download/:id", requireOverviewManage(), a.download)
+	g.POST("/update-all", requireOverviewManage(), a.updateAll)
 }
 
 func mapCustomGeoErr(c *gin.Context, err error) error {

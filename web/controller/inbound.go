@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
@@ -84,6 +85,12 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/:id/copyClients", requirePerm(model.PermCreateClient), owns, a.copyInboundClients)
 	g.POST("/:id/delClient/:clientId", requirePerm(model.PermDeleteClient), owns, a.delInboundClient)
 	g.POST("/updateClient/:clientId", requirePerm(model.PermEditClient), a.updateInboundClient)
+	// Switch one account on or off on ONE inbound. Deliberately not a shape of
+	// updateClient: `enable` inside a posted client entry means the ACCOUNT's flag
+	// to every existing caller, so the per-inbound intent needs its own route or it
+	// cannot be told apart. Same guards as any other client edit, plus `owns` because
+	// the inbound being changed is the one in the path.
+	g.POST("/:id/setMembershipEnable/:email", requirePerm(model.PermEditClient), owns, ownsClient, a.setMembershipEnable)
 	g.POST("/bulkUpdateClients", requirePerm(model.PermBulkOperation), a.bulkUpdateClients)
 	g.POST("/bulkPreview", requirePerm(model.PermBulkOperation), a.bulkPreview)
 	// ownsClient as well as owns: the service resolves this one by :email and ignores
@@ -114,6 +121,16 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.GET("/:id/awg-configs", read, owns, a.getAwgConfigs)
 	g.GET("/:id/gre-configs", read, owns, a.getGreConfigs)
 	g.GET("/:id/ssh-configs", read, owns, a.getSshConfigs)
+
+	// Address-plane introspection (web/controller/addressing.go). The pool, the slot
+	// and the tunnel address an account lands on are all decided by the panel and were
+	// readable nowhere, so a caller had to reimplement the allocator to learn what it
+	// had been given. `/pools` is gated on createInbound, not the read bit: it names
+	// every inbound on the box, which is more than a reseller may see, and a derived
+	// reseller mask carries no *Inbound bit beyond access so that gate excludes them
+	// structurally rather than by a check that could be forgotten.
+	g.GET("/:id/addressing", read, owns, a.getInboundAddressing)
+	g.GET("/pools", requirePerm(model.PermCreateInbound), a.getVpnPools)
 }
 
 // onL2tpChanged regenerates L2TP configs and restarts services when an L2TP inbound is modified.
@@ -631,6 +648,7 @@ func (a *InboundController) addInbound(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	a.syncInboundAccounts(inbound.Id)
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.inboundCreateSuccess"), inbound, nil)
 	if inbound.Protocol == model.L2TP {
 		a.onL2tpChanged()
@@ -678,28 +696,38 @@ func (a *InboundController) delInbound(c *gin.Context) {
 	isOpenVpn := oldInbound != nil && oldInbound.Protocol == model.OPENVPN
 	isOcserv := oldInbound != nil && oldInbound.Protocol == model.OPENCONNECT
 	isSstp := oldInbound != nil && oldInbound.Protocol == model.SSTP
-	// Every reseller-owned account on this inbound, and how much each has moved,
-	// captured while their traffic rows still exist. Deleting the inbound takes
-	// those rows with it, so a refund priced afterwards would treat every account
-	// as untouched and hand back the whole charge for all of them at once.
-	var resellerUsage map[string]int64
+	// Every reseller-owned account this inbound serves, and how much each has moved,
+	// captured while the inbound's settings and their traffic rows still exist.
+	// Deleting the inbound takes both with it: the roster can no longer be read at
+	// all, and a refund priced afterwards would treat every account as untouched and
+	// hand back the whole charge for all of them at once.
+	var (
+		resellerOwned []string
+		resellerUsage map[string]int64
+	)
 	if owned, oerr := resellerService.OwnedEmailsOnInbound(id); oerr != nil {
 		logger.Warning("listing reseller accounts before an inbound delete: ", oerr)
 	} else if len(owned) > 0 {
+		resellerOwned = owned
 		if resellerUsage, oerr = resellerService.UsageSnapshot(owned); oerr != nil {
 			logger.Warning("reading traffic before an inbound delete: ", oerr)
 		}
 	}
 	needRestart, err := a.inboundService.DelInbound(id)
+	if err == nil {
+		// The inbound is gone, so every membership pointing at it must go too.
+		a.syncInboundAccounts(id)
+	}
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	// The mirror of the grant revocation DelInbound already does: drop every reseller
-	// ownership row for this inbound, refunding what those accounts had left. Left
-	// behind, the rows outlive the inbound and a recycled id inherits them.
-	if rerr := resellerService.DropInbound(id, resellerUsage); rerr != nil {
-		logger.Warning("dropping reseller ownership of a deleted inbound's accounts: ", rerr)
+	// The mirror of the grant revocation DelInbound already does: settle the ledger
+	// for the accounts this inbound served, refunding the ones it was the LAST
+	// inbound for. An account still served elsewhere keeps its row and its charge,
+	// because it is still selling.
+	if rerr := resellerService.DropInbound(id, resellerOwned, resellerUsage); rerr != nil {
+		logger.Warning("settling reseller ownership after an inbound delete: ", rerr)
 	}
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.inboundDeleteSuccess"), id, nil)
 	if isL2tp {
@@ -740,8 +768,30 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
 		return
 	}
-	inbound := &model.Inbound{
-		Id: id,
+	// Bind ONTO THE STORED ROW, not onto an empty struct.
+	//
+	// UpdateInbound copies about twenty editable columns from this struct onto the
+	// persisted row, and Gin's form binding leaves any field the request did not
+	// mention at its ZERO value. Binding onto an empty struct therefore made every
+	// omitted field a silent destructive write: an API client that sent only
+	// `remark` and `settings` (the obvious way to rename an inbound) also zeroed
+	// the traffic multiplier, every speed limit, the IP limit and strategy, and the
+	// inbound's own quota and expiry. Nothing reported it, because from the
+	// server's side those were simply the values it was sent.
+	//
+	// Pre-filling makes an omitted field mean "leave it alone", which is what a
+	// partial update should mean. It is a no-op for the panel itself: the form
+	// posts the whole inbound object, so every field is present and overwrites the
+	// pre-filled one.
+	inbound := &model.Inbound{Id: id}
+	if stored, gerr := a.inboundService.GetInbound(id); gerr == nil && stored != nil {
+		prefill := *stored
+		// ClientStats is a has-many association, not an editable column; carrying
+		// it into the bind target would hand UpdateInbound a preloaded association
+		// to write back.
+		prefill.ClientStats = nil
+		prefill.Id = id
+		inbound = &prefill
 	}
 	err = c.ShouldBind(inbound)
 	if err != nil {
@@ -773,6 +823,7 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	a.syncInboundAccounts(inbound.Id)
 	jsonMsgObj(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), inbound, nil)
 	if inbound.Protocol == model.L2TP {
 		a.onL2tpChanged()
@@ -877,6 +928,19 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
 		return
 	}
+	// The account may be asked for on SEVERAL inbounds. Every one of them arrives
+	// in the body too, so each needs the same assertion data.Id just got: checking
+	// only the target would let an admin holding one inbound provision a live
+	// account on someone else's by listing it here.
+	membershipIds, membershipsExplicit := postedMembershipIds(c, data.Id)
+	if !a.callerOwnsInbounds(c, membershipIds) {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
+		return
+	}
+	if err := a.validateMembershipSet(membershipIds); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
 	// Prices the account against the reseller's balance, clamps the posted client to
 	// their limits, and RESERVES the bytes before the account exists. Inactive for an
 	// admin, who has no balance to reserve against.
@@ -899,40 +963,51 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	// Put the account on every requested inbound and re-project, so all of them
+	// carry it before any daemon config is regenerated below.
+	//
+	// A BULK add posts many clients in one request, and postedClientEmail answers
+	// "" for all of them on purpose: there is no single account for a membership
+	// set to be about. That left the batch mirrored nowhere - every client landed
+	// in settings.clients and client_traffics, and NONE of them appeared on the
+	// Clients page, which lists the accounts layer. It self-healed on the next
+	// single-client write to the same inbound, which is what made it look like a
+	// refresh problem. The mirror is per-inbound, so one call covers the batch.
+	//
+	// A batch can name a membership SET as well, and then every account in it has
+	// to reach every inbound in the set. That is per account, not per request, so
+	// it is a loop rather than one call: ApplyMemberships projects one email onto
+	// the set and mints whatever each protocol additionally needs. The mirror runs
+	// first, so the accounts exist for it to project. Without this the Clients
+	// page's bulk-add form could offer a checklist whose extra inbounds were
+	// silently dropped.
+	// The inbounds the projection actually rewrote. A write naming ONE inbound still
+	// re-projects the account onto every inbound serving it (the account-wide fields
+	// it just changed have to reach all of them), so the reconcile below has to cover
+	// those too or a daemon keeps serving the settings JSON it no longer matches.
+	var projected []int
+	if emails := postedClientEmails(data); len(emails) > 1 {
+		a.syncInboundAccounts(data.Id)
+		if membershipsExplicit {
+			for _, email := range emails {
+				touched, merr := a.applyClientMemberships(c, email, membershipIds, membershipsExplicit)
+				if merr != nil {
+					logger.Warning("applying client memberships for ", email, ": ", merr)
+				}
+				projected = unionInboundIds(projected, touched)
+			}
+		}
+	} else {
+		touched, merr := a.applyClientMemberships(c, postedClientEmail(data), membershipIds, membershipsExplicit)
+		if merr != nil {
+			logger.Warning("applying client memberships: ", merr)
+		}
+		projected = unionInboundIds(projected, touched)
+	}
+
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientAddSuccess"), nil)
 
-	// The request body may not include protocol, so look it up from the DB.
-	if data.Protocol == "" {
-		if dbInbound, err := a.inboundService.GetInbound(data.Id); err == nil {
-			data.Protocol = dbInbound.Protocol
-		}
-	}
-
-	if data.Protocol == model.L2TP {
-		a.onL2tpClientChanged()
-	} else if data.Protocol == model.PPTP {
-		a.onPptpClientChanged()
-	} else if data.Protocol == model.OPENVPN {
-		a.onOpenVpnClientChanged()
-	} else if data.Protocol == model.OPENCONNECT {
-		a.onOcservClientChanged()
-	} else if data.Protocol == model.SSTP {
-		a.onSstpClientChanged()
-	} else if data.Protocol == model.IKEV2 {
-		a.onIkev2ClientChanged()
-	} else if data.Protocol == model.WGC {
-		a.onWgcClientChanged()
-	} else if data.Protocol == model.AWG {
-		a.onAwgClientChanged()
-	} else if data.Protocol == model.GRE {
-		a.onGreClientChanged()
-	} else if data.Protocol == model.MTPROTO {
-		a.onMtprotoClientChanged()
-	} else if data.Protocol == model.SSH {
-		a.onSshClientChanged()
-	} else if needRestart {
-		a.xrayService.SetToNeedRestart()
-	}
+	a.reconcileForInbounds(unionInboundIds(membershipIds, projected), needRestart)
 }
 
 // copyInboundClients copies clients from source inbound to target inbound.
@@ -1016,6 +1091,9 @@ func (a *InboundController) delInboundClient(c *gin.Context) {
 	// charge.
 	used, usedKnown := a.usageBeforeDelete(email)
 	needRestart, err := a.inboundService.DelInboundClient(id, clientId)
+	if err == nil {
+		a.syncInboundAccounts(id)
+	}
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -1069,6 +1147,17 @@ func (a *InboundController) updateInboundClient(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
 		return
 	}
+	// Same assertion over the whole requested membership set: an edit can ADD an
+	// inbound, so the ids in the body are as dangerous here as on the add path.
+	membershipIds, membershipsExplicit := postedMembershipIds(c, inbound.Id)
+	if !a.callerOwnsInbounds(c, membershipIds) {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
+		return
+	}
+	if err := a.validateMembershipSet(membershipIds); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
 	// Prices the edit and moves the balance by the delta. This also carries the
 	// ownership assertion for a reseller, which the grant check above cannot make:
 	// the inbound is shared, so holding it says nothing about who created THIS
@@ -1098,40 +1187,61 @@ func (a *InboundController) updateInboundClient(c *gin.Context) {
 			}
 		}
 	}
-	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientUpdateSuccess"), nil)
-
-	// The request body may not include protocol, so look it up from the DB.
-	if inbound.Protocol == "" {
-		if dbInbound, err := a.inboundService.GetInbound(inbound.Id); err == nil {
-			inbound.Protocol = dbInbound.Protocol
+	// An edit can change the membership set, so this both re-projects the account
+	// onto its inbounds and removes it from any it was unticked from.
+	email := postedClientEmail(inbound)
+	if email == "" {
+		if dbInbound, gerr := a.inboundService.GetInbound(inbound.Id); gerr == nil {
+			email = a.clientEmailOnInbound(dbInbound, clientId)
 		}
 	}
-
-	if inbound.Protocol == model.L2TP {
-		a.onL2tpClientChanged()
-	} else if inbound.Protocol == model.PPTP {
-		a.onPptpClientChanged()
-	} else if inbound.Protocol == model.OPENVPN {
-		a.onOpenVpnClientChanged()
-	} else if inbound.Protocol == model.OPENCONNECT {
-		a.onOcservClientChanged()
-	} else if inbound.Protocol == model.SSTP {
-		a.onSstpClientChanged()
-	} else if inbound.Protocol == model.IKEV2 {
-		a.onIkev2ClientChanged()
-	} else if inbound.Protocol == model.WGC {
-		a.onWgcClientChanged()
-	} else if inbound.Protocol == model.AWG {
-		a.onAwgClientChanged()
-	} else if inbound.Protocol == model.GRE {
-		a.onGreClientChanged()
-	} else if inbound.Protocol == model.MTPROTO {
-		a.onMtprotoClientChanged()
-	} else if inbound.Protocol == model.SSH {
-		a.onSshClientChanged()
-	} else if needRestart {
-		a.xrayService.SetToNeedRestart()
+	previous, perr := accountService.InboundIdsForEmail(email)
+	if perr != nil {
+		logger.Warning("reading previous memberships: ", perr)
 	}
+	projected, merr := a.applyClientMemberships(c, email, membershipIds, membershipsExplicit)
+	if merr != nil {
+		logger.Warning("applying client memberships: ", merr)
+	}
+
+	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientUpdateSuccess"), nil)
+
+	// Reconcile the inbounds it is on now AND the ones it was just removed from:
+	// a dropped membership has to rewrite that daemon's config too, or the account
+	// keeps working there until something else happens to trigger a regeneration.
+	a.reconcileForInbounds(unionInboundIds(unionInboundIds(membershipIds, previous), projected), needRestart)
+}
+
+// unionInboundIds merges two id lists, preserving order and dropping duplicates.
+func unionInboundIds(a, b []int) []int {
+	seen := make(map[int]bool, len(a)+len(b))
+	out := make([]int, 0, len(a)+len(b))
+	for _, list := range [][]int{a, b} {
+		for _, id := range list {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// validateMembershipSet refuses a set the data plane cannot actually serve.
+func (a *InboundController) validateMembershipSet(inboundIds []int) error {
+	if len(inboundIds) < 2 {
+		return nil
+	}
+	inbounds := make([]*model.Inbound, 0, len(inboundIds))
+	for _, id := range inboundIds {
+		inbound, err := a.inboundService.GetInbound(id)
+		if err != nil || inbound == nil {
+			return fmt.Errorf("inbound %d not found", id)
+		}
+		inbounds = append(inbounds, inbound)
+	}
+	return accountService.ValidateMembershipSet(inbounds)
 }
 
 // bulkUpdateClients applies one operation (add/subtract days or traffic, enable,
@@ -1232,12 +1342,21 @@ func (a *InboundController) bulkUpdateClients(c *gin.Context) {
 	if req.Op == "delete" {
 		a.refundBulkDeleted(req.Targets, usage)
 	}
-	// Under days-per-GB an account's deadline is a function of its traffic, and
-	// the applier above moves traffic alone. This writes the deadlines the quote
-	// derived, so a bulk top-up extends the accounts it just sold bytes to
-	// instead of silently leaving them to expire on the old date.
-	if aerr := resellerService.ApplyBulkExpiry(ticket); aerr != nil {
-		logger.Warning("applying derived expiry after a reseller bulk operation: ", aerr)
+	// The applier above works one (inbound, email) target at a time and moves
+	// traffic alone. This writes back what the quote actually decided: the priced
+	// quota onto every inbound serving the account (charged once, so it must land
+	// once), and under days-per-GB the deadline that traffic bought, so a bulk
+	// top-up extends the accounts it just sold bytes to instead of silently leaving
+	// them to expire on the old date.
+	if aerr := resellerService.ApplyBulkCharges(ticket); aerr != nil {
+		logger.Warning("applying priced quota and expiry after a reseller bulk operation: ", aerr)
+	}
+	// The applier writes settings.clients and client_traffics directly, so without
+	// this the accounts layer kept the OLD quota, expiry and enable bit. The Clients
+	// page reads those three off the account row, so a bulk top-up applied to the
+	// data plane and then showed the previous figure.
+	for _, id := range distinctInboundIds(req.Targets) {
+		a.syncInboundAccounts(id)
 	}
 	jsonObj(c, result, nil)
 
@@ -1326,6 +1445,42 @@ func (a *InboundController) resetClientTraffic(c *gin.Context) {
 	a.onSshClientChanged()
 }
 
+// setMembershipEnable switches one account on or off on ONE inbound, leaving every
+// other inbound it is served on untouched.
+//
+// This is what the Clients page's per-inbound switch posts to. It used to post an
+// ordinary client update carrying enable:false, which is the ACCOUNT's flag: RADIUS
+// reads it panel-wide through client_traffics and so does the rbridge sweep, so a
+// control documented as taking the account off one inbound took the customer off
+// all of them, and left the other memberships' stored entries still reading
+// enable:true so the page showed them as serving.
+func (a *InboundController) setMembershipEnable(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	email := c.Param("email")
+	var body struct {
+		Enable bool `form:"enable" json:"enable"`
+	}
+	if err := c.ShouldBind(&body); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+
+	touched, err := accountService.SetMembershipEnable(email, id, body.Enable)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientUpdateSuccess"), nil)
+	// Only this inbound's entry can have changed, but the reconcile goes through the
+	// same fan-out as every other client write so a protocol is never left holding a
+	// config the settings JSON no longer agrees with.
+	a.reconcileForInbounds(unionInboundIds([]int{id}, touched), true)
+}
+
 // resetAllTraffics resets all traffic counters across all inbounds.
 func (a *InboundController) resetAllTraffics(c *gin.Context) {
 	// PermBulkOperation reaches this route now that resellers hold it, and "all" here
@@ -1386,6 +1541,7 @@ func (a *InboundController) resetAllClientTraffics(c *gin.Context) {
 	} else {
 		a.xrayService.SetToNeedRestart()
 	}
+	a.syncInboundAccountsAll(id)
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.resetAllClientTrafficSuccess"), nil)
 	a.onL2tpClientChanged()
 	a.onPptpClientChanged()
@@ -1489,6 +1645,7 @@ func (a *InboundController) delDepletedClients(c *gin.Context) {
 			u, known := usage[strings.ToLower(strings.TrimSpace(email))]
 			a.refundDeletedClient(email, u, known)
 		}
+		a.syncInboundAccountsAll(id)
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.delDepletedClientsSuccess"), nil)
 		return
 	}
@@ -1498,6 +1655,7 @@ func (a *InboundController) delDepletedClients(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	a.syncInboundAccountsAll(id)
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.delDepletedClientsSuccess"), nil)
 }
 
@@ -1711,7 +1869,7 @@ func (a *InboundController) generateOpenVpnCerts(c *gin.Context) {
 // mode) and applied; otherwise it is returned for the frontend to store in the
 // form until the inbound is saved.
 func (a *InboundController) generateOcservCert(c *gin.Context) {
-	serverCert, serverKey, err := a.ocservService.GenerateSelfSignedCert()
+	serverCert, serverKey, err := a.ocservService.GenerateSelfSignedCert("")
 	if err != nil {
 		jsonMsg(c, "Failed to generate certificate", err)
 		return
@@ -1755,7 +1913,7 @@ func (a *InboundController) generateOcservCert(c *gin.Context) {
 // inbound is saved. The Windows SSTP client's stricter trust requirements are
 // surfaced by a warning in the UI, not changed here.
 func (a *InboundController) generateSstpCert(c *gin.Context) {
-	serverCert, serverKey, err := a.sstpService.GenerateSelfSignedCert()
+	serverCert, serverKey, err := a.sstpService.GenerateSelfSignedCert("")
 	if err != nil {
 		jsonMsg(c, "Failed to generate certificate", err)
 		return
@@ -1990,6 +2148,9 @@ func (a *InboundController) delInboundClientByEmail(c *gin.Context) {
 
 	used, usedKnown := a.usageBeforeDelete(email)
 	needRestart, err := a.inboundService.DelInboundClientByEmail(inboundId, email)
+	if err == nil {
+		a.syncInboundAccounts(inboundId)
+	}
 	if err != nil {
 		jsonMsg(c, "Failed to delete client by email", err)
 		return
@@ -2011,22 +2172,229 @@ func (a *InboundController) callerOwnsInbound(c *gin.Context, inboundId int) boo
 	return a.callerOwnsInbounds(c, []int{inboundId})
 }
 
+// postedMembershipIds reads the set of inbounds a client-mutating request wants
+// the account served on.
+//
+// Wire shape: a repeated "inboundIds" form field, which is what Qs.stringify
+// emits with arrayFormat 'repeat' and what the admin modal's inbound checklist
+// already posts. ABSENT means "just the inbound in the body", so every existing
+// caller (the Telegram bot, the bulk paths, and any script anyone wrote against
+// the documented API) keeps its exact current behaviour without sending a new
+// field.
+//
+// The target inbound is always included even if the caller omitted it from the
+// list, because it is the inbound the modal was opened from and the one the
+// reseller ticket was priced against.
+// The bool reports whether the caller actually SPOKE about memberships. An
+// absent field and a field naming exactly the target inbound are different
+// requests: the first is an ordinary single-inbound write that must keep its
+// current behaviour exactly, the second is "put this account on this inbound and
+// no other" and has to drop the memberships it left out.
+func postedMembershipIds(c *gin.Context, targetId int) ([]int, bool) {
+	raw := c.PostFormArray("inboundIds")
+	if len(raw) == 0 {
+		return []int{targetId}, false
+	}
+	seen := map[int]bool{targetId: true}
+	out := []int{targetId}
+	for _, value := range raw {
+		// The empty-string sentinel is how the browser posts a CLEARED checkbox
+		// group (see admin_modal.html); it means "none ticked", not "id 0".
+		if value == "" {
+			continue
+		}
+		id, err := strconv.Atoi(value)
+		if err != nil || id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, true
+}
+
+// syncInboundAccountsAll reconciles one inbound, or every inbound when the route
+// was given the -1 that both client sweeps use for "panel-wide".
+func (a *InboundController) syncInboundAccountsAll(inboundId int) {
+	if inboundId >= 0 {
+		a.syncInboundAccounts(inboundId)
+		return
+	}
+	inbounds, err := a.inboundService.GetAllInbounds()
+	if err != nil {
+		logger.Warning("listing inbounds to sync the accounts layer: ", err)
+		return
+	}
+	for _, inbound := range inbounds {
+		a.syncInboundAccounts(inbound.Id)
+	}
+}
+
+// distinctInboundIds reduces a bulk target list to the inbounds it touches, in the
+// order they first appear, so a batch of fifty accounts on three inbounds costs
+// three reconciliations rather than fifty.
+func distinctInboundIds(targets []service.BulkClientTarget) []int {
+	seen := make(map[int]bool, len(targets))
+	out := make([]int, 0, len(targets))
+	for _, t := range targets {
+		if t.InboundId == 0 || seen[t.InboundId] {
+			continue
+		}
+		seen[t.InboundId] = true
+		out = append(out, t.InboundId)
+	}
+	return out
+}
+
+// syncInboundAccounts brings the accounts layer back in step with ONE inbound's
+// settings.clients, which is the truth every write path actually persists.
+//
+// Needed wherever an inbound's client list changes without one account for
+// applyClientMemberships to be about, and there are four such paths:
+//
+//   - a BULK add. It posts many clients in one request, so postedClientEmail
+//     answers "" and the membership work is skipped; without this the whole batch
+//     existed in settings.clients and on no page that lists accounts.
+//   - the DELETE paths. A deleted account kept its account row and every
+//     membership: the tables drifted from the data plane, InboundIdsForEmail
+//     reported inbounds the account was no longer on, and `vpn-ui revert-accounts`
+//     was blocked forever by a phantom multi-membership account that no longer
+//     existed anywhere in settings. Found on a live panel.
+//   - creating an inbound. The inbound form carries its first client inline, so a
+//     fresh panel had accounts that existed in settings.clients and nowhere else:
+//     invisible on the Clients page, which lists the accounts layer.
+//   - a whole-inbound save, which posts the entire client array and can add or
+//     drop clients in one request.
+//
+// SyncInboundAccounts reconciles the whole inbound and prunes accounts left with
+// no membership, so one call is correct for all of them, including the removal of
+// the inbound itself (where it drops every membership pointing at an id that is
+// gone).
+func (a *InboundController) syncInboundAccounts(inboundId int) {
+	if err := accountService.SyncInboundAccounts(database.GetDB(), inboundId); err != nil {
+		logger.Warning("syncing the accounts layer for inbound ", inboundId, ": ", err)
+	}
+}
+
+// applyClientMemberships puts an account on exactly the given inbounds and
+// re-projects, so settings.clients on every one of them agrees with the account.
+//
+// Returns the inbound ids whose settings actually changed, for the reconcile
+// fan-out. A single-inbound request is a no-op beyond the mirror sync, which is
+// what keeps the legacy path byte-identical.
+func (a *InboundController) applyClientMemberships(c *gin.Context, email string, inboundIds []int, explicit bool) ([]int, error) {
+	if email == "" {
+		return nil, nil
+	}
+	// Which of the account's CURRENT memberships this caller is allowed to drop.
+	// Owning the inbounds being added says nothing about the ones being removed
+	// from, so an admin who simply did not tick an inbound they cannot even see
+	// must not unprovision the account there.
+	var removable []int
+	if explicit {
+		current, err := accountService.InboundIdsForEmail(email)
+		if err != nil {
+			return nil, err
+		}
+		wanted := make(map[int]bool, len(inboundIds))
+		for _, id := range inboundIds {
+			wanted[id] = true
+		}
+		for _, id := range current {
+			if wanted[id] {
+				continue
+			}
+			if a.callerOwnsInbound(c, id) {
+				removable = append(removable, id)
+			}
+		}
+	}
+	return accountService.ApplyMemberships(email, inboundIds, removable, explicit)
+}
+
+// reconcileForInbounds fires each protocol's reconcile hook once for the set of
+// inbounds a write touched.
+//
+// The per-protocol chain this replaces was an if/else-if on ONE protocol,
+// resolved from the single inbound in the request body. An account spanning
+// l2tp, wg-c and vless needs onL2tpClientChanged, onWgcClientChanged AND an Xray
+// restart from one request; the old shape could only ever fire the first.
+func (a *InboundController) reconcileForInbounds(inboundIds []int, needRestart bool) {
+	protocols := map[model.Protocol]bool{}
+	for _, id := range inboundIds {
+		inbound, err := a.inboundService.GetInbound(id)
+		if err != nil || inbound == nil {
+			continue
+		}
+		protocols[inbound.Protocol] = true
+	}
+
+	// Each VPN hook regenerates its own daemon config and requests the Xray
+	// restart itself, so only the native Xray protocols fall through to the
+	// bare SetToNeedRestart below.
+	xrayOnly := needRestart
+	for protocol := range protocols {
+		switch protocol {
+		case model.L2TP:
+			a.onL2tpClientChanged()
+		case model.PPTP:
+			a.onPptpClientChanged()
+		case model.OPENVPN:
+			a.onOpenVpnClientChanged()
+		case model.OPENCONNECT:
+			a.onOcservClientChanged()
+		case model.SSTP:
+			a.onSstpClientChanged()
+		case model.IKEV2:
+			a.onIkev2ClientChanged()
+		case model.WGC:
+			a.onWgcClientChanged()
+		case model.AWG:
+			a.onAwgClientChanged()
+		case model.GRE:
+			a.onGreClientChanged()
+		case model.MTPROTO:
+			a.onMtprotoClientChanged()
+		case model.SSH:
+			a.onSshClientChanged()
+		default:
+			xrayOnly = true
+		}
+	}
+	if xrayOnly {
+		a.xrayService.SetToNeedRestart()
+	}
+}
+
 // postedClientEmail reads the account name out of a client-mutating request body.
 // Empty when the body does not carry exactly one client, which every one of those
 // routes does; more than one would mean a single charge paid for several accounts.
 func postedClientEmail(data *model.Inbound) string {
+	emails := postedClientEmails(data)
+	if len(emails) != 1 {
+		return ""
+	}
+	return emails[0]
+}
+
+// postedClientEmails reads every account name a client-mutating body carries. Only
+// the bulk add posts more than one, and it is the reason this exists: the
+// membership work is about ONE account and is skipped for a batch, but the mirror
+// into the accounts layer is about the INBOUND and still has to run.
+func postedClientEmails(data *model.Inbound) []string {
 	var settings struct {
 		Clients []struct {
 			Email string `json:"email"`
 		} `json:"clients"`
 	}
 	if err := json.Unmarshal([]byte(data.Settings), &settings); err != nil {
-		return ""
+		return nil
 	}
-	if len(settings.Clients) != 1 {
-		return ""
+	out := make([]string, 0, len(settings.Clients))
+	for _, c := range settings.Clients {
+		out = append(out, c.Email)
 	}
-	return settings.Clients[0].Email
+	return out
 }
 
 // clientEmailOnInbound resolves a route's :clientId back to the account email that

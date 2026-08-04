@@ -10,6 +10,9 @@
 package backend
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"embed"
 	"io"
 	"os"
@@ -30,6 +33,14 @@ var bundleFS embed.FS
 // Daemon describes one bundled daemon.
 type Daemon struct {
 	Name string // binary file name, e.g. "xl2tpd"
+
+	// Client marks a binary the panel dials OUT with instead of a server it
+	// listens with. The flag exists because the two have different install
+	// triggers: a server binary lands when its core is installed, while an
+	// outbound can be configured on a host that serves nothing at all, so the
+	// clients belong to no catalog row and are extracted on their own
+	// (see clients.go). One manifest, so the two lists cannot drift apart.
+	Client bool
 }
 
 // Daemons is the manifest of bundled daemons (extended as more are added).
@@ -46,6 +57,30 @@ var Daemons = []Daemon{
 	// dlopen and no fixed install path, so it belongs in this flat manifest rather
 	// than needing a relocatable tree bundle like accel-ppp/strongSwan.
 	{Name: "telemt"},
+
+	// The client side. Three protocols the panel can serve can also be dialed
+	// out to, but only by separate upstream projects: pptpd, ocserv and
+	// accel-ppp are all server-only, so none of the binaries above can be
+	// pointed at a remote gateway. Each of these is fully static for the same
+	// reason telemt is (nothing here dlopens anything), with the one exception
+	// noted at the plugin.
+	{Name: "pptp", Client: true},
+	{Name: "openconnect", Client: true},
+	// Not an ELF. openconnect brings a tunnel up and then delegates every
+	// route, DNS and MTU change to this script, so a session without it
+	// authenticates and then carries no traffic: as required as the binary.
+	// Extract makes it 0755 like every other entry.
+	{Name: "vpnc-script", Client: true},
+	// sstpc is NOT here. It is the one client that cannot be a flat static binary:
+	// it needs MD4 out of OpenSSL 3's `legacy` provider, which is dlopen'd, and a
+	// fully static musl build cannot dlopen at all. It ships as a relocatable tree
+	// instead (backend/sstpc.go, SstpcBundleRoot), like pppd and strongSwan.
+	// The exception: PPPD loads this, not sstpc. It is how pppd's MPPE keys
+	// reach sstpc, which needs them to answer the SSTP crypto binding that
+	// Windows RRAS and accel-ppp both verify. Being musl-linked, only the
+	// BUNDLED pppd can dlopen it, so the dial path must invoke PppdBundled by
+	// path rather than deferring to a host pppd the way UsingBundledPppd does.
+	{Name: "sstp-pppd-plugin.so", Client: true},
 }
 
 // PptpCtrlLink is the fixed path pptpd was compiled to exec pptpctrl from
@@ -236,6 +271,54 @@ func WriteFileAtomic(dest string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	return nil
+}
+
+// extractBundleTGZ untars an embedded relocatable bundle to the filesystem root. Its
+// entries are stored at their real deploy path (usr/libexec/vpn-ui-<x>/...), so
+// untarring at / recreates the tree exactly where the launchers expect it.
+//
+// New code only. ExtractPppdBundle, ExtractLibreswanBundle, ExtractAccelBundle and
+// ExtractStrongswanBundle each carry an identical copy of this loop, written before
+// there were four of them; they are deliberately left alone here rather than
+// refactored underneath four working extraction paths at once.
+func extractBundleTGZ(name string) error {
+	data, err := bundleFS.ReadFile(name)
+	if err != nil {
+		return err
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		target := filepath.Join("/", filepath.Clean("/"+hdr.Name))
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeSymlink:
+			_ = os.MkdirAll(filepath.Dir(target), 0o755)
+			_ = os.Remove(target)
+			if err := os.Symlink(hdr.Linkname, target); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := extractRegularFile(target, tr, os.FileMode(hdr.Mode)&0o777); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 // extractRegularFile writes one tar entry to target, atomically.

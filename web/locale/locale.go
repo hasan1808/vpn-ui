@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/mhsanaei/3x-ui/v2/logger"
 
@@ -21,6 +22,7 @@ var (
 	LocalizerWeb     *i18n.Localizer
 	LocalizerBot     *i18n.Localizer
 	localizerDefault *i18n.Localizer // always English; fallback for keys missing in the active locale
+	localizerMu      sync.RWMutex
 )
 
 // I18nType represents the type of interface for internationalization.
@@ -83,9 +85,13 @@ func I18n(i18nType I18nType, key string, params ...string) string {
 
 	switch i18nType {
 	case "bot":
+		localizerMu.RLock()
 		localizer = LocalizerBot
+		localizerMu.RUnlock()
 	case "web":
+		localizerMu.RLock()
 		localizer = LocalizerWeb
+		localizerMu.RUnlock()
 	default:
 		logger.Errorf("Invalid type for I18n: %s", i18nType)
 		return ""
@@ -157,7 +163,9 @@ func LocalizerMiddleware() gin.HandlerFunc {
 			lang = c.GetHeader("Accept-Language")
 		}
 
+		localizerMu.Lock()
 		LocalizerWeb = i18n.NewLocalizer(i18nBundle, lang)
+		localizerMu.Unlock()
 
 		c.Set("localizer", LocalizerWeb)
 		c.Set("I18n", I18n)

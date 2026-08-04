@@ -39,6 +39,30 @@ Per server distro (own isolated incus bridge, run in parallel):
    out-of-tree `amneziawg` kernel module: the panel DKMS-builds it on the server
    during `core-init`, and this phase DKMS-builds it on the client VM as well
    (idempotent, a fast no-op once present) before it dials the tunnel.
+5. **anytls / tuic / naive** - the Xray-**native** protocols. Everything above is
+   served by a bundled daemon or an in-binary Go server with xray only downstream
+   of it; here xray *is* the server, so account matching, per-user stats and the
+   limiter all run on the core's own path. The client is xray as well: the harness
+   lifts the **server's live core** onto the client VM (the panel overwrites
+   `bin/xray-linux-amd64` from its embedded copy on every start, so the file in
+   `test_subject/bin/` can easily predate the protocol), runs it with a local socks
+   inbound plus the matching outbound, and puts `badvpn-tun2socks` on `tun0` in
+   front of it, the same system-tunnel trick `clients/ssh.py` uses. So they run the
+   full shared suite (connect, dns-resolve, tunnel-egress, internet, dns-leak,
+   routing, multi-inbound, usage, multiplier, termination) **minus**
+   client-to-client and cross-inbound, which need a client tunnel address that a
+   proxy never hands out. `routing` is the sharpest per-client proof in the harness
+   for these: xray puts the matched account on the session, so the panel's `user`
+   rules split A (freedom) from B (blackhole) with no source-IP translation at all.
+   Per protocol, UDP is where each is most likely to be quietly broken, so it is
+   asserted separately:
+   - **tuic** - both relay carriers (`udpRelayMode` `native` = one QUIC datagram per
+     packet, `quic` = UDP over a QUIC stream), dialed separately against one inbound
+   - **anytls** - has no UDP transport; UDP is wrapped in the TLS stream (UoT), and
+     DNS is deliberately *not* routed around it so the check is real
+   - **naive** - HTTP CONNECT, proxies no UDP at all: its UDP subtests are N/A with
+     that reason, and DNS goes over TCP through the proxy (what a real naive
+     deployment must do) rather than leaking to the physical route
 
 ### Routing test note
 The panel auto-translates a routing rule authored by client **email**
@@ -153,6 +177,10 @@ harness/
   probes.py                one-time preflight (external outbound reachability)
   clients/{base,openvpn,l2tp,pptp,openconnect,sstp,ikev2,wgc,awg,mtproto,ssh}.py
                            client VM tooling + connect scripts
+  clients/xraytun.py       shared system tunnel for the Xray-native protocols (lifts
+                           the server's core to the client, socks + tun2socks on tun0)
+  clients/{anytls,tuic,naive}.py
+                           their per-protocol outbound + UDP behaviour
   model.py                 result model (JobResult/Phase/SubTest/Status)
 report/report.py           results.json + self-contained report.html
 ```

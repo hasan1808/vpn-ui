@@ -23,6 +23,13 @@ This project is an enhanced version of the **[3X-UI](https://github.com/MHSanaei
 - MTProto Proxy (Telegram)
 - SSH
 
+Plus three protocols added to the patched Xray-core itself, so they are served by
+the core rather than by a daemon, and they work as **inbounds and outbounds**:
+
+- AnyTLS
+- TUIC (v5)
+- NaiveProxy
+
 ## New Features
 
 - **Multi-Admin** with per-inbound access, so each admin only sees the inbounds you assign it
@@ -31,8 +38,10 @@ This project is an enhanced version of the **[3X-UI](https://github.com/MHSanaei
 - Added **AES-256-GCM** and **AES-128-GCM** **Encryption** to the **Shadowsocks** protocol
 - Support for **XHTTP Object** in **Inbound** and **Outbound**
 - Automatic installation script for **[WARP-CLI](https://github.com/Sir-MmD/warp-cli)** (Cloudflare's official version)
-- A [patched **Xray-core**](https://github.com/Sir-MmD/Xray-core) that fixes the "Unsupported Cipher" error in the **Shadowsocks** protocol
+- A [patched **Xray-core**](https://github.com/Sir-MmD/Xray-core) that fixes the "Unsupported Cipher" error in the **Shadowsocks** protocol, and adds **AnyTLS**, **TUIC** and **NaiveProxy** as native protocols, so they inherit per-account traffic accounting, speed limits, device limits and online detection instead of needing a second core
 - Bundling all files (**Geofile**, **Xray-core**, and **Backend** cores) into a single binary
+- **Real SSL for a bare server IP**, for a host with no domain at all (Let's Encrypt issues these; the certificate names the address itself)
+- Certificate renewals are picked up **without restarting the panel**, so nobody is disconnected when a certificate rolls over
 - Exporting account links as **TXT** and **PDF**
 - Ability to **Freeze** accounts
 - Added **checkboxes** to clients and **Inbound**s

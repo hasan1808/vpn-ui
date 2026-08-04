@@ -7,18 +7,73 @@
 >
   <a-tab-pane key="1" tab="Form">
     <a-form
+      class="ob-form"
       :colon="false"
       :label-col="{ md: {span:8} }"
       :wrapper-col="{ md: {span:14} }"
     >
       <a-form-item label='{{ i18n "protocol" }}'>
+        <!-- :value + @change, not v-model: moving between two tunnel kinds has
+             to keep the settings object (see setOutboundProtocol), which the
+             protocol setter would replace.
+
+             One flat list. The tunnels used to sit under a heading of their own,
+             which was there because Xray's native wireguard outbound and the
+             panel's kernel WireGuard tunnel read the same; that is fixed on the
+             labels instead, which is where it has to be fixed, since the heading
+             is gone the moment the dropdown closes.
+
+             A tunnel whose client was never bundled for this arch stays in the
+             list, disabled, carrying its reason. Hiding it would read as "this
+             panel does not support it" and leave nothing to act on.
+
+             option-label-prop is what keeps a two-line disabled row out of the
+             closed select: without it the box renders the option's children, so
+             editing an outbound whose kind has since become unavailable would
+             show the whole reason (and a link) inside the input. -->
         <a-select
-          v-model="outbound.protocol"
+          :value="outbound.protocol"
+          @change="setOutboundProtocol"
+          option-label-prop="label"
           :dropdown-class-name="themeSwitcher.currentTheme"
         >
-          <a-select-option v-for="x,y in Protocols" :value="x"
-            >[[ y ]]</a-select-option
+          <!-- The reason WRAPS rather than being cut off at the row width. It is
+               the sentence that says what to install, so the END of it is the half
+               that matters, and antd's one-line ellipsis hid exactly that (with
+               the Core Settings link, when there is one, clipped out of reach
+               entirely). The wrap has to sit on a child: a-select-option does not
+               forward `style` to the rendered menu item, and `white-space` is
+               inherited, so a child that sets its own defeats the row's nowrap
+               and the row then grows in height instead of overflowing. The title
+               stays as the hover fallback. -->
+          <a-select-option
+            v-for="p in protocolOptions()"
+            :key="p.value"
+            :value="p.value"
+            :label="p.label"
+            :disabled="p.disabled"
+            :title="p.why ? p.label + ' - ' + p.why : p.label"
           >
+            <template v-if="p.why">
+              <div :style="{ whiteSpace: 'normal', lineHeight: '1.5' }">
+                [[ p.label ]]
+                <div :style="{ opacity: 0.65, fontSize: '12px' }">[[ p.why ]]</div>
+                <!-- OUTSIDE the dimmed reason, and only for a kind the operator
+                     can actually unblock: it is the one live control in a row
+                     that is otherwise deliberately dead, so it must not be
+                     painted the same grey as the sentence explaining why the row
+                     cannot be picked. -->
+                <a
+                  v-if="p.coreHref"
+                  :href="p.coreHref"
+                  @click.stop
+                  :style="{ fontSize: '12px' }"
+                  >{{ i18n "pages.xray.outbound.vpnOutOpenCore" }}</a
+                >
+              </div>
+            </template>
+            <template v-else>[[ p.label ]]</template>
+          </a-select-option>
         </a-select>
       </a-form-item>
       <a-form-item
@@ -32,8 +87,34 @@
           placeholder='{{ i18n "pages.xray.outbound.tagDesc" }}'
         ></a-input>
       </a-form-item>
+      <!-- sendThrough on a TUNNEL outbound is not the ordinary field. It and the
+           SO_BINDTODEVICE pin are applied together and neither defeats the other,
+           but an address the tunnel device does not hold kills the tag in
+           silence: the inbound accepts, the client writes a megabyte, nothing is
+           counted, and it gets a bare connection reset a minute later with not
+           one line in the Xray log at the loglevel the panel ships. A hostname
+           here is worse, because the core then refuses the WHOLE config and every
+           inbound on the panel goes down with it. applyVpnOutboundsWith now keeps
+           the value only when it is a bare address the device currently holds,
+           which is why this says the tunnel is used as it is rather than
+           promising the value is honoured.
+
+           Deliberately NOT pre-filled. Empty already works: the kernel sources
+           from the tunnel's own address and carries every byte (measured), so a
+           value written in here buys nothing and goes stale the moment a ppp or
+           IKEv2 peer renegotiates a different one. The placeholder shows the
+           shape of an acceptable value without becoming one. -->
       <a-form-item label='{{ i18n "pages.xray.outbound.sendThrough" }}'>
-        <a-input v-model="outbound.sendThrough"></a-input>
+        <a-input
+          v-model="outbound.sendThrough"
+          :placeholder="isVpnProtocol(outbound.protocol) ? vpnSendThroughPlaceholder() : ''"
+        ></a-input>
+        <div
+          v-if="isVpnProtocol(outbound.protocol)"
+          :style="{ opacity: 0.65, fontSize: '12px', lineHeight: '1.5', marginTop: '4px' }"
+        >
+          {{ i18n "pages.xray.outbound.vpnOutSendThroughHelp" }}
+        </div>
       </a-form-item>
 
       <!-- freedom settings-->
@@ -449,6 +530,181 @@
         <!-- No local SOCKS port field: the server picks a free one and reports it
              back, so two tunnels can never collide and the operator never has to
              know a port that only exists on loopback. -->
+        <!-- Live state of the tunnel behind this outbound, with its own log.
+             This is the SSH manager dialog's readout, moved here when the toolbar
+             button that opened that dialog was removed: the status flag alone
+             says down and never says why, while the log is where a refused key
+             or a mismatched host-key pin actually appears. Hidden while adding,
+             since there is no tunnel to ask about until the first save. -->
+        <a-form-item v-if="outModal.isEdit" label='{{ i18n "pages.xray.outbound.sshOutStatus" }}'>
+          <!-- a-space has no wrap prop in antd-vue 1.7.8, so the wrap is forced
+               here; without it the tag and the port run off the row. -->
+          <a-space :style="{ display: 'flex', flexWrap: 'wrap', rowGap: '8px' }">
+            <a-button size="small" icon="reload" :loading="outModal.sshStatusLoading"
+              @click="outModal.refreshSshStatus()"></a-button>
+            <a-tag v-if="outModal.sshStatusText"
+              :color="outModal.sshStatusUp ? 'green' : 'orange'"
+              :style="{ margin: '0' }">[[ outModal.sshStatusText ]]</a-tag>
+            <a-tag v-if="outbound.settings.socksPort" :style="{ margin: '0' }"
+              >127.0.0.1:[[ outbound.settings.socksPort ]]</a-tag>
+          </a-space>
+          <!-- the tunnel's own ring buffer, in the shared core-setup terminal
+               look (assets/css/terminal.css) -->
+          <div v-if="outModal.sshStatusLog" class="term" :style="{ marginTop: '10px' }">
+            <div class="term-body" :style="{ maxHeight: '160px' }">
+              <div class="term-line" v-for="(l, i) in outModal.sshStatusLog.split('\n')" :key="i">
+                <span class="term-name">[[ l || ' ' ]]</span>
+              </div>
+            </div>
+          </div>
+        </a-form-item>
+      </template>
+
+      <!-- vpn tunnel settings. The panel dials out as a CLIENT of a remote VPN
+           server, the driver brings up a netdev, and what Xray gets is a freedom
+           outbound pinned to that device with SO_BINDTODEVICE; the tag above names
+           both. The fields are drawn from VPN_OUT_KINDS in outbound.js rather than
+           written out nine times, one block per protocol: see the table's comment
+           for why (secrets in particular are declared there ONCE).
+
+           There is no Enable switch on purpose. A disabled tunnel has no
+           interface, and a freedom outbound with no interface is not an error to
+           Xray, it is an unbound socket: egress would silently leave through the
+           host's own default route while the row still looked like a working
+           tunnel. So an outbound row exists exactly when its tunnel is up, and
+           deleting the row deletes the tunnel. -->
+      <template v-if="isVpnProtocol(outbound.protocol)">
+        <!-- No Tunnel Type field here any more: the kind IS the protocol in the
+             picker above, so a second copy of the same choice could only
+             disagree with it. -->
+        <!-- Changing the protocol of a SAVED tunnel is not an edit, it is a
+             replacement: the server keeps stored values only per key and skips
+             that merge entirely when the kind changes, since the stored settings
+             describe another protocol. Every field, secrets included, has to be
+             entered again, and the form has just blanked them. -->
+        <a-alert
+          v-if="outModal.isEdit && outbound.settings.kindChanged()"
+          type="warning"
+          show-icon
+          message='{{ i18n "pages.xray.outbound.vpnOutKindChanged" }}'
+          :style="{ margin: '0 0 16px' }"
+        ></a-alert>
+        <!-- Fill the fields from the config file the far side handed out: a
+             wg-quick or AmneziaWG .conf into the discrete fields, an .ovpn into
+             the profile box. Read in the browser with FileReader, so the file
+             (private key and all) never crosses the network. Only offered for
+             the kinds whose format the panel can actually read; see
+             VPN_OUT_IMPORT in outbound.js. -->
+        <a-form-item
+          v-if="vpnImportSpec(outbound.settings.kind)"
+          label='{{ i18n "pages.xray.outbound.vpnOutImport" }}'
+        >
+          <a-upload
+            :before-upload="vpnImportFile"
+            :show-upload-list="false"
+            :accept="vpnImportSpec(outbound.settings.kind).accept"
+          >
+            <a-button icon="upload"
+              >{{ i18n "pages.xray.outbound.vpnOutImportPick" }}</a-button
+            >
+          </a-upload>
+        </a-form-item>
+        <a-form-item
+          v-for="f in outbound.settings.visibleFields()"
+          :key="outbound.settings.kind + '.' + f.name"
+          :label="f.help ? undefined : vpnLabel(f)"
+          :label-col="f.type === 'textarea' ? { span: 24 } : undefined"
+          :wrapper-col="f.type === 'textarea' ? { span: 24 } : undefined"
+        >
+          <!-- Labels stay SHORT here for the reason the ssh block above documents:
+               antd-vue 1.7.8 does not wrap a form label, it cuts it off. Anything
+               that needs a sentence goes in the tooltip. -->
+          <template v-if="f.help" slot="label">
+            <a-tooltip>
+              <template slot="title"><span>[[ vpnHelp(f) ]]</span></template>
+              [[ vpnLabel(f) ]]
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-input
+            v-if="f.type === 'text'"
+            v-model.trim="outbound.settings.params[f.name]"
+            :placeholder="f.placeholder"
+          ></a-input>
+          <!-- The API strips secrets from the tunnel list, so an edit form shows
+               them blank and an untouched blank means "keep the stored one". The
+               @change is what makes emptying one deliberate: a field the operator
+               typed in and then cleared is posted as "" and removes the stored
+               secret, while one they never touched is left out of the POST.
+               The bin button is the discoverable way to do the same thing, since
+               a stored secret shows as an empty box with nothing to delete. -->
+          <a-input-group v-else-if="f.type === 'password'" compact>
+            <a-input-password
+              v-model="outbound.settings.params[f.name]"
+              @change="outbound.settings.touch(f.name)"
+              :style="{ width: outModal.isEdit ? 'calc(100% - 32px)' : '100%' }"
+              :placeholder="vpnSecretPlaceholder(f)"
+            ></a-input-password>
+            <a-tooltip v-if="outModal.isEdit">
+              <template slot="title">{{ i18n "pages.xray.outbound.vpnOutClear" }}</template>
+              <a-button icon="delete" :style="{ width: '32px' }"
+                :type="outbound.settings.isCleared(f.name) ? 'danger' : 'default'"
+                @click="outbound.settings.clearSecret(f.name)"></a-button>
+            </a-tooltip>
+          </a-input-group>
+          <template v-else-if="f.type === 'textarea'">
+            <a-textarea
+              v-model="outbound.settings.params[f.name]"
+              @change="outbound.settings.touch(f.name)"
+              :rows="f.rows || 4"
+              :placeholder="f.secret ? vpnSecretPlaceholder(f) : f.placeholder"
+            ></a-textarea>
+            <a-button v-if="outModal.isEdit && f.secret" size="small" icon="delete"
+              :type="outbound.settings.isCleared(f.name) ? 'danger' : 'default'"
+              :style="{ marginTop: '4px' }"
+              @click="outbound.settings.clearSecret(f.name)"
+              >{{ i18n "pages.xray.outbound.vpnOutClear" }}</a-button
+            >
+          </template>
+          <a-input-number
+            v-else-if="f.type === 'number'"
+            v-model.number="outbound.settings.params[f.name]"
+            :min="f.min"
+            :max="f.max"
+          ></a-input-number>
+          <a-switch
+            v-else-if="f.type === 'switch'"
+            v-model="outbound.settings.params[f.name]"
+          ></a-switch>
+          <a-select
+            v-else-if="f.type === 'select'"
+            v-model="outbound.settings.params[f.name]"
+            :dropdown-class-name="themeSwitcher.currentTheme"
+          >
+            <a-select-option v-for="o in f.options" :value="o.value"
+              >[[ o.text ]]</a-select-option
+            >
+          </a-select>
+        </a-form-item>
+        <!-- Live state of the tunnel behind this outbound. Only meaningful once
+             one exists, so it is hidden while adding until the first save. -->
+        <a-form-item
+          v-if="outModal.isEdit || outbound.settings.iface"
+          label='{{ i18n "pages.xray.outbound.vpnOutStatus" }}'
+        >
+          <!-- a-space has no wrap prop in antd-vue 1.7.8, so the wrap is forced
+               here; without it the tag and the detail line run off the row. -->
+          <a-space :style="{ display: 'flex', flexWrap: 'wrap', rowGap: '8px' }">
+            <a-button size="small" icon="reload" :loading="outModal.vpnStatusLoading"
+              @click="outModal.refreshVpnStatus()"></a-button>
+            <a-tag v-if="outModal.vpnStatusText"
+              :color="outModal.vpnStatusUp ? 'green' : 'orange'"
+              :style="{ margin: '0' }">[[ outModal.vpnStatusText ]]</a-tag>
+            <a-tag v-if="outbound.settings.iface" :style="{ margin: '0' }">[[
+              outbound.settings.iface ]]</a-tag>
+            <span v-if="outModal.vpnStatusDetail">[[ outModal.vpnStatusDetail ]]</span>
+          </a-space>
+        </a-form-item>
       </template>
 
       <!-- Address + Port -->
@@ -626,12 +882,307 @@
         </a-form-item>
       </template>
 
+      <!-- anytls settings. Address, port and the whole TLS section come from the
+           shared blocks above and below: AnyTLS carries no transport of its own,
+           it is a session layer over whatever stream Xray dials, so everything
+           here is the handful of fields that are the protocol's own.
+
+           The three session numbers are left BLANK on purpose. Each one is a
+           uint32 whose zero value means "use my default" on the core side, so a
+           prefilled 0 would read as a deliberate choice and behave as though the
+           operator had made none. Blank is dropped from the config entirely. -->
+      <template v-if="outbound.protocol === Protocols.AnyTLS">
+        <a-form-item label='{{ i18n "password" }}'>
+          <a-input v-model.trim="outbound.settings.password"></a-input>
+        </a-form-item>
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                How often idle sessions are swept, in seconds. Leave blank for
+                the default (30). This is a local tuning knob: it does not have
+                to match the server. 5 and below is not accepted here because the
+                session library silently rewrites anything in that range to 30.
+              </template>
+              Idle Check
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-input-number
+            v-model.number="outbound.settings.idleSessionCheckInterval"
+            :min="6"
+            :max="86400"
+            :style="{ width: '100%' }"
+            placeholder="30"
+          ></a-input-number>
+        </a-form-item>
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                How long a session may sit idle before it is closed, in seconds.
+                Blank for the default (30). 5 and below is not accepted here: the
+                session library rewrites anything in that range to 30, so a "2
+                second timeout" would quietly become fifteen times that.
+              </template>
+              Idle Timeout
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-input-number
+            v-model.number="outbound.settings.idleSessionTimeout"
+            :min="6"
+            :max="86400"
+            :style="{ width: '100%' }"
+            placeholder="30"
+          ></a-input-number>
+        </a-form-item>
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                How many idle sessions to keep open ready for the next request.
+                Costs a little memory and one connection each, and saves the
+                handshake on a burst of new connections. Blank means none held.
+              </template>
+              Min Idle
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-input-number
+            v-model.number="outbound.settings.minIdleSession"
+            :min="0"
+            :max="1024"
+            :style="{ width: '100%' }"
+            placeholder="0"
+          ></a-input-number>
+        </a-form-item>
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                Opens a fresh session for every connection instead of reusing an
+                idle one. Costs a full handshake each time, and is the escape
+                hatch for a server or a middlebox that mishandles reuse.
+              </template>
+              No Reuse
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-switch v-model="outbound.settings.disableReuse"></a-switch>
+        </a-form-item>
+      </template>
+
+      <!-- tuic settings -->
+      <template v-if="outbound.protocol === Protocols.Tuic">
+        <a-form-item label="UUID">
+          <a-input v-model.trim="outbound.settings.id"></a-input>
+        </a-form-item>
+        <a-form-item label='{{ i18n "password" }}'>
+          <a-input v-model.trim="outbound.settings.password"></a-input>
+        </a-form-item>
+        <!-- Bound to the STREAM's alpn, which is where TUIC's dialer reads it
+             from, and repeated here rather than left to the TLS section alone
+             because this is the one field on the form that silently kills the
+             outbound. The server side is pinned to h3; neither end has a
+             permissive setting; and every other client (sing-box, mihomo, the
+             Rust tuic-client) defaults ALPN to EMPTY, which does not negotiate
+             down, it fails the handshake with "tls: no application protocol",
+             a message naming neither the setting nor the side that rejected it.
+             Prefilled with h3 by Outbound.defaultStreamFor. -->
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                Must match the server EXACTLY. Leave it at h3 unless the server
+                was changed too: an empty-vs-h3 mismatch fails the TLS handshake
+                with "tls: no application protocol" and nothing more specific.
+              </template>
+              ALPN
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-select
+            mode="multiple"
+            :dropdown-class-name="themeSwitcher.currentTheme"
+            v-model="outbound.stream.tls.alpn"
+          >
+            <a-select-option v-for="alpn in ALPN_OPTION" :value="alpn"
+              >[[ alpn ]]</a-select-option
+            >
+          </a-select>
+          <div
+            v-if="!outbound.stream.tls.alpn || !outbound.stream.tls.alpn.length"
+            :style="{ color: 'var(--error)', fontSize: '12px', lineHeight: '1.5', marginTop: '4px' }"
+          >
+            An empty ALPN will not connect to a TUIC server. Set h3.
+          </div>
+        </a-form-item>
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                QUIC congestion controller. Must be supported by the server, but
+                does not have to match it: each direction picks its own.
+              </template>
+              Congestion
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-select
+            v-model="outbound.settings.congestionControl"
+            :dropdown-class-name="themeSwitcher.currentTheme"
+          >
+            <a-select-option value="cubic">cubic</a-select-option>
+            <a-select-option value="bbr">bbr</a-select-option>
+            <a-select-option value="new_reno">new_reno</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                native sends each UDP packet as its own QUIC datagram, which is
+                what UDP is; quic wraps the session in a reliable stream, which
+                survives paths that drop datagrams at the cost of head-of-line
+                blocking. Both ends must agree.
+              </template>
+              UDP Relay
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-select
+            v-model="outbound.settings.udpRelayMode"
+            :dropdown-class-name="themeSwitcher.currentTheme"
+          >
+            <a-select-option value="native">native</a-select-option>
+            <a-select-option value="quic">quic</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                Sends the first request with the TLS handshake instead of waiting
+                for it to finish. Saves a round trip and gives up replay
+                protection for that request. Off unless the server enables it.
+              </template>
+              0-RTT
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-switch v-model="outbound.settings.zeroRttHandshake"></a-switch>
+        </a-form-item>
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                Keepalive interval in seconds. Blank for the core's default (10).
+              </template>
+              Heartbeat
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-input-number
+            v-model.number="outbound.settings.heartbeat"
+            :min="0"
+            :max="3600"
+            :style="{ width: '100%' }"
+            placeholder="10"
+          ></a-input-number>
+        </a-form-item>
+      </template>
+
+      <!-- naive settings. It does NOT bring its own TLS, which is the thing that
+           looks otherwise: the h2 path writes CONNECT onto whatever stream Xray
+           dials, and the h3 path goes through the "naive" transport, which reads
+           its TLS off streamSettings. So the transmission and TLS sections below
+           belong to this protocol too, and the picker here drives the stream. -->
+      <template v-if="outbound.protocol === Protocols.Naive">
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                The account's email on the server. It is what the server books the
+                traffic against, and it is also the Basic username unless the
+                account has a separate one, in which case fill that in below.
+              </template>
+              Email
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-input v-model.trim="outbound.settings.email"></a-input>
+        </a-form-item>
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                Only if the account on the server has its own username. naive sends
+                one Basic header and this is the username half of it; leave it empty
+                and the email above is used, which is what every account created
+                before servers had this field uses. A colon cannot be expressed in
+                Basic, so it is refused.
+              </template>
+              Username
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-input
+            v-model.trim="outbound.settings.username"
+            :placeholder="outbound.settings.email"
+          ></a-input>
+        </a-form-item>
+        <a-form-item label='{{ i18n "password" }}'>
+          <a-input v-model.trim="outbound.settings.password"></a-input>
+        </a-form-item>
+        <!-- :value + @change, not v-model, and the setter moves BOTH this and
+             the stream. They are two settings for one decision: the core reads
+             this one to pick h2 or h3, the transport layer reads the stream's
+             network to pick the dialer, and setting one without the other dials
+             the wrong stack. Picking UDP with the stream left on tcp is the bad
+             case: the tcp dialer ignores the CONNECT the h3 path put in the
+             context, so the outbound fails with "server rejected CONNECT with
+             status 0", which points at the server. -->
+        <a-form-item>
+          <template slot="label">
+            <a-tooltip>
+              <template slot="title">
+                Which HTTP the dialer speaks. TCP is HTTP/2 over TLS and works
+                anywhere; UDP is HTTP/3 over QUIC, which is faster on a lossy
+                path and dead where UDP is blocked. One or the other, and the
+                server has to be listening for it. Changing this also sets the
+                transport and ALPN below.
+              </template>
+              {{ i18n "transmission" }}
+              <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+          </template>
+          <a-select
+            :value="outbound.settings.network"
+            @change="network => outbound.setNaiveNetwork(network)"
+            :dropdown-class-name="themeSwitcher.currentTheme"
+          >
+            <a-select-option value="tcp">TCP (HTTP/2)</a-select-option>
+            <a-select-option value="udp">UDP (HTTP/3)</a-select-option>
+          </a-select>
+        </a-form-item>
+      </template>
+
       <!-- stream settings -->
       <template v-if="outbound.canEnableStream()">
+        <!-- Disabled for TUIC and naive, and shown rather than hidden. Neither
+             has a transport to choose: TUIC's dialer refuses any stream whose
+             network is not "tuic", and naive's is decided by its own TCP/UDP
+             picker above (tcp for h2, "naive" for h3), which sets it. Leaving it
+             live would offer six values, five of which produce an outbound that
+             cannot dial. It stays on screen because the TLS section below
+             belongs to this stream and an operator needs to see what it is
+             attached to. -->
         <a-form-item label='{{ i18n "transmission" }}'>
           <a-select
             v-model="outbound.stream.network"
             @change="streamNetworkChange"
+            :disabled="[Protocols.Tuic, Protocols.Naive].includes(outbound.protocol)"
             :dropdown-class-name="themeSwitcher.currentTheme"
           >
             <a-select-option value="tcp">TCP (RAW)</a-select-option>
@@ -644,6 +1195,16 @@
               v-if="outbound.protocol === Protocols.Hysteria"
               value="hysteria"
               >Hysteria2</a-select-option
+            >
+            <a-select-option
+              v-if="outbound.protocol === Protocols.Tuic"
+              value="tuic"
+              >TUIC (QUIC)</a-select-option
+            >
+            <a-select-option
+              v-if="outbound.protocol === Protocols.Naive"
+              value="naive"
+              >Naive (HTTP/3)</a-select-option
             >
           </a-select>
         </a-form-item>
@@ -1446,7 +2007,17 @@
             v-model="outbound.stream.security"
             button-style="solid"
           >
-            <a-radio-button value="none">{{ i18n "none" }}</a-radio-button>
+            <!-- None of the three has a cleartext mode: AnyTLS is a session
+                 layer defined over TLS, TUIC is QUIC whose handshake IS a TLS
+                 handshake, and naive is HTTP/2 or HTTP/3 over TLS (its h3 dialer
+                 refuses to run without one). Offering "none" for them would
+                 produce a config the far side cannot answer, and the failure is
+                 a timeout rather than anything naming this setting. -->
+            <a-radio-button
+              v-if="![Protocols.AnyTLS, Protocols.Tuic, Protocols.Naive].includes(outbound.protocol)"
+              value="none"
+              >{{ i18n "none" }}</a-radio-button
+            >
             <a-radio-button value="tls">TLS</a-radio-button>
             <a-radio-button v-if="outbound.canEnableReality()" value="reality"
               >Reality</a-radio-button
@@ -1533,7 +2104,12 @@
         </template>
       </template>
 
-      <!-- sockopt settings -->
+      <!-- sockopt settings. Offered for a vpn tunnel too, minus the Interface
+           field below: that one sockopt belongs to the tunnel, which pins egress
+           onto the netdev its driver brought up with SO_BINDTODEVICE, and a name
+           typed here would either be overwritten or send the traffic out of some
+           other device that happens to exist. Everything else is merged into the
+           synthesized freedom outbound server-side (applyVpnOutboundsWith). -->
       <a-form-item label="Sockopts">
         <a-switch v-model="outbound.stream.sockoptSwitch"></a-switch>
       </a-form-item>
@@ -1564,6 +2140,20 @@
             :min="0"
           ></a-input-number>
         </a-form-item>
+        <a-form-item
+          v-if="!isVpnProtocol(outbound.protocol)"
+          label="Interface Name"
+        >
+          <a-input
+            v-model.trim="outbound.stream.sockopt.interfaceName"
+          ></a-input>
+        </a-form-item>
+        <a-form-item label="Route Mark">
+          <a-input-number
+            v-model.number="outbound.stream.sockopt.mark"
+            :min="0"
+          ></a-input-number>
+        </a-form-item>
         <a-form-item label="TCP Fast Open">
           <a-switch v-model="outbound.stream.sockopt.tcpFastOpen"></a-switch>
         </a-form-item>
@@ -1591,6 +2181,7 @@
           </a-select>
         </a-form-item>
       </template>
+      <!-- end of the sockopt block -->
 
       <!-- mux settings -->
       <template v-if="outbound.canEnableMux()">
@@ -1633,7 +2224,7 @@
       <a-input
         addon-before='{{ i18n "pages.xray.outbound.link" }}'
         v-model.trim="outModal.link"
-        placeholder="vmess:// vless:// trojan:// ss:// hysteria2://"
+        placeholder="vmess:// vless:// trojan:// ss:// hysteria2:// anytls:// tuic:// naive://"
       >
         <a-icon slot="addonAfter" type="form" @click="convertLink"></a-icon>
       </a-input>

@@ -332,6 +332,15 @@ class Incus:
                     timeout=120, check=False)
         return proc.stdout.decode(errors="replace") if proc.returncode == 0 else ""
 
+    def pull_file(self, name_full: str, remote_path: str, local_path: str) -> bool:
+        """Copy a file OUT of a VM onto the host, byte-exact. Unlike pull_text this
+        never decodes, so it is safe for binaries (clients/xraytun.py uses it to lift
+        the server's live xray core across to the client VMs, which is the only way
+        to guarantee both ends run the SAME build). Returns True on success."""
+        proc = _run(["file", "pull", f"{name_full}{remote_path}", local_path],
+                    timeout=600, check=False)
+        return proc.returncode == 0 and os.path.isfile(local_path)
+
     def reboot(self, name_full: str, agent_timeout: int):
         _run(["restart", name_full], timeout=180, check=False)
         time.sleep(5)

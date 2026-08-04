@@ -1,0 +1,897 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Login: Aurora</title>
+<style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
+</head>
+<body>
+<div id="lg-aurora">
+<style>
+/* ==================================================================
+   TOKENS. Same four blocks the shipped mockups use, plus a fifth for
+   ultra-dark so the panel's third theme is not made impossible.
+   ================================================================== */
+:root{
+  --font-sans:'Vazirmatn UI NL',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
+
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --info-weak:rgba(31,111,208,.10); --error-weak:rgba(179,38,30,.09);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+  --ring:rgba(0,135,113,.18);
+  /* plate. --plate-bg is the honest default; --plate-glass is only reached
+     inside the backdrop-filter @supports test. */
+  --plate-bg:#ffffff; --plate-glass:rgba(255,255,255,.86);
+  --plate-ring:#c6d1da; --plate-edge:rgba(0,135,113,.34);
+  --plate-lift:0 20px 44px -24px rgba(16,24,32,.24), 0 2px 6px rgba(16,24,32,.06);
+  /* aurora field. Light does not get a paler copy of the dark values: the
+     tint has to carry real chroma or it turns grey, and the veil DEEPENS the
+     edges instead of washing them out, so the white plate is the brightest
+     thing on the screen and separates without needing a heavy shadow. */
+  --field-1:rgba(0,135,113,.24); --field-2:rgba(31,111,208,.15); --field-3:rgba(0,135,113,.15);
+  --field-curtain:rgba(0,135,113,.13); --field-horizon:rgba(0,135,113,.30); --field-veil:rgba(0,135,113,.13);
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+    --info-weak:rgba(111,168,245,.13); --error-weak:rgba(242,114,106,.13);
+    --shadow-sm:none; --shadow-md:none;
+    --ring:rgba(27,191,159,.24);
+    --plate-bg:#151f31; --plate-glass:rgba(21,31,49,.74);
+    --plate-ring:#3c4b68; --plate-edge:rgba(27,191,159,.45);
+    --plate-lift:none;
+    --field-1:rgba(27,191,159,.17); --field-2:rgba(31,111,208,.22); --field-3:rgba(27,191,159,.11);
+    --field-curtain:rgba(27,191,159,.10); --field-horizon:rgba(27,191,159,.26); --field-veil:rgba(10,18,34,.72);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --info-weak:rgba(111,168,245,.13); --error-weak:rgba(242,114,106,.13);
+  --shadow-sm:none; --shadow-md:none;
+  --ring:rgba(27,191,159,.24);
+  --plate-bg:#151f31; --plate-glass:rgba(21,31,49,.74);
+  --plate-ring:#3c4b68; --plate-edge:rgba(27,191,159,.45);
+  --plate-lift:none;
+  --field-1:rgba(27,191,159,.17); --field-2:rgba(31,111,208,.22); --field-3:rgba(27,191,159,.11);
+  --field-curtain:rgba(27,191,159,.10); --field-horizon:rgba(27,191,159,.26); --field-veil:rgba(10,18,34,.72);
+  color-scheme: dark;
+}
+:root[data-theme="light"]{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --info-weak:rgba(31,111,208,.10); --error-weak:rgba(179,38,30,.09);
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10), 0 2px 5px rgba(16,24,32,.05);
+  --ring:rgba(0,135,113,.18);
+  --plate-bg:#ffffff; --plate-glass:rgba(255,255,255,.86);
+  --plate-ring:#c6d1da; --plate-edge:rgba(0,135,113,.34);
+  --plate-lift:0 20px 44px -24px rgba(16,24,32,.24), 0 2px 6px rgba(16,24,32,.06);
+  --field-1:rgba(0,135,113,.24); --field-2:rgba(31,111,208,.15); --field-3:rgba(0,135,113,.15);
+  --field-curtain:rgba(0,135,113,.13); --field-horizon:rgba(0,135,113,.30); --field-veil:rgba(0,135,113,.13);
+  color-scheme: light;
+}
+:root[data-theme="ultra-dark"]{
+  --bg:#21242a; --surface:#0c0e12; --surface-2:#222327; --border:#32353b; --border-strong:#505663;
+  --text:rgba(255,255,255,.85); --text-2:rgba(255,255,255,.58); --text-3:rgba(255,255,255,.48);
+  --accent:#59cbac; --accent-strong:#59cbac; --accent-weak:rgba(89,203,172,.14); --on-accent:#06140f;
+  --ok:#59cbac; --info:#3c89e8; --warn:#e89a3c; --error:#e84749; --off:#5a5f6b;
+  --info-weak:rgba(60,137,232,.14); --error-weak:rgba(232,71,73,.14);
+  --shadow-sm:none; --shadow-md:none;
+  --ring:rgba(89,203,172,.22);
+  --plate-bg:#0c0e12; --plate-glass:rgba(12,14,18,.80);
+  --plate-ring:#505663; --plate-edge:rgba(89,203,172,.40);
+  --plate-lift:none;
+  --field-1:rgba(89,203,172,.11); --field-2:rgba(60,137,232,.13); --field-3:rgba(89,203,172,.08);
+  --field-curtain:rgba(89,203,172,.07); --field-horizon:rgba(89,203,172,.20); --field-veil:rgba(33,36,42,.80);
+  color-scheme: dark;
+}
+
+/* data-theme-animations='off' is the panel's own anti-flicker guard: the
+   theme control stamps it while it is being used, so a theme swap does not
+   fire every transition on the page at once. Honour it here too. */
+:root[data-theme-animations="off"] #lg-aurora *,
+:root[data-theme-animations="off"] #lg-aurora *::before,
+:root[data-theme-animations="off"] #lg-aurora *::after{
+  transition-duration:0s !important;
+}
+
+/* ==================================================================
+   BASE. Everything scoped under #lg-aurora.
+   ================================================================== */
+#lg-aurora, #lg-aurora *, #lg-aurora *::before, #lg-aurora *::after{ box-sizing:border-box; }
+#lg-aurora{
+  position:relative;
+  font-family:var(--font-sans);
+  background:var(--bg); color:var(--text);
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  min-height:100vh; overflow-x:hidden;
+}
+#lg-aurora [hidden]{ display:none !important; }
+#lg-aurora svg{ display:block; }
+#lg-aurora button, #lg-aurora input, #lg-aurora select{ font-family:inherit; }
+#lg-aurora p, #lg-aurora h1, #lg-aurora h2, #lg-aurora form{ margin:0; padding:0; }
+#lg-aurora button:focus-visible,
+#lg-aurora select:focus-visible,
+#lg-aurora a:focus-visible,
+#lg-aurora [tabindex]:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px; border-radius:8px;
+}
+#lg-aurora input:focus-visible{ outline:none; }
+
+.lg-icon{ width:16px; height:16px; flex:0 0 auto; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.lg-icon-14{ width:14px; height:14px; }
+.lg-icon-18{ width:18px; height:18px; }
+/* dotted and colonned strings (versions, codes) must not be bidi reordered */
+.lg-ltr{ direction:ltr; unicode-bidi:isolate; }
+
+/* ==================================================================
+   THE AURORA FIELD.
+   Three very large, very slow masses plus two wide curtains. Broad and
+   low frequency on purpose: no small blobs, no mesh. Transform-only
+   animation on long periods, so idle cost is compositor work and
+   nothing else.
+   ================================================================== */
+.lg-sky{
+  position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none;
+  /* the field is weather, not content: it holds the same composition in RTL
+     rather than half mirroring (gradient angles do not mirror anyway) */
+  direction:ltr;
+  /* a directional base wash under the masses, so the field has one light
+     source instead of reading as unrelated patches */
+  background:linear-gradient(158deg, var(--field-3) 0%, transparent 58%), var(--bg);
+}
+.lg-mass, .lg-curtain, .lg-horizon, .lg-veil{ position:absolute; display:block; }
+
+.lg-mass{ border-radius:50%; }
+.lg-mass--a{
+  width:min(160vw,1700px); height:min(120vh,1080px);
+  inset-inline-start:-24vw; top:-34vh;
+  background:radial-gradient(closest-side, var(--field-1) 0%, var(--field-1) 20%, transparent 100%);
+  animation:lg-drift-a 108s ease-in-out infinite alternate;
+}
+/* the blue note sits diagonally opposite the teal, so the two never meet in a
+   flat seam across the middle of the screen */
+.lg-mass--b{
+  width:min(150vw,1500px); height:min(120vh,1020px);
+  inset-inline-end:-30vw; bottom:-34vh;
+  background:radial-gradient(closest-side, var(--field-2) 0%, var(--field-2) 20%, transparent 100%);
+  animation:lg-drift-b 134s ease-in-out infinite alternate;
+}
+/* the horizon glow: a wide, flat ellipse sitting on the rule below it */
+.lg-mass--c{
+  width:min(190vw,2100px); height:min(62vh,520px);
+  inset-inline-start:50%; top:34%;
+  margin-inline-start:min(-95vw,-1050px);
+  background:radial-gradient(closest-side, var(--field-3) 0%, var(--field-3) 16%, transparent 100%);
+  animation:lg-drift-c 96s ease-in-out infinite alternate;
+}
+
+/* the mask stops are an alpha stencil, not a colour: #000 here means "opaque",
+   and is the one literal in the sheet that is deliberately not a token */
+.lg-curtain{
+  inset-inline-start:-34%; width:168%; height:56vh;
+  -webkit-mask-image:linear-gradient(to bottom, transparent, #000 38%, #000 62%, transparent);
+  mask-image:linear-gradient(to bottom, transparent, #000 38%, #000 62%, transparent);
+}
+.lg-curtain--1{
+  top:6vh;
+  background:linear-gradient(90deg, transparent 4%, var(--field-curtain) 30%, transparent 66%);
+  transform:rotate(-7deg);
+  animation:lg-sweep-1 152s ease-in-out infinite alternate;
+}
+.lg-curtain--2{
+  top:44vh;
+  background:linear-gradient(90deg, transparent 26%, var(--field-curtain) 58%, transparent 92%);
+  transform:rotate(5deg);
+  animation:lg-sweep-2 194s ease-in-out infinite alternate;
+}
+
+/* the horizon. One hairline, the same 1px vocabulary the panel uses for
+   elevation, giving light mode an actual composition instead of fog. */
+.lg-horizon{
+  inset-inline:0; top:60%; height:1px;
+  background:linear-gradient(90deg, transparent, var(--field-horizon) 16%, var(--field-horizon) 84%, transparent);
+}
+/* veil. Its token is theme-specific and pulls in OPPOSITE directions: on dark
+   it is the page background at alpha, so the corners fall away and the glow
+   gathers behind the plate. On light it is the accent at alpha, deepening the
+   edges instead, because washing the corners back toward #f4f6f8 would leave
+   them brighter than the white plate and kill the separation entirely. */
+.lg-veil{
+  inset:0;
+  background:radial-gradient(122% 92% at 50% 46%, transparent 38%, var(--field-veil) 100%);
+}
+
+@keyframes lg-drift-a{ from{ transform:translate3d(0,0,0) scale(1); } to{ transform:translate3d(7vw,5vh,0) scale(1.14); } }
+@keyframes lg-drift-b{ from{ transform:translate3d(0,0,0) scale(1.06); } to{ transform:translate3d(-6vw,8vh,0) scale(1); } }
+@keyframes lg-drift-c{ from{ transform:translate3d(0,0,0) scaleX(1); } to{ transform:translate3d(4vw,-3vh,0) scaleX(1.1); } }
+@keyframes lg-sweep-1{ from{ transform:rotate(-7deg) translate3d(-9%,0,0); } to{ transform:rotate(-7deg) translate3d(9%,0,0); } }
+@keyframes lg-sweep-2{ from{ transform:rotate(5deg) translate3d(7%,0,0); } to{ transform:rotate(5deg) translate3d(-7%,0,0); } }
+
+/* ==================================================================
+   STAGE
+   ================================================================== */
+.lg-stage{
+  position:relative; z-index:1;
+  display:flex; flex-direction:column;
+  min-height:100vh; padding:72px 20px 116px;
+}
+.lg-plate-wrap{ position:relative; width:100%; max-width:404px; margin:auto; }
+/* the receding stroke. Depth from a repeated hairline rather than from a
+   blurred shadow, which is how the rest of this panel carries elevation. */
+.lg-plate-wrap::before{
+  content:""; position:absolute; inset:-11px;
+  border:1px solid var(--plate-ring); border-radius:27px;
+  opacity:.75; pointer-events:none;
+}
+
+.lg-plate{
+  position:relative; isolation:isolate;
+  border:1px solid var(--border); border-radius:16px;
+  background:var(--plate-bg);
+  box-shadow:var(--plate-lift);
+  padding:34px 30px 18px;
+  overflow:hidden;
+}
+/* light collecting inside the top of the plate */
+.lg-plate::before{
+  content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
+  background:radial-gradient(128% 74% at 50% -14%, var(--accent-weak), transparent 66%);
+  opacity:.9;
+}
+/* the lit top edge. 1px, cropped to the middle of the span. */
+.lg-plate::after{
+  content:""; position:absolute; z-index:0; pointer-events:none;
+  inset-inline:16%; top:0; height:1px;
+  background:linear-gradient(90deg, transparent, var(--plate-edge), transparent);
+}
+.lg-plate > *{ position:relative; z-index:1; }
+
+/* backdrop-filter is an enhancement layered on top of a solid plate, never
+   the substrate. If it is unavailable nothing above changes: the plate is
+   already opaque and every contrast figure still holds. */
+@supports ((-webkit-backdrop-filter: blur(2px)) or (backdrop-filter: blur(2px))){
+  .lg-plate{
+    background:var(--plate-glass);
+    -webkit-backdrop-filter:blur(22px) saturate(1.3);
+    backdrop-filter:blur(22px) saturate(1.3);
+  }
+}
+
+/* ==================================================================
+   HEAD
+   ================================================================== */
+/* the wordmark keeps its bracket order in every locale, but the block itself
+   still aligns to the reading start, so the isolation goes on the inner span
+   and not on the block. It stays on --accent rather than --accent-strong:
+   --accent-strong is reserved for filled surfaces carrying --on-accent text,
+   and a logotype carries no contrast requirement of its own. */
+.lg-mark{ font-size:16px; font-weight:700; line-height:1; color:var(--accent); }
+.lg-mark span{
+  display:inline-block; direction:ltr; unicode-bidi:isolate;
+  letter-spacing:.16em; margin-inline-end:-.16em;   /* trim the trailing track */
+}
+.lg-mark b{ font-weight:700; opacity:.5; }
+.lg-hello{
+  font-size:26px; font-weight:700; line-height:1.15; letter-spacing:-.015em;
+  color:var(--text); margin-top:26px; text-wrap:balance;
+}
+.lg-welcome{
+  font-size:14px; font-weight:400; line-height:1.45;
+  color:var(--text-2); margin-top:7px;
+}
+.lg-rule{ height:1px; background:var(--border); margin:24px 0 22px; border:0; }
+
+/* ==================================================================
+   NOTICES
+   ================================================================== */
+/* The status hue is carried by the icon and the border, and the message itself
+   stays on --text. Setting the message in --info or --error would put 12.5px
+   text at about 4.3:1 once the tint and the glass plate are composited, and a
+   notice is the one thing on this screen that must never be hard to read. The
+   tint is painted over an opaque --surface for the same reason: the fill must
+   not depend on whatever the aurora happens to be doing behind it. */
+.lg-note{
+  display:flex; align-items:flex-start; gap:9px;
+  border:1px solid var(--border); border-radius:10px;
+  padding:11px 13px; margin-top:20px;
+  font-size:12.5px; line-height:1.45; color:var(--text);
+}
+.lg-note .lg-icon{ margin-top:1px; }
+.lg-note--info{
+  background:linear-gradient(var(--info-weak), var(--info-weak)), var(--surface);
+  border-color:var(--info);
+}
+.lg-note--info .lg-icon{ color:var(--info); }
+.lg-note--error{
+  background:linear-gradient(var(--error-weak), var(--error-weak)), var(--surface);
+  border-color:var(--error); margin-top:16px;
+}
+.lg-note--error .lg-icon{ color:var(--error); }
+
+/* ==================================================================
+   FORM
+   ================================================================== */
+.lg-form{ display:flex; flex-direction:column; gap:16px; }
+.lg-row{ display:flex; flex-direction:column; gap:7px; }
+.lg-label{
+  font-size:12.5px; font-weight:600; color:var(--text-2);
+  letter-spacing:.005em;
+}
+.lg-input{
+  display:flex; align-items:center; gap:10px;
+  height:44px; padding-inline:12px;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:10px;
+  transition:border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.lg-input .lg-input-icon{ color:var(--text-3); transition:color .15s ease; }
+.lg-input input{
+  flex:1 1 auto; min-width:0; height:100%;
+  border:0; padding:0; background:transparent; outline:none;
+  color:var(--text); font-size:14px; line-height:1.4;
+}
+.lg-input input::placeholder{ color:var(--text-3); }
+.lg-input:focus-within{
+  background:var(--surface); border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--ring);
+}
+.lg-input:focus-within .lg-input-icon{ color:var(--accent); }
+.lg-input--code input{
+  font-family:var(--font-mono); font-size:16px; letter-spacing:.34em;
+  font-variant-numeric:tabular-nums;
+}
+.lg-reveal{
+  display:flex; align-items:center; justify-content:center;
+  width:30px; height:30px; margin-inline-end:-7px; flex:0 0 auto;
+  border:0; border-radius:8px; background:transparent; color:var(--text-3);
+  cursor:pointer; transition:color .15s ease, background-color .15s ease;
+}
+.lg-reveal:hover{ color:var(--accent); background:var(--accent-weak); }
+/* small print sits on the GLASS plate, not on --surface, so it runs one step
+   up the text scale: --text-3 measures 4.3:1 against the composited plate,
+   --text-2 measures 5.5:1 */
+.lg-hint{ font-size:11px; line-height:1.5; color:var(--text-2); margin-top:1px; }
+
+/* error state */
+#lg-aurora.is-error .lg-input{ border-color:var(--error); }
+#lg-aurora.is-error .lg-input:focus-within{ border-color:var(--accent); }
+
+/* ==================================================================
+   SUBMIT
+   ================================================================== */
+.lg-submit{
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  width:100%; height:46px; margin-top:4px;
+  border:1px solid transparent; border-radius:10px;
+  background:var(--accent-strong); color:var(--on-accent);
+  font-size:14px; font-weight:600; letter-spacing:.01em;
+  cursor:pointer; transition:filter .15s ease, transform .15s ease;
+}
+.lg-submit:hover{ filter:brightness(1.07); }
+.lg-submit:active{ transform:translateY(1px); }
+.lg-spin{
+  width:15px; height:15px; flex:0 0 auto; border-radius:50%;
+  border:2px solid var(--on-accent); border-top-color:transparent;
+  opacity:.9; animation:lg-rotate .7s linear infinite;
+}
+@keyframes lg-rotate{ to{ transform:rotate(360deg); } }
+#lg-aurora.is-loading .lg-submit{ cursor:default; filter:none; }
+#lg-aurora.is-loading .lg-submit:active{ transform:none; }
+
+/* ==================================================================
+   PLATE FOOT
+   ================================================================== */
+.lg-foot{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  margin-top:22px; padding-top:13px; border-top:1px solid var(--border);
+  font-size:11px; color:var(--text-2);
+}
+.lg-foot-name{ letter-spacing:.02em; }
+.lg-foot-ver{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+
+/* ==================================================================
+   SETTINGS (theme + language). Floats clear of the plate so the plate
+   itself stays free of chrome.
+   ================================================================== */
+.lg-util{ position:fixed; z-index:3; top:18px; inset-inline-end:18px; }
+.lg-util-btn{
+  width:36px; height:36px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  box-shadow:var(--shadow-sm); cursor:pointer;
+  transition:color .15s ease, border-color .15s ease, background-color .15s ease;
+}
+.lg-util-btn:hover, .lg-util-btn[aria-expanded="true"]{
+  color:var(--accent); border-color:var(--accent); background:var(--accent-weak);
+}
+.lg-pop{
+  position:absolute; top:44px; inset-inline-end:0; width:236px;
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  box-shadow:var(--shadow-md); padding:14px;
+}
+.lg-pop-title{
+  font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--text-3); margin-bottom:12px;
+}
+.lg-pop-row{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  font-size:13px; color:var(--text); padding:3px 0;
+}
+.lg-pop-row + .lg-pop-row{ margin-top:6px; }
+.lg-pop-group{ margin-top:14px; padding-top:13px; border-top:1px solid var(--border); }
+.lg-pop-label{ display:block; font-size:12.5px; font-weight:600; color:var(--text-2); margin-bottom:7px; }
+
+.lg-switch{
+  width:34px; height:18px; flex:0 0 auto; padding:2px;
+  border:0; border-radius:999px; background:var(--border-strong);
+  cursor:pointer; transition:background-color .18s ease;
+}
+.lg-switch[aria-checked="true"]{ background:var(--accent-strong); }
+.lg-switch span{
+  display:block; width:14px; height:14px; border-radius:50%;
+  background:var(--surface); transition:transform .18s ease;
+}
+.lg-switch[aria-checked="true"] span{ transform:translateX(16px); }
+:root[dir="rtl"] .lg-switch[aria-checked="true"] span{ transform:translateX(-16px); }
+
+.lg-check{
+  width:17px; height:17px; flex:0 0 auto; padding:0;
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid var(--border-strong); border-radius:5px;
+  background:var(--surface); color:var(--on-accent); cursor:pointer;
+  transition:background-color .15s ease, border-color .15s ease;
+}
+.lg-check[aria-checked="true"]{ background:var(--accent-strong); border-color:var(--accent-strong); }
+.lg-check .lg-icon{ opacity:0; }
+.lg-check[aria-checked="true"] .lg-icon{ opacity:1; }
+
+.lg-select-wrap{ position:relative; }
+.lg-select{
+  width:100%; height:38px; padding-inline:11px 32px;
+  -webkit-appearance:none; appearance:none;
+  border:1px solid var(--border); border-radius:9px;
+  background:var(--surface-2); color:var(--text); font-size:13px;
+  cursor:pointer; transition:border-color .15s ease, box-shadow .15s ease;
+}
+.lg-select:focus{ border-color:var(--accent); box-shadow:0 0 0 3px var(--ring); outline:none; }
+.lg-select-chev{
+  position:absolute; inset-inline-end:11px; top:50%; margin-top:-8px;
+  color:var(--text-3); pointer-events:none;
+}
+
+/* ==================================================================
+   MOCKUP CONTROLS. Not part of the screen.
+   ================================================================== */
+.lg-mock{
+  position:fixed; z-index:4; inset-inline:0; bottom:0;
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+  padding:10px 16px;
+  background:var(--surface); border-top:1px solid var(--border);
+  direction:ltr;   /* harness chrome. It is not part of the product, so it does not mirror. */
+}
+.lg-mock-label{
+  font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--text-3); margin-inline-end:4px;
+}
+.lg-mock-btn{
+  font-size:12px; font-weight:600; color:var(--text-2);
+  background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+  padding:6px 11px; cursor:pointer;
+  transition:color .15s ease, border-color .15s ease, background-color .15s ease;
+}
+.lg-mock-btn:hover{ color:var(--accent); border-color:var(--accent); }
+.lg-mock-btn[aria-pressed="true"]{ color:var(--accent); border-color:var(--accent); background:var(--accent-weak); }
+.lg-mock-note{ font-size:11px; color:var(--text-3); margin-inline-start:auto; }
+
+/* ==================================================================
+   RESPONSIVE
+   ================================================================== */
+@media (max-width:420px){
+  .lg-stage{ padding:56px 16px 132px; }
+  .lg-plate{ padding:26px 22px 16px; border-radius:14px; }
+  .lg-plate-wrap::before{ inset:-8px; border-radius:22px; }
+  .lg-hello{ font-size:20px; margin-top:22px; }
+  .lg-util{ top:12px; inset-inline-end:12px; }
+  .lg-pop{ width:min(236px, calc(100vw - 32px)); }
+  .lg-mock-note{ display:none; }
+}
+@media (max-height:620px){
+  .lg-stage{ padding-top:56px; }
+}
+
+/* ==================================================================
+   REDUCED MOTION. Every animation is neutralised and the field is
+   pinned to a composed static position.
+   ================================================================== */
+@media (prefers-reduced-motion: reduce){
+  #lg-aurora *, #lg-aurora *::before, #lg-aurora *::after{
+    transition-duration:.001ms !important; animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+  }
+  .lg-mass, .lg-curtain, .lg-spin{ animation:none !important; }
+  .lg-mass--a{ transform:translate3d(3vw,2vh,0) scale(1.06); }
+  .lg-mass--b{ transform:translate3d(-3vw,4vh,0) scale(1.03); }
+  .lg-mass--c{ transform:translate3d(2vw,-1vh,0) scaleX(1.05); }
+  .lg-curtain--1{ transform:rotate(-7deg); }
+  .lg-curtain--2{ transform:rotate(5deg); }
+  .lg-spin{ border-top-color:var(--on-accent); opacity:.45; }
+}
+</style>
+
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+<defs>
+<symbol id="lg-i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c.6-3.6 3.6-5.8 7.2-5.8s6.6 2.2 7.2 5.8"/></symbol>
+<symbol id="lg-i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></symbol>
+<symbol id="lg-i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="3.6"/><path d="M11.6 12H21"/><path d="M18 12v3.2"/><path d="M14.6 12v2.4"/></symbol>
+<symbol id="lg-i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.8 12 5.8 21.5 12 21.5 12 18 18.2 12 18.2 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.9"/></symbol>
+<symbol id="lg-i-eye-off" viewBox="0 0 24 24"><path d="M3.4 3.4l17.2 17.2"/><path d="M10.7 5.9A9.7 9.7 0 0 1 12 5.8c6 0 9.5 6.2 9.5 6.2a17 17 0 0 1-3.6 4.4"/><path d="M6.7 6.9C4 8.7 2.5 12 2.5 12S6 18.2 12 18.2c1.3 0 2.5-.3 3.6-.7"/><path d="M10 10a2.9 2.9 0 0 0 4 4"/></symbol>
+<symbol id="lg-i-sliders" viewBox="0 0 24 24"><line x1="5" y1="21" x2="5" y2="14"/><line x1="5" y1="10" x2="5" y2="3"/><circle cx="5" cy="12" r="2.1"/><line x1="12" y1="21" x2="12" y2="12.5"/><line x1="12" y1="8.5" x2="12" y2="3"/><circle cx="12" cy="10.5" r="2.1"/><line x1="19" y1="21" x2="19" y2="16"/><line x1="19" y1="12" x2="19" y2="3"/><circle cx="19" cy="14" r="2.1"/></symbol>
+<symbol id="lg-i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12" y2="8"/></symbol>
+<symbol id="lg-i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="7.5" x2="12" y2="13"/><line x1="12" y1="16.2" x2="12" y2="16.6"/></symbol>
+<symbol id="lg-i-check" viewBox="0 0 24 24"><polyline points="5.5 12.6 10 17 18.5 7.6"/></symbol>
+<symbol id="lg-i-chevron" viewBox="0 0 24 24"><polyline points="6.5 9.5 12 15 17.5 9.5"/></symbol>
+</defs>
+</svg>
+
+<!-- the field ------------------------------------------------------ -->
+<div class="lg-sky" aria-hidden="true">
+  <span class="lg-mass lg-mass--a"></span>
+  <span class="lg-mass lg-mass--b"></span>
+  <span class="lg-mass lg-mass--c"></span>
+  <span class="lg-curtain lg-curtain--1"></span>
+  <span class="lg-curtain lg-curtain--2"></span>
+  <span class="lg-horizon"></span>
+  <span class="lg-veil"></span>
+</div>
+
+<!-- settings ------------------------------------------------------- -->
+<div class="lg-util">
+  <button type="button" class="lg-util-btn" id="lgUtilBtn"
+          aria-expanded="false" aria-controls="lgPop" data-i18n-attr="settings" aria-label="Settings" title="Settings">
+    <svg class="lg-icon lg-icon-18" aria-hidden="true"><use href="#lg-i-sliders"></use></svg>
+  </button>
+  <div class="lg-pop" id="lgPop" hidden>
+    <p class="lg-pop-title" data-i18n="settings">Settings</p>
+    <div class="lg-pop-row">
+      <span data-i18n="dark">Dark</span>
+      <button type="button" class="lg-switch" id="lgDark" role="switch" aria-checked="true"
+              data-i18n-attr="dark" aria-label="Dark"><span></span></button>
+    </div>
+    <div class="lg-pop-row" id="lgUltraRow">
+      <span data-i18n="ultra">Ultra Dark</span>
+      <button type="button" class="lg-check" id="lgUltra" role="checkbox" aria-checked="false"
+              data-i18n-attr="ultra" aria-label="Ultra Dark">
+        <svg class="lg-icon lg-icon-14" aria-hidden="true"><use href="#lg-i-check"></use></svg>
+      </button>
+    </div>
+    <div class="lg-pop-group">
+      <label class="lg-pop-label" for="lgLang" data-i18n="language">Language</label>
+      <div class="lg-select-wrap">
+        <select class="lg-select" id="lgLang">
+          <option value="ar-EG">العربية</option>
+          <option value="en-US" selected>English</option>
+          <option value="fa-IR">فارسی</option>
+          <option value="zh-CN">简体中文</option>
+          <option value="zh-TW">繁體中文</option>
+          <option value="ja-JP">日本語</option>
+          <option value="ru-RU">Русский</option>
+          <option value="vi-VN">Tiếng Việt</option>
+          <option value="es-ES">Español</option>
+          <option value="id-ID">Indonesian</option>
+          <option value="uk-UA">Український</option>
+          <option value="tr-TR">Türkçe</option>
+          <option value="pt-BR">Português</option>
+        </select>
+        <svg class="lg-icon lg-select-chev" aria-hidden="true"><use href="#lg-i-chevron"></use></svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- the plate ------------------------------------------------------ -->
+<div class="lg-stage">
+  <main class="lg-plate-wrap">
+    <section class="lg-plate">
+      <div class="lg-mark"><span><b>[</b>VPN-UI<b>]</b></span></div>
+
+      <h1 class="lg-hello" data-i18n="hello">Hello</h1>
+      <p class="lg-welcome" data-i18n="welcome">Welcome</p>
+
+      <div class="lg-note lg-note--info" id="lgExpired" role="status" hidden>
+        <svg class="lg-icon" aria-hidden="true"><use href="#lg-i-info"></use></svg>
+        <span data-i18n="expired">Your session has expired, please log in again</span>
+      </div>
+
+      <hr class="lg-rule">
+
+      <form class="lg-form" id="lgForm" novalidate>
+        <div class="lg-row">
+          <label class="lg-label" for="lgUsername" data-i18n="username">Username</label>
+          <div class="lg-input">
+            <svg class="lg-icon lg-input-icon" aria-hidden="true"><use href="#lg-i-user"></use></svg>
+            <input id="lgUsername" name="username" type="text" autocomplete="username"
+                   autocapitalize="none" autocorrect="off" spellcheck="false" autofocus required>
+          </div>
+        </div>
+
+        <div class="lg-row">
+          <label class="lg-label" for="lgPassword" data-i18n="password">Password</label>
+          <div class="lg-input">
+            <svg class="lg-icon lg-input-icon" aria-hidden="true"><use href="#lg-i-lock"></use></svg>
+            <input id="lgPassword" name="password" type="password" autocomplete="current-password" required>
+            <button type="button" class="lg-reveal" id="lgReveal" aria-pressed="false"
+                    data-i18n-attr="password" aria-label="Password">
+              <svg class="lg-icon lg-i-eye" aria-hidden="true"><use href="#lg-i-eye"></use></svg>
+              <svg class="lg-icon lg-i-eye-off" aria-hidden="true" hidden><use href="#lg-i-eye-off"></use></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="lg-row" id="lgCodeRow" hidden>
+          <label class="lg-label" for="lgCode" data-i18n="code">Code</label>
+          <div class="lg-input lg-input--code">
+            <svg class="lg-icon lg-input-icon" aria-hidden="true"><use href="#lg-i-key"></use></svg>
+            <input id="lgCode" name="twoFactorCode" type="text" autocomplete="one-time-code"
+                   inputmode="numeric" maxlength="6" spellcheck="false" class="lg-ltr"
+                   aria-describedby="lgHint" required disabled>
+          </div>
+          <p class="lg-hint" id="lgHint" data-i18n="hint">Enter the code from your authenticator app to finish signing in.</p>
+        </div>
+
+        <div class="lg-note lg-note--error" id="lgError" role="alert" hidden>
+          <svg class="lg-icon" aria-hidden="true"><use href="#lg-i-alert"></use></svg>
+          <span data-i18n="invalid">Invalid username or password or two-factor code.</span>
+        </div>
+
+        <button type="submit" class="lg-submit" id="lgSubmit">
+          <span class="lg-spin" id="lgSpin" aria-hidden="true" hidden></span>
+          <span data-i18n="login">Log In</span>
+        </button>
+      </form>
+
+      <footer class="lg-foot">
+        <span class="lg-foot-name lg-ltr">vpn-ui</span>
+        <span class="lg-foot-ver lg-ltr">v1.8.1</span>
+      </footer>
+    </section>
+  </main>
+</div>
+
+<!-- mockup controls ------------------------------------------------ -->
+<div class="lg-mock">
+  <span class="lg-mock-label">Mockup states</span>
+  <button type="button" class="lg-mock-btn" data-mock="2fa" aria-pressed="false">Two-factor</button>
+  <button type="button" class="lg-mock-btn" data-mock="loading" aria-pressed="false">Loading</button>
+  <button type="button" class="lg-mock-btn" data-mock="error" aria-pressed="false">Error</button>
+  <button type="button" class="lg-mock-btn" data-mock="expired" aria-pressed="false">Session expired</button>
+  <button type="button" class="lg-mock-btn" data-mock="rtl" aria-pressed="false">RTL</button>
+  <span class="lg-mock-note">Not part of the screen.</span>
+</div>
+
+<script>
+(function(){
+  var root = document.getElementById('lg-aurora');
+  if(!root) return;
+  var docEl = document.documentElement;
+
+  /* ---------------------------------------------------------------
+     strings. Lifted verbatim from web/translation/translate.*.toml,
+     so nothing here is invented copy.
+     --------------------------------------------------------------- */
+  var STRINGS = {
+"ar-EG":{"username":"اسم المستخدم","password":"الباسورد","code":"الكود","login":"تسجيل الدخول","hello":"أهلا","welcome":"أهلاً وسهلاً","expired":"انتهت صلاحية الجلسة، سجل دخول تاني","invalid":"اسم المستخدم أو كلمة المرور أو كود المصادقة الثنائية غير صحيح.","hint":"اكتب الكود من تطبيق المصادقة بتاعك عشان تكمل تسجيل الدخول.","settings":"إعدادات","theme":"الثيم","dark":"داكن","ultra":"داكن جدًا","language":"اللغة"},
+"en-US":{"username":"Username","password":"Password","code":"Code","login":"Log In","hello":"Hello","welcome":"Welcome","expired":"Your session has expired, please log in again","invalid":"Invalid username or password or two-factor code.","hint":"Enter the code from your authenticator app to finish signing in.","settings":"Settings","theme":"Theme","dark":"Dark","ultra":"Ultra Dark","language":"Language"},
+"fa-IR":{"username":"نام‌کاربری","password":"رمزعبور","code":"کد","login":"ورود","hello":"سلام","welcome":"خوش‌آمدید","expired":"مدت زمان استفاده به‌اتمام‌رسیده، لطفا دوباره وارد شوید","invalid":"نام کاربری، رمز عبور یا کد دو مرحله‌ای نامعتبر است.","hint":"برای تکمیل ورود، کد را از برنامه احرازهویت خود وارد کنید.","settings":"تنظیمات","theme":"تم","dark":"تیره","ultra":"فوق تیره","language":"زبان"},
+"zh-CN":{"username":"用户名","password":"密码","code":"代码","login":"登录","hello":"你好","welcome":"欢迎","expired":"登录时效已过，请重新登录","invalid":"用户名、密码或双重验证码无效。","hint":"请输入验证器应用中的验证码以完成登录。","settings":"设置","theme":"主题","dark":"暗色","ultra":"超暗色","language":"语言"},
+"zh-TW":{"username":"使用者名稱","password":"密碼","code":"代碼","login":"登入","hello":"你好","welcome":"歡迎","expired":"登入時效已過，請重新登入","invalid":"用戶名、密碼或雙重驗證碼無效。","hint":"請輸入驗證器應用程式中的驗證碼以完成登入。","settings":"設定","theme":"主題","dark":"深色","ultra":"超深色","language":"語言"},
+"ja-JP":{"username":"ユーザー名","password":"パスワード","code":"コード","login":"ログイン","hello":"こんにちは","welcome":"ようこそ","expired":"ログインセッションが切れました。再度ログインしてください。","invalid":"ユーザー名、パスワード、または二段階認証コードが無効です。","hint":"サインインを完了するには、認証アプリのコードを入力してください。","settings":"設定","theme":"テーマ","dark":"ダーク","ultra":"ウルトラダーク","language":"言語"},
+"ru-RU":{"username":"Имя пользователя","password":"Пароль","code":"Код 2FA","login":"Войти","hello":"Привет!","welcome":"Добро пожаловать!","expired":"Сессия истекла. Войдите в систему снова","invalid":"Неверные данные учетной записи.","hint":"Введите код из приложения-аутентификатора, чтобы завершить вход.","settings":"Настройки","theme":"Тема","dark":"Темная","ultra":"Очень темная","language":"Язык интерфейса"},
+"vi-VN":{"username":"Tên người dùng","password":"Mật khẩu","code":"Mã","login":"Đăng nhập","hello":"Xin chào","welcome":"Chào mừng","expired":"Thời hạn đăng nhập đã hết. Vui lòng đăng nhập lại.","invalid":"Tên người dùng, mật khẩu hoặc mã xác thực hai yếu tố không hợp lệ.","hint":"Nhập mã từ ứng dụng xác thực của bạn để hoàn tất đăng nhập.","settings":"cài đặt","theme":"Chủ đề","dark":"Tối","ultra":"Siêu tối","language":"Ngôn ngữ"},
+"es-ES":{"username":"Nombre de Usuario","password":"Contraseña","code":"Código","login":"Acceder","hello":"Hola","welcome":"Bienvenido","expired":"El límite de tiempo de inicio de sesión ha expirado. Por favor, inicia sesión nuevamente.","invalid":"Nombre de usuario, contraseña o código de dos factores incorrecto.","hint":"Introduce el código de tu aplicación de autenticación para completar el inicio de sesión.","settings":"Configuración","theme":"Tema","dark":"Oscuro","ultra":"Ultra Oscuro","language":"Idioma"},
+"id-ID":{"username":"Nama Pengguna","password":"Kata Sandi","code":"Kode","login":"Masuk","hello":"Halo","welcome":"Selamat Datang","expired":"Sesi Anda telah berakhir, harap masuk kembali","invalid":"Username, kata sandi, atau kode dua faktor tidak valid.","hint":"Masukkan kode dari aplikasi autentikator Anda untuk menyelesaikan proses masuk.","settings":"Pengaturan","theme":"Tema","dark":"Gelap","ultra":"Sangat Gelap","language":"Bahasa"},
+"uk-UA":{"username":"Ім'я користувача","password":"Пароль","code":"Код","login":"Увійти","hello":"Привіт","welcome":"Привітання!","expired":"Ваш сеанс закінчився, увійдіть знову","invalid":"Невірне ім’я користувача, пароль або код двофакторної аутентифікації.","hint":"Введіть код із програми-автентифікатора, щоб завершити вхід.","settings":"Налаштування","theme":"Тема","dark":"Темна","ultra":"Ультра темна","language":"Мова"},
+"tr-TR":{"username":"Kullanıcı Adı","password":"Şifre","code":"Kod","login":"Giriş Yap","hello":"Merhaba","welcome":"Hoş Geldiniz","expired":"Oturum süreniz doldu, lütfen tekrar giriş yapın","invalid":"Geçersiz kullanıcı adı, şifre veya iki adımlı doğrulama kodu.","hint":"Girişi tamamlamak için kimlik doğrulama uygulamanızdaki kodu girin.","settings":"Ayarlar","theme":"Tema","dark":"Koyu","ultra":"Ultra Koyu","language":"Dil"},
+"pt-BR":{"username":"Nome de Usuário","password":"Senha","code":"Código","login":"Entrar","hello":"Olá","welcome":"Bem-vindo","expired":"Sua sessão expirou, faça login novamente","invalid":"Nome de usuário, senha ou código de dois fatores inválido.","hint":"Digite o código do seu aplicativo autenticador para concluir o login.","settings":"Configurações","theme":"Tema","dark":"Escuro","ultra":"Ultra Escuro","language":"Idioma"}
+  };
+  var RTL = { 'ar-EG':1, 'fa-IR':1 };
+
+  /* ---------------------------------------------------------------
+     theme. data-theme on <html>, the same attribute the panel's own
+     ultra-dark switch stamps.
+     --------------------------------------------------------------- */
+  var darkSwitch = document.getElementById('lgDark');
+  var ultraCheck = document.getElementById('lgUltra');
+  var ultraRow   = document.getElementById('lgUltraRow');
+
+  function currentTheme(){
+    var attr = docEl.getAttribute('data-theme');
+    if(attr === 'light' || attr === 'dark' || attr === 'ultra-dark') return attr;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function applyTheme(t){
+    docEl.setAttribute('data-theme', t);
+    var isDark = (t === 'dark' || t === 'ultra-dark');
+    darkSwitch.setAttribute('aria-checked', isDark ? 'true' : 'false');
+    ultraCheck.setAttribute('aria-checked', t === 'ultra-dark' ? 'true' : 'false');
+    ultraRow.hidden = !isDark;
+  }
+  applyTheme(currentTheme());
+
+  /* the panel's anti-flicker guard: hold transitions off while the theme
+     control is in use, release when the pointer leaves it */
+  function animationsOff(el){
+    docEl.setAttribute('data-theme-animations', 'off');
+    var release = function(){
+      docEl.removeAttribute('data-theme-animations');
+      el.removeEventListener('mouseleave', release);
+      el.removeEventListener('touchend', release);
+    };
+    el.addEventListener('mouseleave', release);
+    el.addEventListener('touchend', release);
+  }
+  darkSwitch.addEventListener('mousedown', function(){ animationsOff(darkSwitch); });
+  ultraCheck.addEventListener('mousedown', function(){ animationsOff(ultraCheck); });
+
+  darkSwitch.addEventListener('click', function(){
+    applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
+  });
+  ultraCheck.addEventListener('click', function(){
+    applyTheme(currentTheme() === 'ultra-dark' ? 'dark' : 'ultra-dark');
+  });
+
+  /* ---------------------------------------------------------------
+     language + direction
+     --------------------------------------------------------------- */
+  var langSelect = document.getElementById('lgLang');
+  var rtlBtn = null;
+  var forcedRtl = false;
+
+  function applyLang(tag){
+    var dict = STRINGS[tag] || STRINGS['en-US'];
+    root.querySelectorAll('[data-i18n]').forEach(function(el){
+      var k = el.getAttribute('data-i18n');
+      if(dict[k]) el.textContent = dict[k];
+    });
+    root.querySelectorAll('[data-i18n-attr]').forEach(function(el){
+      var k = el.getAttribute('data-i18n-attr');
+      if(dict[k]){ el.setAttribute('aria-label', dict[k]); if(el.title) el.title = dict[k]; }
+    });
+    docEl.setAttribute('lang', tag);
+    applyDir(RTL[tag] ? true : forcedRtl);
+  }
+  function applyDir(rtl){
+    docEl.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+    if(rtlBtn) rtlBtn.setAttribute('aria-pressed', rtl ? 'true' : 'false');
+  }
+  langSelect.addEventListener('change', function(){
+    forcedRtl = false;
+    applyLang(langSelect.value);
+  });
+  applyDir(false);
+
+  /* ---------------------------------------------------------------
+     settings popover
+     --------------------------------------------------------------- */
+  var utilBtn = document.getElementById('lgUtilBtn');
+  var pop = document.getElementById('lgPop');
+  function setPop(open){
+    pop.hidden = !open;
+    utilBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  utilBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    setPop(pop.hidden);
+  });
+  pop.addEventListener('click', function(e){ e.stopPropagation(); });
+  document.addEventListener('click', function(){ setPop(false); });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && !pop.hidden){ setPop(false); utilBtn.focus(); }
+  });
+
+  /* ---------------------------------------------------------------
+     password reveal
+     --------------------------------------------------------------- */
+  var pwd = document.getElementById('lgPassword');
+  var reveal = document.getElementById('lgReveal');
+  var eyeOn = reveal.querySelector('.lg-i-eye');
+  var eyeOff = reveal.querySelector('.lg-i-eye-off');
+  reveal.addEventListener('click', function(){
+    var shown = pwd.type === 'text';
+    pwd.type = shown ? 'password' : 'text';
+    reveal.setAttribute('aria-pressed', shown ? 'false' : 'true');
+    eyeOn.hidden = !shown;
+    eyeOff.hidden = shown;
+  });
+
+  /* ---------------------------------------------------------------
+     states
+     --------------------------------------------------------------- */
+  var codeRow = document.getElementById('lgCodeRow');
+  var errorBox = document.getElementById('lgError');
+  var expiredBox = document.getElementById('lgExpired');
+  var submit = document.getElementById('lgSubmit');
+  var spin = document.getElementById('lgSpin');
+  var username = document.getElementById('lgUsername');
+  var code = document.getElementById('lgCode');
+
+  var state = { '2fa':false, loading:false, error:false, expired:false };
+
+  function render(){
+    /* the real page uses v-if, so the field is absent until the server asks
+       for it. Here it stays in the DOM, so disable it while hidden and it is
+       neither submitted nor validated. */
+    codeRow.hidden = !state['2fa'];
+    code.disabled = !state['2fa'];
+    errorBox.hidden = !state.error;
+    expiredBox.hidden = !state.expired;
+
+    root.classList.toggle('is-error', state.error);
+    root.classList.toggle('is-loading', state.loading);
+    spin.hidden = !state.loading;
+    submit.disabled = state.loading;
+    submit.setAttribute('aria-busy', state.loading ? 'true' : 'false');
+
+    [username, pwd, code].forEach(function(el){
+      if(state.error){ el.setAttribute('aria-invalid','true'); }
+      else { el.removeAttribute('aria-invalid'); }
+    });
+
+    root.querySelectorAll('.lg-mock-btn[data-mock]').forEach(function(btn){
+      var k = btn.getAttribute('data-mock');
+      if(k === 'rtl') return;
+      btn.setAttribute('aria-pressed', state[k] ? 'true' : 'false');
+    });
+  }
+
+  root.querySelectorAll('.lg-mock-btn[data-mock]').forEach(function(btn){
+    var key = btn.getAttribute('data-mock');
+    if(key === 'rtl'){
+      rtlBtn = btn;
+      btn.addEventListener('click', function(){
+        forcedRtl = docEl.getAttribute('dir') !== 'rtl';
+        applyDir(forcedRtl);
+      });
+      return;
+    }
+    btn.addEventListener('click', function(){
+      state[key] = !state[key];
+      render();
+      if(key === '2fa' && state['2fa']) code.focus();
+    });
+  });
+
+  /* a real submit walks the two states the server can produce: it spins,
+     then it comes back with the credentials rejected. */
+  document.getElementById('lgForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    if(state.loading) return;
+    state.loading = true; state.error = false;
+    render();
+    window.setTimeout(function(){
+      state.loading = false;
+      state.error = true;
+      render();
+    }, 1300);
+  });
+
+  render();
+})();
+</script>
+</div>
+</body>
+</html>

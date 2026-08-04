@@ -7,6 +7,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/util/crypto"
 	"github.com/mhsanaei/3x-ui/v2/xray"
 
@@ -391,15 +392,33 @@ func (s *AdminService) CanAccessAllInbounds(ids []int, userId int) (bool, error)
 	return int(n) == len(want), nil
 }
 
-// CanAccessClientEmail reports whether userId has been granted the inbound holding
+// CanAccessClientEmail reports whether userId has been granted ANY inbound serving
 // this client. Client emails are a single panel-wide namespace, so an :email route
 // reaches across admins without this.
+//
+// "Any", not "the": one account is served on N inbounds, and the join this used to
+// be (inbound_accesses against client_traffics.inbound_id) asked about exactly one
+// of them, the one that account's single traffic row happens to name. An admin
+// holding inbound B but not A was therefore DENIED every :email route for a client
+// sitting in their own inbound, which reads as the panel losing the account.
+//
+// Resolved through servingInboundIds so this and ClientEmailAccess answer the same
+// question the same way; two access checks that disagree are how a route ends up
+// enforcing something the payload producer never scoped for.
 func (s *AdminService) CanAccessClientEmail(email string, userId int) (bool, error) {
+	db := database.GetDB()
+	ids, err := servingInboundIds(db, email)
+	if err != nil {
+		return false, err
+	}
+	if len(ids) == 0 {
+		// No inbound serves it, so no grant can reach it. Fails closed, like every
+		// other unanswerable access question here.
+		return false, nil
+	}
 	var n int64
-	err := database.GetDB().Model(&xray.ClientTraffic{}).
-		Joins("JOIN inbound_accesses ON inbound_accesses.inbound_id = client_traffics.inbound_id").
-		Where("client_traffics.email = ? AND inbound_accesses.user_id = ?", email, userId).
-		Count(&n).Error
+	err = db.Model(&model.InboundAccess{}).
+		Where("inbound_id IN (?) AND user_id = ?", ids, userId).Count(&n).Error
 	return n > 0, err
 }
 
@@ -447,27 +466,121 @@ func (s *AdminService) RevokeInboundEverywhere(inboundId int) error {
 	return database.GetDB().Where("inbound_id = ?", inboundId).Delete(&model.InboundAccess{}).Error
 }
 
-// ClientEmailAccess maps every client email to the set of admins granted its
-// inbound, so a producer can scope a panel-wide payload down to each audience.
+// ClientEmailAccess maps every client email to the set of admins granted an inbound
+// SERVING it, so a producer can scope a panel-wide payload down to each audience.
+//
+// The plural matters here for the same reason it does in CanAccessClientEmail: an
+// account lives on N inbounds and the join this used to be resolved one of them, so
+// an admin holding only the others saw none of their own clients in the traffic
+// broadcast or the online list while the single-account check waved them through.
+// Both now go through servingInboundIds, so they cannot disagree.
+//
+// Keyed by every spelling of an identity the panel stores, not just one. Callers
+// index this with an email taken from wherever their payload came from
+// (client_traffics for the traffic rows, an Xray stat name for the online list,
+// which carries the settings spelling), and those differ in case on real panels.
+// A single-spelling map silently hid a client from its own admin.
 func (s *AdminService) ClientEmailAccess() (map[string]map[int]bool, error) {
-	type row struct {
-		Email  string
-		UserId int
-	}
-	var rows []row
-	err := database.GetDB().Model(&xray.ClientTraffic{}).
-		Select("client_traffics.email as email, inbound_accesses.user_id as user_id").
-		Joins("JOIN inbound_accesses ON inbound_accesses.inbound_id = client_traffics.inbound_id").
-		Scan(&rows).Error
-	if err != nil {
+	db := database.GetDB()
+
+	var grants []model.InboundAccess
+	if err := db.Model(&model.InboundAccess{}).Find(&grants).Error; err != nil {
 		return nil, err
 	}
-	out := make(map[string]map[int]bool, len(rows))
-	for _, r := range rows {
-		if out[r.Email] == nil {
-			out[r.Email] = map[int]bool{}
+	adminsByInbound := make(map[int]map[int]bool, len(grants))
+	for _, g := range grants {
+		if adminsByInbound[g.InboundId] == nil {
+			adminsByInbound[g.InboundId] = map[int]bool{}
 		}
-		out[r.Email][r.UserId] = true
+		adminsByInbound[g.InboundId][g.UserId] = true
+	}
+
+	// key -> inbounds serving it, and key -> every spelling seen. Built from the
+	// same three sources servingInboundIds unions, in one pass rather than one
+	// query per account: this runs on the traffic broadcast's tick.
+	idsByKey := map[string]map[int]bool{}
+	spellings := map[string][]string{}
+	note := func(email string, inboundId int) {
+		key := accountKey(email)
+		if key == "" {
+			return
+		}
+		if idsByKey[key] == nil {
+			idsByKey[key] = map[int]bool{}
+			spellings[key] = []string{key}
+		}
+		if inboundId > 0 {
+			idsByKey[key][inboundId] = true
+		}
+		for _, seen := range spellings[key] {
+			if seen == email {
+				return
+			}
+		}
+		spellings[key] = append(spellings[key], email)
+	}
+
+	var inbounds []*model.Inbound
+	if err := db.Model(&model.Inbound{}).Select("id", "settings").Find(&inbounds).Error; err != nil {
+		return nil, err
+	}
+	live := make(map[int]bool, len(inbounds))
+	for _, inbound := range inbounds {
+		live[inbound.Id] = true
+		clients, ok := parseSettingsClients(inbound.Settings)
+		if !ok {
+			continue
+		}
+		for _, entry := range clients {
+			email, _ := entry["email"].(string)
+			note(email, inbound.Id)
+		}
+	}
+
+	type membershipRow struct {
+		Email     string
+		InboundId int
+	}
+	var members []membershipRow
+	if err := db.Table("account_inbounds").
+		Select("accounts.email as email, account_inbounds.inbound_id as inbound_id").
+		Joins("JOIN accounts ON accounts.id = account_inbounds.account_id").
+		Scan(&members).Error; err != nil {
+		return nil, err
+	}
+	for _, m := range members {
+		if !live[m.InboundId] {
+			continue // a membership outliving its inbound grants nothing
+		}
+		note(m.Email, m.InboundId)
+	}
+
+	var traffics []xray.ClientTraffic
+	if err := db.Model(&xray.ClientTraffic{}).Select("email", "inbound_id").Find(&traffics).Error; err != nil {
+		return nil, err
+	}
+	for _, ct := range traffics {
+		if !live[ct.InboundId] {
+			note(ct.Email, 0) // record the spelling; a dead inbound grants nothing
+			continue
+		}
+		note(ct.Email, ct.InboundId)
+	}
+
+	out := make(map[string]map[int]bool, len(idsByKey))
+	for key, ids := range idsByKey {
+		admins := map[int]bool{}
+		for id := range ids {
+			for userId := range adminsByInbound[id] {
+				admins[userId] = true
+			}
+		}
+		if len(admins) == 0 {
+			continue
+		}
+		for _, spelling := range spellings[key] {
+			out[spelling] = admins
+		}
 	}
 	return out, nil
 }
@@ -506,4 +619,47 @@ func (s *AdminService) AllInboundsBrief() ([]InboundBrief, error) {
 		out = []InboundBrief{}
 	}
 	return out, err
+}
+
+// MigrationOverviewAccess grants PermAccessOverview to the admins who predate that
+// bit, exactly once per install.
+//
+// Before the bit existed the overview was ungated, so every admin could open it. A
+// new bit defaults to 0, which means a plain upgrade-and-restart would silently take
+// the panel's home page away from every non-super admin on the box, and the only
+// clue would be admins reporting that logging in lands them somewhere else.
+//
+// Guarded by a SETTING and not by "does anybody hold the bit yet": an operator who
+// deliberately revokes it must not have it handed back on the next restart, and
+// without a marker every restart looks exactly like the first one.
+//
+// Super admins are skipped because they bypass the mask, and resellers because Can()
+// ignores their stored mask in favour of their profile booleans, so bits written
+// onto their row grant nothing and leave a misleading column behind.
+//
+// Called from main.go on every boot and NOT from MigrateDB: that function is reached
+// only by `vpn-ui migrate`, a DB import and a restore, so a backfill placed there
+// never runs on the upgrade path this exists for.
+func (s *AdminService) MigrationOverviewAccess() {
+	var settingService SettingService
+	if settingService.GetOverviewAccessBackfilled() {
+		return
+	}
+	// Bitwise OR in SQL rather than read-modify-write, so an admin's other
+	// permissions cannot be clobbered by a stale in-memory copy of the mask. COALESCE
+	// because NULL | anything is NULL in SQLite: one hand-edited or imported row with
+	// a null mask would otherwise be written back as null rather than repaired.
+	err := database.GetDB().Model(model.User{}).
+		Where("is_super_admin = ? AND is_reseller = ?", false, false).
+		Update("permissions", gorm.Expr("COALESCE(permissions, 0) | ?", model.PermAccessOverview)).Error
+	if err != nil {
+		logger.Warning("MigrationOverviewAccess - granting the overview permission failed: ", err)
+		return
+	}
+	if err := settingService.SetOverviewAccessBackfilled(true); err != nil {
+		// The grant landed but the marker did not, so this runs again on the next
+		// start. Worth saying out loud: until the marker sticks, a revoked overview
+		// permission comes back on every restart.
+		logger.Warning("MigrationOverviewAccess - recording the backfill failed, it will run again: ", err)
+	}
 }

@@ -119,43 +119,29 @@
                           {{ i18n "pages.inbounds.export" }} - {{ i18n
                           "pages.settings.subSettings" }}
                         </a-menu-item>
-                        <!-- Both panel-wide resets are refused for a reseller:
-                             neither can be narrowed to the accounts they own, so
-                             they would clear an admin's counters too. Hidden for
-                             the same reason as import, they only fail. The
-                             depleted sweep below IS theirs: it is scoped to their
-                             own accounts and refunds each one. -->
+                        <!-- Refused for a reseller: it cannot be narrowed to the
+                             inbounds they hold, so it would clear an admin's
+                             counters too. Hidden for the same reason as import,
+                             it only fails. -->
                         <a-menu-item key="resetInbounds" v-if="!RESELLER.isReseller">
                           <a-icon type="reload"></a-icon>
                           {{ i18n "pages.inbounds.resetAllTraffic" }}
                         </a-menu-item>
-                        <a-menu-item key="resetClients" v-if="!RESELLER.isReseller">
-                          <a-icon type="file-done"></a-icon>
-                          {{ i18n "pages.inbounds.resetAllClientTraffics" }}
-                        </a-menu-item>
-                        <a-menu-item key="delDepletedClients"
-                          :style="{ color: 'var(--error)' }">
-                          <a-icon type="rest"></a-icon>
-                          {{ i18n "pages.inbounds.delDepletedClients" }}
-                        </a-menu-item>
                       </a-menu>
                     </a-dropdown>
-                    <a-alert v-if="selectedCount() > 0" type="info"
+                    <!-- Inbound-scoped only. Everything that acts on ACCOUNTS moved
+                         to the Clients page, including the bulk operations and the
+                         account exports that used to sit here. -->
+                    <a-alert v-if="selInbounds.length > 0" type="info"
                       :show-icon="false" :class="themeSwitcher.currentTheme"
                       :style="{ padding: '4px 10px' }">
                       <template slot="message">
                         <a-space :size="8" wrap>
-                          <span><b>[[ selectedCount() ]]</b> {{ i18n
-                            "pages.inbounds.selectedAccounts" }}</span>
-                          <a-button size="small" type="primary" icon="tool"
-                            @click="openBulkOps()">{{ i18n
-                            "pages.inbounds.bulkOperations" }}</a-button>
-                          <a-button size="small" icon="file-text"
-                            @click="exportSelectedTxt()">{{ i18n
-                            "pages.inbounds.exportTxt" }}</a-button>
-                          <a-button size="small" icon="file-pdf"
-                            @click="exportSelectedPdf()">{{ i18n
-                            "pages.inbounds.exportPdf" }}</a-button>
+                          <span><b>[[ selInbounds.length ]]</b> {{ i18n
+                            "pages.inbounds.selectedInbounds" }}</span>
+                          <a-button size="small" type="danger" icon="delete"
+                            @click="runBulkDelete()">{{ i18n
+                            "pages.inbounds.opDelete" }}</a-button>
                           <a-button size="small" icon="close"
                             @click="clearSelection()">{{ i18n
                             "pages.inbounds.clearSelection" }}</a-button>
@@ -227,12 +213,7 @@
                     :data-source="searchedInbounds"
                     :scroll="isMobile ? {} : { x: 1000 }"
                     :pagination=pagination(searchedInbounds)
-                    :expanded-row-keys="expandedRowKeys"
                     v-on:onSort="moveInboundByDrag"
-                    v-on="{ expandedRowsChange: keys => { expandedRowKeys = keys; } }"
-                    :expand-icon-as-cell="false" :expand-row-by-click="false"
-                    :expand-icon-column-index="0" :indent-size="0"
-                    :row-class-name="dbInbound => (dbInbound.isMultiUser() ? '' : 'hideExpandIcon')"
                     :style="{ marginTop: '10px' }"
                     :locale='{ filterConfirm: `{{ i18n "confirm" }}`, filterReset: `{{ i18n "reset" }}`, emptyText: `{{ i18n "noData" }}` }'>
                     <template slot="selectAllHeader">
@@ -291,24 +272,6 @@
                               {{ i18n "qrCode" }}
                             </a-menu-item>
                             <template v-if="dbInbound.isMultiUser()">
-                              <a-menu-item key="addClient"
-                                v-if="!(dbInbound.isIkev2SingleClient() && (getInboundClients(dbInbound) || []).length >= 1)">
-                                <a-icon type="user-add"></a-icon>
-                                {{ i18n "pages.client.add"}}
-                              </a-menu-item>
-                              <a-menu-item key="addBulkClient" v-if="!dbInbound.isIkev2SingleClient()">
-                                <a-icon type="usergroup-add"></a-icon>
-                                {{ i18n "pages.client.bulk"}}
-                              </a-menu-item>
-                              <a-menu-item key="copyClients" v-if="!dbInbound.isIkev2SingleClient()">
-                                <a-icon type="copy"></a-icon>
-                                {{ i18n "pages.client.copyFromInbound"}}
-                              </a-menu-item>
-                              <a-menu-item key="resetClients">
-                                <a-icon type="file-done"></a-icon>
-                                {{ i18n
-                                "pages.inbounds.resetInboundClientTraffics"}}
-                              </a-menu-item>
                               <a-menu-item key="export">
                                 <a-icon type="export"></a-icon>
                                 {{ i18n "pages.inbounds.export"}}
@@ -317,19 +280,6 @@
                                 <a-icon type="export"></a-icon>
                                 {{ i18n "pages.inbounds.export"}} - {{ i18n
                                 "pages.settings.subSettings" }}
-                              </a-menu-item>
-                              <a-menu-item key="exportTxt">
-                                <a-icon type="file-text"></a-icon>
-                                {{ i18n "pages.inbounds.exportTxt" }}
-                              </a-menu-item>
-                              <a-menu-item key="exportPdf">
-                                <a-icon type="file-pdf"></a-icon>
-                                {{ i18n "pages.inbounds.exportPdf" }}
-                              </a-menu-item>
-                              <a-menu-item key="delDepletedClients"
-                                :style="{ color: 'var(--error)' }">
-                                <a-icon type="rest"></a-icon>
-                                {{ i18n "pages.inbounds.delDepletedClients" }}
                               </a-menu-item>
                             </template>
                             <template v-else>
@@ -830,15 +780,6 @@
                         </a-badge>
                       </a-popover>
                     </template>
-                    <template slot="expandedRowRender" slot-scope="record">
-                      <a-table :row-key="client => client.id"
-                        :columns="isMobile ? innerMobileColumns : innerColumns"
-                        :data-source="getInboundClients(record)"
-                        :pagination=pagination(getInboundClients(record))
-                        :style="{ margin: `-10px ${isMobile ? '2px' : '22px'} -11px` }">
-                        {{template "component/aClientTable"}}
-                      </a-table>
-                    </template>
                   </a-table-sortable>
                 </a-space>
               </a-card>
@@ -846,75 +787,6 @@
           </a-row>
         </transition>
       </a-spin>
-  <a-modal id="bulk-ops-modal"
-    title='{{ i18n "pages.inbounds.bulkOperations" }}'
-    :visible="bulkOps.visible"
-    :confirm-loading="bulkOps.confirmLoading"
-    ok-text='{{ i18n "pages.inbounds.apply" }}'
-    cancel-text='{{ i18n "close" }}'
-    :class="themeSwitcher.currentTheme"
-    :closable="true"
-    :mask-closable="false"
-    @ok="() => runBulkOps()"
-    @cancel="() => bulkOps.visible = false">
-    <a-form layout="vertical">
-      <a-form-item label='{{ i18n "pages.inbounds.bulkTargetCount" }}'>
-        <a-tag color="purple">[[ selectedCount() ]]</a-tag>
-      </a-form-item>
-      <a-form-item label='{{ i18n "pages.inbounds.operation" }}'>
-        <a-select v-model="bulkOps.op"
-          :dropdown-class-name="themeSwitcher.currentTheme">
-          <!-- Withheld from a reseller: subDays is refused by the server, and addDays
-               is meaningless once their profile derives duration from traffic. See
-               isBulkOpAllowed; bulkOps.op is snapped back to a rendered option in
-               openBulkOps so the select can never point at a hidden one. -->
-          <a-select-option v-if="bulkOpAllowed('addDays')" value="addDays">{{ i18n "pages.inbounds.opAddDays" }}</a-select-option>
-          <a-select-option v-if="bulkOpAllowed('subDays')" value="subDays">{{ i18n "pages.inbounds.opSubDays" }}</a-select-option>
-          <a-select-option value="addTraffic">{{ i18n "pages.inbounds.opAddTraffic" }}</a-select-option>
-          <a-select-option value="subTraffic">{{ i18n "pages.inbounds.opSubTraffic" }}</a-select-option>
-          <a-select-option value="enable">{{ i18n "pages.inbounds.opEnable" }}</a-select-option>
-          <a-select-option value="disable">{{ i18n "pages.inbounds.opDisable" }}</a-select-option>
-          <a-select-option value="freeze">{{ i18n "pages.inbounds.opFreeze" }}</a-select-option>
-          <a-select-option value="unfreeze">{{ i18n "pages.inbounds.opUnfreeze" }}</a-select-option>
-          <a-select-option value="delete">{{ i18n "pages.inbounds.opDelete" }}</a-select-option>
-        </a-select>
-      </a-form-item>
-      <a-form-item v-if="bulkIsNumericOp()" label='{{ i18n "pages.inbounds.amount" }}'>
-        <a-input-number v-model="bulkOps.amount" :min="0"
-          :style="{ width: bulkIsTrafficOp() ? '58%' : '100%' }"></a-input-number>
-        <a-select v-if="bulkIsTrafficOp()" v-model="bulkOps.unit"
-          :style="{ width: '38%', marginInlineStart: '4%' }"
-          :dropdown-class-name="themeSwitcher.currentTheme">
-          <a-select-option value="GB">GB</a-select-option>
-          <a-select-option value="MB">MB</a-select-option>
-        </a-select>
-        <span v-else :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.days" }}</span>
-      </a-form-item>
-      <a-divider :style="{ margin: '8px 0' }"></a-divider>
-      <a-space direction="vertical" :size="10" :style="{ width: '100%' }">
-        <div>
-          <a-switch v-model="bulkOps.skipFirstUse" size="small"></a-switch>
-          <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipFirstUse" }}</span>
-        </div>
-        <div>
-          <a-switch v-model="bulkOps.skipUnlimited" size="small"></a-switch>
-          <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipUnlimited" }}</span>
-        </div>
-        <div>
-          <a-switch v-model="bulkOps.skipDisabled" size="small"></a-switch>
-          <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipDisabled" }}</span>
-        </div>
-      </a-space>
-      <div v-if="bulkOps.progress.running || bulkOps.progress.done > 0" :style="{ marginTop: '14px' }">
-        <a-progress :percent="bulkProgressPercent()"
-          :status="bulkOps.progress.running ? 'active' : 'success'"></a-progress>
-        <div :style="{ marginTop: '4px', fontSize: '12px', opacity: 0.75 }">
-          [[ bulkOps.progress.done ]] / [[ bulkOps.progress.total ]]
-          <span v-if="bulkOps.progress.etaText"> · {{ i18n "pages.inbounds.eta" }} [[ bulkOps.progress.etaText ]]</span>
-        </div>
-      </div>
-    </a-form>
-  </a-modal>
 {{template "page/shell_end" . }}
 {{template "page/body_scripts" .}}
 <script
@@ -935,229 +807,12 @@
 {{template "component/aCustomStatistic" .}}
 {{template "component/aPersianDatepicker" .}}
 {{template "component/aTableSortable" .}}
+{{template "component/clientActions" .}}
 {{template "modals/inboundModal"}}
 {{template "modals/promptModal"}}
 {{template "modals/qrcodeModal"}}
 {{template "modals/textModal"}}
 {{template "modals/inboundInfoModal"}}
-{{template "modals/clientsModal"}}
-{{template "modals/clientsBulkModal"}}
-{{template "modals/wgcConfigModal"}}
-{{template "modals/awgConfigModal"}}
-{{template "modals/greConfigModal"}}
-{{template "modals/sshConfigModal"}}
-<a-modal id="copy-clients-modal"
-  :title="copyClientsModal.title"
-  :visible="copyClientsModal.visible"
-  :confirm-loading="copyClientsModal.confirmLoading"
-  ok-text='{{ i18n "pages.client.copySelected" }}'
-  cancel-text='{{ i18n "close" }}'
-  :class="themeSwitcher.currentTheme"
-  :closable="true"
-  :mask-closable="false"
-  @ok="() => copyClientsModal.ok()"
-  @cancel="() => copyClientsModal.close()"
-  width="900px">
-  <a-space direction="vertical" style="width: 100%;">
-    <div>
-      <div style="margin-bottom: 6px;">{{ i18n "pages.client.copySource" }}</div>
-      <a-select v-model="copyClientsModal.sourceInboundId"
-        style="width: 100%;"
-        :dropdown-class-name="themeSwitcher.currentTheme"
-        @change="id => copyClientsModal.onSourceChange(id)">
-        <a-select-option v-for="item in copyClientsModal.sources"
-          :key="item.id"
-          :value="item.id">
-          [[ item.label ]]
-        </a-select-option>
-      </a-select>
-    </div>
-    <div v-if="copyClientsModal.sourceInboundId">
-      <a-space style="margin-bottom: 10px;">
-        <a-button size="small" @click="() => copyClientsModal.selectAll()">{{ i18n "pages.client.selectAll" }}</a-button>
-        <a-button size="small" @click="() => copyClientsModal.clearAll()">{{ i18n "pages.client.clearAll" }}</a-button>
-      </a-space>
-      <a-table :columns="copyClientsColumns"
-        :data-source="copyClientsModal.sourceClients"
-        :pagination="false"
-        size="small"
-        :row-key="item => item.email"
-        :scroll="{ y: 280 }">
-        <template slot="emailCheckbox" slot-scope="text, record">
-          <a-checkbox :checked="copyClientsModal.selectedEmails.includes(record.email)"
-            @change="event => copyClientsModal.toggleEmail(record.email, event.target.checked)">
-            [[ record.email ]]
-          </a-checkbox>
-        </template>
-      </a-table>
-    </div>
-    <div v-if="copyClientsModal.showFlow">
-      <div style="margin-bottom: 6px;">{{ i18n "pages.client.copyFlowLabel" }}</div>
-      <a-select v-model="copyClientsModal.flow"
-        style="width: 100%;"
-        :dropdown-class-name="themeSwitcher.currentTheme"
-        allow-clear>
-        <a-select-option value="">{{ i18n "none" }}</a-select-option>
-        <a-select-option value="xtls-rprx-vision">xtls-rprx-vision</a-select-option>
-        <a-select-option value="xtls-rprx-vision-udp443">xtls-rprx-vision-udp443</a-select-option>
-      </a-select>
-      <div style="margin-top: 4px; font-size: 12px; opacity: 0.7;">
-        {{ i18n "pages.client.copyFlowHint" }}
-      </div>
-    </div>
-    <div v-if="copyClientsModal.selectedEmails.length > 0">
-      <div style="margin-bottom: 4px;">{{ i18n "pages.client.copyEmailPreview" }}</div>
-      <div style="max-height: 120px; overflow-y: auto;">
-        <a-tag v-for="preview in previewEmails" :key="preview" style="margin-bottom: 4px;">
-          [[ preview ]]
-        </a-tag>
-      </div>
-    </div>
-  </a-space>
-</a-modal>
-<script>
-  const copyClientsColumns = [
-    { title: '{{ i18n "pages.inbounds.email" }}', width: 300, scopedSlots: { customRender: 'emailCheckbox' } },
-    { title: '{{ i18n "pages.inbounds.traffic" }}', width: 160, dataIndex: 'trafficLabel' },
-    { title: '{{ i18n "pages.inbounds.expireDate" }}', width: 180, dataIndex: 'expiryLabel' },
-  ];
-
-  const copyClientsModal = {
-    visible: false,
-    confirmLoading: false,
-    title: '',
-    targetInboundId: 0,
-    targetInboundRemark: '',
-    targetProtocol: '',
-    showFlow: false,
-    flow: '',
-    sourceInboundId: undefined,
-    sources: [],
-    sourceClients: [],
-    selectedEmails: [],
-    show(targetDbInbound) {
-      if (!targetDbInbound) return;
-      const sources = app.dbInbounds
-        .filter(row => row.id !== targetDbInbound.id && typeof row.isMultiUser === 'function' && row.isMultiUser())
-        .map(row => {
-          const clients = app.getInboundClients(row) || [];
-          return { id: row.id, label: `${row.remark} (${row.protocol}, ${clients.length})` };
-        });
-      let showFlow = false;
-      try {
-        const targetInbound = targetDbInbound.toInbound();
-        showFlow = !!(targetInbound && typeof targetInbound.canEnableTlsFlow === 'function' && targetInbound.canEnableTlsFlow());
-      } catch (e) {
-        showFlow = false;
-      }
-      copyClientsModal.targetInboundId = targetDbInbound.id;
-      copyClientsModal.targetInboundRemark = targetDbInbound.remark;
-      copyClientsModal.targetProtocol = targetDbInbound.protocol;
-      copyClientsModal.showFlow = showFlow;
-      copyClientsModal.flow = '';
-      copyClientsModal.title = `{{ i18n "pages.client.copyToInbound" }} ${targetDbInbound.remark}`;
-      copyClientsModal.sources = sources;
-      copyClientsModal.sourceInboundId = undefined;
-      copyClientsModal.sourceClients = [];
-      copyClientsModal.selectedEmails = [];
-      copyClientsModal.confirmLoading = false;
-      copyClientsModal.visible = true;
-    },
-    close() {
-      copyClientsModal.visible = false;
-      copyClientsModal.confirmLoading = false;
-    },
-    onSourceChange(sourceInboundId) {
-      copyClientsModal.selectedEmails = [];
-      const sourceInbound = app.dbInbounds.find(row => row.id === Number(sourceInboundId));
-      if (!sourceInbound) {
-        copyClientsModal.sourceClients = [];
-        return;
-      }
-      const sourceClients = app.getInboundClients(sourceInbound) || [];
-      copyClientsModal.sourceClients = sourceClients.map(client => {
-        const stats = app.getClientStats(sourceInbound, client.email);
-        const used = stats ? ((stats.up || 0) + (stats.down || 0)) : 0;
-        let expiryLabel = '{{ i18n "unlimited" }}';
-        if (client.expiryTime > 0) {
-          expiryLabel = IntlUtil.formatDate(client.expiryTime);
-        } else if (client.expiryTime < 0) {
-          expiryLabel = `${-client.expiryTime / 86400000}d`;
-        }
-        return {
-          email: client.email,
-          trafficLabel: SizeFormatter.sizeFormat(used),
-          expiryLabel,
-        };
-      });
-    },
-    toggleEmail(email, checked) {
-      const selected = copyClientsModal.selectedEmails.slice();
-      if (checked) {
-        if (!selected.includes(email)) selected.push(email);
-      } else {
-        const idx = selected.indexOf(email);
-        if (idx >= 0) selected.splice(idx, 1);
-      }
-      copyClientsModal.selectedEmails = selected;
-    },
-    selectAll() {
-      copyClientsModal.selectedEmails = copyClientsModal.sourceClients.map(item => item.email);
-    },
-    clearAll() {
-      copyClientsModal.selectedEmails = [];
-    },
-    async ok() {
-      if (!copyClientsModal.sourceInboundId) {
-        app.$message.error('{{ i18n "pages.client.copySelectSourceFirst" }}');
-        return;
-      }
-      copyClientsModal.confirmLoading = true;
-      const payload = {
-        sourceInboundId: copyClientsModal.sourceInboundId,
-        clientEmails: copyClientsModal.selectedEmails,
-      };
-      if (copyClientsModal.showFlow && copyClientsModal.flow) {
-        payload.flow = copyClientsModal.flow;
-      }
-      try {
-        const msg = await HttpUtil.post(`/panel/api/inbounds/${copyClientsModal.targetInboundId}/copyClients`, payload);
-        if (!msg || !msg.success) return;
-        const obj = msg.obj || {};
-        const addedCount = (obj.added || []).length;
-        const errorList = obj.errors || [];
-        if (addedCount > 0) {
-          app.$message.success(`{{ i18n "pages.client.copyResultSuccess" }}: ${addedCount}`);
-        } else {
-          app.$message.warning('{{ i18n "pages.client.copyResultNone" }}');
-        }
-        if (errorList.length > 0) {
-          app.$message.error(`{{ i18n "pages.client.copyResultErrors" }}: ${errorList.join('; ')}`);
-        }
-        copyClientsModal.close();
-        await app.getDBInbounds();
-      } finally {
-        copyClientsModal.confirmLoading = false;
-      }
-    },
-  };
-
-  const copyClientsModalApp = new Vue({
-    delimiters: ['[[', ']]'],
-    el: '#copy-clients-modal',
-    data: {
-      copyClientsModal,
-      copyClientsColumns,
-      themeSwitcher,
-    },
-    computed: {
-      previewEmails() {
-        if (!this.copyClientsModal.targetInboundId) return [];
-        return this.copyClientsModal.selectedEmails.map(email => `${email}_${this.copyClientsModal.targetInboundId}`);
-      },
-    },
-  });
-</script>
 <script>
   const columns = [{
     align: 'center',
@@ -1245,52 +900,10 @@
     scopedSlots: { customRender: 'info' },
   }];
 
-  const innerColumns = [
-    { width: 30, align: 'center', slots: { title: 'selectAllClientsHeader' }, scopedSlots: { customRender: 'selectClient' } },
-    // 200, not 70: the cell holds up to eight action icons on one line. At 70
-    // they wrapped onto three ragged rows, and with nowrap they overflowed into
-    // the Enabled column.
-    { title: '{{ i18n "pages.inbounds.operate" }}', width: 200, scopedSlots: { customRender: 'actions' } },
-    { title: '{{ i18n "pages.inbounds.enable" }}', width: 30, scopedSlots: { customRender: 'enable' } },
-    { title: '{{ i18n "online" }}', width: 32, scopedSlots: { customRender: 'online' } },
-    { title: '{{ i18n "pages.inbounds.client" }}', width: 80, scopedSlots: { customRender: 'client' } },
-    { title: '{{ i18n "pages.inbounds.traffic" }}', width: 80, align: 'center', scopedSlots: { customRender: 'traffic' } },
-    { title: '{{ i18n "pages.inbounds.allTimeTraffic" }}', width: 60, align: 'center', scopedSlots: { customRender: 'allTime' } },
-    { title: '{{ i18n "pages.inbounds.expireDate" }}', width: 80, align: 'center', scopedSlots: { customRender: 'expiryTime' } },
-  ];
-
-  const innerMobileColumns = [
-    { width: 24, align: 'center', slots: { title: 'selectAllClientsHeader' }, scopedSlots: { customRender: 'selectClient' } },
-    { title: '{{ i18n "pages.inbounds.operate" }}', width: 10, align: 'center', scopedSlots: { customRender: 'actionMenu' } },
-    { title: '{{ i18n "pages.inbounds.client" }}', width: 90, align: 'left', scopedSlots: { customRender: 'client' } },
-    { title: '{{ i18n "pages.inbounds.info" }}', width: 10, align: 'center', scopedSlots: { customRender: 'info' } },
-  ];
-
-  // Every bulk operation the modal can offer, in the order it lists them.
-  const BULK_OPS = ['addDays', 'subDays', 'addTraffic', 'subTraffic',
-    'enable', 'disable', 'freeze', 'unfreeze', 'delete'];
-
-  // Two of them are withheld from a reseller. subDays is refused outright by the
-  // server for a reseller, so offering it only buys them a failed run. addDays is
-  // dropped when their profile derives an account's duration from its traffic
-  // (daysPerGb): the day count is recomputed from the GB on the next edit, so a
-  // manual change there looks applied and then quietly is not.
-  // Presentation only, as always: the server re-checks both.
-  function isBulkOpAllowed(op) {
-    if (op === 'subDays' && RESELLER.isReseller) return false;
-    if (op === 'addDays' && (Number(RESELLER.daysPerGb) || 0) > 0) return false;
-    return true;
-  }
-
-  // The first option that survives the filter, so the select never opens pointing
-  // at an operation it does not render. An a-select bound to a value with no
-  // matching option shows the bare value string instead of a label.
-  const DEFAULT_BULK_OP = BULK_OPS.find(isBulkOpAllowed) || 'addTraffic';
-
   const app = new Vue({
     delimiters: ['[[', ']]'],
     el: '#app',
-    mixins: [MediaQueryMixin],
+    mixins: [MediaQueryMixin, ClientActionsMixin],
     data: {
       themeSwitcher,
       pageTitle: '{{ i18n "menu.inbounds"}}',
@@ -1306,10 +919,6 @@
       enableFilter: false,
       filterBy: '',
       searchedInbounds: [],
-      // Controlled expansion: pagination() returns a fresh object every render, so
-      // an uncontrolled table would reset expanded rows on any re-render (e.g.
-      // ticking a selection checkbox). Owning the keys keeps rows open.
-      expandedRowKeys: [],
       expireDiff: 0,
       trafficDiff: 0,
       defaultCert: '',
@@ -1328,8 +937,6 @@
         subJsonEnable: false,
       },
       remarkModel: '-ieo',
-      selInbounds: [],
-      selClients: [],
       // The reseller's own balance chip. Seeded from the server-rendered RESELLER
       // global so it is right on first paint, then held here rather than read off
       // the global: RESELLER is a snapshot taken when the page was served, and it
@@ -1340,17 +947,6 @@
         allowanceBytes: Number(RESELLER.allowanceBytes) || 0,
         spentBytes: Number(RESELLER.spentBytes) || 0,
         availableBytes: Number(RESELLER.availableBytes) || 0,
-      },
-      bulkOps: {
-        visible: false,
-        confirmLoading: false,
-        op: DEFAULT_BULK_OP,
-        amount: 1,
-        unit: 'GB',
-        skipFirstUse: false,
-        skipUnlimited: false,
-        skipDisabled: false,
-        progress: { running: false, done: 0, total: 0, applied: 0, skipped: 0, etaText: '' },
       },
       datepicker: 'gregorian',
       tgBotEnable: false,
@@ -1459,7 +1055,7 @@
           to_inbound = dbInbound.toInbound()
           this.inbounds.push(to_inbound);
           this.dbInbounds.push(dbInbound);
-          if ([Protocols.VMESS, Protocols.VLESS, Protocols.TROJAN, Protocols.SHADOWSOCKS, Protocols.L2TP, Protocols.PPTP, Protocols.OPENVPN, Protocols.OPENCONNECT, Protocols.SSTP, Protocols.IKEV2, Protocols.WGC, Protocols.AWG, Protocols.MTPROTO, Protocols.SSH].includes(inbound.protocol)) {
+          if ([Protocols.VMESS, Protocols.VLESS, Protocols.TROJAN, Protocols.SHADOWSOCKS, Protocols.ANYTLS, Protocols.TUIC, Protocols.NAIVE, Protocols.L2TP, Protocols.PPTP, Protocols.OPENVPN, Protocols.OPENCONNECT, Protocols.SSTP, Protocols.IKEV2, Protocols.WGC, Protocols.AWG, Protocols.MTPROTO, Protocols.SSH].includes(inbound.protocol)) {
             if (dbInbound.isSS && (!to_inbound.isSSMultiUser)) {
               continue;
             }
@@ -1593,67 +1189,15 @@
           case "resetInbounds":
             this.resetAllTraffic();
             break;
-          case "resetClients":
-            this.resetAllClientTraffics(-1);
-            break;
-          case "delDepletedClients":
-            this.delDepletedClients(-1)
-            break;
         }
       },
       // --- multi-select --------------------------------------------------
       isInboundSel(id) { return this.selInbounds.includes(id); },
-      isClientSel(inboundId, email) {
-        return this.selInbounds.includes(inboundId) || this.selClients.includes(inboundId + ':' + email);
-      },
       toggleInboundSel(dbInbound, checked) {
         const id = dbInbound.id;
         this.selClients = this.selClients.filter(k => !k.startsWith(id + ':'));
         if (checked) { if (!this.selInbounds.includes(id)) this.selInbounds.push(id); }
         else { this.selInbounds = this.selInbounds.filter(x => x !== id); }
-      },
-      toggleClientSel(inboundId, email, checked) {
-        // If the whole inbound was selected, unpack it into explicit per-client keys
-        // first, so unchecking one client keeps the others selected.
-        if (this.selInbounds.includes(inboundId)) {
-          const dbInbound = this.dbInbounds.find(r => r.id === inboundId);
-          const emails = (this.getInboundClients(dbInbound) || []).map(c => c.email).filter(Boolean);
-          this.selInbounds = this.selInbounds.filter(x => x !== inboundId);
-          emails.forEach(em => { const k = inboundId + ':' + em; if (!this.selClients.includes(k)) this.selClients.push(k); });
-        }
-        const key = inboundId + ':' + email;
-        if (checked) { if (!this.selClients.includes(key)) this.selClients.push(key); }
-        else { this.selClients = this.selClients.filter(k => k !== key); }
-      },
-      // Per-inbound "select all clients" (client-table header checkbox). Operates
-      // ONLY on selClients — never selInbounds — so the inbound row itself is never
-      // selected (a select-all of clients must not delete/select the inbound).
-      isAllClientsSel(dbInbound) {
-        if (!dbInbound) return false;
-        const emails = (this.getInboundClients(dbInbound) || []).map(c => c.email).filter(Boolean);
-        return emails.length > 0 && emails.every(em => this.isClientSel(dbInbound.id, em));
-      },
-      isSomeClientsSel(dbInbound) {
-        if (!dbInbound) return false;
-        const emails = (this.getInboundClients(dbInbound) || []).map(c => c.email).filter(Boolean);
-        const n = emails.filter(em => this.isClientSel(dbInbound.id, em)).length;
-        return n > 0 && n < emails.length;
-      },
-      toggleSelectAllClients(dbInbound, checked) {
-        if (!dbInbound) return;
-        const id = dbInbound.id;
-        const emails = (this.getInboundClients(dbInbound) || []).map(c => c.email).filter(Boolean);
-        // If the inbound was wholesale-selected, unpack it into per-client keys and
-        // drop it from selInbounds first (mirrors toggleClientSel above).
-        if (this.selInbounds.includes(id)) {
-          this.selInbounds = this.selInbounds.filter(x => x !== id);
-          emails.forEach(em => { const k = id + ':' + em; if (!this.selClients.includes(k)) this.selClients.push(k); });
-        }
-        if (checked) {
-          emails.forEach(em => { const k = id + ':' + em; if (!this.selClients.includes(k)) this.selClients.push(k); });
-        } else {
-          this.selClients = this.selClients.filter(k => !k.startsWith(id + ':'));
-        }
       },
       toggleSelectAllInbounds(e) {
         if (e.target.checked) {
@@ -1667,253 +1211,6 @@
       isSomeInboundsSelected() {
         return this.selInbounds.length > 0 && !this.isAllInboundsSelected();
       },
-      clearSelection() { this.selInbounds = []; this.selClients = []; },
-      resolveSelectedTargets() {
-        const map = {};
-        const add = (inboundId, email) => { if (email) map[inboundId + ':' + email] = { inboundId, email }; };
-        this.selInbounds.forEach(id => {
-          const dbInbound = this.dbInbounds.find(r => r.id === id);
-          (this.getInboundClients(dbInbound) || []).forEach(c => add(id, c.email));
-        });
-        this.selClients.forEach(k => { const i = k.indexOf(':'); add(Number(k.slice(0, i)), k.slice(i + 1)); });
-        return Object.values(map);
-      },
-      selectedCount() { return this.resolveSelectedTargets().length; },
-      inboundTargets(dbInbound) {
-        return (this.getInboundClients(dbInbound) || [])
-          .map(c => c.email).filter(Boolean)
-          .map(email => ({ inboundId: dbInbound.id, email }));
-      },
-      // --- export (txt / pdf) -------------------------------------------
-      async exportTxt(targets, filename) {
-        if (!targets || !targets.length) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
-        try {
-          const cards = await AccountExport.buildCards(this, targets);
-          if (!cards.length) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
-          AccountExport.txt(cards, filename || 'accounts');
-        } catch (e) { this.$message.error('Export failed: ' + (e && e.message ? e.message : e)); }
-      },
-      async exportPdf(targets, filename) {
-        if (!targets || !targets.length) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
-        try {
-          const cards = await AccountExport.buildCards(this, targets);
-          if (!cards.length) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
-          AccountExport.pdf(cards, filename || 'accounts');
-        } catch (e) { this.$message.error('Export failed: ' + (e && e.message ? e.message : e)); }
-      },
-      exportSelectedTxt() { this.exportTxt(this.resolveSelectedTargets(), 'accounts'); },
-      exportSelectedPdf() { this.exportPdf(this.resolveSelectedTargets(), 'accounts'); },
-      // Single-account export straight from a client row's action buttons.
-      exportClientTxt(dbInbound, client) { this.exportTxt([{ inboundId: dbInbound.id, email: client.email }], client.email || dbInbound.remark); },
-      exportClientPdf(dbInbound, client) { this.exportPdf([{ inboundId: dbInbound.id, email: client.email }], client.email || dbInbound.remark); },
-      // --- bulk operations ----------------------------------------------
-      openBulkOps() {
-        if (!this.selectedCount()) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
-        this.bulkOps.progress = { running: false, done: 0, total: 0, applied: 0, skipped: 0, etaText: '' };
-        // A previous run may have left a selection that is no longer offered, and
-        // the value survives the modal closing. Snap it back to a rendered option.
-        if (!isBulkOpAllowed(this.bulkOps.op)) this.bulkOps.op = DEFAULT_BULK_OP;
-        this.bulkOps.visible = true;
-      },
-      // Template hook for the option filter; the rule itself lives in isBulkOpAllowed.
-      bulkOpAllowed(op) { return isBulkOpAllowed(op); },
-      bulkIsTrafficOp() { return ['addTraffic', 'subTraffic'].includes(this.bulkOps.op); },
-      bulkIsNumericOp() { return ['addDays', 'subDays', 'addTraffic', 'subTraffic'].includes(this.bulkOps.op); },
-      bulkProgressPercent() {
-        const p = this.bulkOps.progress;
-        return p.total > 0 ? Math.floor((p.done / p.total) * 100) : 0;
-      },
-      bulkFormatEta(sec) {
-        sec = Math.max(0, Math.ceil(sec));
-        if (sec >= 60) { return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's'; }
-        return sec + 's';
-      },
-      // Asks the server what this batch WOULD cost, and when a reseller cannot
-      // afford all of it, offers the part they can instead of failing the run.
-      //
-      // Returns the target list to actually send, or null to abandon. Admins and
-      // affordable batches pass straight through: the path that already works
-      // must not grow a dialog.
-      async bulkConfirmAffordable(base, targets) {
-        if (!RESELLER.isReseller) return targets;
-        let p = null;
-        try {
-          const msg = await HttpUtil.post('/panel/api/inbounds/bulkPreview',
-            { data: JSON.stringify(Object.assign({}, base, { targets })) });
-          if (!msg || !msg.success) return null;
-          p = msg.obj || {};
-        } catch (e) {
-          return null;
-        }
-        if (!p.isReseller || p.affordable) return targets;
-
-        const short = SizeFormatter.sizeFormat(Number(p.shortBytes) || 0);
-        const can = Number(p.canProcess) || 0;
-        const eligible = Number(p.eligible) || 0;
-        // Nothing fits, so there is no partial run to offer and asking them to
-        // confirm one would be a dialog with no useful answer.
-        if (can <= 0) {
-          this.$message.error('{{ i18n "pages.resellers.bulkShort" }} ' + short +
-            '. {{ i18n "pages.resellers.available" }}: ' +
-            SizeFormatter.sizeFormat(Number(p.availableBytes) || 0));
-          return null;
-        }
-        // The emails the server says fit, mapped back to full targets so the run
-        // posts the same (inbound, email) pairs it always does. Anything the
-        // server did not name is dropped, never guessed at.
-        const keep = new Set((p.processEmails || []).map(e => String(e).toLowerCase()));
-        const narrowed = targets.filter(t => keep.has(String(t.email || '').toLowerCase()));
-        const ok = await new Promise((resolve) => {
-          this.$confirm({
-            title: '{{ i18n "pages.inbounds.bulkOperations" }}',
-            content: '{{ i18n "pages.resellers.bulkShort" }} ' + short +
-              '. {{ i18n "pages.resellers.bulkPartial" }}: ' + can + ' / ' + eligible,
-            okText: '{{ i18n "confirm" }}',
-            cancelText: '{{ i18n "cancel" }}',
-            class: themeSwitcher.currentTheme,
-            onOk: () => resolve(true),
-            onCancel: () => resolve(false),
-          });
-        });
-        return ok ? narrowed : null;
-      },
-      async runBulkOps() {
-        const b = this.bulkOps;
-        // Delete removes whatever is checked: a selected INBOUND is deleted wholesale
-        // (its accounts go with it, no per-client filtering), a selected ACCOUNT is
-        // removed on its own. Separate flow from the in-place client update ops.
-        if (b.op === 'delete') return this.runBulkDelete();
-        let targets = this.resolveSelectedTargets();
-        if (!targets.length) return;
-        const amount = Math.max(0, Number(b.amount) || 0);
-        const bytes = b.unit === 'MB' ? 1024 * 1024 : 1024 * 1024 * 1024;
-        const base = {
-          op: b.op,
-          days: this.bulkIsTrafficOp() ? 0 : amount,
-          amountBytes: this.bulkIsTrafficOp() ? Math.round(amount * bytes) : 0,
-          skipFirstUse: b.skipFirstUse,
-          skipUnlimited: b.skipUnlimited,
-          skipDisabled: b.skipDisabled,
-        };
-        // Priced before a single batch goes out. A reseller who cannot afford the
-        // whole run is told the shortfall and how many accounts fit, and either
-        // confirms the partial run or abandons it. Doing this per batch instead
-        // would ask them the same question five times mid-run, with some of it
-        // already spent.
-        targets = await this.bulkConfirmAffordable(base, targets);
-        if (!targets || !targets.length) return;
-        b.progress = { running: false, done: 0, total: 0, applied: 0, skipped: 0, etaText: '' };
-        // Batch the targets so the modal can show real per-item progress + ETA
-        // (the backend accepts an arbitrary target list, so this is honest progress,
-        // not a fake animation). One request per batch, sequential.
-        const BATCH = 20;
-        const batches = [];
-        for (let i = 0; i < targets.length; i += BATCH) batches.push(targets.slice(i, i + BATCH));
-        b.confirmLoading = true;
-        b.progress = { running: true, done: 0, total: targets.length, applied: 0, skipped: 0, etaText: '' };
-        const start = Date.now();
-        let ok = true;
-        for (let i = 0; i < batches.length; i++) {
-          const payload = Object.assign({}, base, { targets: batches[i] });
-          const msg = await HttpUtil.post('/panel/api/inbounds/bulkUpdateClients', { data: JSON.stringify(payload) });
-          if (!msg.success) { ok = false; break; }
-          const r = msg.obj || {};
-          b.progress.applied += (r.applied || 0);
-          b.progress.skipped += (r.skipped || 0);
-          b.progress.done += batches[i].length;
-          const elapsed = (Date.now() - start) / 1000;
-          const rate = elapsed > 0 ? b.progress.done / elapsed : 0;
-          const remaining = b.progress.total - b.progress.done;
-          b.progress.etaText = (rate > 0 && remaining > 0) ? this.bulkFormatEta(remaining / rate) : '';
-        }
-        b.progress.running = false;
-        b.confirmLoading = false;
-        // Refreshed whether or not the whole run succeeded: batches are applied one
-        // request at a time, so a run that broke on batch three still spent the
-        // balance the first two cost.
-        await this.refreshResellerBalance();
-        if (ok) {
-          b.visible = false;
-          this.$message.success('{{ i18n "pages.inbounds.bulkDone" }} {{ i18n "pages.inbounds.bulkAffected" }}: ' + b.progress.applied + ' {{ i18n "pages.inbounds.bulkSkipped" }}: ' + b.progress.skipped);
-          this.clearSelection();
-          await this.getDBInbounds();
-        }
-      },
-      bulkTickEta(start) {
-        const p = this.bulkOps.progress;
-        const elapsed = (Date.now() - start) / 1000;
-        const rate = elapsed > 0 ? p.done / elapsed : 0;
-        const remaining = p.total - p.done;
-        p.etaText = (rate > 0 && remaining > 0) ? this.bulkFormatEta(remaining / rate) : '';
-      },
-      async runBulkDelete() {
-        const b = this.bulkOps;
-        // Whole inbounds selected -> delete the inbound (its accounts go with it, no
-        // per-client filtering). Accounts selected on their own (inbound NOT wholesale-
-        // selected) -> delete just those.
-        const inboundIds = this.selInbounds.slice();
-        const clientTargets = this.selClients
-          .filter(k => !inboundIds.includes(Number(k.slice(0, k.indexOf(':')))))
-          .map(k => { const i = k.indexOf(':'); return { inboundId: Number(k.slice(0, i)), email: k.slice(i + 1) }; });
-        const totalUnits = inboundIds.length + clientTargets.length;
-        if (!totalUnits) return;
-        const okDel = await new Promise((resolve) => {
-          this.$confirm({
-            title: '{{ i18n "pages.inbounds.opDelete" }}',
-            content: '{{ i18n "pages.inbounds.bulkDeleteConfirm" }}'
-              .replace('%INBOUNDS%', inboundIds.length).replace('%CLIENTS%', clientTargets.length),
-            okText: '{{ i18n "delete" }}',
-            okType: 'danger',
-            class: themeSwitcher.currentTheme,
-            cancelText: '{{ i18n "cancel" }}',
-            onOk: () => resolve(true),
-            onCancel: () => resolve(false),
-          });
-        });
-        if (!okDel) return;
-        b.confirmLoading = true;
-        b.progress = { running: true, done: 0, total: totalUnits, applied: 0, skipped: 0, etaText: '' };
-        const start = Date.now();
-        let ok = true;
-        // 1) whole inbounds (one request each; each triggers its own config regen).
-        for (const id of inboundIds) {
-          const msg = await HttpUtil.post('/panel/api/inbounds/del/' + id);
-          if (!msg.success) { ok = false; break; }
-          b.progress.applied++;
-          b.progress.done++;
-          this.bulkTickEta(start);
-        }
-        // 2) standalone accounts (batched, reuses the bulk 'delete' op).
-        if (ok && clientTargets.length) {
-          const base = {
-            op: 'delete', days: 0, amountBytes: 0,
-            skipFirstUse: b.skipFirstUse, skipUnlimited: b.skipUnlimited, skipDisabled: b.skipDisabled,
-          };
-          const BATCH = 20;
-          for (let i = 0; i < clientTargets.length; i += BATCH) {
-            const batch = clientTargets.slice(i, i + BATCH);
-            const msg = await HttpUtil.post('/panel/api/inbounds/bulkUpdateClients',
-              { data: JSON.stringify(Object.assign({}, base, { targets: batch })) });
-            if (!msg.success) { ok = false; break; }
-            const r = msg.obj || {};
-            b.progress.applied += (r.applied || 0);
-            b.progress.skipped += (r.skipped || 0);
-            b.progress.done += batch.length;
-            this.bulkTickEta(start);
-          }
-        }
-        b.progress.running = false;
-        b.confirmLoading = false;
-        // Same reason as runBulkOps: a partial delete has already credited back
-        // whatever the removed accounts never used.
-        await this.refreshResellerBalance();
-        if (ok) {
-          b.visible = false;
-          this.$message.success('{{ i18n "pages.inbounds.bulkDone" }} {{ i18n "pages.inbounds.bulkAffected" }}: ' + b.progress.applied + ' {{ i18n "pages.inbounds.bulkSkipped" }}: ' + b.progress.skipped);
-          this.clearSelection();
-          await this.getDBInbounds();
-        }
-      },
       clickAction(action, dbInbound) {
         switch (action.key) {
           case "qrcode":
@@ -1924,15 +1221,6 @@
             break;
           case "edit":
             this.openEditInbound(dbInbound.id);
-            break;
-          case "addClient":
-            this.openAddClient(dbInbound.id)
-            break;
-          case "addBulkClient":
-            this.openAddBulkClient(dbInbound.id)
-            break;
-          case "copyClients":
-            copyClientsModal.show(dbInbound);
             break;
           case "export":
             this.inboundLinks(dbInbound.id);
@@ -1946,23 +1234,11 @@
           case "resetTraffic":
             this.resetTraffic(dbInbound.id);
             break;
-          case "resetClients":
-            this.resetAllClientTraffics(dbInbound.id);
-            break;
           case "clone":
             this.openCloneInbound(dbInbound);
             break;
           case "delete":
             this.delInbound(dbInbound.id);
-            break;
-          case "delDepletedClients":
-            this.delDepletedClients(dbInbound.id)
-            break;
-          case "exportTxt":
-            this.exportTxt(this.inboundTargets(dbInbound), dbInbound.remark);
-            break;
-          case "exportPdf":
-            this.exportPdf(this.inboundTargets(dbInbound), dbInbound.remark);
             break;
           case "moveTop":
             this.moveInbound(this.inboundPosition(dbInbound), 0);
@@ -2189,84 +1465,6 @@
 
         await this.submit(`/panel/api/inbounds/update/${dbInbound.id}`, formData, inModal);
       },
-      openAddClient(dbInboundId) {
-        dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
-        if (dbInbound && dbInbound.isIkev2SingleClient() && (this.getInboundClients(dbInbound) || []).length >= 1) {
-          this.$message.warning('This IKEv2 inbound allows only one account.');
-          return;
-        }
-        clientModal.show({
-          title: '{{ i18n "pages.client.add"}}',
-          okText: '{{ i18n "pages.client.submitAdd"}}',
-          dbInbound: dbInbound,
-          confirm: async (clients, dbInboundId) => {
-            await this.addClient(clients, dbInboundId, clientModal);
-          },
-          isEdit: false
-        });
-      },
-      openAddBulkClient(dbInboundId) {
-        dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
-        clientsBulkModal.show({
-          title: '{{ i18n "pages.client.bulk"}} ' + dbInbound.remark,
-          okText: '{{ i18n "pages.client.bulk"}}',
-          dbInbound: dbInbound,
-          confirm: async (clients, dbInboundId) => {
-            await this.addClient(clients, dbInboundId, clientsBulkModal);
-          },
-        });
-      },
-      openEditClient(dbInboundId, client) {
-        dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
-        if (!dbInbound) return;
-        clients = this.getInboundClients(dbInbound);
-        if (!clients || !Array.isArray(clients)) return;
-        index = this.findIndexOfClient(dbInbound.protocol, clients, client);
-        if (index < 0) return;
-        clientModal.show({
-          title: '{{ i18n "pages.client.edit"}}',
-          okText: '{{ i18n "pages.client.submitEdit"}}',
-          dbInbound: dbInbound,
-          index: index,
-          confirm: async (client, dbInboundId, clientId) => {
-            clientModal.loading();
-            await this.updateClient(client, dbInboundId, clientId);
-            clientModal.close();
-          },
-          isEdit: true
-        });
-      },
-      findIndexOfClient(protocol, clients, client) {
-        if (!clients || !Array.isArray(clients) || !client) {
-          return -1;
-        }
-        switch (protocol) {
-          case Protocols.TROJAN:
-          case Protocols.SHADOWSOCKS:
-          case Protocols.L2TP:
-          case Protocols.PPTP:
-          case Protocols.OPENVPN:
-          case Protocols.OPENCONNECT:
-          case Protocols.SSTP:
-          case Protocols.IKEV2:
-            return clients.findIndex(item => item && item.password === client.password && item.email === client.email);
-          default: return clients.findIndex(item => item && item.id === client.id && item.email === client.email);
-        }
-      },
-      async addClient(clients, dbInboundId, modal) {
-        const data = {
-          id: dbInboundId,
-          settings: '{"clients": [' + clients.toString() + ']}',
-        };
-        await this.submit(`/panel/api/inbounds/addClient`, data, modal);
-      },
-      async updateClient(client, dbInboundId, clientId) {
-        const data = {
-          id: dbInboundId,
-          settings: '{"clients": [' + client.toString() + ']}',
-        };
-        await this.submit(`/panel/api/inbounds/updateClient/${clientId}`, data, clientModal);
-      },
       resetTraffic(dbInboundId) {
         dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
         this.$confirm({
@@ -2292,120 +1490,6 @@
           cancelText: '{{ i18n "cancel"}}',
           onOk: () => this.submit('/panel/api/inbounds/del/' + dbInboundId),
         });
-      },
-      delClient(dbInboundId, client, confirmation = true) {
-        dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
-        clientId = this.getClientId(dbInbound.protocol, client);
-        if (confirmation) {
-          this.$confirm({
-            title: '{{ i18n "pages.inbounds.deleteClient"}}' + ' ' + client.email,
-            content: '{{ i18n "pages.inbounds.deleteClientContent"}}',
-            class: themeSwitcher.currentTheme,
-            okText: '{{ i18n "delete"}}',
-            cancelText: '{{ i18n "cancel"}}',
-            onOk: () => this.submit(`/panel/api/inbounds/${dbInboundId}/delClient/${clientId}`),
-          });
-        } else {
-          this.submit(`/panel/api/inbounds/${dbInboundId}/delClient/${clientId}`);
-        }
-      },
-      getSubGroupClients(dbInbounds, currentClient) {
-        const response = {
-          inbounds: [],
-          clients: [],
-          editIds: []
-        }
-        if (dbInbounds && dbInbounds.length > 0 && currentClient) {
-          dbInbounds.forEach((dbInboundItem) => {
-            const dbInbound = new DBInbound(dbInboundItem);
-            if (dbInbound) {
-              const inbound = dbInbound.toInbound();
-              if (inbound) {
-                const clients = inbound.clients;
-                if (clients.length > 0) {
-                  clients.forEach((client) => {
-                    if (client['subId'] === currentClient['subId']) {
-                      client['inboundId'] = dbInboundItem.id
-                      client['clientId'] = this.getClientId(dbInbound.protocol, client)
-                      response.inbounds.push(dbInboundItem.id)
-                      response.clients.push(client)
-                      response.editIds.push(client['clientId'])
-                    }
-                  })
-                }
-              }
-            }
-          })
-        }
-        return response;
-      },
-      // Single definition in model/inbound.js, mirrored by clientIdentityKey() in
-      // web/service/inbound.go. Do not inline the switch here again.
-      getClientId(protocol, client) {
-        return getClientIdentity(protocol, client);
-      },
-      checkFallback(dbInbound) {
-        newDbInbound = new DBInbound(dbInbound);
-        if (dbInbound.listen.startsWith("@")) {
-          rootInbound = this.inbounds.find((i) =>
-            i.isTcp &&
-            ['trojan', 'vless'].includes(i.protocol) &&
-            i.settings.fallbacks.find(f => f.dest === dbInbound.listen)
-          );
-          if (rootInbound) {
-            newDbInbound.listen = rootInbound.listen;
-            newDbInbound.port = rootInbound.port;
-            newInbound = newDbInbound.toInbound();
-            newInbound.stream.security = rootInbound.stream.security;
-            newInbound.stream.tls = rootInbound.stream.tls;
-            newInbound.stream.externalProxy = rootInbound.stream.externalProxy;
-            newDbInbound.streamSettings = newInbound.stream.toString();
-          }
-        }
-        return newDbInbound;
-      },
-      showQrcode(dbInboundId, client) {
-        dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
-        newDbInbound = this.checkFallback(dbInbound);
-        qrModal.show('{{ i18n "qrCode"}}', newDbInbound, client);
-      },
-      showWgcConfig(dbInboundId, client) {
-        // WireGuard (C) configs are rendered server-side (per-device .conf with
-        // backend-minted keys); the modal fetches them from the wgc-configs API.
-        wgcConfigModal.show(dbInboundId, client);
-      },
-      showAwgConfig(dbInboundId, client) {
-        // AmneziaWG configs are rendered server-side (per-device .conf with
-        // backend-minted keys + obfuscation params); the modal fetches them from
-        // the awg-configs API.
-        awgConfigModal.show(dbInboundId, client);
-      },
-      showGreConfig(dbInboundId, client) {
-        // GRE "configs" are the router-side values rendered server-side (no profile file
-        // and nothing to scan: the client is a router); the modal fetches them from the
-        // gre-configs API.
-        greConfigModal.show(dbInboundId, client);
-      },
-      showSshConfig(dbInboundId, client) {
-        // SSH configs are rendered server-side (a sing-box ssh outbound plus a
-        // plaintext host/port/user/pass block); the modal fetches them from the
-        // ssh-configs API.
-        sshConfigModal.show(dbInboundId, client);
-      },
-      showInfo(dbInboundId, client) {
-        dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
-        if (!dbInbound) return;
-        index = 0;
-        if (dbInbound.isMultiUser()) {
-          inbound = dbInbound.toInbound();
-          clients = inbound && inbound.clients ? inbound.clients : null;
-          if (clients && Array.isArray(clients)) {
-            index = this.findIndexOfClient(dbInbound.protocol, clients, client);
-            if (index < 0) index = 0;
-          }
-        }
-        newDbInbound = this.checkFallback(dbInbound);
-        infoModal.show(newDbInbound, index);
       },
       switchEnable(dbInboundId, state) {
         let dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
@@ -2448,56 +1532,6 @@
         Object.keys(data).forEach(key => formData.append(key, data[key]));
 
         this.submit(`/panel/api/inbounds/update/${dbInboundId}`, formData);
-      },
-      async switchEnableClient(dbInboundId, client, state) {
-        this.loading();
-        try {
-          dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
-          if (!dbInbound) return;
-
-          inbound = dbInbound.toInbound();
-          clients = inbound && inbound.clients ? inbound.clients : null;
-          if (!clients || !Array.isArray(clients)) return;
-
-          index = this.findIndexOfClient(dbInbound.protocol, clients, client);
-          if (index < 0 || !clients[index]) return;
-
-          clients[index].enable = typeof state === 'boolean' ? state : !!client.enable;
-          clientId = this.getClientId(dbInbound.protocol, clients[index]);
-          await this.updateClient(clients[index], dbInboundId, clientId);
-        } finally {
-          this.loading(false);
-        }
-      },
-      isFrozen(client) {
-        // Frozen = disabled with a locked (negative, non-ticking) remaining time.
-        return !!client && client.enable === false && Number(client.expiryTime) < 0;
-      },
-      async toggleFreeze(dbInboundId, client) {
-        // Freeze/unfreeze reuse the bulk endpoint (single target) so the time-lock math
-        // lives in one place (the backend). Freeze disables + locks remaining days;
-        // unfreeze re-enables + resumes them.
-        if (!client || !client.email) return;
-        const op = this.isFrozen(client) ? 'unfreeze' : 'freeze';
-        this.loading();
-        try {
-          const payload = {
-            op, days: 0, amountBytes: 0,
-            skipFirstUse: false, skipUnlimited: false, skipDisabled: false,
-            targets: [{ inboundId: dbInboundId, email: client.email }],
-          };
-          const msg = await HttpUtil.post('/panel/api/inbounds/bulkUpdateClients', { data: JSON.stringify(payload) });
-          if (msg.success) {
-            this.$message.success(op === 'freeze'
-              ? '{{ i18n "pages.client.freeze" }}' : '{{ i18n "pages.client.unfreeze" }}');
-            await this.getDBInbounds();
-            // Goes through the same bulk endpoint as the rest, so it is refreshed
-            // alongside them rather than being the one path that drifts.
-            await this.refreshResellerBalance();
-          }
-        } finally {
-          this.loading(false);
-        }
       },
       showSetupRequired(protocolSpecific = false) {
         this.$confirm({
@@ -2564,25 +1598,6 @@
         ];
         return xrayNative.includes(k) ? 'xray' : 'vpn';
       },
-      getInboundClients(dbInbound) {
-        if (!dbInbound) return null;
-        const inbound = dbInbound.toInbound();
-        return inbound && inbound.clients ? inbound.clients : null;
-      },
-      resetClientTraffic(client, dbInboundId, confirmation = true) {
-        if (confirmation) {
-          this.$confirm({
-            title: '{{ i18n "pages.inbounds.resetTraffic"}}' + ' ' + client.email,
-            content: '{{ i18n "pages.inbounds.resetTrafficContent"}}',
-            class: themeSwitcher.currentTheme,
-            okText: '{{ i18n "reset"}}',
-            cancelText: '{{ i18n "cancel"}}',
-            onOk: () => this.submit('/panel/api/inbounds/' + dbInboundId + '/resetClientTraffic/' + client.email),
-          })
-        } else {
-          this.submit('/panel/api/inbounds/' + dbInboundId + '/resetClientTraffic/' + client.email);
-        }
-      },
       resetAllTraffic() {
         this.$confirm({
           title: '{{ i18n "pages.inbounds.resetAllTrafficTitle"}}',
@@ -2593,141 +1608,12 @@
           onOk: () => this.submit('/panel/api/inbounds/resetAllTraffics'),
         });
       },
-      resetAllClientTraffics(dbInboundId) {
-        this.$confirm({
-          title: dbInboundId > 0 ? '{{ i18n "pages.inbounds.resetInboundClientTrafficTitle"}}' : '{{ i18n "pages.inbounds.resetAllClientTrafficTitle"}}',
-          content: dbInboundId > 0 ? '{{ i18n "pages.inbounds.resetInboundClientTrafficContent"}}' : '{{ i18n "pages.inbounds.resetAllClientTrafficContent"}}',
-          class: themeSwitcher.currentTheme,
-          okText: '{{ i18n "reset"}}',
-          cancelText: '{{ i18n "cancel"}}',
-          onOk: () => this.submit('/panel/api/inbounds/resetAllClientTraffics/' + dbInboundId),
-        })
-      },
-      delDepletedClients(dbInboundId) {
-        this.$confirm({
-          title: '{{ i18n "pages.inbounds.delDepletedClientsTitle"}}',
-          content: '{{ i18n "pages.inbounds.delDepletedClientsContent"}}',
-          class: themeSwitcher.currentTheme,
-          okText: '{{ i18n "delete"}}',
-          cancelText: '{{ i18n "cancel"}}',
-          onOk: () => this.submit('/panel/api/inbounds/delDepletedClients/' + dbInboundId),
-        })
-      },
       isExpiry(dbInbound, index) {
         return dbInbound.toInbound().isExpiry(index);
-      },
-      getClientStats(dbInbound, email) {
-        if (!dbInbound) return null;
-        if (!dbInbound._clientStatsMap) {
-            dbInbound._clientStatsMap = new Map();
-            if (dbInbound.clientStats && Array.isArray(dbInbound.clientStats)) {
-                for (const stats of dbInbound.clientStats) {
-                    dbInbound._clientStatsMap.set(stats.email, stats);
-                }
-            }
-        }
-        return dbInbound._clientStatsMap.get(email);
-      },
-      getUpStats(dbInbound, email) {
-        if (!email || email.length == 0) return 0;
-        let clientStats = this.getClientStats(dbInbound, email);
-        return clientStats ? clientStats.up : 0;
-      },
-      getDownStats(dbInbound, email) {
-        if (!email || email.length == 0) return 0;
-        let clientStats = this.getClientStats(dbInbound, email);
-        return clientStats ? clientStats.down : 0;
-      },
-      getSumStats(dbInbound, email) {
-        if (!email || email.length == 0) return 0;
-        let clientStats = this.getClientStats(dbInbound, email);
-        return clientStats ? clientStats.up + clientStats.down : 0;
-      },
-      getAllTimeClient(dbInbound, email) {
-        if (!email || email.length == 0) return 0;
-        let clientStats = this.getClientStats(dbInbound, email);
-        if (!clientStats) return 0;
-        return clientStats.allTime || (clientStats.up + clientStats.down);
-      },
-      getRemStats(dbInbound, email) {
-        if (!email || email.length == 0) return 0;
-        let clientStats = this.getClientStats(dbInbound, email);
-        if (!clientStats) return 0;
-        let remained = clientStats.total - (clientStats.up + clientStats.down);
-        return remained > 0 ? remained : 0;
-      },
-      clientStatsColor(dbInbound, email) {
-        if (!email || email.length == 0) return ColorUtils.clientUsageColor();
-        let clientStats = this.getClientStats(dbInbound, email);
-        return ColorUtils.clientUsageColor(clientStats, app.trafficDiff)
-      },
-      statsProgress(dbInbound, email) {
-        if (!email || email.length == 0) return 100;
-        let clientStats = this.getClientStats(dbInbound, email);
-        if (!clientStats) return 0;
-        if (clientStats.total == 0) return 100;
-        return 100 * (clientStats.down + clientStats.up) / clientStats.total;
-      },
-      expireProgress(expTime, reset) {
-        now = new Date().getTime();
-        remainedSeconds = expTime < 0 ? -expTime / 1000 : (expTime - now) / 1000;
-        resetSeconds = reset * 86400;
-        if (remainedSeconds >= resetSeconds) return 0;
-        return 100 * (1 - (remainedSeconds / resetSeconds));
-      },
-      statsExpColor(dbInbound, email) {
-        if (!email || email.length == 0) return '#7a316f';
-        let clientStats = this.getClientStats(dbInbound, email);
-        if (!clientStats) return '#7a316f';
-        let statsColor = ColorUtils.usageColor(clientStats.down + clientStats.up, this.trafficDiff, clientStats.total);
-        let expColor = ColorUtils.usageColor(new Date().getTime(), this.expireDiff, clientStats.expiryTime);
-        switch (true) {
-          case statsColor == "red" || expColor == "red":
-            return "#cf3c3c"; // Red
-          case statsColor == "orange" || expColor == "orange":
-            return "#f37b24"; // Orange
-          case statsColor == "green" || expColor == "green":
-            return "#008771"; // Green
-          default:
-            return "#7a316f"; // purple
-        }
       },
       isClientEnabled(dbInbound, email) {
         let clientStats = dbInbound ? this.getClientStats(dbInbound, email) : null;
         return clientStats ? clientStats['enable'] : true;
-      },
-      isClientDepleted(dbInbound, email) {
-        if (!email || !dbInbound) return false;
-        const stats = this.getClientStats(dbInbound, email);
-        if (!stats) return false;
-        const total = stats.total ?? 0;
-        const used = (stats.up ?? 0) + (stats.down ?? 0);
-        const hasTotal = total > 0;
-        const exhausted = hasTotal && used >= total;
-        const expiryTime = stats.expiryTime ?? 0;
-        const hasExpiry = expiryTime > 0;
-        const now = Date.now();
-        const expired = hasExpiry && expiryTime <= now;
-        return expired || exhausted;
-      },
-      isClientOnline(email) {
-        return this.onlineClients.includes(email);
-      },
-      getLastOnline(email) {
-        return this.lastOnlineMap[email] || null
-      },
-      formatLastOnline(email) {
-        const ts = this.getLastOnline(email)
-        if (!ts) return '-'
-        // Check if IntlUtil is available (may not be loaded yet)
-        if (typeof IntlUtil !== 'undefined' && IntlUtil.formatDate) {
-          return IntlUtil.formatDate(ts)
-        }
-        // Fallback to simple date formatting if IntlUtil is not available
-        return new Date(ts).toLocaleString()
-      },
-      isRemovable(dbInboundId) {
-        return this.getInboundClients(this.dbInbounds.find(row => row.id === dbInboundId)).length > 1;
       },
       inboundLinks(dbInboundId) {
         dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);

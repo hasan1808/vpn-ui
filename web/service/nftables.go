@@ -904,7 +904,13 @@ func (s *NftService) resetCounter(name string) int64 {
 // combined ClientTraffic slice, one record per email with its up/down bytes summed across every
 // protocol and device; AddTraffic folds these into client_traffics. Protocols absent from
 // byProto are ignored, so a new protocol plugs in by adding a map entry (no signature change).
-func (s *NftService) CollectAndResetTraffic(byProto map[string]map[string]string) []*xray.ClientTraffic {
+// byProtoInbound carries, per protocol, which INBOUND each tunnel address belongs
+// to, so the emitted record names the source of its bytes. That is what lets the
+// traffic multiplier bill at the rate of the inbound the traffic actually came
+// from rather than at whichever inbound the account's single client_traffics row
+// happens to name. A missing or zero entry means "unknown", which the billing
+// treats as "take the max across the account's memberships".
+func (s *NftService) CollectAndResetTraffic(byProto map[string]map[string]string, byProtoInbound map[string]map[string]int) []*xray.ClientTraffic {
 	output, err := exec.Command("nft", "-j", "reset", "counters", "table", "ip", "vpn").Output()
 	if err != nil {
 		return nil
@@ -919,7 +925,12 @@ func (s *NftService) CollectAndResetTraffic(byProto map[string]map[string]string
 	// Accumulate traffic per (protocol, email), matching the pre-map per-protocol record shape
 	// (AddTraffic later sums by email regardless).
 	type acctKey struct{ protocol, email string }
-	type trafficPair struct{ up, down int64 }
+	// inboundId is the inbound the tunnel address belongs to: the SOURCE of
+	// these bytes, used to pick which multiplier bills them. Zero means unknown.
+	type trafficPair struct {
+		up, down  int64
+		inboundId int
+	}
 	traffic := make(map[acctKey]*trafficPair)
 
 	for _, raw := range result.Nftables {
@@ -957,6 +968,9 @@ func (s *NftService) CollectAndResetTraffic(byProto map[string]map[string]string
 			pair = &trafficPair{}
 			traffic[acctKey{protocol, email}] = pair
 		}
+		if pair.inboundId == 0 {
+			pair.inboundId = byProtoInbound[protocol][ip]
+		}
 		if direction == "up" {
 			pair.up += c.Bytes
 		} else if direction == "down" {
@@ -967,7 +981,7 @@ func (s *NftService) CollectAndResetTraffic(byProto map[string]map[string]string
 	var out []*xray.ClientTraffic
 	for key, pair := range traffic {
 		if pair.up > 0 || pair.down > 0 {
-			out = append(out, &xray.ClientTraffic{Email: key.email, Up: pair.up, Down: pair.down})
+			out = append(out, &xray.ClientTraffic{Email: key.email, InboundId: pair.inboundId, Up: pair.up, Down: pair.down})
 		}
 	}
 	if len(out) > 0 {

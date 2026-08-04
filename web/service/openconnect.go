@@ -522,23 +522,53 @@ func (s *OcservService) StopServices() {
 // ocserv. Unlike OpenVPN (which needs a CA + tls-crypt), ocserv only needs a
 // server cert the client trusts (or bypasses with --no-cert-check); a single
 // self-issued ECDSA P-384 cert suffices. Returns PEM strings: serverCert, serverKey.
-func (s *OcservService) GenerateSelfSignedCert() (string, string, error) {
+//
+// serverAddr is the address clients will dial; empty means the address this host
+// egresses with. It becomes the CN and the SANs, which is not decoration: a
+// certificate with NO subjectAltName cannot be verified by name by anything, so
+// every client had to be told to skip the check. This used to mint a fixed CN of
+// "vpn-ui OpenConnect Server" and no SAN at all, which meant AnyConnect, the
+// openconnect CLI and this panel's own OpenConnect OUTBOUND all failed
+// verification against a gateway whose certificate the operator had handed them,
+// with nothing wrong on either side but the certificate itself. The IKEv2
+// generator has always done this (Ikev2Service.GenerateSelfSignedCert); these two
+// were the odd ones out.
+func (s *OcservService) GenerateSelfSignedCert(serverAddr string) (string, string, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate server key: %w", err)
+	}
+
+	host := strings.TrimSpace(serverAddr)
+	if host == "" {
+		host = s.getServerIP()
+	}
+	cn := host
+	if cn == "" {
+		// Nothing to name it after. Keep the old CN rather than inventing one, so a
+		// host whose address cannot be detected produces exactly what it used to.
+		cn = "vpn-ui OpenConnect Server"
 	}
 
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject: pkix.Name{
 			Organization: []string{"vpn-ui"},
-			CommonName:   "vpn-ui OpenConnect Server",
+			CommonName:   cn,
 		},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour), // 10 years
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
+	}
+	if host != "" {
+		// Both forms, for the same reason the IKEv2 leaf carries both: an address is
+		// an iPAddress SAN to a correct client and a dNSName to several real ones.
+		template.DNSNames = []string{host}
+		if ip := net.ParseIP(host); ip != nil {
+			template.IPAddresses = []net.IP{ip}
+		}
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)

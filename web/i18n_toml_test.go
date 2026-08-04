@@ -55,6 +55,8 @@ var knownMissing = keySet(
 	"pages.index.updateCancelling",
 	"pages.index.updateFromFile", "pages.index.updateUploading", "pages.index.updateStaged",
 	"pages.index.updateChecking",
+	"pages.index.manualUpdate", "pages.index.updateFromUrl",
+	"pages.index.updateFromUrlIntro", "pages.index.updateFetch",
 	"pages.index.updateSameVersion", "pages.index.updateUnknownVersion",
 	"pages.index.updateDowngradeTitle", "pages.index.updateDowngradeBody",
 	"pages.index.updateDowngradeConfirmLabel", "pages.index.updateDowngradeFinal",
@@ -116,9 +118,15 @@ var knownMissing = keySet(
 	"pages.resellers.deleteHasAccounts", "pages.resellers.deleteKeep",
 	"pages.resellers.deleteKeepDesc", "pages.resellers.deleteCascade",
 	"pages.resellers.deleteCascadeDesc",
+	"pages.resellers.allowOverviewManage", "pages.resellers.allowOverviewManageDesc",
+	"pages.admins.accessOverview", "pages.admins.manageOverview",
 
 	"pages.index.importForeignTitle", "pages.index.importForeignDesc",
 	"pages.index.importForeignConfirm",
+	// The Manual Update picker: which END of the transfer does the work is not
+	// guessable from "from URL" versus "from file", so each choice carries a sentence.
+	"pages.index.manualUpdateIntro", "pages.index.updateFromUrlDesc",
+	"pages.index.updateFromFileDesc",
 
 	"pages.xray.outbound.sshOutHint", "pages.xray.outbound.sshOutNone",
 	"pages.xray.outbound.sshOutAdd", "pages.xray.outbound.sshOutTag",
@@ -129,6 +137,54 @@ var knownMissing = keySet(
 	"pages.xray.outbound.sshOutPassphrase", "pages.xray.outbound.sshOutKnownHost",
 	"pages.xray.outbound.sshOutStatus", "pages.xray.outbound.sshOutUp",
 	"pages.xray.outbound.sshOutDown", "pages.xray.outbound.sshOutSaved",
+
+	// The tunnel kinds in the outbound protocol picker, importing a peer's .conf or
+	// .ovpn into the form, and the two places the panel has to admit that an outbound
+	// byte count is absent rather than zero (the Traffic column marker and the note on
+	// the stats switches the tunnels force on).
+	"pages.xray.outbound.vpnOutNoDriver", "pages.xray.outbound.vpnOutOpenCore",
+	"pages.xray.outbound.vpnOutSendThroughHelp",
+	"pages.xray.outbound.vpnOutImport", "pages.xray.outbound.vpnOutImportPick",
+	"pages.xray.outbound.vpnOutImportDone", "pages.xray.outbound.vpnOutImportEmpty",
+	"pages.xray.outbound.vpnOutImportUnreadable", "pages.xray.outbound.vpnOutImportMalformed",
+	"pages.xray.outbound.vpnOutImportNotWg", "pages.xray.outbound.vpnOutImportIgnored",
+	"pages.xray.outbound.vpnOutImportKept",
+	"pages.xray.outbound.trafficUnmeasured", "pages.xray.outbound.trafficUnmeasuredDesc",
+	"pages.xray.statsOutboundForced",
+
+	// Client VPN tunnels as outbounds (the form's per-kind fields).
+	"pages.xray.outbound.vpnOutAdd", "pages.xray.outbound.vpnOutKind",
+	"pages.xray.outbound.vpnOutStatus", "pages.xray.outbound.vpnOutUp",
+	"pages.xray.outbound.vpnOutDown", "pages.xray.outbound.vpnOutKeep",
+	"pages.xray.outbound.vpnOutKindChanged", "pages.xray.outbound.vpnOutAwgHeadersHelp",
+	"pages.xray.outbound.vpnOutClear", "pages.xray.outbound.vpnOutWillClear",
+	"pages.xray.outbound.vpnOutExtraHelp",
+	"pages.xray.outbound.vpnOutServer", "pages.xray.outbound.vpnOutEndpoint",
+	"pages.xray.outbound.vpnOutTunAddress", "pages.xray.outbound.vpnOutLocalAddress",
+	"pages.xray.outbound.vpnOutUsername", "pages.xray.outbound.vpnOutPassword",
+	"pages.xray.outbound.vpnOutPrivateKey", "pages.xray.outbound.vpnOutPeerKey",
+	"pages.xray.outbound.vpnOutPeerAddress", "pages.xray.outbound.vpnOutPresharedKey",
+	"pages.xray.outbound.vpnOutKeepAlive", "pages.xray.outbound.vpnOutPort",
+	"pages.xray.outbound.vpnOutProto", "pages.xray.outbound.vpnOutProfile",
+	"pages.xray.outbound.vpnOutTlsAuth", "pages.xray.outbound.vpnOutTlsCrypt",
+	"pages.xray.outbound.vpnOutRemoteCertTls", "pages.xray.outbound.vpnOutExtra",
+	"pages.xray.outbound.vpnOutAuthMode", "pages.xray.outbound.vpnOutAuthProto",
+	"pages.xray.outbound.vpnOutPsk",
+	"pages.xray.outbound.vpnOutIpsec", "pages.xray.outbound.vpnOutIpsecPsk",
+	"pages.xray.outbound.vpnOutIpsecPskHelp",
+	"pages.xray.outbound.vpnOutIpsecRemoteId", "pages.xray.outbound.vpnOutIpsecLocalId",
+	"pages.xray.outbound.vpnOutIkeVersion",
+	"pages.xray.outbound.vpnOutFou", "pages.xray.outbound.vpnOutFouPort",
+	"pages.xray.outbound.vpnOutLocalId", "pages.xray.outbound.vpnOutServerId",
+	"pages.xray.outbound.vpnOutRemoteTs", "pages.xray.outbound.vpnOutTlsUseFile",
+	"pages.xray.outbound.vpnOutCert", "pages.xray.outbound.vpnOutKey",
+	"pages.xray.outbound.vpnOutCaCert", "pages.xray.outbound.vpnOutCertFile",
+	"pages.xray.outbound.vpnOutKeyFile", "pages.xray.outbound.vpnOutCaCertFile",
+	"pages.xray.outbound.vpnOutInsecure", "pages.xray.outbound.vpnOutProxy",
+	"pages.xray.outbound.vpnOutMppe", "pages.xray.outbound.vpnOutMppeHelp",
+	"pages.xray.outbound.vpnOutAuthGroup", "pages.xray.outbound.vpnOutTotpSecret",
+	"pages.xray.outbound.vpnOutKeyPassword", "pages.xray.outbound.vpnOutNoDtls",
+	"pages.xray.outbound.vpnOutServerCert", "pages.xray.outbound.vpnOutOcProtocol",
 )
 
 // flattenKeys collapses nested TOML tables into dotted keys (e.g. "pages.core.title").

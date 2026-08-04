@@ -21,11 +21,24 @@ from .clients import wgc as wgc_mod
 from .clients import awg as awg_mod
 from .clients import gre as gre_mod
 from .clients import ssh as ssh_mod
+from .clients import anytls as anytls_mod
+from .clients import tuic as tuic_mod
+from .clients import naive as naive_mod
+from .clients import xraytun as xraytun_mod
 from .clients.base import Client
 from .model import Phase, SubTest, Status
 from .model import (PHASE_OPENVPN, PHASE_L2TP, PHASE_PPTP, PHASE_OPENCONNECT,
                     PHASE_SSTP, PHASE_WGC, PHASE_AWG, PHASE_GRE, PHASE_SSH, PHASE_SSH_UDP,
+                    PHASE_ANYTLS, PHASE_TUIC, PHASE_NAIVE,
                     IKEV2_PHASE_BY_MODE)
+
+# The Xray-NATIVE proxy protocols. Grouped because every "does this apply?" decision
+# below is the same for all three: xray terminates them itself, so they hand out no
+# client address and own no IP block. Everything that reads a tunnel address
+# (client-to-client, cross-inbound, per-device block IPs) is inapplicable, while
+# everything that reads the account (routing by email, usage, multiplier, termination)
+# is not just applicable but tested here for the first time in this harness.
+XRAY_NATIVE = ("anytls", "tuic", "naive")
 
 # Grace for a client edit to land. telemt itself is NOT restarted (the panel rewrites
 # config.toml and telemt picks it up via inotify), but a client edit also flags Xray
@@ -35,9 +48,9 @@ from .model import (PHASE_OPENVPN, PHASE_L2TP, PHASE_PPTP, PHASE_OPENCONNECT,
 # bug this phase detects, and a false FAIL there is worse than a slow test.
 MTPROTO_RELOAD_WAIT = 8.0
 
-# cross-inbound peer: X's cross test pings a client on peer[X]'s inbound. ssh has no
-# entry: its cross-inbound is recorded NA (a relay has no client tunnel address to ping),
-# so PEER["ssh"] is never read.
+# cross-inbound peer: X's cross test pings a client on peer[X]'s inbound. ssh, anytls,
+# tuic and naive have no entry: their cross-inbound is recorded NA (a relay/proxy has no
+# client tunnel address to ping), so PEER[…] is never read for them.
 PEER = {"openvpn": "l2tp", "l2tp": "pptp", "pptp": "openvpn",
         "openconnect": "openvpn", "sstp": "openvpn", "ikev2": "openvpn",
         "wg-c": "openvpn", "awg": "openvpn", "gre": "openvpn"}
@@ -45,7 +58,8 @@ PEER = {"openvpn": "l2tp", "l2tp": "pptp", "pptp": "openvpn",
 # (IKEV2_PHASE_BY_MODE), resolved inside run() from its `mode` arg.
 PHASE = {"openvpn": PHASE_OPENVPN, "l2tp": PHASE_L2TP, "pptp": PHASE_PPTP,
          "openconnect": PHASE_OPENCONNECT, "sstp": PHASE_SSTP, "wg-c": PHASE_WGC,
-         "awg": PHASE_AWG, "gre": PHASE_GRE, "ssh": PHASE_SSH}
+         "awg": PHASE_AWG, "gre": PHASE_GRE, "ssh": PHASE_SSH,
+         "anytls": PHASE_ANYTLS, "tuic": PHASE_TUIC, "naive": PHASE_NAIVE}
 
 # Connect variant used when dialing the SECOND same-protocol inbound (TEST 1,
 # _multi_inbound_check): l2tp uses RAW (the client's IPsec config is pinned to the
@@ -53,7 +67,12 @@ PHASE = {"openvpn": PHASE_OPENVPN, "l2tp": PHASE_L2TP, "pptp": PHASE_PPTP,
 # udp/new, pptp has no variant. sstp/ikev2 have no variant (single-variant protocols).
 _SECOND_VARIANT = {"openvpn": ("udp", "new"), "l2tp": "raw", "pptp": None,
                    "openconnect": "dtls", "sstp": None, "ikev2": None,
-                   "wg-c": None, "awg": None, "gre": None, "ssh": None}
+                   "wg-c": None, "awg": None, "gre": None, "ssh": None,
+                   # single-variant: the dial is fully described by the inbound (one
+                   # transport, one TLS config). tuic's two UDP relay modes are NOT a
+                   # connect variant: they are exercised by the udp subtests, which
+                   # re-dial with each mode against the SAME inbound.
+                   "anytls": None, "tuic": None, "naive": None}
 
 
 def _connect(client: Client, sc, proto: str, which: str, variant=None, ib=None):
@@ -87,6 +106,17 @@ def _connect(client: Client, sc, proto: str, which: str, variant=None, ib=None):
                                mode=variant or "raw")
     if proto == "ssh":
         return ssh_mod.connect(client, ib, which, server_ip=sc.server_ip)
+    if proto == "anytls":
+        return anytls_mod.connect(client, ib, which, server_ip=sc.server_ip)
+    if proto == "tuic":
+        # `variant` carries the UDP relay mode ("native" | "quic") when the udp subtests
+        # dial it explicitly; every other caller passes None and gets the default the
+        # panel's own share link advertises.
+        if variant:
+            return tuic_mod.connect_mode(client, ib, which, sc.server_ip, variant)
+        return tuic_mod.connect(client, ib, which, server_ip=sc.server_ip)
+    if proto == "naive":
+        return naive_mod.connect(client, ib, which, server_ip=sc.server_ip)
     raise ValueError(proto)
 
 
@@ -100,7 +130,10 @@ def _disconnect(client: Client, proto: str):
      "wg-c": wgc_mod.disconnect,
      "awg": awg_mod.disconnect,
      "gre": gre_mod.disconnect,
-     "ssh": ssh_mod.disconnect}[proto](client)
+     "ssh": ssh_mod.disconnect,
+     "anytls": anytls_mod.disconnect,
+     "tuic": tuic_mod.disconnect,
+     "naive": naive_mod.disconnect}[proto](client)
 
 
 def _variants(proto: str):
@@ -1035,6 +1068,141 @@ def _run_ssh_udp(cA: Client, sc, cfg: dict, result, panel, server_exec) -> None:
     cA.disconnect_all()
 
 
+def _udp_dns_probe(client: Client, name: str, iface: str,
+                   resolver: str = "8.8.8.8") -> SubTest:
+    """A UDP-ONLY DNS lookup that must resolve THROUGH the tunnel.
+
+    `+notcp` forbids dig's TCP fallback, so a valid answer can only have crossed the
+    proxy as a datagram; the route check makes sure it went out `iface` rather than
+    leaking to the physical default. This is the assertion the shared dns-resolve
+    check cannot make: that one is satisfied by ANY working resolution, TCP included."""
+    st = SubTest(name)
+    try:
+        _, rg = client.sh(f"ip route get {resolver} 2>/dev/null | head -1")
+        via_tunnel = f"dev {iface}" in rg
+        _, dig = client.sh(
+            f"dig +notcp +time=3 +tries=2 +short A example.com @{resolver} 2>&1")
+        ips = [ln.strip() for ln in dig.splitlines()
+               if ln.strip() and ln.strip()[0].isdigit()]
+        st.log = (f"route get {resolver}: {rg.strip()}\n"
+                  f"dig +notcp @{resolver} example.com:\n{dig.strip()}")
+        if ips and via_tunnel:
+            st.status = Status.PASS
+            st.detail = (f"UDP-only DNS resolved example.com -> {', '.join(ips[:3])} "
+                         f"(dev {iface}, +notcp)")
+        elif ips and not via_tunnel:
+            st.status = Status.FAIL
+            st.detail = f"UDP DNS resolved but NOT via the tunnel (route: {rg.strip()[:80]})"
+        else:
+            st.status = Status.FAIL
+            st.detail = f"UDP-only DNS (+notcp @{resolver}) did not resolve through the tunnel"
+    except Exception as e:  # noqa: BLE001
+        st.status, st.detail = Status.ERROR, str(e)[:150]
+    return st
+
+
+def _udp_usage_probe(client: Client, panel, ib, name: str = "udp-usage",
+                     resolver: str = "8.8.8.8") -> SubTest:
+    """A burst of UDP DNS must move the account's counted traffic.
+
+    The baseline is read AFTER any functional probe and only UDP is driven between the
+    two reads, so a rise can only be UDP bytes. For an Xray-native protocol this is a
+    direct test of the one line the whole integration hangs on: the inbound must put
+    the matched account on the session before dispatching, or the datagrams are
+    forwarded perfectly and billed to nobody."""
+    st = SubTest(name)
+    if panel is None:
+        st.status, st.detail = Status.SKIP, "no panel handle"
+        return st
+    try:
+        email = ib.accounts["A"].email
+        before, _ = traffic._counted(panel, email)
+        # Distinct names dodge caching, so each query is a real round-trip; NXDOMAIN
+        # answers still carry bytes. Parallelised so the burst is quick.
+        _, drove = client.sh(
+            "seq 1 400 | xargs -P 20 -I{} dig +notcp +time=2 +tries=1 +short "
+            f"A udp{{}}.example.com @{resolver} >/dev/null 2>&1; echo DONE",
+            timeout=120)
+        time.sleep(25)          # the traffic job folds every 10s; >=2 ticks plus slack
+        after, row = traffic._counted(panel, email)
+        st.log = (f"drove 400 UDP DNS queries (parallel); counted {before} -> {after} "
+                  f"(up={row.get('up')} down={row.get('down')})\ndrive={drove.strip()[-120:]}")
+        if after > before:
+            st.status = Status.PASS
+            st.detail = (f"UDP traffic billed to the account: {before} -> {after} B "
+                         f"(delta {after - before})")
+        else:
+            st.status = Status.FAIL
+            st.detail = (f"UDP driven but the account usage did not rise "
+                         f"({before} -> {after}) - UDP not accounted")
+    except Exception as e:  # noqa: BLE001
+        st.status, st.detail = Status.ERROR, str(e)[:150]
+    return st
+
+
+def _xray_udp_checks(proto: str, cA: Client, sc, ib, panel, log, phase) -> None:
+    """UDP for the Xray-native protocols, which is where each of them is most likely to
+    be quietly broken.
+
+      * tuic carries UDP two entirely separate ways: `udpRelayMode: native` (one QUIC
+        datagram per packet) and `quic` (UDP over a QUIC stream, reassembled by the
+        server's defragmenter). Green on one says nothing about the other, so BOTH are
+        dialed against the same inbound.
+      * anytls has NO UDP transport: the client wraps UDP in the TLS stream (UoT) and
+        the server unwraps it. One subtest, and it is a real test of that interception
+        because clients/anytls.py deliberately does not route DNS around it.
+      * naive is HTTP CONNECT and proxies no UDP at all: recorded NA, with the reason,
+        rather than left absent.
+
+    Runs while account A is disposable but still ENABLED (before the traffic block,
+    whose termination sub-test disables it)."""
+    if proto == "naive":
+        # Said out loud because it would otherwise be an invisible caveat: naive's
+        # dns-resolve / dns-leak greens are NOT UDP proofs. The client's own xray
+        # answers UDP:53 locally from a resolver that queries over TCP through the
+        # proxy (clients/naive.py), which is what a real naive deployment must do.
+        for nm, why in (
+            ("udp-dns",
+             "naive is HTTP CONNECT over h2/h3 and proxies no UDP payload at all (its "
+             "`network` field picks the CARRIER, h2 vs h3, not what it can forward). DNS "
+             "is answered by the client's own xray over a TCP upstream carried through "
+             "the proxy, so it never crosses naive as UDP: the dns-resolve / dns-leak "
+             "passes above are TCP-DNS proofs"),
+            ("udp-usage", "no UDP path to bill: see udp-dns"),
+        ):
+            phase.add(SubTest(nm, Status.NA, why))
+            log(f"-> {nm} [na] {why}")
+        return
+
+    modes = tuic_mod.UDP_MODES if proto == "tuic" else (None,)
+    for idx, mode in enumerate(modes):
+        suffix = f"-{mode}" if mode else ""
+        cA.disconnect_all()
+        time.sleep(2)
+        ok, ip, clog = _connect(cA, sc, proto, "A", mode, ib=ib)
+        if not ok:
+            phase.add(SubTest(f"udp-dns{suffix}", Status.SKIP,
+                              "account A failed to bring up the tunnel"
+                              + (f" in udpRelayMode={mode}" if mode else ""),
+                              clog[-1200:]))
+            log(f"-> udp-dns{suffix} [skip] tunnel did not come up")
+            continue
+        fn = _udp_dns_probe(cA, f"udp-dns{suffix}", xraytun_mod.IFACE)
+        if mode:
+            fn.detail = f"udpRelayMode={mode}: {fn.detail}"
+        phase.add(fn)
+        log(f"-> {fn.name} [{fn.status.value}] {fn.detail}")
+        # Accounting once, on the first (default) mode: the billing path is shared by
+        # both carriers, so repeating it would cost a minute and prove nothing new.
+        if idx == 0:
+            us = _udp_usage_probe(cA, panel, ib)
+            phase.add(us)
+            log(f"-> {us.name} [{us.status.value}] {us.detail}")
+    _disconnect(cA, proto)
+    cA.disconnect_all()
+    time.sleep(2)
+
+
 def run(proto: str, cA: Client, cB: Client, cC: Client, sc, cfg: dict, result, panel=None, server_exec=None, mode=None) -> None:
     # MTProto is a relay, not a tunnel: none of the shared suite below applies to it
     # (see _run_mtproto), so it takes its own path rather than threading NA overrides
@@ -1233,6 +1401,20 @@ def run(proto: str, cA: Client, cB: Client, cC: Client, sc, cfg: dict, result, p
                               "WireGuard gateway model: one keypair per account; the block "
                               "(e.g. /29) IS the limit, not per-device enforcement"))
             log("-> user-limit [na] gateway model (one keypair per account)")
+        elif proto in XRAY_NATIVE:
+            # NOT "skipped": there is no User Limit on these inbounds to exercise. The
+            # VPN account-slot User Limit hands an account K consecutive tunnel IPs, and
+            # an Xray-native protocol hands out no address at all, so the panel does not
+            # offer it. The equivalent cap for them is the CORE's per-account IP limiter
+            # (`limitIp`, common/speedlimit, enforced at dispatch admission), a
+            # different mechanism on a different code path, which this phase is not
+            # wired for: it would need more distinct client source IPs than the rig has
+            # VMs to drive past the cap.
+            why = ("Xray-native: no per-account IP block to allocate. The device cap for "
+                   "these is the core's per-account IP limiter (limitIp), not the VPN "
+                   "User Limit, and is not covered by this phase")
+            phase.add(SubTest("user-limit", Status.NA, why))
+            log(f"-> user-limit [na] {why}")
         elif ib is not None and getattr(ib, "user_limit", 1) > 1:
             _user_limit_check(proto, cA, cB, sc, a_primary_ip, ib, log, phase)
 
@@ -1276,6 +1458,46 @@ def run(proto: str, cA: Client, cB: Client, cC: Client, sc, cfg: dict, result, p
                  "between them (excluded per spec)"),
                 ("cross-inbound",
                  "SSH relay: no tunnel addresses to route between inbounds (excluded per spec)"),
+            ):
+                phase.add(SubTest(nm, Status.NA, why))
+                log(f"-> {nm} [na] {why}")
+            _disconnect(cB, proto)
+            cB.disconnect_all()
+            time.sleep(2)
+        elif proto in XRAY_NATIVE:
+            # Same shape as the ssh branch above and for the same structural reason: a
+            # proxy hands its clients no tunnel address, so there is nothing to ping
+            # between two of them or across two inbounds. Routing, by contrast, is the
+            # STRONGEST per-client proof in this whole phase: xray attaches the matched
+            # account to the session itself, so the panel's `user` rules select the
+            # outbound per account with no source-IP translation anywhere in the path.
+            # A (freedom) reaches the internet and B (blackhole) is cut off while both
+            # sit behind the same inbound, the same port and the same TLS certificate.
+            log("-> routing (B blackhole alongside A freedom; c2c + cross-inbound N/A for a proxy)...")
+            cB.disconnect_all()
+            time.sleep(2)
+            okB, ipB, logB = _connect(cB, sc, proto, "B")
+            rt = SubTest("routing")
+            if okB:
+                try:
+                    r = checks.routing(cA, cB)
+                    rt.status, rt.detail, rt.log = r.status, r.detail, r.log
+                except Exception as e:  # noqa: BLE001
+                    rt.status, rt.detail = Status.ERROR, str(e)[:150]
+            else:
+                rt.status = Status.SKIP
+                rt.detail = "peer B (blackhole client) failed to connect"
+                rt.log = logB
+            log(f"-> routing [{rt.status.value}] {rt.detail}")
+            phase.add(rt)
+            for nm, why in (
+                ("client-to-client",
+                 f"{proto} is an Xray-native proxy: clients get no tunnel address, so "
+                 f"there is nothing to ping between them"),
+                ("cross-inbound",
+                 f"{proto} is an Xray-native proxy: no tunnel addresses to route between "
+                 f"inbounds (the inbound-level gate it would exercise is an IP/nftables "
+                 f"gate, which never sees these protocols)"),
             ):
                 phase.add(SubTest(nm, Status.NA, why))
                 log(f"-> {nm} [na] {why}")
@@ -1337,6 +1559,16 @@ def run(proto: str, cA: Client, cB: Client, cC: Client, sc, cfg: dict, result, p
             log(f"-> cross-inbound [{cross.status.value}] {cross.detail}")
             phase.add(cross)
 
+    # ---- UDP through an Xray-native proxy ------------------------------
+    # Independent of the shared suite (it dials its own connections) and placed BEFORE
+    # the traffic block, whose termination sub-test disables account A. Wrapped so a
+    # raising probe can't abort the phase.
+    if proto in XRAY_NATIVE and ib is not None:
+        try:
+            _xray_udp_checks(proto, cA, sc, ib, panel, log, phase)
+        except Exception as e:  # noqa: BLE001
+            phase.add(SubTest("udp-dns", Status.ERROR, str(e)[:150]))
+
     # ---- User Limit Strategy: reject vs accept on a 3rd device ---------
     # Always runs (independent of the shared suite): it restarts the daemon.
     # WireGuard is the exception: an account owns exactly K device keypairs (a peer's
@@ -1355,6 +1587,13 @@ def run(proto: str, cA: Client, cB: Client, cC: Client, sc, cfg: dict, result, p
                               "GRE: K peer slots are structural (and GRE has no handshake "
                               "or session) — no dynamic (K+1)th admission to reject/evict"))
             log(f"-> {nm} [na] structural K (no admission event)")
+    elif proto in XRAY_NATIVE:
+        for nm in ("strategy-reject", "strategy-accept"):
+            phase.add(SubTest(nm, Status.NA,
+                              "Xray-native: the User Limit Strategy is a property of the VPN "
+                              "account-slot allocator, which these inbounds do not have (see "
+                              "user-limit); there is no (K+1)th slot to reject or evict"))
+            log(f"-> {nm} [na] no VPN account-slot allocator")
     elif proto == "ssh" and ib is not None and getattr(ib, "user_limit", 1) > 1 and panel is not None:
         _ssh_strategy_check(cA, cB, cC, sc, ib, panel, log, phase)
     elif ib is not None and getattr(ib, "user_limit", 1) > 1 and panel is not None:
@@ -1429,6 +1668,16 @@ def run(proto: str, cA: Client, cB: Client, cC: Client, sc, cfg: dict, result, p
                           "WireGuard gateway model: one keypair per account, no per-device "
                           "traffic split to aggregate"))
         log("-> multi-user-total [na] gateway model (one keypair per account)")
+    elif proto in XRAY_NATIVE:
+        # The test it would run asserts that K per-device tunnel IPs fold onto ONE
+        # account total. These protocols never split an account across device IPs in the
+        # first place (every session of an account is already billed to the one email on
+        # the session), so there is nothing to aggregate. That the email-keyed counter
+        # moves at all is what `account-usage` below proves.
+        why = ("Xray-native: sessions are billed to the account email directly, with no "
+               "per-device IP split to aggregate (see user-limit)")
+        phase.add(SubTest("multi-user-total", Status.NA, why))
+        log(f"-> multi-user-total [na] {why}")
     elif ib is not None and getattr(ib, "user_limit", 1) > 1 and panel is not None:
         for c in (cA, cB, cC):
             c.disconnect_all()
@@ -2202,13 +2451,17 @@ def _multi_inbound_check(proto, cA, cB, cC, sc, panel, log) -> SubTest:
         time.sleep(2)
 
         p1, p2 = sc.inbounds[proto].udp_port, second.udp_port
-        if proto == "ssh":
-            # SSH is a relay: no tunnel IP and no /24 pool to compare. The two SSH servers
-            # bind DISTINCT ports and each serves its own account; the proof is that the
-            # spare reached the internet through BOTH (2nd inbound's account, then the 1st
-            # inbound's account A), i.e. two SSH inbounds coexist on distinct ports.
+        if proto == "ssh" or proto in XRAY_NATIVE:
+            # Relays and Xray-native proxies: no tunnel IP and no /24 pool to compare.
+            # The two inbounds bind DISTINCT ports and each serves its own account; the
+            # proof is that the spare reached the internet through BOTH (2nd inbound's
+            # account, then the 1st inbound's account A), i.e. the two coexist.
+            # For anytls/tuic/naive that is a sharper claim than for ssh: both listeners
+            # live in the SAME xray process, rendered into ONE config by the panel, so a
+            # duplicate tag or a settings block overwriting its sibling takes the whole
+            # core down rather than just the second inbound.
             distinct = p1 != p2
-            distinct_desc = f"distinct SSH listener ports ({p1} vs {p2}): {distinct}"
+            distinct_desc = f"distinct listener ports ({p1} vs {p2}): {distinct}"
             pool_word = "ports"
         else:
             # distinct tunnel IP AND distinct /24 pool (different inbounds own different

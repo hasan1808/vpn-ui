@@ -1,6 +1,7 @@
 #!/bin/sh
 #
-# build/backend/ocserv-bundle.sh — build a static musl ocserv (OpenConnect server).
+# build/backend/ocserv-bundle.sh: build a static musl ocserv (OpenConnect server)
+# and the matching openconnect CLIENT.
 #
 # Runs INSIDE an Alpine (musl) container. ocserv is NOT packaged by Alpine (any
 # repo), so it is built from source (autotools; 1.3.0 ships ./configure, not
@@ -8,6 +9,11 @@
 # openvpn/xl2tpd/pptpd) that drops into
 # backend/bin/<arch>/ocserv and is embedded via //go:embed — no host libc / no
 # per-distro package.
+#
+# The openconnect CLIENT is built here rather than in a script of its own for one
+# reason: it wants the same static GnuTLS, and that GnuTLS is a six-minute source
+# build. Sharing the container reuses it (Alpine packages no gnutls .a, see
+# below), so the client costs a few seconds instead of doubling the recipe.
 #
 # Dep strategy (musl-static):
 #   - radcli (RADIUS)          -> Alpine radcli-dev ships libradcli.a         (apk)
@@ -18,9 +24,12 @@
 #   - GnuTLS                   -> NOT packaged static  -> built from source,   (source)
 #       self-contained via --with-included-libtasn1 --with-included-unistring
 #       and --without-p11-kit (drops the dlopen'd PKCS#11 module).
+#   - libxml2 (client only)    -> Alpine libxml2-static, which drags in        (apk)
+#       -llzma and -lz, hence xz-static/zlib-static.
 #
-# Output: /out/ocserv (verified `statically linked`). Consumed by backend.go's
-# Daemons list once {Name:"ocserv"} is added there.
+# Output: /out/ocserv, /out/ocserv-worker, /out/occtl (the server side) plus
+# /out/openconnect and /out/vpnc-script (the client side), all verified
+# `statically linked` and all listed in backend.go's Daemons manifest.
 #
 # NOTE: this is the Phase-0 build spike for the OpenConnect feature. If static
 # GnuTLS proves unworkable, the fallback is a relocatable musl tree (like
@@ -30,8 +39,12 @@ set -eu
 ARCH="${ARCH:-x86_64}"
 GNUTLS_VER="${GNUTLS_VER:-3.8.13}"     # matches Alpine 3.22's gnutls; source build for the .a
 OCSERV_VER="${OCSERV_VER:-1.3.0}"
+OPENCONNECT_VER="${OPENCONNECT_VER:-9.21}"
+# vpnc-scripts has never cut a release, so the client's routing/DNS script is
+# pinned by commit the way a submodule would be. Bump deliberately, not by drift.
+VPNC_SCRIPT_REV="${VPNC_SCRIPT_REV:-ce9e961bd0f6b867e1c7c35f78f6fb973f6ff101}"
 
-echo "== ocserv-bundle: arch=$ARCH gnutls=$GNUTLS_VER ocserv=$OCSERV_VER =="
+echo "== ocserv-bundle: arch=$ARCH gnutls=$GNUTLS_VER ocserv=$OCSERV_VER openconnect=$OPENCONNECT_VER =="
 
 # --- toolchain + static deps from Alpine ---------------------------------------
 apk add --no-cache \
@@ -43,6 +56,7 @@ apk add --no-cache \
     libseccomp-dev libseccomp-static \
     libev-dev radcli-dev \
     readline-dev readline-static ncurses-dev ncurses-static \
+    libxml2-dev libxml2-static xz-dev xz-static \
     zlib-dev zlib-static >/dev/null
 
 # --- GnuTLS (static, self-contained) -------------------------------------------
@@ -122,3 +136,64 @@ file /out/ocserv
 ldd /out/ocserv 2>&1 || echo "  (ldd: not a dynamic executable — good)"
 /out/ocserv --version 2>&1 | head -12 || true
 ls -lh /out/ocserv
+
+# --- openconnect (the CLIENT of this same protocol, fully static) ---------------
+# Reuses the GnuTLS built above (PKG_CONFIG_PATH still points at /usr/local) and
+# adds libxml2, which every protocol openconnect speaks uses for its config
+# exchange. Alpine DOES package openconnect, but only dynamically linked, and a
+# dynamic ELF is no use to a go:embed bundle that lands on arbitrary distros.
+#
+# --disable-shared --enable-static keeps libopenconnect.so out of the picture;
+# the program is then forced static with -all-static at make time, because
+# libtool silently strips a plain -static (the same trap the openvpn recipe
+# documents in build/backend/build.sh).
+#
+# Being musl-static is an advantage here rather than a compromise: a glibc static
+# binary still needs the host's matching NSS shared objects to resolve a name,
+# while musl's resolver is self-contained, so looking up the remote gateway keeps
+# working on a host whose libc we know nothing about.
+cd /tmp
+wget -q "https://www.infradead.org/openconnect/download/openconnect-${OPENCONNECT_VER}.tar.gz"
+tar xf "openconnect-${OPENCONNECT_VER}.tar.gz"
+cd "openconnect-${OPENCONNECT_VER}"
+
+# The compiled-in vpnc-script default is a FIXED absolute path rather than the
+# extracted one, because the panel's bin/ dir moves with the install location.
+# backend/clients.go symlinks that sentinel at the extracted copy, the same trick
+# pptpd's --sbindir gets, so the binary behaves even if a caller forgets --script.
+./configure \
+    --prefix=/usr \
+    --with-vpnc-script=/usr/libexec/vpn-ui/vpnc-script \
+    --without-openssl \
+    --disable-nls --disable-shared --enable-static \
+    --without-libproxy --without-stoken --without-libpskc \
+    --without-libpcsclite --without-gssapi --without-java \
+    >/tmp/openconnect-conf.log 2>&1 \
+    || { echo "FATAL: openconnect configure failed" >&2; tail -30 /tmp/openconnect-conf.log >&2; exit 1; }
+echo "== openconnect ./configure summary =="
+sed -n '/SSL library/,$p' /tmp/openconnect-conf.log | head -14
+make -j"$(nproc)" LDFLAGS="-all-static -s" >/tmp/openconnect-make.log 2>&1 \
+    || { echo "FATAL: openconnect build failed" >&2; tail -40 /tmp/openconnect-make.log >&2; exit 1; }
+cp .libs/openconnect /out/openconnect 2>/dev/null || cp openconnect /out/openconnect
+strip /out/openconnect 2>/dev/null || true
+
+echo "== openconnect built =="
+file /out/openconnect
+if ! file /out/openconnect | grep -q "statically linked"; then
+    echo "FATAL: /out/openconnect is not statically linked (libtool ate -all-static?)" >&2
+    exit 1
+fi
+/out/openconnect --version 2>&1 | head -4 || true
+
+# --- vpnc-script (the client's routing/DNS hook) --------------------------------
+# openconnect brings the tunnel up and then hands every route, DNS and MTU
+# decision to this script: without it a session authenticates and carries no
+# traffic. It is a plain POSIX script driving iproute2 (already a host
+# requirement), so it ships as a data file beside the binaries, not compiled in.
+wget -q "https://gitlab.com/openconnect/vpnc-scripts/-/raw/${VPNC_SCRIPT_REV}/vpnc-script" -O /out/vpnc-script
+head -1 /out/vpnc-script | grep -q '^#!' \
+    || { echo "FATAL: vpnc-script fetch returned something that is not a script" >&2; exit 1; }
+sh -n /out/vpnc-script || { echo "FATAL: fetched vpnc-script does not parse" >&2; exit 1; }
+chmod 0755 /out/vpnc-script
+
+ls -lh /out/openconnect /out/vpnc-script

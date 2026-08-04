@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vpn-ui Overview layout editor</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --surface:#fff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+    --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787; --accent:#008771; --accent-weak:#e2f2ee;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+      --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.6); --text-3:rgba(255,255,255,.48);
+      --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--text-2);font-size:13px;margin:0 0 20px;max-width:70ch;line-height:1.5}
+  .wrap{max-width:1400px;margin:0 auto}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  button{font:inherit;font-size:13px;font-weight:600;padding:7px 12px;border-radius:8px;
+    border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);cursor:pointer}
+  button:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-weak)}
+  button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .cols{display:grid;grid-template-columns:190px 1fr;gap:18px;align-items:start}
+  .palette{display:flex;flex-direction:column;gap:6px}
+  .tile-btn{display:flex;align-items:center;gap:8px;justify-content:flex-start;text-align:left}
+  .sw{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+  .canvas{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px}
+  #grid{display:grid;gap:4px;user-select:none}
+  .cell{aspect-ratio:1/.62;border-radius:5px;border:1px dashed var(--border-strong);
+    background:var(--surface-2);display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:700;color:#fff;cursor:crosshair;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .cell.empty{color:var(--text-3);background:transparent}
+  .cell.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  pre{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;
+    padding:14px;overflow:auto;font-size:12px;line-height:1.5;margin:14px 0 0;max-height:340px}
+  .hint{font-size:12px;color:var(--text-3);margin-top:10px;line-height:1.6}
+  code{background:var(--surface-2);padding:1px 5px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Overview layout editor</h1>
+  <p class="sub">
+    Pick a tile, then drag a rectangle on the grid to place it. Each tile must stay a
+    rectangle, which is what CSS <code>grid-template-areas</code> requires, so painting
+    enforces it for you. Switch breakpoints with the buttons; each one is edited and
+    emitted separately. When it looks right, copy the CSS at the bottom into
+    <code>web/assets/css/components.css</code>, replacing the <code>.bo-bento</code> block.
+  </p>
+
+  <div class="bar">
+    <strong style="font-size:13px;margin-right:4px">Breakpoint</strong>
+    <button data-bp="mobile">Mobile, 1 col</button>
+    <button data-bp="tablet">Tablet, 4 col</button>
+    <button data-bp="desktop" class="on">Desktop, 12 col</button>
+    <span style="flex:1"></span>
+    <button id="addRow">Add row</button>
+    <button id="delRow">Remove row</button>
+    <button id="reset">Reset to current</button>
+    <button id="copy">Copy CSS</button>
+  </div>
+
+  <div class="cols">
+    <div class="palette" id="palette"></div>
+    <div class="canvas"><div id="grid"></div></div>
+  </div>
+
+  <pre id="out"></pre>
+  <p class="hint">
+    The empty marker is <code>.</code>, which is valid CSS for an intentionally blank cell.
+    Tiles left unplaced at a breakpoint simply do not appear there, so remove a tile by
+    painting something else over all of its cells.
+  </p>
+</div>
+
+<script>
+// Tile ids must match the .bo-t-* classes in components.css and the markup in
+// web/html/index.html. Colours here are for the editor only.
+const TILES = [
+  ['ident',   '#3d7dd6', 'Identity'],
+  ['flow',    '#1c9e73', 'Overall Speed'],
+  ['users',   '#a25fd0', 'Clients'],
+  ['vit',     '#c07a1e', 'System Status'],
+  ['svc',     '#2f9fb5', 'VPN Services'],
+  ['xray',    '#c4506b', 'Xray'],
+  ['manage',  '#5d7d3a', 'Manage'],
+  ['vpnui',   '#7069c9', 'VPN-UI'],
+  ['process', '#b06a3c', 'Usage'],
+];
+const COLOR = Object.fromEntries(TILES.map(t => [t[0], t[1]]));
+
+// Seeded from the live components.css so "Reset" restores what is shipping.
+const INITIAL = {
+  mobile: [['ident'],['flow'],['users'],['vit'],['svc'],['xray'],['manage'],['vpnui'],['process']],
+  tablet: [
+    ['ident','ident','ident','ident'],
+    ['flow','flow','flow','flow'],
+    ['users','users','users','users'],
+    ['vit','vit','vit','vit'],
+    ['svc','svc','svc','svc'],
+    ['xray','xray','manage','manage'],
+    ['vpnui','vpnui','process','process'],
+  ],
+  desktop: [
+    ['ident','ident','ident','ident','flow','flow','flow','flow','flow','vit','vit','vit'],
+    ['xray','xray','xray','xray','users','users','users','users','users','vit','vit','vit'],
+    ['manage','manage','manage','manage','vpnui','vpnui','vpnui','vpnui','vpnui','vit','vit','vit'],
+    ['svc','svc','svc','svc','svc','svc','svc','svc','process','process','process','process'],
+  ],
+};
+const COLS = { mobile:1, tablet:4, desktop:12 };
+const GAP  = { mobile:'var(--gap-sm)', tablet:'var(--gap-md)', desktop:'var(--gap-lg)' };
+const MEDIA= { mobile:null, tablet:'760px', desktop:'1180px' };
+
+let state = structuredClone(INITIAL);
+let bp = 'desktop';
+let active = 'ident';
+let drag = null;
+
+const $ = s => document.querySelector(s);
+const gridEl = $('#grid'), outEl = $('#out'), palEl = $('#palette');
+
+function buildPalette(){
+  palEl.innerHTML = '';
+  for (const [id, col, label] of TILES){
+    const b = document.createElement('button');
+    b.className = 'tile-btn' + (id === active ? ' on' : '');
+    b.innerHTML = `<span class="sw" style="background:${col}"></span>${label}`;
+    b.onclick = () => { active = id; buildPalette(); };
+    palEl.appendChild(b);
+  }
+  const b = document.createElement('button');
+  b.className = 'tile-btn' + (active === '.' ? ' on' : '');
+  b.innerHTML = `<span class="sw" style="background:transparent;border:1px dashed var(--border-strong)"></span>Empty`;
+  b.onclick = () => { active = '.'; buildPalette(); };
+  palEl.appendChild(b);
+}
+
+function render(){
+  const rows = state[bp], n = COLS[bp];
+  gridEl.style.gridTemplateColumns = `repeat(${n},1fr)`;
+  gridEl.innerHTML = '';
+  rows.forEach((row, r) => row.forEach((name, c) => {
+    const d = document.createElement('div');
+    d.className = 'cell' + (name === '.' ? ' empty' : '');
+    d.textContent = name === '.' ? '' : name;
+    if (name !== '.') d.style.background = COLOR[name] || 'var(--border-strong)';
+    d.dataset.r = r; d.dataset.c = c;
+    d.onmousedown = e => { e.preventDefault(); drag = {r,c}; paint(r,c,r,c); };
+    d.onmouseenter = () => { if (drag) paint(drag.r, drag.c, r, c); };
+    gridEl.appendChild(d);
+  }));
+  emit();
+}
+
+// Painting a rectangle is what keeps every area rectangular, which
+// grid-template-areas requires; a non-rectangular area is a parse error.
+function paint(r1,c1,r2,c2){
+  const [ra,rb] = [Math.min(r1,r2), Math.max(r1,r2)];
+  const [ca,cb] = [Math.min(c1,c2), Math.max(c1,c2)];
+  for (let r=ra;r<=rb;r++) for (let c=ca;c<=cb;c++) state[bp][r][c] = active;
+  render();
+}
+document.addEventListener('mouseup', () => { drag = null; });
+
+function areasFor(k){
+  return state[k].map(r => '      "' + r.join(' ') + '"').join('\n');
+}
+
+function emit(){
+  const css =
+`.bo-bento {
+  display:grid; grid-template-columns:1fr; gap:var(--gap-sm);
+  grid-template-areas:
+${areasFor('mobile')};
+}
+@media (min-width:${MEDIA.tablet}) {
+  .bo-bento {
+    grid-template-columns:repeat(4,1fr); gap:${GAP.tablet};
+    grid-template-areas:
+${areasFor('tablet')};
+  }
+}
+@media (min-width:${MEDIA.desktop}) {
+  .bo-bento {
+    grid-template-columns:repeat(12,1fr); gap:${GAP.desktop};
+    grid-template-areas:
+${areasFor('desktop')};
+    grid-auto-rows:min-content;
+    align-items:start;
+  }
+}`;
+  outEl.textContent = css;
+}
+
+$('#addRow').onclick = () => {
+  state[bp].push(Array(COLS[bp]).fill('.'));
+  render();
+};
+$('#delRow').onclick = () => {
+  if (state[bp].length > 1) state[bp].pop();
+  render();
+};
+$('#reset').onclick = () => { state = structuredClone(INITIAL); render(); };
+$('#copy').onclick = async () => {
+  await navigator.clipboard.writeText(outEl.textContent);
+  const b = $('#copy'); const t = b.textContent;
+  b.textContent = 'Copied'; setTimeout(() => b.textContent = t, 1200);
+};
+document.querySelectorAll('[data-bp]').forEach(b => b.onclick = () => {
+  bp = b.dataset.bp;
+  document.querySelectorAll('[data-bp]').forEach(x => x.classList.toggle('on', x === b));
+  render();
+});
+
+buildPalette();
+render();
+</script>
+</body>
+</html>
