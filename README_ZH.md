@@ -50,6 +50,34 @@
 - TUIC (v5)
 - NaiveProxy
 
+## 修复内容
+
+- **Logger 数据竞争** — 使用 `sync.Mutex` 保护 `logBuffer`，防止并发写入崩溃
+- **LDAP 同步 panic** — 将 `panic()` 辅助函数重构为返回错误；拆分 `splitCsv`/`splitCsvOrDefault`
+- **TLS 守卫** — 将 TLS 证书验证中的 `||` 修正为 `&&`
+- **数据库目录权限** — 从 `0777` 改为 `0750`
+- **不可达代码** — 移除了 main.go 中 3 处 `log.Fatalf` 之后的无效 return
+- **Cron 任务变量** — 修复了任务调度器中未初始化的变量
+- **GetSecret() 副作用** — 从 getter 函数中移除了数据库修改
+- **正则重复编译** — 预编译 `md5Re` 而非每次调用时重新编译
+- **模板变量遮蔽** — 重命名了 web.go 中冲突的模板变量
+- **端口验证** — 添加了缺失的下限检查（最小值为 1）
+- **GetAllSetting** — 修复了静默丢弃未知设置的问题
+- **变量遮蔽** — 修复了 setting.go 中的 `t` 遮蔽
+- **Telegram 机器人启动** — 将重复的机器人检查合并到 `startTask()` 中
+- **runSeeders 日志消息** — 修复了错误的日志文本
+- **splitCsv** — 修复了空输入时返回 `DefaultTruthyValues` 的问题
+- **AllPermissions 顺序** — 修正了权限列表顺序不匹配的问题
+- **.gitignore** — 将 `x-ui` 引用更新为 `vpn-ui`
+- **未使用的导入** — 从 main.go 和 global.go 中移除了 `unsafe` 导入
+- **RADIUS 密钥** — 移除了硬编码的回退值，使用空字符串
+- **Vue 2 响应性** — 修复了编辑模态框中客户端凭证字段不更新的问题
+- **Config 名称** — 从 `x-ui` 改为 `vpn-ui`
+- **会话 Cookie** — 使用 `config.GetName()` 而非硬编码名称
+- **LocalizerWeb 竞争** — 添加 `sync.RWMutex` 防止翻译映射竞争
+- **i18n 修复** — 越南语音标、zh_TW 跨语言泄漏、阿拉伯语缺失部分、波斯语缺失部分
+- **Windows 支持** — 添加了 `sys_windows.go` 用于 TCP/UDP/CPU 函数
+
 ## 已测试的操作系统
 
 

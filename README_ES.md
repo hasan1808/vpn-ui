@@ -50,6 +50,34 @@ Tres protocolos añadidos al propio Xray-core parcheado, por lo que son servidos
 - TUIC (v5)
 - NaiveProxy
 
+## Lo que se ha corregido
+
+- **Carrera de datos en el Logger** — `logBuffer` protegido con `sync.Mutex` para evitar fallos por escritura concurrente
+- **Pánico en LDAP sync** — las funciones auxiliares `panic()` se refactorizaron para devolver errores; se separaron `splitCsv`/`splitCsvOrDefault`
+- **Guardia TLS** — corregido `||` a `&&` en la validación de certificados TLS
+- **Permisos del directorio de la base de datos** — cambiados de `0777` a `0750`
+- **Código inalcanzable** — eliminados returns muertos después de `log.Fatalf` en 3 lugares (main.go)
+- **Variable cron entry** — corregida variable no inicializada en el planificador de tareas
+- **Efecto secundario en GetSecret()** — eliminada la mutación de la BD en la función getter
+- **Recompilación de regex** — `md5Re` precompilado en lugar de recompilar en cada llamada
+- **Sombreado de variable de plantilla** — renombrada variable conflicto en web.go
+- **Validación de puerto** — añadida comprobación del límite inferior (mínimo 1)
+- **GetAllSetting** — corregida eliminación silenciosa de configuraciones desconocidas
+- **Sombreado de variable** — corregido `t` shadow en setting.go
+- **Inicio del bot de Telegram** — consolidada verificación duplicada del bot en `startTask()`
+- **Mensaje de log en runSeeders** — corregido texto del mensaje de log incorrecto
+- **splitCsv** — corregido retorno de `DefaultTruthyValues` con entrada vacía
+- **Orden de AllPermissions** — corregido desajuste en el orden de la lista de permisos
+- **.gitignore** — actualizada referencia de `x-ui` a `vpn-ui`
+- **Importaciones no utilizadas** — eliminadas importaciones `unsafe` de main.go y global.go
+- **RADIUS secret** — eliminado fallback hardcodeado, usa cadena vacía
+- **Reactividad en Vue 2** — corregidos campos de credenciales del cliente que no se actualizan en el modal de edición
+- **Nombre de config** — cambiado de `x-ui` a `vpn-ui`
+- **Cookie de sesión** — usa `config.GetName()` en lugar de nombre hardcodeado
+- **Carrera en LocalizerWeb** — añadido `sync.RWMutex` para prevenir carreras en el mapa de traducción
+- **Correcciones i18n** — diacriticos vietnamitas, fuga entre idiomas en zh_TW, secciones faltantes en árabe, secciones faltantes en persa
+- **Soporte de Windows** — añadido `sys_windows.go` para funciones TCP/UDP/CPU
+
 ## Sistemas operativos probados
 
 

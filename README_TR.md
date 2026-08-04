@@ -50,6 +50,34 @@ Yamalanmış Xray-core'a üç protokol daha eklendi; bunlar bir daemon tarafınd
 - TUIC (v5)
 - NaiveProxy
 
+## Düzeltmeler
+
+- **Logger veri yarışması** — eşzamanlı yazma hatalarını önlemek için `logBuffer` `sync.Mutex` ile korundu
+- **LDAP sync panic** — `panic()` yardımcıları hata döndürecek şekilde yeniden düzenlendi; `splitCsv`/`splitCsvOrDefault` ayrıldı
+- **TLS koruması** — TLS sertifika doğrulamasında `||` yerine `&&` düzeltildi
+- **DB dizin izinleri** — `0777` yerine `0750` olarak değiştirildi
+- **Ulaşılamaz kod** — main.go'da 3 yerde `log.Fatalf` sonrasında ölü return'ler kaldırıldı
+- **Cron entry değişkeni** — görev zamanlayıcısında başlatılmamış değişken düzeltildi
+- **GetSecret() yan etkisi** — getter fonksiyonundan DB mutasyonu kaldırıldı
+- **Regex yeniden derleme** — her çağrída yeniden derleme yerine `md5Re` önceden derlendi
+- **Şablon değişken gölgeleme** — web.go'daki çelişkili şablon değişkeni yeniden adlandırıldı
+- **Port doğrulama** — eksik alt sınır kontrolü eklendi (minimum 1)
+- **GetAllSetting** — bilinmeyen ayarları sessizce bırakma düzeltildi
+- **Değişken gölgeleme** — setting.go'daki `t` shadow düzeltildi
+- **Telegram bot başlatma** — `startTask()` içindeki çift bot kontrolü birleştirildi
+- **runSeeders log mesajı** — yanlış log metni düzeltildi
+- **splitCsv** — boş girişte `DefaultTruthyValues` dönüşü düzeltildi
+- **AllPermissions sırası** — izin listesi sırası uyumsuzluğu düzeltildi
+- **.gitignore** — `x-ui` referansı `vpn-ui` olarak güncellendi
+- **Kullanılmayan import'lar** — main.go ve global.go'dan `unsafe` import'ları kaldırıldı
+- **RADIUS secret** — hardcoded fallback kaldırıldı, boş string kullanılıyor
+- **Vue 2 reaktivitesi** — düzenleme modalında müşteri kimlik bilgilerinin güncellenmemesi düzeltildi
+- **Config adı** — `x-ui` yerine `vpn-ui` olarak değiştirildi
+- **Oturum çerezi** — hardcoded yerine `config.GetName()` kullanılıyor
+- **LocalizerWeb yarışması** — çeviri haritası yarışlarını önlemek için `sync.RWMutex` eklendi
+- **i18n düzeltmeleri** — Vietnamca aksanları, zh_TW diller arası sızma, Arapça eksik bölümler, Farsça eksik bölümler
+- **Windows desteği** — TCP/UDP/CPU fonksiyonları için `sys_windows.go` eklendi
+
 ## Test Edilen İşletim Sistemleri
 
 

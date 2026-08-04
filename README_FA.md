@@ -51,6 +51,34 @@
 - TUIC (v5)
 - NaiveProxy
 
+## موارد اصلاح‌شده
+
+- **Race condition در Logger** — محافظت `logBuffer` با `sync.Mutex` برای جلوگیری از کرش هنگام نوشتن همزمان
+- **Panic در LDAP sync** — بازنویسی توابع `panic()` به خروجی خطا؛ جداسازی `splitCsv`/`splitCsvOrDefault`
+- **TLS guard** — اصلاح `||` به `&&` در اعتبارسنجی گواهی TLS
+- **مجوزهای دایرکتوری دیتابیس** — تغییر از `0777` به `0750`
+- **کد غیرقابل دسترس** — حذف return های مرده بعد از `log.Fatalf` در 3 جا (main.go)
+- **متغیر cron entry** — اصلاح متغیر initialization نشده در زمان‌بند وظایف
+- **Side effect در GetSecret()** — حذف جهش دیتابیس از تابع getter
+- **بازکامپایل regex** — پیش‌کامپایل regex `md5Re` به جای بازکامپایل در هر فراخوانی
+- **Sadowing متغیر template** — تغییر نام متغیر template متعارض در web.go
+- **اعتبارسنجی پورت** — اضافه شدن بررسی حد پایین (حداقل 1)
+- **GetAllSetting** — اصلاح حذف سکوت تنظیمات ناشناخته
+- **Sadowing متغیر** — اصلاح `t` shadow در setting.go
+- **شروع ربات تلگرام** — یکپارچه‌سازی بررسی تکراری ربات در `startTask()`
+- **پیام log در runSeeders** — اصلاح متن پیام log اشتباه
+- **splitCsv** — اصلاح بازگشت `DefaultTruthyValues` روی ورودی خالی
+- **ترتیب AllPermissions** — اصلاح عدم تطابق ترتیب لیست مجوزها
+- **.gitignore** — بروزرسانی ارجاع `x-ui` به `vpn-ui`
+- **ایمپورت‌های استفاده‌نشده** — حذف ایمپورت‌های `unsafe` از main.go و global.go
+- **RADIUS secret** — حذف fallback سخت‌کد شده، از رشته خالی استفاده می‌شود
+- **Reactivity در Vue 2** — اصلاح بروز نشدن فیلدهای credential کلاینت در مodal ویرایش
+- **نام config** — تغییر از `x-ui` به `vpn-ui`
+- **کوکی session** — استفاده از `config.GetName()` به جای نام سخت‌کد شده
+- **Race condition در LocalizerWeb** — اضافه شدن `sync.RWMutex` برای جلوگیری از race در نقشه ترجمه
+- **اصلاحات i18n** — لهجه‌های ویتنامی، نشت بین‌زبانی zh_TW، بخش‌های گمشده عربی، بخش‌های گمشده فارسی
+- **پشتیبانی از Windows** — اضافه شدن `sys_windows.go` برای توابع TCP/UDP/CPU
+
 ## سیستم‌عامل‌های تست شده
 
 

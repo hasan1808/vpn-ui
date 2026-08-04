@@ -53,6 +53,34 @@ the core rather than by a daemon, and they work as **inbounds and outbounds**:
 - TUIC (v5)
 - NaiveProxy
 
+## What's Fixed
+
+- **Logger data race** — `logBuffer` protected with `sync.Mutex` to prevent concurrent write crashes
+- **LDAP sync panic** — refactored `panic()` helpers to return errors; split `splitCsv`/`splitCsvOrDefault`
+- **TLS guard** — fixed `||` to `&&` in TLS certificate validation
+- **DB directory permissions** — changed from `0777` to `0750`
+- **Unreachable code** — removed dead returns after `log.Fatalf` in 3 places (main.go)
+- **Cron entry variable** — fixed uninitialized entry variable in task scheduler
+- **GetSecret() side effect** — removed DB mutation from getter function
+- **Regex recompile** — precompiled `md5Re` regex instead of recompiling on every call
+- **Template variable shadowing** — renamed conflicting template variable in web.go
+- **Port validation** — added missing lower bound check (min 1)
+- **GetAllSetting** — fixed silently dropping unknown settings
+- **Variable shadowing** — fixed `t` shadow in setting.go
+- **TG bot startup** — consolidated duplicate bot check into single `startTask()`
+- **runSeeders log message** — fixed wrong log message text
+- **splitCsv** — fixed returning `DefaultTruthyValues` on empty input
+- **AllPermissions order** — corrected permission list order mismatch
+- **.gitignore** — updated `x-ui` reference to `vpn-ui`
+- **Unused imports** — removed `unsafe` imports from main.go and global.go
+- **RADIUS secret** — removed hardcoded fallback, uses empty string
+- **Vue 2 reactivity** — fixed client credential fields not updating in edit modal
+- **Config name** — changed from `x-ui` to `vpn-ui`
+- **Session cookie** — uses `config.GetName()` instead of hardcoded name
+- **LocalizerWeb race** — added `sync.RWMutex` to prevent translation map races
+- **i18n fixes** — Vietnamese diacritics, zh_TW cross-locale leak, Arabic missing sections, Persian missing sections
+- **Windows support** — added `sys_windows.go` stub for TCP/UDP/CPU functions
+
 ## Tested Operating Systems
 
 
