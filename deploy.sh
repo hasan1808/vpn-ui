@@ -383,15 +383,18 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
         act "building with ${NPROC} cores..."
     fi
     # If Xray core is already built from a previous run, skip the slow rebuild
-    BUILD_FLAGS=""
+    export SKIP_CORE=0
+    export SKIP_SUBMODULES=0
+    export SKIP_BACKEND=0
     if [[ -f "$BUILD_DIR/src/corebundle/core/amd64/xray" ]]; then
-        BUILD_FLAGS="SKIP_CORE=1 SKIP_SUBMODULES=1"
+        export SKIP_CORE=1
+        export SKIP_SUBMODULES=1
         act "Xray core already built — skipping rebuild"
     fi
     if [[ "${SKIP_BACKEND:-0}" == "1" ]] || ! command -v docker >/dev/null 2>&1; then
-        BUILD_FLAGS="$BUILD_FLAGS SKIP_BACKEND=1"
+        export SKIP_BACKEND=1
     fi
-    (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" $BUILD_FLAGS bash build.sh) \
+    (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" bash build.sh) \
         || die "build failed."
     # Remove temporary swap
     swapoff /swapfile 2>/dev/null && rm -f /swapfile 2>/dev/null || true
