@@ -337,12 +337,22 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
     # Add temporary swap if memory is tight (Go compiler needs ~2GB)
     if [[ ! -f /swapfile ]] && command -v fallocate >/dev/null 2>&1; then
         TOTAL_MEM="$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
-        if (( TOTAL_MEM < 2000000 )); then
-            act "low memory detected, adding 2G temporary swap..."
-            fallocate -l 2G /swapfile 2>/dev/null && chmod 600 /swapfile && mkswap /swapfile >/dev/null 2>&1 && swapon /swapfile 2>/dev/null || true
+        if (( TOTAL_MEM < 3000000 )); then
+            act "low memory, adding temporary swap..."
+            SWAP_SIZE="$(( (3000000 - TOTAL_MEM) / 1024 + 512 ))M"
+            fallocate -l "$SWAP_SIZE" /swapfile 2>/dev/null && chmod 600 /swapfile && mkswap /swapfile >/dev/null 2>&1 && swapon /swapfile 2>/dev/null || true
         fi
     fi
-    (cd "$BUILD_DIR/src" && GOGC=20 GOMAXPROCS=1 bash build.sh) \
+    # Use all available CPU cores for faster build, unless memory is tight
+    NPROC="$(nproc 2>/dev/null || echo 1)"
+    TOTAL_MEM="$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+    if (( TOTAL_MEM < 2000000 )); then
+        act "low memory (${TOTAL_MEM}kB), building single-threaded with swap..."
+        NPROC=1
+    else
+        act "building with ${NPROC} cores..."
+    fi
+    (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" bash build.sh) \
         || die "build failed."
     # Remove temporary swap
     swapoff /swapfile 2>/dev/null && rm -f /swapfile 2>/dev/null || true
