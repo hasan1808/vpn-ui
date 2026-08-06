@@ -295,8 +295,30 @@ trap 'dl_cleanup; exit 130' INT
 trap 'dl_cleanup; exit 143' TERM
 
 msg "Downloading ${ASSET}"
-fetch_asset "$DL_URL" "$tmp" \
-    || die "download failed from $DL_URL — is there a published release with a '$ASSET' asset?"
+if ! fetch_asset "$DL_URL" "$tmp"; then
+    warn "download failed from $DL_URL — building from source instead"
+    if ! command -v go >/dev/null 2>&1; then
+        act "installing Go..."
+        if command -v apt-get >/dev/null 2>&1; then
+            apt-get update -qq && apt-get install -y -qq golang git >/dev/null 2>&1
+        elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y golang git >/dev/null 2>&1
+        else
+            die "need 'go' to build from source, and could not install it automatically."
+        fi
+    fi
+    GO_VER="$(go version 2>/dev/null | grep -oE 'go[0-9]+\.[0-9]+' | head -1)"
+    act "Go version: ${GO_VER:-unknown}"
+    BUILD_DIR="$(mktemp -d)"
+    trap 'dl_cleanup; rm -rf "$BUILD_DIR"' EXIT
+    act "cloning $REPO..."
+    git clone --depth 1 --recurse-submodules "https://github.com/$REPO.git" "$BUILD_DIR/src" >/dev/null 2>&1 \
+        || die "git clone failed."
+    act "building vpn-ui-amd64 (this may take a few minutes)..."
+    (cd "$BUILD_DIR/src" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$tmp" -ldflags "-s -w" .) \
+        || die "build failed."
+    rm -rf "$BUILD_DIR"
+fi
 # Back to the plain tmp-file cleanup for the rest of the run: nothing below this
 # point owns a background job, so the download's signal handling ends here.
 trap - INT TERM
