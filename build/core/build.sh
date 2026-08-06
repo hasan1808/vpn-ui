@@ -57,16 +57,22 @@ _geo_one() {
     local url="$1" out="$2" tmp rc=0
     if [[ "${GEO_FORCE:-0}" != "1" && -s "$out" ]]; then
         tmp="$(mktemp)"
-        curl -fsSL --retry 3 -z "$out" -o "$tmp" "$url" || rc=$?
+        curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 -z "$out" -o "$tmp" "$url" || rc=$?
         if [[ $rc -eq 0 && -s "$tmp" ]]; then
             mv "$tmp" "$out"; ok "$(basename "$out"): updated"
         elif [[ $rc -eq 0 ]]; then
             rm -f "$tmp"; info "$(basename "$out"): up to date (304) — skipped"
         else
-            rm -f "$tmp"; warn "$(basename "$out"): check failed (rc=$rc) — keeping cached copy"
+            rm -f "$tmp"; warn "$(basename "$out"): download failed (rc=$rc) — keeping cached copy"; return 0
         fi
     else
-        curl -fL --retry 3 -o "$out" "$url"; ok "$(basename "$out"): fetched"
+        curl -fL --retry 3 --connect-timeout 15 --max-time 120 -o "$out" "$url" || {
+            if [[ -s "$out" ]]; then
+                warn "$(basename "$out"): download failed but file exists — keeping"; return 0
+            fi
+            return 1
+        }
+        ok "$(basename "$out"): fetched"
     fi
 }
 
@@ -119,9 +125,9 @@ _geo_batch() {
 _geo_stamp() {
     local url="$1" out="$2" lm
     [[ -e "$out" ]] || return 0
-    lm="$(curl -fsSIL --retry 2 "$url" 2>/dev/null | grep -i '^last-modified:' | tail -1 | sed 's/^[Ll]ast-[Mm]odified:[[:space:]]*//' | tr -d '\r' || true)"
+    lm="$(curl -fsSIL --retry 2 --connect-timeout 10 --max-time 15 "$url" 2>/dev/null | grep -i '^last-modified:' | tail -1 | sed 's/^[Ll]ast-[Mm]odified:[[:space:]]*//' | tr -d '\r' || true)"
     if [[ -z "$lm" ]]; then
-        warn "$(basename "$out"): upstream sent no Last-Modified; leaving mtime as-is"
+        info "$(basename "$out"): skipping stamp (upstream unreachable)"
         return 0
     fi
     if touch -d "$lm" "$out" 2>/dev/null; then

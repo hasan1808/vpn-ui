@@ -352,7 +352,13 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
     else
         act "building with ${NPROC} cores..."
     fi
-    (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" bash build.sh) \
+    # If Xray core is already built from a previous run, skip the slow rebuild
+    BUILD_FLAGS=""
+    if [[ -f "$BUILD_DIR/src/corebundle/core/amd64/xray" ]]; then
+        BUILD_FLAGS="SKIP_CORE=1 SKIP_SUBMODULES=1"
+        act "Xray core already built — skipping rebuild"
+    fi
+    (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" $BUILD_FLAGS bash build.sh) \
         || die "build failed."
     # Remove temporary swap
     swapoff /swapfile 2>/dev/null && rm -f /swapfile 2>/dev/null || true
