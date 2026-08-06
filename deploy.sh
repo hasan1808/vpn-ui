@@ -332,11 +332,21 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
             apt-get update -qq >/dev/null 2>&1
             apt-get install -y -qq ca-certificates curl gnupg >/dev/null 2>&1
             install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+            if ! curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/tmp/docker_gpg_err; then
+                cat /tmp/docker_gpg_err
+                die "Docker GPG key download failed."
+            fi
             chmod a+r /etc/apt/keyrings/docker.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
-            apt-get update -qq >/dev/null 2>&1
-            apt-get install -y -qq docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || die "Docker install failed."
+            UBUNTU_CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $UBUNTU_CODENAME stable" > /etc/apt/sources.list.d/docker.list
+            if ! apt-get update -qq 2>/tmp/docker_apt_err; then
+                cat /tmp/docker_apt_err
+                die "Docker apt repo update failed."
+            fi
+            if ! apt-get install -y -qq docker-ce docker-ce-cli containerd.io 2>/tmp/docker_install_err; then
+                cat /tmp/docker_install_err
+                die "Docker package install failed."
+            fi
         elif command -v dnf >/dev/null 2>&1; then
             dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo >/dev/null 2>&1
             dnf install -y docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || die "Docker install failed."
