@@ -305,6 +305,14 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
             dnf install -y git >/dev/null 2>&1
         fi
     fi
+    if ! command -v gcc >/dev/null 2>&1; then
+        act "installing gcc for CGO (SQLite)..."
+        if command -v apt-get >/dev/null 2>&1; then
+            apt-get update -qq && apt-get install -y -qq gcc >/dev/null 2>&1
+        elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y gcc >/dev/null 2>&1
+        fi
+    fi
     if ! command -v go >/dev/null 2>&1 || [[ "$(go version 2>/dev/null)" < "go version go1.22" ]]; then
         act "installing Go 1.26..."
         GO_VER="1.26.5"
@@ -325,9 +333,24 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
     act "cloning $REPO..."
     git clone --depth 1 --recurse-submodules "https://github.com/$REPO.git" "$BUILD_DIR/src" >/dev/null 2>&1 \
         || die "git clone failed."
-    act "building vpn-ui-amd64 (this may take a few minutes)..."
-    (cd "$BUILD_DIR/src" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$tmp" -ldflags "-s -w" .) \
+    act "building vpn-ui-amd64 (this may take several minutes)..."
+    # Add temporary swap if memory is tight (Go compiler needs ~2GB)
+    if [[ ! -f /swapfile ]] && command -v fallocate >/dev/null 2>&1; then
+        TOTAL_MEM="$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+        if (( TOTAL_MEM < 2000000 )); then
+            act "low memory detected, adding 2G temporary swap..."
+            fallocate -l 2G /swapfile 2>/dev/null && chmod 600 /swapfile && mkswap /swapfile >/dev/null 2>&1 && swapon /swapfile 2>/dev/null || true
+        fi
+    fi
+    (cd "$BUILD_DIR/src" && GOGC=20 GOMAXPROCS=1 bash build.sh) \
         || die "build failed."
+    # Remove temporary swap
+    swapoff /swapfile 2>/dev/null && rm -f /swapfile 2>/dev/null || true
+    if [[ -f "$BUILD_DIR/src/build/out/vpn-ui-amd64" ]]; then
+        cp "$BUILD_DIR/src/build/out/vpn-ui-amd64" "$tmp"
+    else
+        die "build succeeded but output binary not found."
+    fi
     rm -rf "$BUILD_DIR"
 fi
 # Back to the plain tmp-file cleanup for the rest of the run: nothing below this
