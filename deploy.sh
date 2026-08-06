@@ -329,9 +329,17 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
     if ! command -v docker >/dev/null 2>&1; then
         act "installing Docker..."
         if command -v apt-get >/dev/null 2>&1; then
-            curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || die "Docker install failed."
+            apt-get update -qq >/dev/null 2>&1
+            apt-get install -y -qq ca-certificates curl gnupg >/dev/null 2>&1
+            install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+            chmod a+r /etc/apt/keyrings/docker.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+            apt-get update -qq >/dev/null 2>&1
+            apt-get install -y -qq docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || die "Docker install failed."
         elif command -v dnf >/dev/null 2>&1; then
-            curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || die "Docker install failed."
+            dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo >/dev/null 2>&1
+            dnf install -y docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || die "Docker install failed."
         else
             die "cannot install Docker automatically — install Docker manually and retry."
         fi
