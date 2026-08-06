@@ -326,6 +326,18 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
             || die "failed to download Go ${GO_VER}."
         export PATH="/usr/local/go/bin:$PATH"
     fi
+    if ! command -v docker >/dev/null 2>&1; then
+        act "installing Docker..."
+        if command -v apt-get >/dev/null 2>&1; then
+            curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || die "Docker install failed."
+        elif command -v dnf >/dev/null 2>&1; then
+            curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || die "Docker install failed."
+        else
+            die "cannot install Docker automatically — install Docker manually and retry."
+        fi
+        systemctl enable --now docker >/dev/null 2>&1 || true
+    fi
+    act "Docker version: $(docker --version 2>/dev/null | head -1 || echo unknown)"
     GO_VER="$(go version 2>/dev/null | grep -oE 'go[0-9]+\.[0-9]+' | head -1)"
     act "Go version: ${GO_VER:-unknown}"
     BUILD_DIR="$(mktemp -d)"
