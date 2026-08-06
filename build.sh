@@ -131,8 +131,14 @@ else
     fi
 fi
 if (( bundle_stale )); then
-    step "VPN daemon bundle"
-    bash build/backend/build.sh "$ARCH"
+    if [[ "${SKIP_BACKEND:-0}" == "1" ]]; then
+        warn "SKIP_BACKEND=1 — skipping VPN daemon bundle (daemons will use system packages)"
+    elif ! command -v docker >/dev/null 2>&1; then
+        warn "Docker not found — skipping VPN daemon bundle (daemons will use system packages)"
+    else
+        step "VPN daemon bundle"
+        bash build/backend/build.sh "$ARCH"
+    fi
 else
     ok "VPN daemon bundle already present — skipping"
 fi

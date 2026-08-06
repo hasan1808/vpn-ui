@@ -333,29 +333,29 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
             apt-get install -y -qq ca-certificates curl gnupg >/dev/null 2>&1
             install -m 0755 -d /etc/apt/keyrings
             if ! curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/tmp/docker_gpg_err; then
-                cat /tmp/docker_gpg_err
-                die "Docker GPG key download failed."
+                warn "Docker GPG key failed — will build without Docker (daemons from system packages)"
+            else
+                chmod a+r /etc/apt/keyrings/docker.gpg
+                UBUNTU_CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $UBUNTU_CODENAME stable" > /etc/apt/sources.list.d/docker.list
+                if ! apt-get update -qq 2>/tmp/docker_apt_err; then
+                    warn "Docker apt repo failed — will build without Docker"
+                elif ! apt-get install -y -qq docker-ce docker-ce-cli containerd.io 2>/tmp/docker_install_err; then
+                    warn "Docker package install failed — will build without Docker"
+                fi
             fi
-            chmod a+r /etc/apt/keyrings/docker.gpg
-            UBUNTU_CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")"
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $UBUNTU_CODENAME stable" > /etc/apt/sources.list.d/docker.list
-            if ! apt-get update -qq 2>/tmp/docker_apt_err; then
-                cat /tmp/docker_apt_err
-                die "Docker apt repo update failed."
-            fi
-            if ! apt-get install -y -qq docker-ce docker-ce-cli containerd.io 2>/tmp/docker_install_err; then
-                cat /tmp/docker_install_err
-                die "Docker package install failed."
-            fi
+            systemctl enable --now docker >/dev/null 2>&1 || true
         elif command -v dnf >/dev/null 2>&1; then
             dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo >/dev/null 2>&1
-            dnf install -y docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || die "Docker install failed."
-        else
-            die "cannot install Docker automatically — install Docker manually and retry."
+            dnf install -y docker-ce docker-ce-cli containerd.io >/dev/null 2>&1 || warn "Docker install failed — will build without Docker"
+            systemctl enable --now docker >/dev/null 2>&1 || true
         fi
-        systemctl enable --now docker >/dev/null 2>&1 || true
     fi
-    act "Docker version: $(docker --version 2>/dev/null | head -1 || echo unknown)"
+    if command -v docker >/dev/null 2>&1; then
+        act "Docker version: $(docker --version 2>/dev/null | head -1)"
+    else
+        warn "Docker not available — backend daemon bundle will be skipped"
+    fi
     GO_VER="$(go version 2>/dev/null | grep -oE 'go[0-9]+\.[0-9]+' | head -1)"
     act "Go version: ${GO_VER:-unknown}"
     BUILD_DIR="$(mktemp -d)"
