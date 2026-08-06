@@ -385,14 +385,14 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
     # If Xray core is already built from a previous run, skip the slow rebuild
     export SKIP_CORE=0
     export SKIP_SUBMODULES=0
-    export SKIP_BACKEND=0
+    export SKIP_BACKEND="${SKIP_BACKEND:-1}"
     if [[ -f "$BUILD_DIR/src/corebundle/core/amd64/xray" ]]; then
         export SKIP_CORE=1
         export SKIP_SUBMODULES=1
         act "Xray core already built — skipping rebuild"
     fi
-    if [[ "${SKIP_BACKEND:-0}" == "1" ]] || ! command -v docker >/dev/null 2>&1; then
-        export SKIP_BACKEND=1
+    if [[ "$SKIP_BACKEND" == "1" ]]; then
+        act "skipping backend daemon bundle (set SKIP_BACKEND=0 to include)"
     fi
     (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" bash build.sh) \
         || die "build failed."
