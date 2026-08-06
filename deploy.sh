@@ -388,6 +388,9 @@ if ! fetch_asset "$DL_URL" "$tmp"; then
         BUILD_FLAGS="SKIP_CORE=1 SKIP_SUBMODULES=1"
         act "Xray core already built — skipping rebuild"
     fi
+    if [[ "${SKIP_BACKEND:-0}" == "1" ]] || ! command -v docker >/dev/null 2>&1; then
+        BUILD_FLAGS="$BUILD_FLAGS SKIP_BACKEND=1"
+    fi
     (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" $BUILD_FLAGS bash build.sh) \
         || die "build failed."
     # Remove temporary swap
