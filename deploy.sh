@@ -297,15 +297,26 @@ trap 'dl_cleanup; exit 143' TERM
 msg "Downloading ${ASSET}"
 if ! fetch_asset "$DL_URL" "$tmp"; then
     warn "download failed from $DL_URL — building from source instead"
-    if ! command -v go >/dev/null 2>&1; then
-        act "installing Go..."
+    if ! command -v git >/dev/null 2>&1; then
+        act "installing git..."
         if command -v apt-get >/dev/null 2>&1; then
-            apt-get update -qq && apt-get install -y -qq golang git >/dev/null 2>&1
+            apt-get update -qq && apt-get install -y -qq git >/dev/null 2>&1
         elif command -v dnf >/dev/null 2>&1; then
-            dnf install -y golang git >/dev/null 2>&1
-        else
-            die "need 'go' to build from source, and could not install it automatically."
+            dnf install -y git >/dev/null 2>&1
         fi
+    fi
+    if ! command -v go >/dev/null 2>&1 || [[ "$(go version 2>/dev/null)" < "go version go1.22" ]]; then
+        act "installing Go 1.26..."
+        GO_VER="1.26.5"
+        GO_ARCH="$(uname -m)"
+        case "$GO_ARCH" in
+            x86_64)  GO_ARCH="amd64" ;;
+            aarch64) GO_ARCH="arm64" ;;
+            armv7l)  GO_ARCH="armv6l" ;;
+        esac
+        curl -fsSL "https://go.dev/dl/go${GO_VER}.linux-${GO_ARCH}.tar.gz" | tar -C /usr/local -xzf - >/dev/null 2>&1 \
+            || die "failed to download Go ${GO_VER}."
+        export PATH="/usr/local/go/bin:$PATH"
     fi
     GO_VER="$(go version 2>/dev/null | grep -oE 'go[0-9]+\.[0-9]+' | head -1)"
     act "Go version: ${GO_VER:-unknown}"
