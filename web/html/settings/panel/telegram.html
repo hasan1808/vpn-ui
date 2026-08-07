@@ -71,7 +71,13 @@
             <template #description>{{ i18n "pages.settings.telegramProxyDesc"}}</template>
             <template #control>
                 <a-input type="text" placeholder="socks5://user:pass@host:port"
-                    v-model="allSetting.tgBotProxy"></a-input>
+                    v-model="allSetting.tgBotProxy" style="margin-bottom:8px">
+                    <a-icon slot="suffix" type="close" v-if="allSetting.tgBotProxy"
+                        style="cursor:pointer;color:var(--text-3)" @click="allSetting.tgBotProxy=''" />
+                </a-input>
+                <a-button type="dashed" size="small" block @click="useVpnProxy" :loading="vpnProxyLoading">
+                    <a-icon type="thunderbolt" /> Route through VPN Outbound
+                </a-button>
             </template>
         </a-setting-list-item>
         <a-setting-list-item paddings="small">

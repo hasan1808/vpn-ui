@@ -100,8 +100,12 @@
             }
         },
         created() {
-            this.sidebarHidden = JSON.parse(localStorage.getItem(SIDEBAR_HIDDEN_KEY)) === true;
             if (this.$root) this.$root.sidebarHidden = this.sidebarHidden;
+        },
+        watch: {
+            '$root.sidebarHidden'(v) {
+                this.sidebarHidden = v;
+            },
         },
         methods: {
             isActive(key) {

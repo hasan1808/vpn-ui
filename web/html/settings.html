@@ -140,6 +140,7 @@
       serviceSaving: false,
       serviceLog: '',
       serviceLogLoading: false,
+      vpnProxyLoading: false,
       serviceLogAuto: false,
       serviceLogTimer: null,
       lang: LanguageManager.getLanguage(),
@@ -233,6 +234,34 @@
       toggleSidebar() {
         this.sidebarHidden = !this.sidebarHidden;
         localStorage.setItem('isSidebarHidden', this.sidebarHidden);
+      },
+      async useVpnProxy() {
+        this.vpnProxyLoading = true;
+        try {
+          const res = await axios.get('server/getConfigJson');
+          if (!res.data.success) {
+            this.$message.error('Failed to load Xray config');
+            return;
+          }
+          const config = res.data.obj;
+          if (!config || !config.inbounds) {
+            this.$message.warning('No inbounds found in Xray config');
+            return;
+          }
+          const socksIn = config.inbounds.find(function(inb) {
+            return inb.protocol === 'socks';
+          });
+          if (!socksIn) {
+            this.$message.warning('No SOCKS inbound found. Create a SOCKS inbound first.');
+            return;
+          }
+          this.allSetting.tgBotProxy = 'socks5://127.0.0.1:' + socksIn.port;
+          this.$message.success('Proxy set to socks5://127.0.0.1:' + socksIn.port);
+        } catch (e) {
+          this.$message.error('Error: ' + (e.message || 'Unknown error'));
+        } finally {
+          this.vpnProxyLoading = false;
+        }
       },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;
