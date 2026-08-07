@@ -115,12 +115,6 @@ var knownMissing = keySet(
 	"pages.settings.service.statusDesc", "pages.settings.service.unit",
 	"pages.settings.service.unitDesc", "pages.settings.serviceSettings",
 
-	"pages.resellers.deleteHasAccounts", "pages.resellers.deleteKeep",
-	"pages.resellers.deleteKeepDesc", "pages.resellers.deleteCascade",
-	"pages.resellers.deleteCascadeDesc",
-	"pages.resellers.allowOverviewManage", "pages.resellers.allowOverviewManageDesc",
-	"pages.admins.accessOverview", "pages.admins.manageOverview",
-
 	"pages.index.importForeignTitle", "pages.index.importForeignDesc",
 	"pages.index.importForeignConfirm",
 	// The Manual Update picker: which END of the transfer does the work is not

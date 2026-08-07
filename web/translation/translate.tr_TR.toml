@@ -1086,6 +1086,8 @@
 "accessXraySettings" = "Xray Yapılandırmalarına Erişim"
 "accessPanelSettings" = "Panel Ayarlarına Erişim"
 "manageResellers" = "Bayileri Yönet"
+"accessOverview" = "Access Overview"
+"manageOverview" = "Manage Overview"
 
 [pages.resellers]
 "title" = "Bayiler"
@@ -1117,6 +1119,8 @@
 "allowExternalProxyDesc" = "Bu bayinin ürettiği yapılandırma ve bağlantıların, gelenin harici proxy adreslerini taşıyıp taşıyamayacağı."
 "allowOverview" = "Genel Bakışa İzin Ver"
 "allowOverviewDesc" = "Genel Bakış sayfası sunucunun kendisini anlatır: çekirdek, işlemci, disk, genel IP, panel güncellemeleri. Bunların hiçbiri bayinin işi olmadığı için sayfa varsayılan olarak verilmez. Bunu açtığınızda bu bayi Genel Bakış sayfasını açabilir ve sayfa kenar çubuğunda görünür."
+"allowOverviewManage" = "Manage Overview"
+"allowOverviewManageDesc" = "Whether the overview is theirs to read only, or may also act. Needs Allow Overview, which is the page these controls live on. Note that every one of them (renaming the panel, the Xray buttons, the geo files) also needs a permission the reseller role does not carry, so on its own this switch reveals nothing a reseller can currently use. It is here so the grant already exists the day one of those actions becomes theirs."
 "inboundAccess" = "Gelenler"
 "inboundAccessDesc" = "Bu bayinin satış yapabileceği gelenleri işaretleyin. Yalnızca kendi oluşturduğu hesapları görür, paylaşılan bir gelende bile bir yöneticinin hesaplarını asla göremez."
 "selectAllInbounds" = "Tümünü seç"
@@ -1126,5 +1130,10 @@
 "rechargeAmount" = "Miktar (GB)"
 "deleteConfirm" = "Bu bayi silinsin mi? Bu işlem geri alınamaz."
 "hasClients" = "Bu bayinin hâlâ hesapları var. Önce bu hesapları silin."
+"deleteHasAccounts" = "account(s) will be affected. Choose what to do with them:"
+"deleteKeep" = "Remove the reseller, keep the accounts"
+"deleteKeepDesc" = "The accounts keep working and move to the admin. They stop counting against any reseller balance."
+"deleteCascade" = "Remove the reseller and delete its accounts"
+"deleteCascadeDesc" = "Every account this reseller created is permanently deleted and its customers stop connecting."
 "bulkShort" = "Toplu islem icin yeterli trafik yok. Eksigin"
 "bulkPartial" = "Islenecek hesaplar"

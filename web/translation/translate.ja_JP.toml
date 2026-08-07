@@ -1086,6 +1086,8 @@
 "accessXraySettings" = "Xray設定へのアクセス"
 "accessPanelSettings" = "パネル設定へのアクセス"
 "manageResellers" = "リセラーの管理"
+"accessOverview" = "Access Overview"
+"manageOverview" = "Manage Overview"
 
 [pages.resellers]
 "title" = "リセラー"
@@ -1117,6 +1119,8 @@
 "allowExternalProxyDesc" = "このリセラーが生成する設定やリンクに、インバウンドの外部プロキシのアドレスを含めてよいかどうかです。"
 "allowOverview" = "ダッシュボードを許可"
 "allowOverviewDesc" = "ダッシュボードはホストマシンの状態を示すページで、カーネル、CPU、ディスク、パブリックIP、パネルの更新などが並びます。いずれもリセラーが扱う情報ではないため、既定では表示されません。これを有効にすると、このリセラーがダッシュボードを開けるようになり、サイドバーにも表示されます。"
+"allowOverviewManage" = "Manage Overview"
+"allowOverviewManageDesc" = "Whether the overview is theirs to read only, or may also act. Needs Allow Overview, which is the page these controls live on. Note that every one of them (renaming the panel, the Xray buttons, the geo files) also needs a permission the reseller role does not carry, so on its own this switch reveals nothing a reseller can currently use. It is here so the grant already exists the day one of those actions becomes theirs."
 "inboundAccess" = "インバウンド"
 "inboundAccessDesc" = "このリセラーが販売できるインバウンドにチェックを入れてください。表示されるのは自分が作成したアカウントだけで、インバウンドを共有していても管理者のアカウントは見えません。"
 "selectAllInbounds" = "すべて選択"
@@ -1126,5 +1130,10 @@
 "rechargeAmount" = "数量 (GB)"
 "deleteConfirm" = "このリセラーを削除しますか？この操作は元に戻せません。"
 "hasClients" = "このリセラーはまだアカウントを保有しています。先にそのアカウントを削除してください。"
+"deleteHasAccounts" = "account(s) will be affected. Choose what to do with them:"
+"deleteKeep" = "Remove the reseller, keep the accounts"
+"deleteKeepDesc" = "The accounts keep working and move to the admin. They stop counting against any reseller balance."
+"deleteCascade" = "Remove the reseller and delete its accounts"
+"deleteCascadeDesc" = "Every account this reseller created is permanently deleted and its customers stop connecting."
 "bulkShort" = "一括処理に必要な通信量が足りません。不足分"
 "bulkPartial" = "処理されるアカウント"

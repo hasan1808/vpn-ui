@@ -87,9 +87,14 @@ body { background:var(--bg); }
   position:relative; z-index:1;
   background:var(--surface); border:1px solid var(--border-strong);
   border-radius:var(--radius-xl); box-shadow:var(--shadow-lg);
-  padding:24px; backdrop-filter:blur(2px);
+  padding:28px 24px; overflow:hidden;
 }
-@media (min-width:420px) { #app.login-app .lgt-card { padding:32px; } }
+@media (min-width:420px) { #app.login-app .lgt-card { padding:36px 32px; } }
+#app.login-app .lgt-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background:linear-gradient(90deg, var(--accent), var(--info));
+  border-radius:var(--radius-xl) var(--radius-xl) 0 0;
+}
 
 #app.login-app .lgt-rise { animation:lgt-rise .4s cubic-bezier(.22,1,.36,1) both; }
 @keyframes lgt-rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
@@ -150,12 +155,12 @@ body { background:var(--bg); }
 #app.login-app .lgt-alert .lgt-icon { margin-top:1px; }
 
 /* ===== greeting ===== */
-#app.login-app .lgt-greet { margin-top:24px; display:flex; flex-direction:column; gap:4px; }
+#app.login-app .lgt-greet { margin-top:20px; display:flex; flex-direction:column; gap:6px; }
 #app.login-app .lgt-eyebrow {
-  font-size:var(--fs-sm); font-weight:var(--fw-semibold); color:var(--text-3);
-  text-transform:uppercase; letter-spacing:.08em;
+  font-size:var(--fs-xs); font-weight:var(--fw-bold); color:var(--accent);
+  text-transform:uppercase; letter-spacing:.12em;
 }
-#app.login-app .lgt-title { font-size:var(--fs-xl); font-weight:var(--fw-bold); letter-spacing:-.01em; text-wrap:balance; }
+#app.login-app .lgt-title { font-size:var(--fs-2xl); font-weight:var(--fw-bold); letter-spacing:-.02em; text-wrap:balance; }
 
 /* The fetch that gates the form is one round trip and usually lands
    before the first paint is even visible, but reserving its height keeps
@@ -166,12 +171,12 @@ body { background:var(--bg); }
 }
 
 /* ===== form ===== */
-#app.login-app .lgt-form { margin-top:24px; display:flex; flex-direction:column; gap:16px; }
-#app.login-app .lgt-field { display:flex; flex-direction:column; gap:8px; }
+#app.login-app .lgt-form { margin-top:20px; display:flex; flex-direction:column; gap:14px; }
+#app.login-app .lgt-field { display:flex; flex-direction:column; gap:6px; }
 #app.login-app .lgt-label { font-size:var(--fs-sm); font-weight:var(--fw-semibold); color:var(--text-2); }
 #app.login-app .lgt-control {
   display:flex; align-items:center; gap:10px;
-  background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md);
+  background:var(--surface-2); border:1.5px solid var(--border); border-radius:var(--radius-md);
   padding-inline:12px;
   transition:border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
@@ -211,15 +216,16 @@ body { background:var(--bg); }
 
 /* ===== submit ===== */
 #app.login-app .lgt-submit {
-  position:relative; width:100%; height:46px; margin-top:4px;
-  border:1px solid transparent; border-radius:var(--radius-md);
-  background:var(--accent-strong); color:var(--on-accent);
-  font-size:var(--fs-base); font-weight:var(--fw-semibold); letter-spacing:.02em; cursor:pointer;
+  position:relative; width:100%; height:46px; margin-top:6px;
+  border:none; border-radius:var(--radius-md);
+  background:linear-gradient(135deg, var(--accent-strong), color-mix(in srgb, var(--accent-strong) 80%, var(--info)));
+  color:var(--on-accent);
+  font-size:var(--fs-base); font-weight:var(--fw-bold); letter-spacing:.02em; cursor:pointer;
   display:flex; align-items:center; justify-content:center; gap:10px;
   transition:filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
-  box-shadow:0 4px 14px -4px var(--accent);
+  box-shadow:0 4px 16px -4px var(--accent);
 }
-#app.login-app .lgt-submit:hover { filter:brightness(1.08); box-shadow:0 6px 20px -4px var(--accent); }
+#app.login-app .lgt-submit:hover { filter:brightness(1.08); box-shadow:0 6px 24px -4px var(--accent); }
 #app.login-app .lgt-submit:active { transform:translateY(1px); box-shadow:0 2px 8px -2px var(--accent); }
 #app.login-app .lgt-submit[aria-busy="true"] { cursor:progress; filter:none; }
 #app.login-app .lgt-spin {

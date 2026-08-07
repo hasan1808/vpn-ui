@@ -1086,6 +1086,8 @@
 "accessXraySettings" = "存取 Xray 設定"
 "accessPanelSettings" = "存取面板設定"
 "manageResellers" = "管理經銷商"
+"accessOverview" = "Access Overview"
+"manageOverview" = "Manage Overview"
 
 [pages.resellers]
 "title" = "經銷商"
@@ -1117,6 +1119,8 @@
 "allowExternalProxyDesc" = "此經銷商產生的設定與連結是否可以帶有該入站的外部代理位址。"
 "allowOverview" = "允許系統狀態"
 "allowOverviewDesc" = "系統狀態頁面描述的是主機本身：系統核心、CPU、磁碟、公網 IP、面板更新。這些都不歸經銷商管，因此預設不開放給他。開啟後，此經銷商可以開啟系統狀態頁面，側邊欄中也會顯示該頁面。"
+"allowOverviewManage" = "Manage Overview"
+"allowOverviewManageDesc" = "Whether the overview is theirs to read only, or may also act. Needs Allow Overview, which is the page these controls live on. Note that every one of them (renaming the panel, the Xray buttons, the geo files) also needs a permission the reseller role does not carry, so on its own this switch reveals nothing a reseller can currently use. It is here so the grant already exists the day one of those actions becomes theirs."
 "inboundAccess" = "入站"
 "inboundAccessDesc" = "勾選此經銷商可以銷售的入站。經銷商只能看到自己建立的帳戶，即使共用同一個入站，也永遠看不到管理員的帳戶。"
 "selectAllInbounds" = "全選"
@@ -1126,5 +1130,10 @@
 "rechargeAmount" = "數量（GB）"
 "deleteConfirm" = "確定刪除此經銷商？此操作無法復原。"
 "hasClients" = "此經銷商名下仍有帳戶。請先刪除這些帳戶。"
+"deleteHasAccounts" = "account(s) will be affected. Choose what to do with them:"
+"deleteKeep" = "Remove the reseller, keep the accounts"
+"deleteKeepDesc" = "The accounts keep working and move to the admin. They stop counting against any reseller balance."
+"deleteCascade" = "Remove the reseller and delete its accounts"
+"deleteCascadeDesc" = "Every account this reseller created is permanently deleted and its customers stop connecting."
 "bulkShort" = "流量不足以完成整批操作。還差"
 "bulkPartial" = "將要處理的帳號"

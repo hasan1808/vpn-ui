@@ -1086,6 +1086,8 @@
 "accessXraySettings" = "Acceder a ajustes Xray"
 "accessPanelSettings" = "Acceder a configuraciones del panel"
 "manageResellers" = "Gestionar revendedores"
+"accessOverview" = "Access Overview"
+"manageOverview" = "Manage Overview"
 
 [pages.resellers]
 "title" = "Revendedores"
@@ -1117,6 +1119,8 @@
 "allowExternalProxyDesc" = "Si las configuraciones y los enlaces que genera este revendedor pueden llevar los puntos de conexión del proxy externo de la entrada."
 "allowOverview" = "Permitir Estado del Sistema"
 "allowOverviewDesc" = "La página Estado del Sistema describe la máquina anfitriona: kernel, CPU, disco, IP pública y actualizaciones del panel. Nada de eso corresponde a un revendedor, así que de forma predeterminada no la recibe. Activa esto para que este revendedor pueda abrir la página y aparezca en su barra lateral."
+"allowOverviewManage" = "Manage Overview"
+"allowOverviewManageDesc" = "Whether the overview is theirs to read only, or may also act. Needs Allow Overview, which is the page these controls live on. Note that every one of them (renaming the panel, the Xray buttons, the geo files) also needs a permission the reseller role does not carry, so on its own this switch reveals nothing a reseller can currently use. It is here so the grant already exists the day one of those actions becomes theirs."
 "inboundAccess" = "Entradas"
 "inboundAccessDesc" = "Marca las entradas en las que este revendedor puede vender. Solo ve las cuentas que ha creado, nunca las de un administrador, aunque compartan entrada."
 "selectAllInbounds" = "Seleccionar todo"
@@ -1126,5 +1130,10 @@
 "rechargeAmount" = "Cantidad (GB)"
 "deleteConfirm" = "¿Eliminar este revendedor? Esto no se puede deshacer."
 "hasClients" = "Este revendedor todavía tiene cuentas. Elimina primero esas cuentas."
+"deleteHasAccounts" = "account(s) will be affected. Choose what to do with them:"
+"deleteKeep" = "Remove the reseller, keep the accounts"
+"deleteKeepDesc" = "The accounts keep working and move to the admin. They stop counting against any reseller balance."
+"deleteCascade" = "Remove the reseller and delete its accounts"
+"deleteCascadeDesc" = "Every account this reseller created is permanently deleted and its customers stop connecting."
 "bulkShort" = "No hay trafico suficiente para todo el lote. Te faltan"
 "bulkPartial" = "Cuentas que se procesaran"

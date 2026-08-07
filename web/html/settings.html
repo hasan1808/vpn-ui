@@ -115,6 +115,12 @@
       pageTitle: '{{ i18n "menu.settings"}}',
       pageClass: 'settings-page',
       mobileMenuOpen: false,
+      sidebarHidden: window.__sidebarHidden || false,
+      langOpen: false,
+      currentLang: window.__langData.currentLang,
+      supportedLangs: window.__langData.supportedLangs,
+      currentLangName: window.__langData.currentLangName,
+      setLang: window.__langData.setLang,
       // The caller's own 2FA state, rendered server-side. Not part of allSetting:
       // 2FA is per-admin now, and the settings blob goes to every logged-in admin.
       twoFactorEnable: {{ .two_factor }},
@@ -224,6 +230,10 @@
       }
     },
     methods: {
+      toggleSidebar() {
+        this.sidebarHidden = !this.sidebarHidden;
+        localStorage.setItem('isSidebarHidden', this.sidebarHidden);
+      },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;
       },

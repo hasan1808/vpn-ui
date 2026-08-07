@@ -1086,6 +1086,8 @@
 "accessXraySettings" = "Доступ к настройкам Xray"
 "accessPanelSettings" = "Доступ к настройкам панели"
 "manageResellers" = "Управление реселлерами"
+"accessOverview" = "Access Overview"
+"manageOverview" = "Manage Overview"
 
 [pages.resellers]
 "title" = "Реселлеры"
@@ -1117,6 +1119,8 @@
 "allowExternalProxyDesc" = "Могут ли конфигурации и ссылки, которые создаёт этот реселлер, содержать адреса внешнего прокси этого подключения."
 "allowOverview" = "Разрешить дашборд"
 "allowOverviewDesc" = "Дашборд описывает саму машину: ядро, процессор, диск, публичный IP, обновления панели. К реселлеру всё это отношения не имеет, поэтому по умолчанию страница ему недоступна. Включите, чтобы этот реселлер мог открывать дашборд и чтобы страница появилась у него в боковой панели."
+"allowOverviewManage" = "Manage Overview"
+"allowOverviewManageDesc" = "Whether the overview is theirs to read only, or may also act. Needs Allow Overview, which is the page these controls live on. Note that every one of them (renaming the panel, the Xray buttons, the geo files) also needs a permission the reseller role does not carry, so on its own this switch reveals nothing a reseller can currently use. It is here so the grant already exists the day one of those actions becomes theirs."
 "inboundAccess" = "Подключения"
 "inboundAccessDesc" = "Отметьте подключения, на которых этот реселлер может продавать. Ему видны только созданные им самим аккаунты и никогда аккаунты администратора, даже на общем подключении."
 "selectAllInbounds" = "Выбрать все"
@@ -1126,5 +1130,10 @@
 "rechargeAmount" = "Объём (ГБ)"
 "deleteConfirm" = "Удалить этого реселлера? Это действие нельзя отменить."
 "hasClients" = "У этого реселлера ещё есть аккаунты. Сначала удалите эти аккаунты."
+"deleteHasAccounts" = "account(s) will be affected. Choose what to do with them:"
+"deleteKeep" = "Remove the reseller, keep the accounts"
+"deleteKeepDesc" = "The accounts keep working and move to the admin. They stop counting against any reseller balance."
+"deleteCascade" = "Remove the reseller and delete its accounts"
+"deleteCascadeDesc" = "Every account this reseller created is permanently deleted and its customers stop connecting."
 "bulkShort" = "Недостаточно трафика для всей операции. Не хватает"
 "bulkPartial" = "Аккаунты, которые будут обработаны"

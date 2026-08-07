@@ -183,14 +183,25 @@
     <header class="bo-topbar">
       <div class="bo-topbar-inner">
         <div class="bo-topbar-left">
-          <button type="button" class="bo-hamburger" @click="mobileMenuOpen = !mobileMenuOpen"
-            :aria-label="mobileMenuOpen ? 'Close menu' : 'Open menu'"
-            :aria-expanded="String(mobileMenuOpen)">
+          <button type="button" class="bo-hamburger" @click="toggleSidebar"
+            :aria-label="sidebarHidden ? 'Show sidebar' : 'Hide sidebar'"
+            :aria-expanded="String(!sidebarHidden)">
             <svg class="bo-icon" aria-hidden="true">
-              <use :href="mobileMenuOpen ? '#bo-i-x' : '#bo-i-list'"></use>
+              <use href="#bo-i-hamburger"></use>
             </svg>
           </button>
           <h1 class="bo-topbar-title" v-text="pageTitle"></h1>
+        </div>
+        <div class="bo-topbar-right">
+          <div class="bo-lang-switch" @click.stop="langOpen = !langOpen">
+            <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-globe"></use></svg>
+            <span class="bo-lang-label">[[ currentLangName ]]</span>
+            <div class="bo-lang-dropdown" v-show="langOpen" @click.stop>
+              <a v-for="l in supportedLangs" :key="l.value" class="bo-lang-opt"
+                :class="{ 'is-active': l.value === currentLang }"
+                @click.prevent="setLang(l.value)" v-text="l.name"></a>
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -214,6 +225,22 @@
 <script>
   const basePath = '{{ .base_path }}';
   axios.defaults.baseURL = basePath;
+  window.__sidebarHidden = JSON.parse(localStorage.getItem('isSidebarHidden') === 'true' ? 'true' : 'false') || false;
+  window.__langData = {
+    langOpen: false,
+    currentLang: LanguageManager.getLanguage(),
+    supportedLangs: LanguageManager.supportedLanguages || [],
+    get currentLangName() {
+      var l = (this.supportedLangs || []).find(function(l){ return l.value === window.__langData.currentLang; });
+      return l ? l.name : window.__langData.currentLang;
+    },
+    setLang: function(v) {
+      window.__langData.currentLang = v;
+      window.__langData.langOpen = false;
+      LanguageManager.setLanguage(v);
+    }
+  };
+  document.addEventListener('click', function() { window.__langData.langOpen = false; });
 </script>
 <script src="{{ .base_path }}assets/js/websocket.js?{{ .cur_ver }}"></script>
 {{ end }}

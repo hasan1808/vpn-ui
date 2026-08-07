@@ -1086,6 +1086,8 @@
 "accessXraySettings" = "Akses Konfigurasi Xray"
 "accessPanelSettings" = "Akses Pengaturan Panel"
 "manageResellers" = "Kelola Reseller"
+"accessOverview" = "Access Overview"
+"manageOverview" = "Manage Overview"
 
 [pages.resellers]
 "title" = "Reseller"
@@ -1117,6 +1119,8 @@
 "allowExternalProxyDesc" = "Apakah konfigurasi dan tautan yang dihasilkan reseller ini boleh memuat alamat proxy eksternal milik masuk tersebut."
 "allowOverview" = "Izinkan Ikhtisar"
 "allowOverviewDesc" = "Halaman Ikhtisar menggambarkan mesin host: kernel, CPU, disk, IP publik, pembaruan panel. Tidak ada satu pun di sana yang menjadi urusan reseller, jadi secara bawaan halaman itu tidak diberikan. Aktifkan ini agar reseller ini bisa membuka halaman Ikhtisar dan halaman itu muncul di bilah sisinya."
+"allowOverviewManage" = "Manage Overview"
+"allowOverviewManageDesc" = "Whether the overview is theirs to read only, or may also act. Needs Allow Overview, which is the page these controls live on. Note that every one of them (renaming the panel, the Xray buttons, the geo files) also needs a permission the reseller role does not carry, so on its own this switch reveals nothing a reseller can currently use. It is here so the grant already exists the day one of those actions becomes theirs."
 "inboundAccess" = "Masuk"
 "inboundAccessDesc" = "Centang masuk yang boleh dijual reseller ini. Dia hanya melihat akun yang dia buat sendiri, tidak pernah akun milik admin, meskipun masuknya sama."
 "selectAllInbounds" = "Pilih semua"
@@ -1126,5 +1130,10 @@
 "rechargeAmount" = "Jumlah (GB)"
 "deleteConfirm" = "Hapus reseller ini? Tindakan ini tidak dapat dibatalkan."
 "hasClients" = "Reseller ini masih memiliki akun. Hapus akun-akun tersebut dulu."
+"deleteHasAccounts" = "account(s) will be affected. Choose what to do with them:"
+"deleteKeep" = "Remove the reseller, keep the accounts"
+"deleteKeepDesc" = "The accounts keep working and move to the admin. They stop counting against any reseller balance."
+"deleteCascade" = "Remove the reseller and delete its accounts"
+"deleteCascadeDesc" = "Every account this reseller created is permanently deleted and its customers stop connecting."
 "bulkShort" = "Kuota tidak cukup untuk seluruh batch. Anda kurang"
 "bulkPartial" = "Akun yang akan diproses"

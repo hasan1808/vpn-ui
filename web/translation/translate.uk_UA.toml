@@ -1086,6 +1086,8 @@
 "accessXraySettings" = "Доступ до конфігурацій Xray"
 "accessPanelSettings" = "Доступ до параметрів панелі"
 "manageResellers" = "Керування реселерами"
+"accessOverview" = "Access Overview"
+"manageOverview" = "Manage Overview"
 
 [pages.resellers]
 "title" = "Реселери"
@@ -1117,6 +1119,8 @@
 "allowExternalProxyDesc" = "Чи можуть конфігурації та посилання, які створює цей реселер, містити адреси зовнішнього проксі цього вхідного."
 "allowOverview" = "Дозволити огляд"
 "allowOverviewDesc" = "Сторінка огляду описує саму машину: ядро, процесор, диск, публічний IP, оновлення панелі. До реселера все це стосунку не має, тому за замовчуванням сторінка йому недоступна. Увімкніть, щоб цей реселер міг відкривати огляд і щоб сторінка була в його бічній панелі."
+"allowOverviewManage" = "Manage Overview"
+"allowOverviewManageDesc" = "Whether the overview is theirs to read only, or may also act. Needs Allow Overview, which is the page these controls live on. Note that every one of them (renaming the panel, the Xray buttons, the geo files) also needs a permission the reseller role does not carry, so on its own this switch reveals nothing a reseller can currently use. It is here so the grant already exists the day one of those actions becomes theirs."
 "inboundAccess" = "Вхідні"
 "inboundAccessDesc" = "Позначте вхідні, на яких цей реселер може продавати. Йому видно лише створені ним самим акаунти й ніколи акаунти адміністратора, навіть на спільному вхідному."
 "selectAllInbounds" = "Вибрати всі"
@@ -1126,5 +1130,10 @@
 "rechargeAmount" = "Обсяг (ГБ)"
 "deleteConfirm" = "Видалити цього реселера? Цю дію не можна скасувати."
 "hasClients" = "У цього реселера ще є акаунти. Спершу видаліть ці акаунти."
+"deleteHasAccounts" = "account(s) will be affected. Choose what to do with them:"
+"deleteKeep" = "Remove the reseller, keep the accounts"
+"deleteKeepDesc" = "The accounts keep working and move to the admin. They stop counting against any reseller balance."
+"deleteCascade" = "Remove the reseller and delete its accounts"
+"deleteCascadeDesc" = "Every account this reseller created is permanently deleted and its customers stop connecting."
 "bulkShort" = "Недостатньо трафіку для всієї операції. Бракує"
 "bulkPartial" = "Облікові записи, які буде оброблено"
