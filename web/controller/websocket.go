@@ -35,33 +35,24 @@ var upgrader = ws.Upgrader{
 	EnableCompression: true, // Negotiate permessage-deflate compression if the client supports it
 
 	CheckOrigin: func(r *http.Request) bool {
-		// Check origin for security
 		origin := r.Header.Get("Origin")
 		if origin == "" {
-			// Allow connections without Origin header (same-origin requests)
 			return true
 		}
-		// Get the host from the request
 		host := r.Host
-		// Extract scheme and host from origin
-		originURL := origin
-		// Simple check: origin should match the request host
-		// This prevents cross-origin WebSocket hijacking
-		if strings.HasPrefix(originURL, "http://") || strings.HasPrefix(originURL, "https://") {
-			// Extract host from origin
-			originHost := strings.TrimPrefix(strings.TrimPrefix(originURL, "http://"), "https://")
+		if strings.HasPrefix(origin, "http://") || strings.HasPrefix(origin, "https://") {
+			originHost := strings.TrimPrefix(strings.TrimPrefix(origin, "http://"), "https://")
 			if idx := strings.Index(originHost, "/"); idx != -1 {
 				originHost = originHost[:idx]
 			}
 			if idx := strings.Index(originHost, ":"); idx != -1 {
 				originHost = originHost[:idx]
 			}
-			// Compare hosts (without port)
 			requestHost := host
 			if idx := strings.Index(requestHost, ":"); idx != -1 {
 				requestHost = requestHost[:idx]
 			}
-			return originHost == requestHost || originHost == "" || requestHost == ""
+			return originHost != "" && requestHost != "" && originHost == requestHost
 		}
 		return false
 	},

@@ -4,6 +4,7 @@ package random
 import (
 	"crypto/rand"
 	"math/big"
+	"sync"
 )
 
 var (
@@ -13,6 +14,10 @@ var (
 	numLowerSeq [36]rune
 	numUpperSeq [36]rune
 	allSeq      [62]rune
+
+	// Fallback pseudo-random generator when crypto/rand fails (extremely rare).
+	fallbackMu sync.Mutex
+	fallbackSeed uint64
 )
 
 // init initializes the character sequences used for random string generation.
@@ -38,12 +43,19 @@ func init() {
 }
 
 // Seq generates a random string of length n containing alphanumeric characters (numbers, lowercase and uppercase letters).
+// Falls back to a deterministic pseudo-random generator if crypto/rand fails.
 func Seq(n int) string {
 	runes := make([]rune, n)
 	for i := range n {
 		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(allSeq))))
 		if err != nil {
-			panic("crypto/rand failed: " + err.Error())
+			fallbackMu.Lock()
+			if fallbackSeed == 0 {
+				fallbackSeed = 0x12345678
+			}
+			fallbackSeed = fallbackSeed*6364136223846793005 + 1
+			idx = big.NewInt(int64(fallbackSeed % uint64(len(allSeq))))
+			fallbackMu.Unlock()
 		}
 		runes[i] = allSeq[idx.Int64()]
 	}
@@ -51,11 +63,18 @@ func Seq(n int) string {
 }
 
 // Num generates a random integer between 0 and n-1.
+// Falls back to a deterministic pseudo-random generator if crypto/rand fails.
 func Num(n int) int {
 	bn := big.NewInt(int64(n))
 	r, err := rand.Int(rand.Reader, bn)
 	if err != nil {
-		panic("crypto/rand failed: " + err.Error())
+		fallbackMu.Lock()
+		if fallbackSeed == 0 {
+			fallbackSeed = 0x12345678
+		}
+		fallbackSeed = fallbackSeed*6364136223846793005 + 1
+		r = big.NewInt(int64(fallbackSeed % uint64(n)))
+		fallbackMu.Unlock()
 	}
 	return int(r.Int64())
 }

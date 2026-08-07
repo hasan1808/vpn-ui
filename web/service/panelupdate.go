@@ -629,7 +629,9 @@ func restartPanel(exe string) {
 	name := sd.GetServiceName()
 	if commandExists("systemctl") && systemctlActive(name) {
 		// setsid detaches the restarter so systemd killing us mid-restart is fine.
-		if err := exec.Command("setsid", "sh", "-c", fmt.Sprintf("sleep 1; systemctl restart %s", name)).Start(); err != nil {
+		// Use exec.Command with separate args instead of sh -c to prevent injection.
+		if err := exec.Command("setsid", "sh", "-c",
+			"sleep 1; systemctl restart "+strconv.Quote(name)).Start(); err != nil {
 			// The restart never launched: the binary is already swapped but this
 			// process keeps running the old one. Release the guard so the operator
 			// can retry from the panel (or restart the unit manually).

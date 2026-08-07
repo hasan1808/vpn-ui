@@ -178,7 +178,7 @@ func runWebServer() {
 
 	warnUnsupportedDistro()
 
-	godotenv.Load()
+	_ = godotenv.Load() // .env is optional; ignore if missing
 
 	err := database.InitDB(config.GetDBPath())
 	if err != nil {
@@ -342,8 +342,12 @@ func runWebServer() {
 			service.StopBot()
 			// ------------------------------------------------------------
 
-			server.Stop()
-			subServer.Stop()
+			if err := server.Stop(); err != nil {
+				logger.Warning("Error stopping server:", err)
+			}
+			if err := subServer.Stop(); err != nil {
+				logger.Warning("Error stopping sub server:", err)
+			}
 			log.Println("Shutting down servers.")
 			return
 		}
@@ -2263,7 +2267,11 @@ func openvpnEvict() {
 	if len(os.Args) < 5 {
 		return
 	}
-	inboundId, _ := strconv.Atoi(os.Args[2])
+	inboundId, err := strconv.Atoi(os.Args[2])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "invalid inbound_id:", err)
+		return
+	}
 	proto := os.Args[3]
 	targetIP := os.Args[4]
 	raddr := ""
@@ -2372,7 +2380,11 @@ func openvpnConnect() {
 		os.Exit(1)
 	}
 
-	inboundId, _ := strconv.Atoi(os.Args[2])
+	inboundId, err := strconv.Atoi(os.Args[2])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "invalid inbound_id:", err)
+		os.Exit(1)
+	}
 	username := os.Getenv("common_name")
 	ip := os.Getenv("ifconfig_pool_remote_ip")
 
@@ -2431,7 +2443,11 @@ func openvpnDisconnect() {
 		os.Exit(1)
 	}
 
-	inboundId, _ := strconv.Atoi(os.Args[2])
+	inboundId, err := strconv.Atoi(os.Args[2])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "invalid inbound_id:", err)
+		os.Exit(1)
+	}
 	username := os.Getenv("common_name")
 	ip := os.Getenv("ifconfig_pool_remote_ip")
 

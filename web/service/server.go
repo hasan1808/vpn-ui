@@ -829,9 +829,11 @@ func (s *ServerService) GetXrayVersions() ([]string, error) {
 	const (
 		XrayURL    = "https://api.github.com/repos/XTLS/Xray-core/releases"
 		bufferSize = 8192
+		maxBody    = 10 << 20 // 10 MiB limit for releases listing
 	)
 
-	resp, err := http.Get(XrayURL)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(XrayURL)
 	if err != nil {
 		return nil, err
 	}
@@ -851,7 +853,7 @@ func (s *ServerService) GetXrayVersions() ([]string, error) {
 
 	buffer := bytes.NewBuffer(make([]byte, bufferSize))
 	buffer.Reset()
-	if _, err := buffer.ReadFrom(resp.Body); err != nil {
+	if _, err := buffer.ReadFrom(io.LimitReader(resp.Body, maxBody)); err != nil {
 		return nil, err
 	}
 
@@ -930,11 +932,18 @@ func (s *ServerService) downloadXRay(version string) (string, error) {
 
 	fileName := fmt.Sprintf("Xray-%s-%s.zip", osName, arch)
 	url := fmt.Sprintf("https://github.com/XTLS/Xray-core/releases/download/%s/%s", version, fileName)
-	resp, err := http.Get(url)
+
+	const maxDownload = 200 << 20 // 200 MiB limit for Xray binary
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Get(url)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+	}
 
 	os.Remove(fileName)
 	file, err := os.Create(fileName)
@@ -943,8 +952,9 @@ func (s *ServerService) downloadXRay(version string) (string, error) {
 	}
 	defer file.Close()
 
-	_, err = io.Copy(file, resp.Body)
+	_, err = io.Copy(file, io.LimitReader(resp.Body, maxDownload))
 	if err != nil {
+		os.Remove(fileName)
 		return "", err
 	}
 

@@ -227,11 +227,16 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	}
+	// Set Secure flag when TLS is configured
+	if certFile, err := s.settingService.GetCertFile(); err == nil && certFile != "" {
+		sessionOptions.Secure = true
+	}
 	if sessionMaxAge, err := s.settingService.GetSessionMaxAge(); err == nil && sessionMaxAge > 0 {
 		sessionOptions.MaxAge = sessionMaxAge * 60 // minutes -> seconds
 	}
 	store.Options(sessionOptions)
 	engine.Use(sessions.Sessions(config.GetName(), store))
+	engine.Use(middleware.LoginRateLimit())
 	engine.Use(func(c *gin.Context) {
 		c.Set("base_path", basePath)
 	})
