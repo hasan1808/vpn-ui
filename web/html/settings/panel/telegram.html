@@ -1,5 +1,5 @@
 {{define "settings/panel/telegram"}}
-<a-collapse default-active-key="1">
+<a-collapse :default-active-key="['1','3']">
     <a-collapse-panel key="1" header='{{ i18n "pages.xray.generalConfigs"}}'>
         <a-setting-list-item paddings="small">
             <template #title>{{ i18n "pages.settings.telegramBotEnable" }}</template>
@@ -61,7 +61,7 @@
             <template #title>{{ i18n "pages.settings.tgNotifyCpu" }}</template>
             <template #description>{{ i18n "pages.settings.tgNotifyCpuDesc" }}</template>
             <template #control>
-                <a-input-number :min="0" :min="100" v-model="allSetting.tgCpu" :style="{ width: '100%' }"></a-switch>
+                <a-input-number :min="0" :max="100" v-model="allSetting.tgCpu" :style="{ width: '100%' }"></a-input-number>
             </template>
         </a-setting-list-item>
     </a-collapse-panel>

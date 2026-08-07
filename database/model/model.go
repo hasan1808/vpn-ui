@@ -19,6 +19,7 @@ const (
 	HTTP        Protocol = "http"
 	Trojan      Protocol = "trojan"
 	Shadowsocks Protocol = "shadowsocks"
+	Socks       Protocol = "socks"
 	Mixed       Protocol = "mixed"
 	WireGuard   Protocol = "wireguard"
 	L2TP        Protocol = "l2tp"

@@ -576,6 +576,8 @@
                     // Non-privileged default so the in-binary SSH server binds without
                     // colliding with the host's own sshd on 22.
                     inModal.inbound.port = 2222;
+                } else if (protocol === 'socks') {
+                    inModal.inbound.port = freeInboundPortFrom(10808);
                 } else if (protocol === 'anytls' || protocol === 'tuic' || protocol === 'naive') {
                     // All three impersonate HTTPS and are only plausible on 443: anytls
                     // and naive are TLS/HTTP over TCP, tuic is QUIC/h3 over UDP, and a

@@ -89,10 +89,36 @@
                   <a-input-search
                     v-model="search"
                     placeholder='{{ i18n "pages.clients.searchPlaceholder" }}'
-                    :style="{ maxWidth: '280px' }"
+                    :style="{ maxWidth: '280px', marginInlineStart: 'auto' }"
                     allow-clear
                     @search="onSearch"
                     @change="onSearchChange"></a-input-search>
+                </div>
+
+                <!-- Status filter buttons -->
+                <div :style="{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '10px' }">
+                  <a-button size="small" :type="statusFilter === '' ? 'primary' : 'default'"
+                    @click="filterByStatus('')">All</a-button>
+                  <a-button size="small" :type="statusFilter === 'active' ? 'primary' : 'default'"
+                    @click="filterByStatus('active')">
+                    <a-icon type="check-circle" style="color:var(--ok)" /> Active
+                  </a-button>
+                  <a-button size="small" :type="statusFilter === 'online' ? 'primary' : 'default'"
+                    @click="filterByStatus('online')">
+                    <a-icon type="wifi" style="color:var(--info)" /> Online
+                  </a-button>
+                  <a-button size="small" :type="statusFilter === 'expiring' ? 'primary' : 'default'"
+                    @click="filterByStatus('expiring')">
+                    <a-icon type="clock-circle" style="color:var(--warn)" /> Expiring
+                  </a-button>
+                  <a-button size="small" :type="statusFilter === 'expired' ? 'primary' : 'default'"
+                    @click="filterByStatus('expired')">
+                    <a-icon type="close-circle" style="color:var(--error)" /> Expired
+                  </a-button>
+                  <a-button size="small" :type="statusFilter === 'disabled' ? 'primary' : 'default'"
+                    @click="filterByStatus('disabled')">
+                    <a-icon type="pause-circle" /> Disabled
+                  </a-button>
                 </div>
 
                 <!-- Appears only with a selection, so the toolbar is not a row of
@@ -119,7 +145,7 @@
               <a-card hoverable class="bo-lg" :class="{ 'bo-lg--compact': density === 'compact' }">
                 <a-table
                   :columns="columns"
-                  :data-source="clients"
+                  :data-source="filteredClients"
                   :row-key="r => r.email"
                   :row-selection="{ selectedRowKeys: selectedEmails, onChange: onSelectChange }"
                   :pagination="pagination"
@@ -203,6 +229,10 @@
                     <span class="bo-lg-seen" :class="{ 'bo-lg-seen--live': isClientOnline(row.email) }">
                       [[ lastSeen(row) ]]
                     </span>
+                  </template>
+
+                  <template slot="creatorCol" slot-scope="text, row">
+                    <span class="bo-dim">[[ row.adminRemark || row.adminId || '—' ]]</span>
                   </template>
 
                   <!-- Account-level only, and two controls rather than five. Enable
@@ -400,6 +430,7 @@
       assignable: [],
       search: '',
       searchTimer: null,
+      statusFilter: '',
       selectedEmails: [],
       expandedRowKeys: [],
       refreshing: false,
@@ -445,8 +476,16 @@
         { title: '{{ i18n "pages.clients.expiry" }}', scopedSlots: { customRender: 'expiresCol' }, width: 150 },
         { title: '{{ i18n "pages.clients.inbounds" }}', scopedSlots: { customRender: 'servingCol' } },
         { title: '{{ i18n "lastOnline" }}', scopedSlots: { customRender: 'seenCol' }, width: 100 },
+        { title: '{{ i18n "pages.clients.creator" }}', scopedSlots: { customRender: 'creatorCol' }, width: 100 },
         { title: '', scopedSlots: { customRender: 'rowCol' }, width: 104, align: 'right' },
       ],
+    },
+    computed: {
+      filteredClients() {
+        var self = this;
+        if (!this.statusFilter) return this.clients;
+        return this.clients.filter(function(c) { return self.clientMatchesFilter(c); });
+      },
     },
     methods: {
       toggleSidebar() {
@@ -662,10 +701,29 @@
         if (!msg || !msg.success) return;
         this.clients = (msg.obj && msg.obj.rows) || [];
         this.pagination.total = (msg.obj && msg.obj.total) || 0;
-        // Drop selections that are no longer on the page, or a bulk action would
-        // silently act on rows the operator can no longer see.
         const visible = new Set(this.clients.map(c => c.email));
         this.onSelectChange(this.selectedEmails.filter(e => visible.has(e)));
+      },
+      filterByStatus(status) {
+        this.statusFilter = status;
+      },
+      clientMatchesFilter(c) {
+        if (!this.statusFilter) return true;
+        const now = Date.now();
+        const isOnline = this.onlineClients.indexOf(c.email) !== -1;
+        const expiry = c.expiryTime;
+        const expiringSoon = expiry > 0 && expiry <= now + (this.expireDiff || 7) * 86400000;
+        const isExpired = expiry > 0 && expiry <= now;
+        const isEnabled = c.enable;
+        const hasTraffic = c.trafficLimit <= 0 || c.total < c.trafficLimit;
+        switch (this.statusFilter) {
+          case 'online': return isOnline;
+          case 'expiring': return expiringSoon && !isExpired;
+          case 'expired': return isExpired;
+          case 'disabled': return !isEnabled;
+          case 'active': return isEnabled && !isExpired && hasTraffic;
+          default: return true;
+        }
       },
       async loadAssignable() {
         const msg = await HttpUtil.get('/panel/api/clients/assignable');
