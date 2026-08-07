@@ -297,7 +297,6 @@ trap 'dl_cleanup; exit 143' TERM
 msg "Building from source (release asset not built with CGO)"
 BUILD_FROM_SOURCE=1
 if [[ "$BUILD_FROM_SOURCE" -eq 1 ]]; then
-    [[ -s "$tmp" ]] || warn "download failed from $DL_URL — building from source"
     if ! command -v git >/dev/null 2>&1; then
         act "installing git..."
         if command -v apt-get >/dev/null 2>&1; then
