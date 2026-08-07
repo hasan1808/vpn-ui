@@ -113,6 +113,7 @@ func html(c *gin.Context, name string, title string, data gin.H) {
 	data["host"] = browserHost(c)
 	data["request_uri"] = c.Request.RequestURI
 	data["base_path"] = c.GetString("base_path")
+	data["cur_ver"] = config.GetVersion()
 	// Every page funnels through here and includes the sidebar with the dot, so
 	// putting the caller's permissions in once makes them available panel-wide with
 	// no round trip and no nav flicker on first paint.

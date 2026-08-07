@@ -24,7 +24,9 @@
             <button type="button" class="bo-rail-collapse" @click="toggleCollapse"
                 :aria-expanded="!collapsed" :aria-label="collapsed ? expandLabel : collapseLabel"
                 :title="collapsed ? expandLabel : collapseLabel">
-                <a-icon :type="collapsed ? 'right' : 'left'"></a-icon>
+                <svg class="bo-icon" aria-hidden="true">
+                    <use href="#bo-i-hamburger"></use>
+                </svg>
             </button>
         </div>
     </nav>
