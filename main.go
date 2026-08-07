@@ -1117,6 +1117,10 @@ func runUpdate() error {
 		return fmt.Errorf("downloaded file is not a %s Linux binary (no valid '%s' asset?)",
 			runtime.GOARCH, service.PanelAsset)
 	}
+	if !service.HasSQLiteSupport(tmp) {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("downloaded binary lacks CGO/SQLite support — update via deploy.sh on the server instead")
+	}
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("could not make the downloaded binary executable: %w", err)

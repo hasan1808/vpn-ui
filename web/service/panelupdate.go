@@ -344,6 +344,12 @@ func (s *ServerService) UpdatePanel() error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("downloaded file is not a %s Linux binary (no valid '%s' asset?)", runtime.GOARCH, PanelAsset)
 	}
+	// Non-CGO binaries (CGO_ENABLED=0) cannot use SQLite and will crash on
+	// startup. Reject them instead of silently bricking the panel.
+	if !HasSQLiteSupport(tmp) {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("downloaded binary lacks CGO/SQLite support — update via deploy.sh on the server instead")
+	}
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		_ = os.Remove(tmp)
 		return err
@@ -513,6 +519,50 @@ func IsCompatibleBinary(path string) bool {
 		return false
 	}
 	return true
+}
+
+// HasSQLiteSupport checks whether a Linux ELF binary was built with CGO_ENABLED=1,
+// which is required for SQLite (mattn/go-sqlite3). A non-CGO binary will fail to
+// open the database at startup, bricking the panel. The check works by looking for
+// a PT_INTERP program header — statically-linked Go binaries (CGO_ENABLED=0) have
+// none, while dynamically-linked ones (CGO_ENABLED=1) do.
+func HasSQLiteSupport(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	// Read ELF header to find program header table offset and size.
+	var ehdr [52]byte // 32-bit ELF header minimum
+	if _, err := io.ReadFull(f, ehdr[:]); err != nil {
+		return false
+	}
+	// e_phoff (program header offset) at byte 28, 4 bytes LE
+	phoff := uint64(ehdr[28]) | uint64(ehdr[29])<<8 | uint64(ehdr[30])<<16 | uint64(ehdr[31])<<24
+	// e_phentsize at byte 42, 2 bytes LE; e_phnum at byte 44, 2 bytes LE
+	phentsize := uint16(ehdr[42]) | uint16(ehdr[43])<<8
+	phnum := uint16(ehdr[44]) | uint16(ehdr[45])<<8
+
+	if phentsize == 0 || phnum == 0 {
+		return false
+	}
+
+	// Scan program headers for PT_INTERP (type 3). Its presence means the binary
+	// is dynamically linked, which is what CGO_ENABLED=1 produces.
+	var phdr = make([]byte, phentsize)
+	for i := uint16(0); i < phnum; i++ {
+		_, err := f.ReadAt(phdr, int64(phoff+uint64(i)*uint64(phentsize)))
+		if err != nil {
+			return false
+		}
+		// p_type at offset 0, 4 bytes LE
+		ptype := uint32(phdr[0]) | uint32(phdr[1])<<8 | uint32(phdr[2])<<16 | uint32(phdr[3])<<24
+		if ptype == 3 { // PT_INTERP
+			return true
+		}
+	}
+	return false
 }
 
 // backupPanelDB copies the SQLite DB (and its WAL/SHM sidecars) next to it with a

@@ -159,6 +159,10 @@ func StagePanelBinary(src io.Reader, declaredSize int64) (StagedPanelInfo, error
 		_ = os.Remove(staged)
 		return info, fmt.Errorf("that file is not a %s Linux binary", runtime.GOARCH)
 	}
+	if !HasSQLiteSupport(staged) {
+		_ = os.Remove(staged)
+		return info, fmt.Errorf("that binary lacks CGO/SQLite support — build with CGO_ENABLED=1")
+	}
 	// A pure parse, no execution: a shell script, a stripped C binary or somebody
 	// else's ELF is refused before the probe below ever runs it.
 	if !isGoBinary(staged) {
