@@ -177,39 +177,41 @@
 {{ define "page/shell_start" }}
 {{ template "page/icon_sprite" . }}
 <div id="app" v-cloak class="bo-shell" :class="[themeSwitcher.currentTheme, pageClass]">
-  <div class="bo-overlay" :class="{ 'is-open': mobileMenuOpen }" @click="mobileMenuOpen = false"></div>
-  <a-sidebar></a-sidebar>
-  <div class="bo-main">
-    <header class="bo-topbar">
-      <div class="bo-topbar-inner">
-        <div class="bo-topbar-left">
-          <button type="button" class="bo-hamburger" @click="toggleSidebar"
-            :aria-label="sidebarHidden ? 'Show sidebar' : 'Hide sidebar'"
-            :aria-expanded="String(!sidebarHidden)">
-            <svg class="bo-icon" aria-hidden="true">
-              <use href="#bo-i-hamburger"></use>
-            </svg>
-          </button>
-          <h1 class="bo-topbar-title" v-text="pageTitle"></h1>
-        </div>
-        <div class="bo-topbar-right">
-          <div class="bo-lang-switch" @click.stop="langOpen = !langOpen">
-            <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-globe"></use></svg>
-            <span class="bo-lang-label">[[ currentLangName ]]</span>
-            <div class="bo-lang-dropdown" v-show="langOpen" @click.stop>
-              <a v-for="l in supportedLangs" :key="l.value" class="bo-lang-opt"
-                :class="{ 'is-active': l.value === currentLang }"
-                @click.prevent="setLang(l.value)" v-text="l.name"></a>
-            </div>
+  <header class="bo-topbar">
+    <div class="bo-topbar-inner">
+      <div class="bo-topbar-left">
+        <h1 class="bo-topbar-title" v-text="pageTitle"></h1>
+      </div>
+      <div class="bo-topbar-right">
+        <div class="bo-lang-switch" @click.stop="langOpen = !langOpen">
+          <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-globe"></use></svg>
+          <span class="bo-lang-label">[[ currentLangName ]]</span>
+          <div class="bo-lang-dropdown" v-show="langOpen" @click.stop>
+            <a v-for="l in supportedLangs" :key="l.value" class="bo-lang-opt"
+              :class="{ 'is-active': l.value === currentLang }"
+              @click.prevent="setLang(l.value)" v-text="l.name"></a>
           </div>
         </div>
+        <button type="button" class="bo-hamburger" @click="toggleSidebar"
+          :aria-label="sidebarHidden ? 'Show sidebar' : 'Hide sidebar'"
+          :aria-expanded="String(!sidebarHidden)">
+          <svg class="bo-icon" aria-hidden="true">
+            <use href="#bo-i-hamburger"></use>
+          </svg>
+        </button>
       </div>
-    </header>
-    <main class="bo-content">
+    </div>
+  </header>
+  <div class="bo-body">
+    <div class="bo-overlay" :class="{ 'is-open': mobileMenuOpen }" @click="mobileMenuOpen = false"></div>
+    <a-sidebar></a-sidebar>
+    <div class="bo-main">
+      <main class="bo-content">
 {{ end }}
 
 {{ define "page/shell_end" }}
-    </main>
+      </main>
+    </div>
   </div>
 </div>
 {{ end }}

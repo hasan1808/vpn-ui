@@ -1,6 +1,6 @@
 {{define "component/sidebar/content"}}
 <template>
-    <nav class="bo-rail" :class="{ 'bo-rail--collapsed': collapsed, 'bo-rail--hidden': sidebarHidden, 'is-mobile-open': $root.mobileMenuOpen }"
+    <nav class="bo-rail" :class="{ 'bo-rail--hidden': sidebarHidden, 'is-mobile-open': $root.mobileMenuOpen }"
         aria-label='{{ i18n "menu.navigation"}}'>
         <div class="bo-rail-brand">
             <a href="{{ .base_path }}panel/" aria-label="VPN-UI">
@@ -12,7 +12,6 @@
             <a v-for="tab in tabs" :key="tab.key" class="bo-rail-item"
                 :class="{ 'is-active': isActive(tab.key) }" :href="tab.key"
                 :aria-current="isActive(tab.key) ? 'page' : false"
-                :title="collapsed ? tab.title : false"
                 @click.prevent="openLink(tab.key)">
                 <a-icon :type="tab.icon"></a-icon>
                 <span v-text="tab.title"></span>
@@ -21,13 +20,6 @@
 
         <div class="bo-rail-foot">
             <a-theme-switch></a-theme-switch>
-            <button type="button" class="bo-rail-collapse" @click="toggleCollapse"
-                :aria-expanded="!collapsed" :aria-label="collapsed ? expandLabel : collapseLabel"
-                :title="collapsed ? expandLabel : collapseLabel">
-                <svg class="bo-icon" aria-hidden="true">
-                    <use href="#bo-i-hamburger"></use>
-                </svg>
-            </button>
         </div>
     </nav>
 </template>
@@ -35,7 +27,6 @@
 
 {{define "component/aSidebar"}}
 <script>
-    const SIDEBAR_COLLAPSED_KEY = "isSidebarCollapsed"
     const SIDEBAR_HIDDEN_KEY = "isSidebarHidden"
 
     Vue.component('a-sidebar', {
@@ -105,10 +96,7 @@
                     },
                 ],
                 requestUri: '{{ .request_uri }}',
-                collapsed: JSON.parse(localStorage.getItem(SIDEBAR_COLLAPSED_KEY)) === true,
                 sidebarHidden: JSON.parse(localStorage.getItem(SIDEBAR_HIDDEN_KEY)) === true,
-                collapseLabel: '{{ i18n "menu.collapse"}}',
-                expandLabel: '{{ i18n "menu.expand"}}',
             }
         },
         created() {
@@ -125,10 +113,6 @@
                 return key.startsWith('http') ?
                     window.open(key) :
                     location.href = key
-            },
-            toggleCollapse() {
-                this.collapsed = !this.collapsed;
-                localStorage.setItem(SIDEBAR_COLLAPSED_KEY, this.collapsed);
             },
         },
         template: `{{template "component/sidebar/content" .}}`,

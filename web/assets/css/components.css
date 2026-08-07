@@ -36,7 +36,7 @@
  * every page longer than the viewport.
  */
 .bo-shell {
-  display:flex;
+  display:flex; flex-direction:column;
   height:100vh;
   overflow:hidden;
   font-family:var(--font-sans);
@@ -95,9 +95,7 @@
  * shell: rail nav
  * ================================================================== */
 
-/* height:100% of the fixed-height .bo-shell, not 100vh + sticky as in the
-   mockup: the shell is the scroll boundary here, so the rail is simply a
-   full-height flex child that scrolls its own overflow. */
+/* height:100% of .bo-body, not 100vh. */
 .bo-rail {
   flex:0 0 124px; width:124px;
   height:100%;
@@ -129,35 +127,11 @@
   flex:1 1 auto;
 }
 
-/* Theme switch and collapse control, pinned to the bottom of the rail. */
+/* Theme switch, pinned to the bottom of the rail. */
 .bo-rail-foot {
   display:flex; flex-direction:column; align-items:center; gap:10px;
   width:100%; margin-top:auto;
 }
-
-.bo-rail-collapse {
-  width:30px; height:30px; border-radius:50%;
-  border:1px solid var(--border); background:var(--surface-2);
-  color:var(--text-3); cursor:pointer;
-  display:flex; align-items:center; justify-content:center;
-  transition:background var(--dur-fast) var(--ease),
-             color var(--dur-fast) var(--ease),
-             border-color var(--dur-fast) var(--ease);
-}
-.bo-rail-collapse:hover {
-  background:var(--accent-weak); color:var(--accent); border-color:var(--accent);
-}
-/* The chevron points inward/outward, so it must mirror in RTL. */
-[dir="rtl"] .bo-rail-collapse { transform:scaleX(-1); }
-
-/* User-toggled collapse, persisted in localStorage. Distinct from the
-   automatic narrow-screen collapse in the media query at the foot of
-   this file. */
-.bo-rail--collapsed { flex-basis:76px; width:76px; }
-.bo-rail--collapsed .bo-rail-item { width:64px; }
-.bo-rail--collapsed .bo-rail-item span,
-.bo-rail--collapsed .bo-rail-brand span { display:none; }
-.bo-rail--collapsed .bo-rail-brand img { max-width:52px; }
 
 /* Fully hidden sidebar (hamburger toggle). The rail is removed from the
    flex flow so .bo-main takes the full width. */
@@ -187,7 +161,7 @@
  * shell: topbar and content
  * ================================================================== */
 
-/* The page scroll container. See the note on .bo-shell. */
+/* The page scroll container. Now inside .bo-body, flex child fills remaining space. */
 .bo-main {
   flex:1 1 auto; min-width:0;
   display:flex; flex-direction:column;
@@ -196,7 +170,7 @@
 
 .bo-topbar {
   background:var(--surface); border-bottom:1px solid var(--border);
-  position:sticky; top:0; z-index:10;
+  z-index:10; flex:0 0 auto;
   box-shadow:var(--shadow-sm);
 }
 .bo-topbar-inner {
@@ -277,6 +251,12 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-lang-opt.is-active { background:var(--accent-weak); color:var(--accent); font-weight:var(--fw-semibold); }
 
 .bo-content { max-width:1320px; width:100%; margin:0 auto; padding:12px 22px 8px; }
+
+/* The body row holds sidebar + main below the topbar. */
+.bo-body {
+  display:flex; flex:1 1 auto; min-height:0;
+  position:relative;
+}
 .bo-page-title {
   font-size:24px; font-weight:var(--fw-semibold);
   margin-bottom:var(--sp-5); text-wrap:balance;
@@ -1440,11 +1420,6 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
   .bo-rail.is-mobile-open {
     inset-inline-start:0;
   }
-  .bo-rail--collapsed { width:240px; flex-basis:240px; }
-  .bo-rail--collapsed .bo-rail-item { width:auto; }
-  .bo-rail--collapsed .bo-rail-item span,
-  .bo-rail--collapsed .bo-rail-brand span { display:block; }
-  .bo-rail--collapsed .bo-rail-brand img { max-width:88px; }
 
   .bo-topbar-inner { padding:10px 16px; }
   .bo-content { padding:12px 14px 8px; }
