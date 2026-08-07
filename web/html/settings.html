@@ -114,6 +114,7 @@
       themeSwitcher,
       pageTitle: '{{ i18n "menu.settings"}}',
       pageClass: 'settings-page',
+      mobileMenuOpen: false,
       // The caller's own 2FA state, rendered server-side. Not part of allSetting:
       // 2FA is per-admin now, and the settings blob goes to every logged-in admin.
       twoFactorEnable: {{ .two_factor }},

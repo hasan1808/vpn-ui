@@ -1,6 +1,6 @@
 {{define "component/sidebar/content"}}
 <template>
-    <nav class="bo-rail" :class="{ 'bo-rail--collapsed': collapsed }"
+    <nav class="bo-rail" :class="{ 'bo-rail--collapsed': collapsed, 'is-mobile-open': $root.mobileMenuOpen }"
         aria-label='{{ i18n "menu.navigation"}}'>
         <div class="bo-rail-brand">
             <a href="{{ .base_path }}panel/" aria-label="VPN-UI">
@@ -128,6 +128,7 @@
                 return norm(key) === norm(this.requestUri);
             },
             openLink(key) {
+                this.$root.mobileMenuOpen = false;
                 return key.startsWith('http') ?
                     window.open(key) :
                     location.href = key

@@ -377,6 +377,8 @@
       // which leaves the page blank behind v-cloak with a valid 200 on the wire.
       themeSwitcher,
       pageTitle: '{{ i18n "pages.clients.title" }}',
+      pageClass: 'clients-page',
+      mobileMenuOpen: false,
       // Not cosmetic: custom.css keys the table ring and several ant overrides off
       // the page class, and the portalled modals are reached through sibling
       // selectors on it. Without one this page rendered a table nobody had styled.
