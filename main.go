@@ -1165,7 +1165,6 @@ func runUpdate() error {
 	}
 	return nil
 }
-}
 
 // backupPanelDBForUpdate snapshots the DB next to itself, timestamped and tagged
 // with the OUTGOING version, and returns the backup's path. deploy.sh:198-217 is
