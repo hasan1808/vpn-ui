@@ -23,11 +23,19 @@ jobs:
         with:
           go-version: 'stable'
 
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y gcc gcc-multilib
+
       - name: Build
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o vpn-ui-amd64 -ldflags "-s -w -X main.version=${{ github.ref_name }}" .
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o vpn-ui-amd64 .
 
-      - name: Create Release
+      - name: Verify CGO
+        run: |
+          file vpn-ui-amd64
+          strings vpn-ui-amd64 | grep -q "PT_INTERP" && echo "CGO OK" || (echo "CGO MISSING" && exit 1)
+
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           files: vpn-ui-amd64
