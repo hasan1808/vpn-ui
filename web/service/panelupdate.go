@@ -533,16 +533,43 @@ func HasSQLiteSupport(path string) bool {
 	}
 	defer f.Close()
 
-	// Read ELF header to find program header table offset and size.
-	var ehdr [52]byte // 32-bit ELF header minimum
-	if _, err := io.ReadFull(f, ehdr[:]); err != nil {
+	// Read ELF magic + class to determine 32-bit vs 64-bit.
+	var ident [16]byte
+	if _, err := io.ReadFull(f, ident[:]); err != nil {
 		return false
 	}
-	// e_phoff (program header offset) at byte 28, 4 bytes LE
-	phoff := uint64(ehdr[28]) | uint64(ehdr[29])<<8 | uint64(ehdr[30])<<16 | uint64(ehdr[31])<<24
-	// e_phentsize at byte 42, 2 bytes LE; e_phnum at byte 44, 2 bytes LE
-	phentsize := uint16(ehdr[42]) | uint16(ehdr[43])<<8
-	phnum := uint16(ehdr[44]) | uint16(ehdr[45])<<8
+	if ident[0] != 0x7f || ident[1] != 'E' || ident[2] != 'L' || ident[3] != 'F' {
+		return false
+	}
+
+	class := ident[4] // EI_CLASS: 1 = 32-bit, 2 = 64-bit
+	var phoff uint64
+	var phentsize, phnum uint16
+
+	if class == 2 { // 64-bit ELF
+		var ehdr [64]byte
+		copy(ehdr[:16], ident[:])
+		if _, err := io.ReadFull(f, ehdr[16:]); err != nil {
+			return false
+		}
+		// e_phoff at byte 32, 8 bytes LE
+		phoff = uint64(ehdr[32]) | uint64(ehdr[33])<<8 | uint64(ehdr[34])<<16 | uint64(ehdr[35])<<24 |
+			uint64(ehdr[36])<<32 | uint64(ehdr[37])<<40 | uint64(ehdr[38])<<48 | uint64(ehdr[39])<<56
+		// e_phentsize at byte 54, 2 bytes LE; e_phnum at byte 56, 2 bytes LE
+		phentsize = uint16(ehdr[54]) | uint16(ehdr[55])<<8
+		phnum = uint16(ehdr[56]) | uint16(ehdr[57])<<8
+	} else { // 32-bit ELF
+		var ehdr [52]byte
+		copy(ehdr[:16], ident[:])
+		if _, err := io.ReadFull(f, ehdr[16:]); err != nil {
+			return false
+		}
+		// e_phoff at byte 28, 4 bytes LE
+		phoff = uint64(ehdr[28]) | uint64(ehdr[29])<<8 | uint64(ehdr[30])<<16 | uint64(ehdr[31])<<24
+		// e_phentsize at byte 42, 2 bytes LE; e_phnum at byte 44, 2 bytes LE
+		phentsize = uint16(ehdr[42]) | uint16(ehdr[43])<<8
+		phnum = uint16(ehdr[44]) | uint16(ehdr[45])<<8
+	}
 
 	if phentsize == 0 || phnum == 0 {
 		return false
@@ -550,7 +577,7 @@ func HasSQLiteSupport(path string) bool {
 
 	// Scan program headers for PT_INTERP (type 3). Its presence means the binary
 	// is dynamically linked, which is what CGO_ENABLED=1 produces.
-	var phdr = make([]byte, phentsize)
+	phdr := make([]byte, phentsize)
 	for i := uint16(0); i < phnum; i++ {
 		_, err := f.ReadAt(phdr, int64(phoff+uint64(i)*uint64(phentsize)))
 		if err != nil {
