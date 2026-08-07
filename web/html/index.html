@@ -518,13 +518,6 @@
           <input type="file" ref="panelBinaryInput" :style="{ display: 'none' }"
             @change="onPanelBinaryPicked">
           {{ end }}
-          <!-- Always offered, unlike Update Now: it is the one action on this
-               tile that does not depend on the release check having run. -->
-          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
-            @click="openDonateModal">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-heart"></use></svg>
-            {{ i18n "pages.index.donate" }}
-          </button>
         </div>
       </div>
     </article>
@@ -683,34 +676,6 @@
     <p class="bo-relnotes-foot" v-if="updatedModal.from && updatedModal.from !== updatedModal.to">
       {{ i18n "pages.index.updateDoneFrom" }} <span class="num">v[[ updatedModal.from ]]</span>
     </p>
-  </a-modal>
-
-  <!-- Donate dialog (VPN-UI tile). The addresses are rendered server-side from
-       web/controller/donate.go, which a test pins to README.md's Donate section
-       so the panel can never show an address the README has moved on from.
-       Each row is a copy target: these are pasted into a wallet, so the address
-       is monospaced, selectable, and copied verbatim rather than retyped. -->
-  <a-modal id="donate-modal" v-model="donateModal.visible" title='{{ i18n "pages.index.donateTitle" }}'
-    :closable="true" :class="themeSwitcher.currentTheme" :width="isMobile ? '95%' : 620"
-    @cancel="() => donateModal.visible = false" footer="">
-    <p class="bo-donate-intro">{{ i18n "pages.index.donateIntro" }}</p>
-    <ul class="bo-donate-list">
-      <li class="bo-donate-row" v-for="(d, i) in donateList" :key="d.chain">
-        <div class="bo-donate-chain">[[ d.chain ]]</div>
-        <code class="bo-donate-addr num">[[ d.addr ]]</code>
-        <button type="button" class="bo-icon-btn bo-donate-copy"
-          :class="donateModal.copied === i ? 'bo-icon-btn--ok' : ''"
-          @click="copyDonateAddress(i, d.addr)">
-          <!-- v-if/v-else rather than a bound :href: html/template treats an href
-               as a URL context and would rewrite a Vue expression to ZgotmplZ. -->
-          <svg class="bo-icon bo-icon-14" aria-hidden="true">
-            <use v-if="donateModal.copied === i" href="#bo-i-check-circle"></use>
-            <use v-else href="#bo-i-copy"></use>
-          </svg>
-          [[ donateModal.copied === i ? '{{ i18n "copied" }}' : '{{ i18n "copy" }}' ]]
-        </button>
-      </li>
-    </ul>
   </a-modal>
 
   <a-modal id="version-modal" v-model="versionModal.visible" title='{{ i18n "pages.index.xraySwitch" }}'
@@ -1742,16 +1707,6 @@
       // Opened only by the server's one-shot post-update record; see
       // announceUpdateResult().
       updatedModal: { visible: false, from: '', to: '' },
-      // `copied` is the index of the row showing its "copied" confirmation, or
-      // -1 for none. An index rather than a boolean so two rows carrying the
-      // SAME address (several chains share one) confirm independently.
-      donateModal: { visible: false, copied: -1 },
-      // Rendered from web/controller/donate.go, which a test pins to README.md's
-      // Donate section. Emitted here as JS rather than as markup so each address
-      // lands in a JS string context, where html/template escapes it correctly -
-      // interpolating one into a Vue attribute expression instead would leave the
-      // escaping to whatever context the attribute happened to be classified as.
-      donateList: [{{ range .donate }}{ chain: '{{ .Chain }}', addr: '{{ .Address }}' },{{ end }}],
       geofilesModal: { visible: false },
       // Which geo files are actually on disk. Four of the six the list offers do
       // not ship with the panel, and until this is fetched the list has no way to
@@ -2311,26 +2266,6 @@
       // at the moment the operator asked to install rather than to check.
       openUpdateModal() {
         this.updateModal.visible = true;
-      },
-      // Opens the donate dialog, clearing any stale "copied" tick from a prior
-      // visit so the dialog never opens already claiming something was copied.
-      openDonateModal() {
-        this.donateModal.copied = -1;
-        this.donateModal.visible = true;
-      },
-      // ClipboardManager falls back to execCommand, so this works on the plain
-      // HTTP panels navigator.clipboard refuses to serve. The tick is per row
-      // and self-clears; a failed copy says so rather than silently ticking.
-      async copyDonateAddress(index, address) {
-        const ok = await ClipboardManager.copyText(address);
-        if (!ok) {
-          this.donateModal.copied = -1;
-          this.$message.error('{{ i18n "somethingWentWrong" }}');
-          return;
-        }
-        this.donateModal.copied = index;
-        clearTimeout(this.donateCopyTimer);
-        this.donateCopyTimer = setTimeout(() => { this.donateModal.copied = -1; }, 1800);
       },
       // The dialog's own OK button. Closes it first so the card's progress bar,
       // which is what reports the rest of the run, is not hidden behind a mask.

@@ -102,10 +102,11 @@
   flex:0 0 124px; width:124px;
   height:100%;
   background:var(--surface);
-  border-inline-end:1px solid var(--border);
+  border-inline-start:1px solid var(--border);
   display:flex; flex-direction:column; align-items:center;
   padding:20px 0; gap:26px; overflow-y:auto;
   z-index:20;
+  order:1;
 }
 
 .bo-rail-brand {
@@ -671,42 +672,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 }
 .bo-relnotes-foot .bo-icon { flex:none; }
 
-/* Donate dialog (VPN-UI tile). Each row is chain / address / copy. The address
-   is the payload, so it gets the monospace face and the room: the chain label
-   is fixed-width and the button is intrinsic, leaving the middle column to
-   absorb whatever is left. Addresses are long and unbreakable, hence the
-   explicit wrap rather than an ellipsis — a truncated address invites copying
-   half of one by hand. */
-.bo-donate-intro { margin:0 0 var(--sp-3); font-size:13px; color:var(--text-3); }
-.bo-donate-list { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; }
-.bo-donate-row {
-  display:grid; grid-template-columns:96px minmax(0,1fr) auto;
-  align-items:center; gap:var(--sp-2);
-  padding:8px 10px; border:1px solid var(--border);
-  border-radius:var(--radius-sm); background:var(--surface-2);
-}
-.bo-donate-chain {
-  font-size:12px; font-weight:var(--fw-semibold); color:var(--text-3);
-  letter-spacing:.02em;
-}
-.bo-donate-addr {
-  font-family:var(--font-mono); font-size:12px; color:var(--text);
-  background:none; padding:0; overflow-wrap:anywhere; user-select:all;
-}
-.bo-donate-copy { flex:none; }
 .bo-icon-btn--ok { color:var(--ok); border-color:var(--ok); }
-
-/* Under ~560px the three columns cannot all hold their minimum, so the row
-   becomes two lines: chain and button on the first, the address spanning the
-   second. Every cell is placed explicitly — grid auto-placement only moves
-   forward, so once the full-width address claims row 2 the button would land
-   on a row 3 of its own instead of back beside the chain. */
-@media (max-width:560px) {
-  .bo-donate-row { grid-template-columns:minmax(0,1fr) auto; row-gap:6px; }
-  .bo-donate-chain { grid-column:1; grid-row:1; }
-  .bo-donate-copy { grid-column:2; grid-row:1; }
-  .bo-donate-addr { grid-column:1 / -1; grid-row:2; }
-}
 
 /* ================================================================== *
  * stat grids
