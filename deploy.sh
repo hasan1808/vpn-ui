@@ -486,7 +486,7 @@ if [[ "$MODE" == "install" ]]; then
     # terminal. A piped install with no IMPORT_DB set skips it and starts fresh.
     imported=""
     import_path="${IMPORT_DB:-}"
-    if [[ -z "$import_path" && -r /dev/tty ]]; then
+    if [[ -z "$import_path" ]]; then
         {
             printf '%s::%s %sExisting 3x-ui data%s\n' "$B$BLUE" "$R" "$WHITE" "$R"
             printf '    Import inbounds, clients and traffic from a 3x-ui backup database?\n'
@@ -523,7 +523,7 @@ if [[ "$MODE" == "install" ]]; then
             # real-cert request; the sourced SSL function picks the challenge.
             if [[ -n "$DOMAIN" || -n "${DEPLOY_CF_TOKEN:-}" ]]; then
                 tls_choice="letsencrypt"
-            elif [[ -r /dev/tty ]]; then
+            else
                 {
                     printf '%s::%s %sPanel access mode%s\n' "$B$BLUE" "$R" "$WHITE" "$R"
                     printf "    %s1)%s HTTPS  (real cert via Let's Encrypt: Cloudflare token, manual, or this server's IP)\n" "$GREEN" "$R"
@@ -558,10 +558,8 @@ if [[ "$MODE" == "install" ]]; then
     # the same work-safe stop/apply/restart envelope (--random / --user...--path).
     cred_mode="random"
     if [[ "$imported" == "1" ]]; then
-        # The import brought its own admin login; randomizing now would throw it
-        # away. Keep it and just install the unit (the port was preserved too).
         cred_mode="keep"
-    elif [[ -r /dev/tty ]]; then
+    else
         {
             printf '%s::%s %sPanel login / access%s\n' "$B$BLUE" "$R" "$WHITE" "$R"
             printf '    %s1)%s Randomize  (port, username, password, web path) %s[default]%s\n' "$GREEN" "$R" "$D" "$R"
