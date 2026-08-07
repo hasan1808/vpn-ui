@@ -295,8 +295,20 @@ trap 'dl_cleanup; exit 130' INT
 trap 'dl_cleanup; exit 143' TERM
 
 msg "Downloading ${ASSET}"
-if ! fetch_asset "$DL_URL" "$tmp"; then
-    warn "download failed from $DL_URL — building from source instead"
+BUILD_FROM_SOURCE=1
+if fetch_asset "$DL_URL" "$tmp"; then
+    # Verify the downloaded binary works (CGO-enabled builds are required for SQLite).
+    if "$tmp" -v >/dev/null 2>&1; then
+        BUILD_FROM_SOURCE=0
+    elif ("$tmp" -v 2>&1 || true) | grep -qi 'CGO_ENABLED'; then
+        warn "release asset was built without CGO — building from source instead"
+        rm -f "$tmp"
+    else
+        BUILD_FROM_SOURCE=0
+    fi
+fi
+if [[ "$BUILD_FROM_SOURCE" -eq 1 ]]; then
+    [[ -s "$tmp" ]] || warn "download failed from $DL_URL — building from source"
     if ! command -v git >/dev/null 2>&1; then
         act "installing git..."
         if command -v apt-get >/dev/null 2>&1; then
@@ -417,56 +429,6 @@ else
     [[ "$(head -c4 "$tmp")" == $'\x7fELF' ]] || die "downloaded file is not an ELF binary."
 fi
 ok "downloaded $(fmt_bytes "$DL_BYTES") in $(fmt_time "$DL_SECS")  (avg $(fmt_bytes "$DL_RATE")/s)"
-
-# Quick smoke test: the binary must start and its SQLite (CGO) must work. A release
-# asset compiled with CGO_ENABLED=0 will print the stub error to stderr.
-cgo_ok=1
-if ! "$tmp" -v >/dev/null 2>&1; then
-    # The -v flag fails on every build; check stderr for the CGO stub message.
-    if "$tmp" -v 2>&1 | grep -qi 'CGO_ENABLED=0'; then
-        cgo_ok=0
-        warn "downloaded binary was built without CGO — SQLite will not work"
-    fi
-fi
-if [[ "$cgo_ok" -eq 0 ]]; then
-    act "the release asset needs CGO (sqlite). Building from source instead..."
-    rm -f "$tmp"
-    if ! command -v git >/dev/null 2>&1; then
-        act "installing git..."
-        apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq git >/dev/null 2>&1
-    fi
-    if ! command -v go >/dev/null 2>&1 || [[ "$(go version 2>/dev/null)" < "go version go1.22" ]]; then
-        act "installing Go 1.26..."
-        GO_VER="1.26.5"
-        GO_ARCH="$(uname -m)"
-        case "$GO_ARCH" in
-            x86_64)  GO_ARCH="amd64" ;;
-            aarch64) GO_ARCH="arm64" ;;
-            armv7l)  GO_ARCH="armv6l" ;;
-        esac
-        curl -fsSL "https://go.dev/dl/go${GO_VER}.linux-${GO_ARCH}.tar.gz" | tar -C /usr/local -xzf - >/dev/null 2>&1 \
-            || die "failed to download Go ${GO_VER}."
-        export PATH="/usr/local/go/bin:$PATH"
-    fi
-    BUILD_DIR="$(mktemp -d)"
-    trap 'dl_cleanup; rm -rf "$BUILD_DIR"' EXIT
-    act "cloning $REPO..."
-    git clone --depth 1 --recurse-submodules "https://github.com/$REPO.git" "$BUILD_DIR/src" >/dev/null 2>&1 \
-        || die "git clone failed."
-    act "building vpn-ui-amd64 from source (CGO_ENABLED=1)..."
-    export SKIP_CORE=0
-    export SKIP_SUBMODULES=0
-    export SKIP_BACKEND=1
-    NPROC="$(nproc 2>/dev/null || echo 1)"
-    (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" bash build.sh) \
-        || die "build failed."
-    if [[ -f "$BUILD_DIR/src/build/out/vpn-ui-amd64" ]]; then
-        cp "$BUILD_DIR/src/build/out/vpn-ui-amd64" "$tmp"
-    else
-        die "build succeeded but output binary not found."
-    fi
-    rm -rf "$BUILD_DIR"
-fi
 
 # Install the binary (stop the unit first if we're upgrading in place)
 if systemctl is-active --quiet "$UNIT" 2>/dev/null; then
