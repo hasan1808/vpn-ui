@@ -1238,10 +1238,6 @@
       },
     },
     methods: {
-      toggleSidebar() {
-        this.sidebarHidden = !this.sidebarHidden;
-        localStorage.setItem('isSidebarHidden', this.sidebarHidden);
-      },
       // Where a value sits in the window, 0 (bottom) to 1 (top).
       fraction(v) {
         const { lo, hi } = this.scaleWindow
@@ -2000,6 +1996,10 @@
       },
     },
     methods: {
+      toggleSidebar() {
+        this.sidebarHidden = !this.sidebarHidden;
+        localStorage.setItem('isSidebarHidden', this.sidebarHidden);
+      },
       // --- bento tile helpers -------------------------------------------
       // 2*pi*r for the r=16 ring in the markup. components.css sets the same
       // number as stroke-dasharray; both derive from that one radius.
