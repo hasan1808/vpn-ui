@@ -294,19 +294,8 @@ trap 'dl_cleanup' EXIT
 trap 'dl_cleanup; exit 130' INT
 trap 'dl_cleanup; exit 143' TERM
 
-msg "Downloading ${ASSET}"
+msg "Building from source (release asset not built with CGO)"
 BUILD_FROM_SOURCE=1
-if fetch_asset "$DL_URL" "$tmp"; then
-    # Verify the downloaded binary works (CGO-enabled builds are required for SQLite).
-    if "$tmp" -v >/dev/null 2>&1; then
-        BUILD_FROM_SOURCE=0
-    elif ("$tmp" -v 2>&1 || true) | grep -qi 'CGO_ENABLED'; then
-        warn "release asset was built without CGO — building from source instead"
-        rm -f "$tmp"
-    else
-        BUILD_FROM_SOURCE=0
-    fi
-fi
 if [[ "$BUILD_FROM_SOURCE" -eq 1 ]]; then
     [[ -s "$tmp" ]] || warn "download failed from $DL_URL — building from source"
     if ! command -v git >/dev/null 2>&1; then
