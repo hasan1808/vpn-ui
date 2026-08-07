@@ -238,7 +238,7 @@
       async useVpnProxy() {
         this.vpnProxyLoading = true;
         try {
-          const res = await axios.get('server/getConfigJson');
+          const res = await axios.get('panel/api/server/getConfigJson');
           if (!res.data.success) {
             this.$message.error('Failed to load Xray config');
             return;

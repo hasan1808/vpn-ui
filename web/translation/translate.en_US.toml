@@ -628,6 +628,13 @@
 "alreadyExpired" = "This account has already expired. Enter a new number of days to give it a fresh deadline; leaving the box alone keeps the old one."
 "summaryExpired" = "Expired"
 "credential" = "Credential"
+"creator" = "Creator"
+"all" = "All"
+"active" = "Active"
+"online" = "Online"
+"expiring" = "Expiring"
+"expired" = "Expired"
+"disabled" = "Disabled"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Never"

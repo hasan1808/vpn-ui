@@ -98,27 +98,17 @@
                 <!-- Status filter buttons -->
                 <div :style="{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '10px' }">
                   <a-button size="small" :type="statusFilter === '' ? 'primary' : 'default'"
-                    @click="filterByStatus('')">All</a-button>
+                    @click="filterByStatus('')">{{ i18n "pages.clients.all" || 'All' }}</a-button>
                   <a-button size="small" :type="statusFilter === 'active' ? 'primary' : 'default'"
-                    @click="filterByStatus('active')">
-                    <a-icon type="check-circle" style="color:var(--ok)" /> Active
-                  </a-button>
+                    @click="filterByStatus('active')">&#10003; {{ i18n "pages.clients.active" || 'Active' }}</a-button>
                   <a-button size="small" :type="statusFilter === 'online' ? 'primary' : 'default'"
-                    @click="filterByStatus('online')">
-                    <a-icon type="wifi" style="color:var(--info)" /> Online
-                  </a-button>
+                    @click="filterByStatus('online')">&#128246; {{ i18n "pages.clients.online" || 'Online' }}</a-button>
                   <a-button size="small" :type="statusFilter === 'expiring' ? 'primary' : 'default'"
-                    @click="filterByStatus('expiring')">
-                    <a-icon type="clock-circle" style="color:var(--warn)" /> Expiring
-                  </a-button>
+                    @click="filterByStatus('expiring')">&#9200; {{ i18n "pages.clients.expiring" || 'Expiring' }}</a-button>
                   <a-button size="small" :type="statusFilter === 'expired' ? 'primary' : 'default'"
-                    @click="filterByStatus('expired')">
-                    <a-icon type="close-circle" style="color:var(--error)" /> Expired
-                  </a-button>
+                    @click="filterByStatus('expired')">&#10007; {{ i18n "pages.clients.expired" || 'Expired' }}</a-button>
                   <a-button size="small" :type="statusFilter === 'disabled' ? 'primary' : 'default'"
-                    @click="filterByStatus('disabled')">
-                    <a-icon type="pause-circle" /> Disabled
-                  </a-button>
+                    @click="filterByStatus('disabled')">&#9208; {{ i18n "pages.clients.disabled" || 'Disabled' }}</a-button>
                 </div>
 
                 <!-- Appears only with a selection, so the toolbar is not a row of

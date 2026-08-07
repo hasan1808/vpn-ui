@@ -75,8 +75,9 @@
                     <a-icon slot="suffix" type="close" v-if="allSetting.tgBotProxy"
                         style="cursor:pointer;color:var(--text-3)" @click="allSetting.tgBotProxy=''" />
                 </a-input>
-                <a-button type="dashed" size="small" block @click="useVpnProxy" :loading="vpnProxyLoading">
-                    <a-icon type="thunderbolt" /> Route through VPN Outbound
+                <a-button type="dashed" size="small" block @click="useVpnProxy" :loading="vpnProxyLoading"
+                    style="color:var(--accent); border-color:var(--accent)">
+                    &#9889; Route through VPN
                 </a-button>
             </template>
         </a-setting-list-item>

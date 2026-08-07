@@ -482,6 +482,13 @@
 "alreadyExpired" = "این حساب منقضی شده است. برای تعیین مهلت تازه، تعداد روز جدیدی وارد کنید؛ اگر این فیلد را دست نزنید مهلت قبلی حفظ می‌شود."
 "summaryExpired" = "منقضی شده"
 "credential" = "اعتبارنامه"
+"creator" = "سازنده"
+"all" = "همه"
+"active" = "فعال"
+"online" = "آنلاین"
+"expiring" = "در حال انقضا"
+"expired" = "منقضی"
+"disabled" = "غیرفعال"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "هرگز"
