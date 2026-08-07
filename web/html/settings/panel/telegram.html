@@ -89,6 +89,15 @@
                     v-model="allSetting.tgBotAPIServer"></a-input>
             </template>
         </a-setting-list-item>
+        <a-setting-list-item paddings="small">
+            <template #title>Test Connection</template>
+            <template #description>Send a test message to admin Telegram chats</template>
+            <template #control>
+                <a-button type="primary" size="small" @click="testTgBot" :loading="tgTestLoading">
+                    &#9993; Send Test Message
+                </a-button>
+            </template>
+        </a-setting-list-item>
     </a-collapse-panel>
 </a-collapse>
 {{end}}

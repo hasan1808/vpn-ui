@@ -141,6 +141,7 @@
       serviceLog: '',
       serviceLogLoading: false,
       vpnProxyLoading: false,
+      tgTestLoading: false,
       serviceLogAuto: false,
       serviceLogTimer: null,
       lang: LanguageManager.getLanguage(),
@@ -261,6 +262,21 @@
           this.$message.error('Error: ' + (e.message || 'Unknown error'));
         } finally {
           this.vpnProxyLoading = false;
+        }
+      },
+      async testTgBot() {
+        this.tgTestLoading = true;
+        try {
+          const res = await axios.post('panel/api/tgbot/test');
+          if (res.data.success) {
+            this.$message.success('Test message sent to admin chats!');
+          } else {
+            this.$message.error(res.data.msg || 'Failed to send test message');
+          }
+        } catch (e) {
+          this.$message.error('Error: ' + (e.response?.data?.msg || e.message || 'Unknown error'));
+        } finally {
+          this.tgTestLoading = false;
         }
       },
       loading(spinning = true) {

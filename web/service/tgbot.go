@@ -2636,6 +2636,22 @@ func (t *Tgbot) SendMsgToTgbotAdmins(msg string, replyMarkup ...telego.ReplyMark
 	}
 }
 
+// SendTestMessage sends a test message to all admin chats and returns success/error.
+func (t *Tgbot) SendTestMessage() error {
+	if !isRunning {
+		return errors.New("telegram bot is not running")
+	}
+	if len(adminIds) == 0 {
+		return errors.New("no admin chat IDs configured")
+	}
+	msg := "✅ <b>VPN-UI Panel Test</b>\n\nTelegram bot connection is working correctly.\n\n" +
+		"🕐 " + time.Now().Format("2006-01-02 15:04:05")
+	for _, adminId := range adminIds {
+		t.SendMsgToTgbot(adminId, msg)
+	}
+	return nil
+}
+
 // SendReport sends a periodic report to admin chats.
 func (t *Tgbot) SendReport() {
 	runTime, err := t.settingService.GetTgbotRuntime()

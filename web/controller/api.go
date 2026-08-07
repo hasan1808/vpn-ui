@@ -69,9 +69,20 @@ func (a *APIController) initRouter(g *gin.RouterGroup, customGeo *service.Custom
 	// Mails the entire SQLite DB (every admin's inbounds, client credentials, and
 	// the users table with its bcrypt hashes) to a Telegram chat: escalation-class.
 	api.GET("/backuptotgbot", requireOverviewManage(), a.BackuptoTgbot)
+	api.POST("/tgbot/test", requirePerm(model.PermPanelSettings), a.TestTgbot)
 }
 
 // BackuptoTgbot sends a backup of the panel data to Telegram bot admins.
 func (a *APIController) BackuptoTgbot(c *gin.Context) {
 	a.Tgbot.SendBackupToAdmins()
+}
+
+// TestTgbot sends a test message to all configured admin Telegram chats.
+func (a *APIController) TestTgbot(c *gin.Context) {
+	err := a.Tgbot.SendTestMessage()
+	if err != nil {
+		jsonMsg(c, "Telegram test failed", err)
+		return
+	}
+	jsonObj(c, "Test message sent successfully", nil)
 }
