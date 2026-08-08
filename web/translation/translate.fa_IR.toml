@@ -489,6 +489,11 @@
 "expiring" = "در حال انقضا"
 "expired" = "منقضی"
 "disabled" = "غیرفعال"
+"newest" = "جدیدترین"
+"oldest" = "قدیمی‌ترین"
+"traffic" = "بیشترین ترافیک"
+"downloadQr" = "دانلود کد QR"
+"noLinks" = "لینکی برای نمایش وجود ندارد"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "هرگز"

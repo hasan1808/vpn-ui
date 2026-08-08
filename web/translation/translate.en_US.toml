@@ -635,6 +635,11 @@
 "expiring" = "Expiring"
 "expired" = "Expired"
 "disabled" = "Disabled"
+"newest" = "Newest"
+"oldest" = "Oldest"
+"traffic" = "Most Traffic"
+"downloadQr" = "Download QR Code"
+"noLinks" = "No share links available"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Never"

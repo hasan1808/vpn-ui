@@ -14,6 +14,10 @@
       <a-icon class="normal-icon" type="qrcode" v-if="record.hasLink() && (record.protocol !== Protocols.MTPROTO || client.modeClassic || client.modeSecure || client.modeTls)" @click="showQrcode(record.id,client);"></a-icon>
     </a-tooltip>
     <a-tooltip>
+      <template slot="title">{{ i18n "pages.clients.downloadQr" }}</template>
+      <a-icon class="normal-icon" type="download" v-if="record.hasLink() && (record.protocol !== Protocols.MTPROTO || client.modeClassic || client.modeSecure || client.modeTls)" @click="downloadMembershipQr(record, client);"></a-icon>
+    </a-tooltip>
+    <a-tooltip>
       <template slot="title">WireGuard Config</template>
       <a-icon class="normal-icon" type="qrcode" v-if="record.protocol === Protocols.WGC" @click="showWgcConfig(record.id,client);"></a-icon>
     </a-tooltip>

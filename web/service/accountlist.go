@@ -72,6 +72,7 @@ type AccountRow struct {
 	OwnedByReseller int `json:"ownedByReseller"`
 	AdminId         int    `json:"adminId"`
 	AdminRemark     string `json:"adminRemark"`
+	CreatedAt       int64  `json:"createdAt"`
 }
 
 // AccountListResult is one page of the Clients table.
@@ -94,7 +95,7 @@ type AccountListResult struct {
 //     other sellers' customers too;
 //   - an ordinary admin sees accounts with at least one membership on an inbound
 //     they hold, which is exactly what the Inbounds page already shows them.
-func (s *AccountService) ListAccounts(user *model.User, page, size int, search string, status string) (*AccountListResult, error) {
+func (s *AccountService) ListAccounts(user *model.User, page, size int, search string, status string, sort string) (*AccountListResult, error) {
 	if user == nil {
 		// No identity, no rows. Never an unscoped list.
 		return &AccountListResult{Rows: []AccountRow{}}, nil
@@ -179,7 +180,7 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 			TotalGB: account.TotalGB, ExpiryTime: account.ExpiryTime,
 			Reset: account.Reset, LimitIP: account.LimitIP, TgID: account.TgID,
 			Memberships: mine, OwnedByReseller: owner[key],
-			AdminId: account.CreatedBy,
+			AdminId: account.CreatedBy, CreatedAt: account.CreatedAt,
 		}
 		if account.CreatedBy > 0 {
 			row.AdminRemark = creatorName[account.CreatedBy]
@@ -220,6 +221,27 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 
 		rows = append(rows, row)
 	}
+
+	sort.SliceStable(rows, func(i, j int) bool {
+		switch sort {
+		case "newest":
+			return rows[i].CreatedAt > rows[j].CreatedAt
+		case "oldest":
+			return rows[i].CreatedAt < rows[j].CreatedAt
+		case "expiring":
+			// Active accounts with soonest expiry first; zero (never) and negative (frozen/delayed) last.
+			if rows[i].ExpiryTime > 0 && rows[j].ExpiryTime > 0 {
+				return rows[i].ExpiryTime < rows[j].ExpiryTime
+			}
+			return rows[i].ExpiryTime > rows[j].ExpiryTime
+		case "traffic":
+			usedI := rows[i].Up + rows[i].Down
+			usedJ := rows[j].Up + rows[j].Down
+			return usedI > usedJ
+		default:
+			return strings.ToLower(rows[i].Email) < strings.ToLower(rows[j].Email)
+		}
+	})
 
 	total := len(rows)
 	start := (page - 1) * size

@@ -65,3 +65,4 @@ __pycache__/
 
 # Local-only project notes — keep on disk, never commit.
 /MEMORY.md
+zig/

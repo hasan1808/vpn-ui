@@ -45,7 +45,7 @@ func (a *ClientsController) initRouter(g *gin.RouterGroup) {
 func (a *ClientsController) list(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	size, _ := strconv.Atoi(c.Query("size"))
-	result, err := accountService.ListAccounts(session.GetLoginUser(c), page, size, c.Query("search"), c.Query("status"))
+	result, err := accountService.ListAccounts(session.GetLoginUser(c), page, size, c.Query("search"), c.Query("status"), c.Query("sort"))
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return

@@ -109,6 +109,15 @@
                     @click="filterByStatus('expired')">&#10007; {{ i18n "pages.clients.expired" }}</a-button>
                   <a-button size="small" :type="statusFilter === 'disabled' ? 'primary' : 'default'"
                     @click="filterByStatus('disabled')">&#9208; {{ i18n "pages.clients.disabled" }}</a-button>
+
+                  <a-select v-model="sortBy" size="small" :style="{ minWidth: '150px', marginInlineStart: '8px' }"
+                    @change="onSortChange" :dropdown-class-name="themeSwitcher.currentTheme">
+                    <a-select-option value="email">&#128269; {{ i18n "pages.clients.email" }}</a-select-option>
+                    <a-select-option value="newest">&#128315; {{ i18n "pages.clients.newest" }}</a-select-option>
+                    <a-select-option value="oldest">&#128314; {{ i18n "pages.clients.oldest" }}</a-select-option>
+                    <a-select-option value="expiring">&#9200; {{ i18n "pages.clients.expiring" }}</a-select-option>
+                    <a-select-option value="traffic">&#128200; {{ i18n "pages.clients.traffic" }}</a-select-option>
+                  </a-select>
                 </div>
 
                 <!-- Appears only with a selection, so the toolbar is not a row of
@@ -263,6 +272,9 @@
                             <a-icon type="pause-circle"></a-icon>
                             [[ isAccountFrozen(row) ? '{{ i18n "pages.client.unfreeze" }}'
                                                     : '{{ i18n "pages.client.freeze" }}' ]]
+                          </a-menu-item>
+                          <a-menu-item key="downloadQr">
+                            <a-icon type="qrcode"></a-icon>{{ i18n "pages.clients.downloadQr" }}
                           </a-menu-item>
                           <a-menu-divider></a-menu-divider>
                           <a-menu-item key="delete">
@@ -421,6 +433,7 @@
       search: '',
       searchTimer: null,
       statusFilter: '',
+      sortBy: localStorage.getItem('clientsSortBy') || 'email',
       selectedEmails: [],
       expandedRowKeys: [],
       refreshing: false,
@@ -594,6 +607,7 @@
           case 'edit': return this.openEdit(row);
           case 'sub': return this.showAccountSub(row);
           case 'freeze': return this.toggleAccountFreeze(row);
+          case 'downloadQr': return this.downloadAllQr(row);
           case 'delete': return this.confirmDelete(row);
           case 'reset':
             return this.$confirm({
@@ -679,7 +693,7 @@
       },
 
       async loadClients() {
-        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}`;
+        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}&sort=${encodeURIComponent(this.sortBy || 'email')}`;
         const msg = await HttpUtil.get('/panel/api/clients/list' + q);
         if (!msg || !msg.success) return;
         this.clients = (msg.obj && msg.obj.rows) || [];
@@ -689,6 +703,11 @@
       },
       filterByStatus(status) {
         this.statusFilter = status;
+        this.pagination.current = 1;
+        this.loadClients();
+      },
+      onSortChange(val) {
+        localStorage.setItem('clientsSortBy', val);
         this.pagination.current = 1;
         this.loadClients();
       },
@@ -1011,6 +1030,59 @@
           title: '{{ i18n "pages.clients.partialDeleteTitle" }}',
           content: email + ': ' + stuck.join(', '),
         });
+      },
+
+      // --- QR code download ------------------------------------------------
+      // Generates a QR code on a hidden canvas and triggers a PNG download.
+      // One QR per inbound membership, zipped if more than one.
+      generateQrDataUrl(link, size) {
+        size = size || 400;
+        const canvas = document.createElement('canvas');
+        new QRious({ element: canvas, size, value: link, background: 'white', foreground: 'black', padding: 2, level: 'L' });
+        return canvas.toDataURL('image/png');
+      },
+      downloadDataUrl(dataUrl, filename) {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      },
+      async downloadAllQr(row) {
+        const entries = [];
+        for (const m of (row.memberships || [])) {
+          const dbInbound = this.dbInbounds.find(r => r.id === m.inboundId);
+          if (!dbInbound) continue;
+          const inbound = dbInbound.toInbound ? dbInbound.toInbound() : dbInbound;
+          const client = (this.getInboundClients(dbInbound) || []).find(c => c.email === row.email);
+          if (!client) continue;
+          if (typeof inbound.hasLink === 'function' && !inbound.hasLink()) continue;
+          let links = [];
+          if (typeof inbound.genAllLinks === 'function') {
+            links = inbound.genAllLinks(dbInbound.remark, '', client);
+          }
+          for (const l of links) {
+            if (!l.link) continue;
+            entries.push({ remark: l.remark || m.remark || (m.protocol + ':' + m.port), link: l.link });
+          }
+        }
+        if (!entries.length) {
+          this.$message.warning('{{ i18n "pages.clients.noLinks" }}');
+          return;
+        }
+        if (entries.length === 1) {
+          const dataUrl = this.generateQrDataUrl(entries[0].link);
+          this.downloadDataUrl(dataUrl, (row.email.replace(/[^a-zA-Z0-9@._-]/g, '_')) + '.png');
+          return;
+        }
+        // Multiple QR codes: download each sequentially
+        for (let i = 0; i < entries.length; i++) {
+          const dataUrl = this.generateQrDataUrl(entries[i].link);
+          const name = row.email.replace(/[^a-zA-Z0-9@._-]/g, '_') + '_' + (i + 1) + '.png';
+          this.downloadDataUrl(dataUrl, name);
+          await new Promise(r => setTimeout(r, 200));
+        }
       },
     },
     async mounted() {

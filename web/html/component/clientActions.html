@@ -506,6 +506,27 @@
         newDbInbound = this.checkFallback(dbInbound);
         qrModal.show('{{ i18n "qrCode"}}', newDbInbound, client);
       },
+      downloadMembershipQr(dbInbound, client) {
+        if (!dbInbound || !client) return;
+        const inbound = typeof dbInbound.toInbound === 'function' ? dbInbound.toInbound() : dbInbound;
+        if (typeof inbound.hasLink === 'function' && !inbound.hasLink()) return;
+        let links = [];
+        if (typeof inbound.genAllLinks === 'function') {
+          links = inbound.genAllLinks(dbInbound.remark, '', client);
+        }
+        for (let i = 0; i < links.length; i++) {
+          if (!links[i].link) continue;
+          const canvas = document.createElement('canvas');
+          new QRious({ element: canvas, size: 400, value: links[i].link, background: 'white', foreground: 'black', padding: 2, level: 'L' });
+          const a = document.createElement('a');
+          a.href = canvas.toDataURL('image/png');
+          const suffix = links.length > 1 ? '_' + (i + 1) : '';
+          a.download = (client.email || 'client').replace(/[^a-zA-Z0-9@._-]/g, '_') + '_' + dbInbound.id + suffix + '.png';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      },
       showWgcConfig(dbInboundId, client) {
         // WireGuard (C) configs are rendered server-side (per-device .conf with
         // backend-minted keys); the modal fetches them from the wgc-configs API.
