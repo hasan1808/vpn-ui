@@ -581,6 +581,7 @@ type Account struct {
 	TgID    int64  `json:"tgId" gorm:"column:tg_id"`
 	Comment string `json:"comment"`
 
+	CreatedBy int `json:"createdBy" gorm:"index"`
 	CreatedAt int64 `json:"createdAt" gorm:"autoCreateTime:milli"`
 	UpdatedAt int64 `json:"updatedAt" gorm:"autoUpdateTime:milli"`
 }

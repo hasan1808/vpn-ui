@@ -35,7 +35,7 @@ func TestDeletingAClientPrunesItsAccount(t *testing.T) {
 	}
 
 	accounts := service.AccountService{}
-	if err := accounts.SyncInboundAccounts(database.GetDB(), f.aliInbound.Id); err != nil {
+	if err := accounts.SyncInboundAccounts(database.GetDB(), f.aliInbound.Id, 0); err != nil {
 		t.Fatalf("seed the accounts layer: %v", err)
 	}
 	if got, _ := accounts.InboundIdsForEmail(f.aliEmail); len(got) != 1 {
@@ -75,7 +75,7 @@ func TestDeletingAnInboundDropsItsMemberships(t *testing.T) {
 	f := newIdorFixture(t)
 
 	accounts := service.AccountService{}
-	if err := accounts.SyncInboundAccounts(database.GetDB(), f.aliInbound.Id); err != nil {
+	if err := accounts.SyncInboundAccounts(database.GetDB(), f.aliInbound.Id, 0); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 

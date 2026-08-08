@@ -986,11 +986,12 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 	// it just changed have to reach all of them), so the reconcile below has to cover
 	// those too or a daemon keeps serving the settings JSON it no longer matches.
 	var projected []int
+	caller := session.GetLoginUser(c)
 	if emails := postedClientEmails(data); len(emails) > 1 {
 		a.syncInboundAccounts(data.Id)
 		if membershipsExplicit {
 			for _, email := range emails {
-				touched, merr := a.applyClientMemberships(c, email, membershipIds, membershipsExplicit)
+				touched, merr := a.applyClientMemberships(c, email, membershipIds, membershipsExplicit, caller.Id)
 				if merr != nil {
 					logger.Warning("applying client memberships for ", email, ": ", merr)
 				}
@@ -998,7 +999,7 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 			}
 		}
 	} else {
-		touched, merr := a.applyClientMemberships(c, postedClientEmail(data), membershipIds, membershipsExplicit)
+		touched, merr := a.applyClientMemberships(c, postedClientEmail(data), membershipIds, membershipsExplicit, caller.Id)
 		if merr != nil {
 			logger.Warning("applying client memberships: ", merr)
 		}
@@ -1199,7 +1200,7 @@ func (a *InboundController) updateInboundClient(c *gin.Context) {
 	if perr != nil {
 		logger.Warning("reading previous memberships: ", perr)
 	}
-	projected, merr := a.applyClientMemberships(c, email, membershipIds, membershipsExplicit)
+	projected, merr := a.applyClientMemberships(c, email, membershipIds, membershipsExplicit, session.GetLoginUser(c).Id)
 	if merr != nil {
 		logger.Warning("applying client memberships: ", merr)
 	}
@@ -2271,7 +2272,7 @@ func distinctInboundIds(targets []service.BulkClientTarget) []int {
 // the inbound itself (where it drops every membership pointing at an id that is
 // gone).
 func (a *InboundController) syncInboundAccounts(inboundId int) {
-	if err := accountService.SyncInboundAccounts(database.GetDB(), inboundId); err != nil {
+	if err := accountService.SyncInboundAccounts(database.GetDB(), inboundId, 0); err != nil {
 		logger.Warning("syncing the accounts layer for inbound ", inboundId, ": ", err)
 	}
 }
@@ -2282,7 +2283,7 @@ func (a *InboundController) syncInboundAccounts(inboundId int) {
 // Returns the inbound ids whose settings actually changed, for the reconcile
 // fan-out. A single-inbound request is a no-op beyond the mirror sync, which is
 // what keeps the legacy path byte-identical.
-func (a *InboundController) applyClientMemberships(c *gin.Context, email string, inboundIds []int, explicit bool) ([]int, error) {
+func (a *InboundController) applyClientMemberships(c *gin.Context, email string, inboundIds []int, explicit bool, createdBy int) ([]int, error) {
 	if email == "" {
 		return nil, nil
 	}
@@ -2309,7 +2310,7 @@ func (a *InboundController) applyClientMemberships(c *gin.Context, email string,
 			}
 		}
 	}
-	return accountService.ApplyMemberships(email, inboundIds, removable, explicit)
+	return accountService.ApplyMemberships(email, inboundIds, removable, explicit, createdBy)
 }
 
 // reconcileForInbounds fires each protocol's reconcile hook once for the set of

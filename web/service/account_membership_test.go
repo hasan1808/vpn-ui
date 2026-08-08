@@ -34,7 +34,7 @@ func TestApplyMembershipsSpreadsAccountAcrossProtocols(t *testing.T) {
 		t.Fatalf("save account: %v", err)
 	}
 
-	touched, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, l2tp.Id}, nil, true)
+	touched, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, l2tp.Id}, nil, true, 0)
 	if err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestApplyMembershipsRemovesDroppedInbound(t *testing.T) {
 		t.Fatalf("setup: memberships = %d, want 2", got)
 	}
 
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, []int{trojan.Id}, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, []int{trojan.Id}, true, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 
@@ -124,7 +124,7 @@ func TestApplyMembershipsKeepsMembershipsTheCallerCannotRemove(t *testing.T) {
 	svc.MigrationAccounts()
 
 	// The caller asks for only their own inbound, and is allowed to remove nothing.
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{mine.Id}, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{mine.Id}, nil, true, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 
@@ -181,7 +181,7 @@ func TestApplyMembershipsSingleInboundKeepsTheMembershipSet(t *testing.T) {
 	svc.MigrationAccounts()
 	before := len(membershipsInDB(t))
 
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 
@@ -221,7 +221,7 @@ func TestSingleInboundWriteReprojectsEveryMembership(t *testing.T) {
 		{"id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "email": "bob@example.com",
 			"enable": false, "totalGB": 5368709120},
 	})
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 
@@ -298,7 +298,7 @@ func TestDisabledMembershipDoesNotLowerTheAccount(t *testing.T) {
 
 	// Any later write that syncs the disabled inbound: the entry says false, and the
 	// reason is the membership, not the account.
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 
@@ -368,7 +368,7 @@ func TestSyncInboundAccountsPrunesOrphans(t *testing.T) {
 		Update("settings", `{"clients":[]}`).Error; err != nil {
 		t.Fatalf("clear clients: %v", err)
 	}
-	if err := svc.SyncInboundAccounts(database.GetDB(), inbound.Id); err != nil {
+	if err := svc.SyncInboundAccounts(database.GetDB(), inbound.Id, 0); err != nil {
 		t.Fatalf("SyncInboundAccounts: %v", err)
 	}
 
@@ -395,7 +395,7 @@ func TestSyncInboundAccountsKeepsAccountAliveOnOtherInbounds(t *testing.T) {
 	if err := database.GetDB().Where("id = ?", gone.Id).Delete(&model.Inbound{}).Error; err != nil {
 		t.Fatalf("delete inbound: %v", err)
 	}
-	if err := svc.SyncInboundAccounts(database.GetDB(), gone.Id); err != nil {
+	if err := svc.SyncInboundAccounts(database.GetDB(), gone.Id, 0); err != nil {
 		t.Fatalf("SyncInboundAccounts: %v", err)
 	}
 
@@ -421,7 +421,7 @@ func TestSyncInboundAccountsLiftsTheCredential(t *testing.T) {
 	vless := seedInboundWithClients(t, model.VLESS, 46701, []map[string]any{
 		{"id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "email": "bob@example.com", "enable": true},
 	})
-	if err := svc.SyncInboundAccounts(database.GetDB(), vless.Id); err != nil {
+	if err := svc.SyncInboundAccounts(database.GetDB(), vless.Id, 0); err != nil {
 		t.Fatalf("SyncInboundAccounts: %v", err)
 	}
 
@@ -455,7 +455,7 @@ func TestApplyMembershipsMintsMissingCredentials(t *testing.T) {
 	l2tp := seedInboundWithClients(t, model.L2TP, 46802, []map[string]any{})
 	svc.MigrationAccounts()
 
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, l2tp.Id}, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, l2tp.Id}, nil, true, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 
@@ -489,7 +489,7 @@ func TestNewMembershipGetsTimestamps(t *testing.T) {
 	l2tp := seedInboundWithClients(t, model.L2TP, 46902, []map[string]any{})
 	svc.MigrationAccounts()
 
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, l2tp.Id}, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, l2tp.Id}, nil, true, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 	clients := readClients(t, l2tp.Id)
@@ -563,7 +563,7 @@ func TestDeletingAnInboundPrunesAccountsLeftWithNothing(t *testing.T) {
 	if err := database.GetDB().Where("id = ?", solo.Id).Delete(&model.Inbound{}).Error; err != nil {
 		t.Fatalf("delete inbound: %v", err)
 	}
-	if err := svc.SyncInboundAccounts(database.GetDB(), solo.Id); err != nil {
+	if err := svc.SyncInboundAccounts(database.GetDB(), solo.Id, 0); err != nil {
 		t.Fatalf("SyncInboundAccounts: %v", err)
 	}
 
@@ -593,7 +593,7 @@ func TestShadowsocks2022MembershipGetsAUsableKey(t *testing.T) {
 	svc.MigrationAccounts()
 
 	ss := seedShadowsocksInbound(t, 46342, "2022-blake3-aes-256-gcm")
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{ovpn.Id, ss.Id}, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{ovpn.Id, ss.Id}, nil, true, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 
@@ -618,7 +618,7 @@ func TestShadowsocks2022MembershipGetsAUsableKey(t *testing.T) {
 
 	// Re-projecting must not churn the PSK: a rotating credential would break the
 	// client config the customer already installed.
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{ovpn.Id, ss.Id}, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{ovpn.Id, ss.Id}, nil, true, 0); err != nil {
 		t.Fatalf("second ApplyMemberships: %v", err)
 	}
 	if got, _ := clientEntry(t, ss.Id, "bob@example.com")["password"].(string); got != psk {
@@ -635,7 +635,7 @@ func TestShadowsocksLegacyMethodKeepsTheSharedPassword(t *testing.T) {
 	})
 	svc.MigrationAccounts()
 	ss := seedShadowsocksInbound(t, 46352, "aes-256-gcm")
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{ovpn.Id, ss.Id}, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{ovpn.Id, ss.Id}, nil, true, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 	if got, _ := clientEntry(t, ss.Id, "bob@example.com")["password"].(string); got != "0123456789abcdef0123456789abcdef" {
@@ -655,7 +655,7 @@ func TestMtprotoMembershipGetsItsModes(t *testing.T) {
 	svc.MigrationAccounts()
 	mt := seedInboundWithClients(t, model.MTPROTO, 46362, []map[string]any{})
 
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, mt.Id}, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, mt.Id}, nil, true, 0); err != nil {
 		t.Fatalf("ApplyMemberships: %v", err)
 	}
 
@@ -676,7 +676,7 @@ func TestMtprotoMembershipGetsItsModes(t *testing.T) {
 	// membership, never re-applied over a stored choice.
 	entry["modeTls"] = false
 	writeClients(t, mt.Id, []map[string]any{entry})
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, mt.Id}, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id, mt.Id}, nil, true, 0); err != nil {
 		t.Fatalf("second ApplyMemberships: %v", err)
 	}
 	if got := clientEntry(t, mt.Id, "bob@example.com")["modeTls"]; got != false {
@@ -886,7 +886,7 @@ func TestReEnableAfterSingleInboundDisable(t *testing.T) {
 	writeClients(t, vless.Id, []map[string]any{
 		{"id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "email": "bob@example.com", "enable": false},
 	})
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false, 0); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
 	for _, id := range ids {
@@ -899,7 +899,7 @@ func TestReEnableAfterSingleInboundDisable(t *testing.T) {
 	writeClients(t, vless.Id, []map[string]any{
 		{"id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "email": "bob@example.com", "enable": true},
 	})
-	if _, err := svc.ApplyMemberships("bob@example.com", ids, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", ids, nil, true, 0); err != nil {
 		t.Fatalf("re-enable: %v", err)
 	}
 
@@ -929,7 +929,7 @@ func TestMembershipEnableAfterAnEnableCycle(t *testing.T) {
 		ids = append(ids, ib.Id)
 	}
 	svc.MigrationAccounts()
-	if _, err := svc.ApplyMemberships("bob@example.com", ids, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", ids, nil, true, 0); err != nil {
 		t.Fatalf("spread: %v", err)
 	}
 
@@ -937,13 +937,13 @@ func TestMembershipEnableAfterAnEnableCycle(t *testing.T) {
 	writeClients(t, vless.Id, []map[string]any{
 		{"id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "email": "bob@example.com", "enable": false},
 	})
-	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", []int{vless.Id}, nil, false, 0); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
 	writeClients(t, vless.Id, []map[string]any{
 		{"id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "email": "bob@example.com", "enable": true},
 	})
-	if _, err := svc.ApplyMemberships("bob@example.com", ids, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", ids, nil, true, 0); err != nil {
 		t.Fatalf("re-enable: %v", err)
 	}
 	for _, id := range ids {
@@ -999,7 +999,7 @@ func TestMembershipEnableOnAWideAccount(t *testing.T) {
 		ids = append(ids, ib.Id)
 	}
 	svc.MigrationAccounts()
-	if _, err := svc.ApplyMemberships("bob@example.com", ids, nil, true); err != nil {
+	if _, err := svc.ApplyMemberships("bob@example.com", ids, nil, true, 0); err != nil {
 		t.Fatalf("spread across %d inbounds: %v", len(ids), err)
 	}
 	for _, id := range ids {

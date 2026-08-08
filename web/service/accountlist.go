@@ -70,6 +70,8 @@ type AccountRow struct {
 	// OwnedByReseller is the reseller's user id, or 0 for a house account. Shown
 	// only to whoever may already see resellers.
 	OwnedByReseller int `json:"ownedByReseller"`
+	AdminId         int    `json:"adminId"`
+	AdminRemark     string `json:"adminRemark"`
 }
 
 // AccountListResult is one page of the Clients table.
@@ -135,6 +137,19 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 		owner[accountKey(rc.Email)] = rc.UserId
 	}
 
+	creatorName := map[int]string{}
+	var users []model.User
+	if err := db.Select("id", "username", "nickname").Find(&users).Error; err != nil {
+		return nil, err
+	}
+	for _, u := range users {
+		if u.Nickname != "" {
+			creatorName[u.Id] = u.Nickname
+		} else {
+			creatorName[u.Id] = u.Username
+		}
+	}
+
 	visible, err := s.visibilityFilter(user)
 	if err != nil {
 		return nil, err
@@ -164,6 +179,10 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 			TotalGB: account.TotalGB, ExpiryTime: account.ExpiryTime,
 			Reset: account.Reset, LimitIP: account.LimitIP, TgID: account.TgID,
 			Memberships: mine, OwnedByReseller: owner[key],
+			AdminId: account.CreatedBy,
+		}
+		if account.CreatedBy > 0 {
+			row.AdminRemark = creatorName[account.CreatedBy]
 		}
 		if t := usage[key]; t != nil {
 			row.Up, row.Down = t.Up, t.Down

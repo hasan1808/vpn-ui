@@ -383,7 +383,7 @@ func removeAccountFromInbound(inbound *model.Inbound, email string) (string, boo
 // is deliberate: an account row that disagrees with settings.clients is repaired on
 // the next start anyway (MigrationAccounts re-checks the counts on every boot), so a
 // missed call degrades to a delay rather than to a wrong data plane.
-func (s *AccountService) SyncInboundAccounts(tx *gorm.DB, inboundId int) error {
+func (s *AccountService) SyncInboundAccounts(tx *gorm.DB, inboundId int, createdBy int) error {
 	var inbound model.Inbound
 	if err := tx.Model(&model.Inbound{}).Where("id = ?", inboundId).First(&inbound).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -415,7 +415,7 @@ func (s *AccountService) SyncInboundAccounts(tx *gorm.DB, inboundId int) error {
 		if accountKey(email) == "" {
 			continue
 		}
-		account, err := s.upsertAccountFromEntry(tx, entry, &inbound)
+		account, err := s.upsertAccountFromEntry(tx, entry, &inbound, createdBy)
 		if err != nil {
 			return err
 		}
@@ -452,7 +452,7 @@ func (s *AccountService) SyncInboundAccounts(tx *gorm.DB, inboundId int) error {
 // (clientIdentity returns "", so edit and delete stop matching it) and, for the
 // native protocols, leaves a client the core cannot authenticate. It silently
 // corrupts the entry the request was not even about.
-func (s *AccountService) upsertAccountFromEntry(tx *gorm.DB, entry map[string]any, inbound *model.Inbound) (*model.Account, error) {
+func (s *AccountService) upsertAccountFromEntry(tx *gorm.DB, entry map[string]any, inbound *model.Inbound, createdBy int) (*model.Account, error) {
 	protocol := inbound.Protocol
 	email, _ := entry["email"].(string)
 	key := accountKey(email)
@@ -469,6 +469,9 @@ func (s *AccountService) upsertAccountFromEntry(tx *gorm.DB, entry map[string]an
 	switch {
 	case err == gorm.ErrRecordNotFound:
 		fresh := newAccountFromEntry(entry)
+		if createdBy > 0 {
+			fresh.CreatedBy = createdBy
+		}
 		extractAccountCredential(fresh, entry, protocol, 0, &scratch, scratchConflicts)
 		// The columns the entry carries for OTHER protocols. extractAccountCredential
 		// reads only the addressed protocol's own fields - it is the migration's
@@ -513,6 +516,7 @@ func (s *AccountService) upsertAccountFromEntry(tx *gorm.DB, entry map[string]an
 	updated.Secret = account.Secret
 	updated.NaiveUser = account.NaiveUser
 	updated.CreatedAt = account.CreatedAt
+	updated.CreatedBy = account.CreatedBy
 	// subId is not a credential, but it is carried forward for the same reason and
 	// only when the entry does not mention it AT ALL. A caller that omits the key
 	// (any script posting a partial client) was blanking the account's subId, and
@@ -798,7 +802,7 @@ func shadowsocksUserKey(inbound *model.Inbound) string {
 // see, and an edit that simply omitted it must not silently take the account off
 // another admin's inbound. The controller resolves it by intersecting the
 // account's current memberships with what the caller owns.
-func (s *AccountService) ApplyMemberships(email string, wanted []int, removable []int, explicit bool) ([]int, error) {
+func (s *AccountService) ApplyMemberships(email string, wanted []int, removable []int, explicit bool, createdBy int) ([]int, error) {
 	if email == "" || len(wanted) == 0 {
 		return nil, nil
 	}
@@ -806,7 +810,7 @@ func (s *AccountService) ApplyMemberships(email string, wanted []int, removable 
 	err := database.GetDB().Transaction(func(tx *gorm.DB) error {
 		// Mirror the inbound the legacy write just touched, so the account row and
 		// its first membership exist before memberships are set.
-		if err := s.SyncInboundAccounts(tx, wanted[0]); err != nil {
+		if err := s.SyncInboundAccounts(tx, wanted[0], createdBy); err != nil {
 			return err
 		}
 		account, err := s.GetAccountByEmailTx(tx, email)
@@ -843,7 +847,7 @@ func (s *AccountService) ApplyMemberships(email string, wanted []int, removable 
 		touched = changed
 		// Bring the mirror back in step with what the projection just wrote.
 		for _, inboundId := range changed {
-			if err := s.SyncInboundAccounts(tx, inboundId); err != nil {
+			if err := s.SyncInboundAccounts(tx, inboundId, 0); err != nil {
 				return err
 			}
 		}
@@ -899,7 +903,7 @@ func (s *AccountService) SetMembershipEnable(email string, inboundId int, enable
 		}
 		touched = changed
 		for _, id := range changed {
-			if err := s.SyncInboundAccounts(tx, id); err != nil {
+			if err := s.SyncInboundAccounts(tx, id, 0); err != nil {
 				return err
 			}
 		}
