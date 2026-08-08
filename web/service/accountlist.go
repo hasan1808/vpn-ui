@@ -95,7 +95,7 @@ type AccountListResult struct {
 //     other sellers' customers too;
 //   - an ordinary admin sees accounts with at least one membership on an inbound
 //     they hold, which is exactly what the Inbounds page already shows them.
-func (s *AccountService) ListAccounts(user *model.User, page, size int, search string, status string, sort string) (*AccountListResult, error) {
+func (s *AccountService) ListAccounts(user *model.User, page, size int, search string, status string, sortBy string) (*AccountListResult, error) {
 	if user == nil {
 		// No identity, no rows. Never an unscoped list.
 		return &AccountListResult{Rows: []AccountRow{}}, nil
@@ -223,7 +223,7 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 	}
 
 	sort.SliceStable(rows, func(i, j int) bool {
-		switch sort {
+		switch sortBy {
 		case "newest":
 			return rows[i].CreatedAt > rows[j].CreatedAt
 		case "oldest":
