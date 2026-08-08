@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/mhsanaei/3x-ui/v2/logger"
 )
 
 // AcmeService manages Let's Encrypt certificate issuance via acme.sh
@@ -214,7 +212,7 @@ func (s *AcmeService) IssueCert(req AcmeIssueRequest) AcmeResult {
 	}
 
 	// Set cert paths in settings
-	settingService := GetSettingService()
+	settingService := SettingService{}
 	if err := settingService.SetCertFile(certPath); err != nil {
 		output.WriteString(fmt.Sprintf("Warning: could not set cert path: %s\n", err))
 	}
@@ -245,9 +243,9 @@ func (s *AcmeService) IssueCert(req AcmeIssueRequest) AcmeResult {
 
 // GetCertStatus checks the status of the current certificate
 func (s *AcmeService) GetCertStatus() map[string]interface{} {
-	service := GetSettingService()
-	certFile, _ := service.GetCertFile()
-	keyFile, _ := service.GetKeyFile()
+	settingService := SettingService{}
+	certFile, _ := settingService.GetCertFile()
+	keyFile, _ := settingService.GetKeyFile()
 
 	result := map[string]interface{}{
 		"certFile": certFile,
