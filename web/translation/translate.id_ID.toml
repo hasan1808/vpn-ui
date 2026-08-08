@@ -482,6 +482,13 @@
 "alreadyExpired" = "Akun ini sudah kedaluwarsa. Masukkan jumlah hari baru untuk memberi tenggat baru; membiarkan kolom ini apa adanya mempertahankan tenggat lama."
 "summaryExpired" = "Kedaluwarsa"
 "credential" = "Kredensial"
+"creator" = "Pembuat"
+"all" = "Semua"
+"active" = "Aktif"
+"online" = "Online"
+"expiring" = "Hampir kedaluwarsa"
+"expired" = "Kedaluwarsa"
+"disabled" = "Nonaktif"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Tidak Pernah"

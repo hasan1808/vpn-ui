@@ -135,7 +135,7 @@
               <a-card hoverable class="bo-lg" :class="{ 'bo-lg--compact': density === 'compact' }">
                 <a-table
                   :columns="columns"
-                  :data-source="filteredClients"
+                  :data-source="clients"
                   :row-key="r => r.email"
                   :row-selection="{ selectedRowKeys: selectedEmails, onChange: onSelectChange }"
                   :pagination="pagination"
@@ -470,13 +470,6 @@
         { title: '', scopedSlots: { customRender: 'rowCol' }, width: 104, align: 'right' },
       ],
     },
-    computed: {
-      filteredClients() {
-        var self = this;
-        if (!this.statusFilter) return this.clients;
-        return this.clients.filter(function(c) { return self.clientMatchesFilter(c); });
-      },
-    },
     methods: {
       toggleSidebar() {
         this.sidebarHidden = !this.sidebarHidden;
@@ -686,7 +679,7 @@
       },
 
       async loadClients() {
-        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}`;
+        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}`;
         const msg = await HttpUtil.get('/panel/api/clients/list' + q);
         if (!msg || !msg.success) return;
         this.clients = (msg.obj && msg.obj.rows) || [];
@@ -696,24 +689,8 @@
       },
       filterByStatus(status) {
         this.statusFilter = status;
-      },
-      clientMatchesFilter(c) {
-        if (!this.statusFilter) return true;
-        const now = Date.now();
-        const isOnline = this.onlineClients.indexOf(c.email) !== -1;
-        const expiry = c.expiryTime;
-        const expiringSoon = expiry > 0 && expiry <= now + (this.expireDiff || 7) * 86400000;
-        const isExpired = expiry > 0 && expiry <= now;
-        const isEnabled = c.enable;
-        const hasTraffic = c.trafficLimit <= 0 || c.total < c.trafficLimit;
-        switch (this.statusFilter) {
-          case 'online': return isOnline;
-          case 'expiring': return expiringSoon && !isExpired;
-          case 'expired': return isExpired;
-          case 'disabled': return !isEnabled;
-          case 'active': return isEnabled && !isExpired && hasTraffic;
-          default: return true;
-        }
+        this.pagination.current = 1;
+        this.loadClients();
       },
       async loadAssignable() {
         const msg = await HttpUtil.get('/panel/api/clients/assignable');

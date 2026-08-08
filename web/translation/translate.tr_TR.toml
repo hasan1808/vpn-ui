@@ -482,6 +482,13 @@
 "alreadyExpired" = "Bu hesabın süresi zaten dolmuş. Yeni bir son tarih vermek için yeni bir gün sayısı girin; alana dokunmazsanız eski tarih korunur."
 "summaryExpired" = "Süresi doldu"
 "credential" = "Kimlik bilgisi"
+"creator" = "Oluşturan"
+"all" = "Tümü"
+"active" = "Aktif"
+"online" = "Çevrimiçi"
+"expiring" = "Süresi dolmak üzere"
+"expired" = "Süresi doldu"
+"disabled" = "Devre dışı"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Asla"

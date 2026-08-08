@@ -3105,27 +3105,24 @@
         this.showAlert = true;
       }
 
-      const msg = await HttpUtil.post('/panel/setting/defaultSettings');
-      if (msg.success) {
-        this.ipLimitEnable = msg.obj.ipLimitEnable;
-        this.xrayAccessLogEnable = !!msg.obj.xrayAccessLogEnable;
+      // Fire all three critical requests in parallel instead of sequentially
+      const [settingsMsg] = await Promise.all([
+        HttpUtil.post('/panel/setting/defaultSettings'),
+        this.getStatus(),
+        this.getCoreStatuses(),
+      ]);
+      if (settingsMsg && settingsMsg.success) {
+        this.ipLimitEnable = settingsMsg.obj.ipLimitEnable;
+        this.xrayAccessLogEnable = !!settingsMsg.obj.xrayAccessLogEnable;
       }
 
-      // Initial status fetch
-      await this.getStatus();
-      await this.getCoreStatuses();
       this.checkDistroSupport();
       this.fetchUserStats();
       this.fetchServerName();
       this.fetchPanelLocation();
-      // Up front, not only in openGeofiles(), so the badges are already there when
-      // the list first paints rather than appearing a round-trip later. A row whose
-      // badge has not arrived yet is indistinguishable from one the endpoint could
-      // not answer for, which is the one thing this list exists to tell apart.
-      // openGeofiles() still refreshes on open.
       this.fetchGeofileStatus();
-      this.checkForUpdate(false); // best-effort update check on every overview load
-      this.announceUpdateResult(); // "Updated to vX" if this load follows a self-update
+      this.checkForUpdate(false);
+      this.announceUpdateResult();
 
       // Setup WebSocket for real-time updates
       if (window.wsClient) {

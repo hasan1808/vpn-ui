@@ -485,6 +485,13 @@
 "alreadyExpired" = "انتهت صلاحية هذا الحساب بالفعل. أدخل عدد أيام جديدا لتحديد مهلة جديدة؛ وترك الحقل كما هو يبقي المهلة السابقة."
 "summaryExpired" = "منتهي"
 "credential" = "بيانات الاعتماد"
+"creator" = "المنشئ"
+"all" = "الكل"
+"active" = "نشط"
+"online" = "متصل"
+"expiring" = "قريب الانتهاء"
+"expired" = "منتهي"
+"disabled" = "معطل"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "أبداً"

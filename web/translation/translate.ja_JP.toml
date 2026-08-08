@@ -482,6 +482,13 @@
 "alreadyExpired" = "このアカウントはすでに期限切れです。新しい日数を入力すると期限を設定し直せます。欄をそのままにすると以前の期限が保持されます。"
 "summaryExpired" = "期限切れ"
 "credential" = "認証情報"
+"creator" = "作成者"
+"all" = "すべて"
+"active" = "有効"
+"online" = "オンライン"
+"expiring" = "期限間近"
+"expired" = "期限切れ"
+"disabled" = "無効"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "なし"

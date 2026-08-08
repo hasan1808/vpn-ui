@@ -482,6 +482,13 @@
 "alreadyExpired" = "Esta cuenta ya ha caducado. Escribe un nuevo número de días para darle otra fecha límite; si no tocas el campo, se conserva la anterior."
 "summaryExpired" = "Caducada"
 "credential" = "Credencial"
+"creator" = "Creador"
+"all" = "Todos"
+"active" = "Activo"
+"online" = "En línea"
+"expiring" = "Por expirar"
+"expired" = "Expirado"
+"disabled" = "Deshabilitado"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Nunca"

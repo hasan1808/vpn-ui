@@ -482,6 +482,13 @@
 "alreadyExpired" = "該帳戶已過期。輸入新的天數即可設定新的到期時間；不修改此項則保留原有到期時間。"
 "summaryExpired" = "已過期"
 "credential" = "憑證"
+"creator" = "建立者"
+"all" = "全部"
+"active" = "活躍"
+"online" = "在線"
+"expiring" = "即將到期"
+"expired" = "已到期"
+"disabled" = "已停用"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "從不"

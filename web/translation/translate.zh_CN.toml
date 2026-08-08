@@ -482,6 +482,13 @@
 "alreadyExpired" = "该账户已过期。输入新的天数即可设置新的到期时间；不修改此项则保留原有到期时间。"
 "summaryExpired" = "已过期"
 "credential" = "凭据"
+"creator" = "创建者"
+"all" = "全部"
+"active" = "活跃"
+"online" = "在线"
+"expiring" = "即将过期"
+"expired" = "已过期"
+"disabled" = "已禁用"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "从不"

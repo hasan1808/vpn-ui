@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
@@ -91,7 +92,7 @@ type AccountListResult struct {
 //     other sellers' customers too;
 //   - an ordinary admin sees accounts with at least one membership on an inbound
 //     they hold, which is exactly what the Inbounds page already shows them.
-func (s *AccountService) ListAccounts(user *model.User, page, size int, search string) (*AccountListResult, error) {
+func (s *AccountService) ListAccounts(user *model.User, page, size int, search string, status string) (*AccountListResult, error) {
 	if user == nil {
 		// No identity, no rows. Never an unscoped list.
 		return &AccountListResult{Rows: []AccountRow{}}, nil
@@ -140,6 +141,10 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 	}
 
 	needle := strings.ToLower(strings.TrimSpace(search))
+	statusFilter := strings.ToLower(strings.TrimSpace(status))
+	now := time.Now().UnixMilli()
+	expireDiffMs := int64(7) * 86400000 // 7 day warning threshold
+
 	rows := make([]AccountRow, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
@@ -151,6 +156,8 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 		if needle != "" && !accountMatches(account, mine, needle) {
 			continue
 		}
+
+		// Build row first so we have traffic-overlaid data for status checks
 		row := AccountRow{
 			Id: account.Id, Email: account.Email, Enable: account.Enable,
 			SubID: account.SubID, Comment: account.Comment,
@@ -158,21 +165,40 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 			Reset: account.Reset, LimitIP: account.LimitIP, TgID: account.TgID,
 			Memberships: mine, OwnedByReseller: owner[key],
 		}
-		// client_traffics is one row per account panel-wide, and it is what the
-		// enforcement paths actually read, so it wins over the account row for the
-		// three fields both carry.
-		//
-		// Not belt-and-braces: several paths write settings.clients and
-		// client_traffics without going through the accounts layer at all, the
-		// depletion sweep in disableInvalidClients most of all. Reading enable off
-		// the account row showed a depleted account as still on, days after the
-		// data plane had cut it off.
 		if t := usage[key]; t != nil {
 			row.Up, row.Down = t.Up, t.Down
 			row.Enable = t.Enable
 			row.TotalGB = t.Total
 			row.ExpiryTime = t.ExpiryTime
 		}
+
+		// Status filter
+		if statusFilter != "" {
+			isExpired := row.ExpiryTime > 0 && row.ExpiryTime <= now
+			isExpiring := row.ExpiryTime > 0 && row.ExpiryTime <= now+expireDiffMs && !isExpired
+			isDisabled := !row.Enable
+			hasTraffic := row.TotalGB <= 0 || (row.Up+row.Down) < row.TotalGB
+
+			switch statusFilter {
+			case "active":
+				if isDisabled || isExpired || !hasTraffic {
+					continue
+				}
+			case "expired":
+				if !isExpired {
+					continue
+				}
+			case "expiring":
+				if !isExpiring {
+					continue
+				}
+			case "disabled":
+				if !isDisabled {
+					continue
+				}
+			}
+		}
+
 		rows = append(rows, row)
 	}
 

@@ -165,12 +165,6 @@ func templatePerms(c *gin.Context) map[string]bool {
 		perms[d.Slug] = user.Can(d.Bit)
 	}
 	perms["superAdmin"] = user.IsSuperAdmin
-	// The overview asks two questions -- "may this page be opened?" and "may it
-	// act?" -- and the two roles answer them from different columns: an admin from
-	// the permission bits, a reseller from their profile, whose stored mask Can()
-	// ignores by design. Resolving that here keeps it out of the templates, which
-	// would otherwise have to spell the disjunction at every control and at the nav
-	// entry, and would get it wrong once.
 	if user.IsReseller {
 		perms["accessOverview"], perms["manageOverview"] = resellerOverviewGrants(user)
 	}

@@ -482,6 +482,13 @@
 "alreadyExpired" = "Esta conta já expirou. Informe um novo número de dias para definir outro prazo; deixar o campo intacto mantém o prazo anterior."
 "summaryExpired" = "Expirada"
 "credential" = "Credencial"
+"creator" = "Criador"
+"all" = "Todos"
+"active" = "Ativo"
+"online" = "Online"
+"expiring" = "Expirando"
+"expired" = "Expirado"
+"disabled" = "Desativado"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Nunca"

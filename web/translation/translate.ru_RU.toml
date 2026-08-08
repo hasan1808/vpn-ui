@@ -482,6 +482,13 @@
 "alreadyExpired" = "Срок действия аккаунта уже истёк. Введите новое количество дней, чтобы задать новый срок; если не трогать это поле, прежний срок сохранится."
 "summaryExpired" = "Истёк"
 "credential" = "Учётные данные"
+"creator" = "Создатель"
+"all" = "Все"
+"active" = "Активные"
+"online" = "Онлайн"
+"expiring" = "Скоро истекает"
+"expired" = "Истёк"
+"disabled" = "Отключён"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Никогда"

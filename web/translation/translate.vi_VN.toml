@@ -482,6 +482,13 @@
 "alreadyExpired" = "Tài khoản này đã hết hạn. Nhập số ngày mới để đặt hạn mới; nếu không sửa ô này thì hạn cũ được giữ nguyên."
 "summaryExpired" = "Đã hết hạn"
 "credential" = "Thông tin đăng nhập"
+"creator" = "Người tạo"
+"all" = "Tất cả"
+"active" = "Đang hoạt động"
+"online" = "Trực tuyến"
+"expiring" = "Sắp hết hạn"
+"expired" = "Đã hết hạn"
+"disabled" = "Đã tắt"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Không bao giờ"
