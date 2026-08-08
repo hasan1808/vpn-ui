@@ -125,6 +125,15 @@ var defaultValueMap = map[string]string{
 	// row, every read of an undeclared key comes back as a failure, and the reader can
 	// no longer tell "no tunnels configured" from "the settings table is unreadable".
 	"vpnOutbounds": "",
+
+	// Auto SSL / Let's Encrypt defaults
+	"acmeEnable":    "false",
+	"acmeDomain":    "",
+	"acmeEmail":     "",
+	"acmeMethod":    "http",
+	"acmeCfToken":   "",
+	"acmeCertDir":   "/root/.acme.sh/certs/panel",
+	"acmeAutoRenew": "true",
 }
 
 // SettingService provides business logic for application settings management.

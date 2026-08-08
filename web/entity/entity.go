@@ -107,6 +107,15 @@ type AllSetting struct {
 	LdapDefaultExpiryDays int    `json:"ldapDefaultExpiryDays" form:"ldapDefaultExpiryDays"`
 	LdapDefaultLimitIP    int    `json:"ldapDefaultLimitIP" form:"ldapDefaultLimitIP"`
 	// JSON subscription routing rules
+
+	// Auto SSL / Let's Encrypt (ACME) settings
+	AcmeEnable    bool   `json:"acmeEnable" form:"acmeEnable"`       // Enable Auto SSL via Let's Encrypt
+	AcmeDomain    string `json:"acmeDomain" form:"acmeDomain"`       // Domain name for the certificate
+	AcmeEmail     string `json:"acmeEmail" form:"acmeEmail"`         // Email for ACME registration
+	AcmeMethod    string `json:"acmeMethod" form:"acmeMethod"`       // Challenge method: "http" or "dns"
+	AcmeCfToken   string `json:"acmeCfToken" form:"acmeCfToken"`     // Cloudflare API token (for DNS-01)
+	AcmeCertDir   string `json:"acmeCertDir" form:"acmeCertDir"`     // Directory to store certs
+	AcmeAutoRenew bool   `json:"acmeAutoRenew" form:"acmeAutoRenew"` // Enable auto-renewal
 }
 
 // CheckValid validates all settings in the AllSetting struct, checking IP addresses, ports, SSL certificates, and other configuration values.

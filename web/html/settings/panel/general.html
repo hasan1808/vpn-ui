@@ -94,6 +94,80 @@
     </a-collapse-panel>
     <a-collapse-panel key="3" header='{{ i18n "pages.settings.certs" }}'>
         <a-setting-list-item paddings="small">
+            <template #title>{{ i18n "pages.settings.autoSSL"}}</template>
+            <template #description>{{ i18n "pages.settings.autoSSLDesc"}}</template>
+            <template #control>
+                <a-switch v-model="allSetting.acmeEnable"></a-switch>
+            </template>
+        </a-setting-list-item>
+        <template v-if="allSetting.acmeEnable">
+            <a-setting-list-item paddings="small">
+                <template #title>{{ i18n "pages.settings.acmeDomain"}}</template>
+                <template #description>{{ i18n "pages.settings.acmeDomainDesc"}}</template>
+                <template #control>
+                    <a-input type="text" v-model="allSetting.acmeDomain" placeholder="example.com"></a-input>
+                </template>
+            </a-setting-list-item>
+            <a-setting-list-item paddings="small">
+                <template #title>{{ i18n "pages.settings.acmeEmail"}}</template>
+                <template #description>{{ i18n "pages.settings.acmeEmailDesc"}}</template>
+                <template #control>
+                    <a-input type="text" v-model="allSetting.acmeEmail" placeholder="admin@example.com"></a-input>
+                </template>
+            </a-setting-list-item>
+            <a-setting-list-item paddings="small">
+                <template #title>{{ i18n "pages.settings.acmeMethod"}}</template>
+                <template #description>{{ i18n "pages.settings.acmeMethodDesc"}}</template>
+                <template #control>
+                    <a-select :style="{ width: '100%' }" v-model="allSetting.acmeMethod"
+                        :dropdown-class-name="themeSwitcher.currentTheme">
+                        <a-select-option value="http">HTTP-01 (Standalone)</a-select-option>
+                        <a-select-option value="dns">DNS-01 (Cloudflare)</a-select-option>
+                    </a-select>
+                </template>
+            </a-setting-list-item>
+            <a-setting-list-item v-if="allSetting.acmeMethod === 'dns'" paddings="small">
+                <template #title>{{ i18n "pages.settings.acmeCfToken"}}</template>
+                <template #description>{{ i18n "pages.settings.acmeCfTokenDesc"}}</template>
+                <template #control>
+                    <a-input type="password" v-model="allSetting.acmeCfToken"></a-input>
+                </template>
+            </a-setting-list-item>
+            <a-setting-list-item paddings="small">
+                <template #title>{{ i18n "pages.settings.acmeCertDir"}}</template>
+                <template #description>{{ i18n "pages.settings.acmeCertDirDesc"}}</template>
+                <template #control>
+                    <a-input type="text" v-model="allSetting.acmeCertDir"></a-input>
+                </template>
+            </a-setting-list-item>
+            <a-setting-list-item paddings="small">
+                <template #title>{{ i18n "pages.settings.acmeAutoRenew"}}</template>
+                <template #description>{{ i18n "pages.settings.acmeAutoRenewDesc"}}</template>
+                <template #control>
+                    <a-switch v-model="allSetting.acmeAutoRenew"></a-switch>
+                </template>
+            </a-setting-list-item>
+            <a-setting-list-item paddings="small">
+                <template #title>{{ i18n "pages.settings.acmeIssue"}}</template>
+                <template #control>
+                    <a-button type="primary" :loading="acmeIssuing" @click="issueAcmeCert">
+                        [[ acmeIssuing ? i18n('pages.settings.acmeIssuing') : i18n('pages.settings.acmeIssueBtn') ]]
+                    </a-button>
+                </template>
+            </a-setting-list-item>
+            <a-setting-list-item v-if="acmeResult" paddings="small">
+                <template #title>{{ i18n "pages.settings.acmeResult"}}</template>
+                <template #control>
+                    <div :style="{ color: acmeResult.success ? '#52c41a' : '#ff4d4f' }">
+                        [[ acmeResult.message ]]
+                    </div>
+                    <a-textarea v-if="acmeResult.output" :value="acmeResult.output" :auto-size="{ minRows: 3, maxRows: 8 }"
+                        :style="{ marginTop: '8px', fontFamily: 'monospace', fontSize: '12px' }" readonly></a-textarea>
+                </template>
+            </a-setting-list-item>
+        </template>
+        <a-divider v-if="allSetting.acmeEnable" />
+        <a-setting-list-item paddings="small">
             <template #title>{{ i18n "pages.settings.publicKeyPath"}}</template>
             <template #description>{{ i18n "pages.settings.publicKeyPathDesc"}}</template>
             <template #control>

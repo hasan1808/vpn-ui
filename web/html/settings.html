@@ -144,6 +144,8 @@
       tgTestLoading: false,
       serviceLogAuto: false,
       serviceLogTimer: null,
+      acmeIssuing: false,
+      acmeResult: null,
       lang: LanguageManager.getLanguage(),
       inboundOptions: [],
       remarkModels: { i: 'Inbound', e: 'Email', o: 'Other' },
@@ -527,6 +529,25 @@
         const updatedNoises = [...this.noisesArray];
         updatedNoises[index] = { ...updatedNoises[index], applyTo: value };
         this.noisesArray = updatedNoises;
+      },
+      async issueAcmeCert() {
+        this.acmeIssuing = true;
+        this.acmeResult = null;
+        const msg = await HttpUtil.post("/panel/setting/acme/issue", {
+          domain: this.allSetting.acmeDomain,
+          email: this.allSetting.acmeEmail,
+          method: this.allSetting.acmeMethod,
+          cfToken: this.allSetting.acmeCfToken,
+          certDir: this.allSetting.acmeCertDir,
+        });
+        this.acmeIssuing = false;
+        if (msg && msg.obj) {
+          this.acmeResult = msg.obj;
+          if (msg.obj.success) {
+            this.allSetting.webCertFile = msg.obj.certPath;
+            this.allSetting.webKeyFile = msg.obj.keyPath;
+          }
+        }
       },
     },
     computed: {

@@ -1244,7 +1244,7 @@ var menuScript []byte
 // THIS copy and runs its --install locally; only the final --issue needs network.
 //
 //go:embed build/acme/acme.sh
-var acmeScript []byte
+var AcmeScript []byte
 
 // The Cloudflare DNS-01 hook from the same pinned acme.sh release. acme.sh 3.1.4
 // does NOT fetch a missing dnsapi plugin: `--dns dns_cf` just reports "Cannot find
@@ -1254,7 +1254,7 @@ var acmeScript []byte
 // on a box that cannot reach GitHub.
 //
 //go:embed build/acme/dnsapi/dns_cf.sh
-var acmeDnsCfHook []byte
+var AcmeDnsCfHook []byte
 
 // installAcmeScript implements `vpn-ui install-acme <path>`: write the embedded
 // acme.sh client (0755) to <path>, plus the Cloudflare DNS hook as
@@ -1270,7 +1270,7 @@ func installAcmeScript(args []string) {
 		fmt.Fprintln(os.Stderr, "usage: vpn-ui install-acme <path>")
 		os.Exit(1)
 	}
-	if err := backend.WriteFileAtomic(args[0], acmeScript, 0o755); err != nil {
+	if err := backend.WriteFileAtomic(args[0], AcmeScript, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to write the bundled acme.sh:", err)
 		os.Exit(1)
 	}
@@ -1279,7 +1279,7 @@ func installAcmeScript(args []string) {
 		fmt.Fprintln(os.Stderr, "Failed to create the acme.sh dnsapi directory:", err)
 		os.Exit(1)
 	}
-	if err := backend.WriteFileAtomic(filepath.Join(hookDir, "dns_cf.sh"), acmeDnsCfHook, 0o755); err != nil {
+	if err := backend.WriteFileAtomic(filepath.Join(hookDir, "dns_cf.sh"), AcmeDnsCfHook, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to write the bundled Cloudflare DNS hook:", err)
 		os.Exit(1)
 	}

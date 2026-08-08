@@ -68,6 +68,10 @@ func (a *SettingController) initRouter(g *gin.RouterGroup) {
 	// Writes a systemd unit as root: escalation-class, so no permission bit stands
 	// in for it.
 	g.POST("/service", requireSuperAdmin(), a.saveService)
+	// Auto SSL / Let's Encrypt
+	g.POST("/acme/issue", a.acmeIssue)
+	g.GET("/acme/status", a.acmeStatus)
+	g.POST("/acme/renew", a.acmeRenew)
 }
 
 // serviceStatus returns the current systemd unit state for the panel.
@@ -214,4 +218,34 @@ func (a *SettingController) updateTwoFactor(c *gin.Context) {
 		return
 	}
 	jsonMsg(c, I18nWeb(c, "pages.settings.security.twoFactor"), nil)
+}
+
+// acmeIssue requests a Let's Encrypt certificate via ACME
+func (a *SettingController) acmeIssue(c *gin.Context) {
+	var req service.AcmeIssueRequest
+	if err := c.ShouldBind(&req); err != nil {
+		jsonMsg(c, "ACME", err)
+		return
+	}
+	result := service.GetAcmeService().IssueCert(req)
+	jsonObj(c, result, nil)
+}
+
+// acmeStatus returns the current certificate status
+func (a *SettingController) acmeStatus(c *gin.Context) {
+	result := service.GetAcmeService().GetCertStatus()
+	jsonObj(c, result, nil)
+}
+
+// acmeRenew renews the certificate for a given domain
+func (a *SettingController) acmeRenew(c *gin.Context) {
+	var req struct {
+		Domain string `json:"domain"`
+	}
+	if err := c.ShouldBind(&req); err != nil {
+		jsonMsg(c, "ACME", err)
+		return
+	}
+	result := service.GetAcmeService().RenewCert(req.Domain)
+	jsonObj(c, result, nil)
 }
