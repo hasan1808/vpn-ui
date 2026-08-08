@@ -170,7 +170,7 @@
 
 .bo-topbar {
   background:var(--surface); border-bottom:1px solid var(--border);
-  z-index:10; flex:0 0 auto;
+  z-index:25; flex:0 0 auto;
   box-shadow:var(--shadow-sm);
 }
 .bo-topbar-inner {
