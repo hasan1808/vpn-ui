@@ -198,6 +198,10 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 			isExpiring := row.ExpiryTime > 0 && row.ExpiryTime <= now+expireDiffMs && !isExpired
 			isDisabled := !row.Enable
 			hasTraffic := row.TotalGB <= 0 || (row.Up+row.Down) < row.TotalGB
+			isOnline := false
+			if t := usage[key]; t != nil && t.LastOnline > 0 {
+				isOnline = (now - t.LastOnline) < 5*60*1000
+			}
 
 			switch statusFilter {
 			case "active":
@@ -214,6 +218,10 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 				}
 			case "disabled":
 				if !isDisabled {
+					continue
+				}
+			case "online":
+				if !isOnline {
 					continue
 				}
 			}
