@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -1166,6 +1167,108 @@ func (s *ServerService) GetDb() ([]byte, error) {
 	}
 
 	return fileContents, nil
+}
+
+// LocalBackupInfo describes one database backup stored on the panel.
+type LocalBackupInfo struct {
+	FileName string `json:"fileName"`
+	Size     int64  `json:"size"`
+	Created  int64  `json:"created"` // unix seconds
+}
+
+// GetBackupFolder ensures the local backup folder exists and returns its path.
+func (s *ServerService) GetBackupFolder() (string, error) {
+	dir := config.GetBackupFolderPath()
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// CreateLocalBackup checkpoints the live DB and copies it into the backup folder
+// with a timestamped name, returning the created backup. The panel keeps on
+// working while the copy is made; this is the on-panel twin of the browser
+// download (getDb), so an operator can restore a known-good state later without
+// having a copy on their own machine.
+func (s *ServerService) CreateLocalBackup() (*LocalBackupInfo, error) {
+	if err := database.Checkpoint(); err != nil {
+		return nil, err
+	}
+	dir, err := s.GetBackupFolder()
+	if err != nil {
+		return nil, err
+	}
+	name := fmt.Sprintf("vpn-ui_%s.db", time.Now().Format("20060102_150405"))
+	dst := filepath.Join(dir, name)
+	src, err := os.Open(config.GetDBPath())
+	if err != nil {
+		return nil, err
+	}
+	defer src.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(out, src); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return nil, err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return nil, err
+	}
+	st, err := os.Stat(dst)
+	if err != nil {
+		return nil, err
+	}
+	return &LocalBackupInfo{FileName: name, Size: st.Size(), Created: st.ModTime().Unix()}, nil
+}
+
+// ListLocalBackups returns the database backups stored on the panel, newest first.
+func (s *ServerService) ListLocalBackups() ([]LocalBackupInfo, error) {
+	dir, err := s.GetBackupFolder()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []LocalBackupInfo
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".db") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		out = append(out, LocalBackupInfo{FileName: e.Name(), Size: info.Size(), Created: info.ModTime().Unix()})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Created > out[j].Created })
+	return out, nil
+}
+
+// RestoreLocalBackup restores the named on-panel backup over the current
+// database. It reuses ImportDB wholesale, so the backup is validated, migrated
+// to the current schema, and Xray is restarted exactly as an uploaded file would
+// be. The name is strictly validated to stop path traversal.
+func (s *ServerService) RestoreLocalBackup(fileName string) error {
+	if fileName == "" || strings.Contains(fileName, "/") || strings.Contains(fileName, "\\") ||
+		strings.Contains(fileName, "..") {
+		return common.NewErrorf("Invalid backup name: %q", fileName)
+	}
+	dir, err := s.GetBackupFolder()
+	if err != nil {
+		return err
+	}
+	src, err := os.Open(filepath.Join(dir, fileName))
+	if err != nil {
+		return common.NewErrorf("Backup not found: %v", err)
+	}
+	defer src.Close()
+	return s.ImportDB(src)
 }
 
 func (s *ServerService) ImportDB(file multipart.File) error {

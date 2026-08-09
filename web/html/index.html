@@ -973,12 +973,38 @@
     </a-list>
   </a-modal>
   <a-modal id="restore-modal" v-model="restoreModal.visible" title='{{ i18n "pages.index.restore" }}' :closable="true"
-    footer="" :class="themeSwitcher.currentTheme">
+    footer="" :class="themeSwitcher.currentTheme" @open="loadLocalBackups">
+    <div :style="{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }">
+      <span :style="{ fontWeight: 500 }">{{ i18n "pages.index.localBackups" }}</span>
+      <a-button size="small" type="primary" ghost :loading="restoreModal.creating" @click="createLocalBackup">
+        {{ i18n "pages.index.createBackup" }}
+      </a-button>
+    </div>
+    <a-list class="ant-backup-list w-100" bordered :loading="restoreModal.loading">
+      <a-list-item v-if="!restoreModal.loading && localBackups.length === 0" class="ant-backup-list-item">
+        <a-list-item-meta>
+          <template #title>{{ i18n "pages.index.noLocalBackups" }}</template>
+          <template #description>{{ i18n "pages.index.noLocalBackupsDesc" }}</template>
+        </a-list-item-meta>
+      </a-list-item>
+      <a-list-item v-for="b in localBackups" :key="b.fileName" class="ant-backup-list-item">
+        <a-list-item-meta>
+          <template #title><span class="num">[[ b.fileName ]]</span></template>
+          <template #description>
+            [[ formatBackupTime(b.created) ]] &middot; [[ formatBytes(b.size) ]]
+          </template>
+        </a-list-item-meta>
+        <a-button @click="restoreLocalBackup(b.fileName)" type="primary" size="small" icon="reload">
+          {{ i18n "pages.index.restore" }}
+        </a-button>
+      </a-list-item>
+    </a-list>
+    <a-divider :style="{ margin: '16px 0 12px' }"></a-divider>
     <a-list class="ant-backup-list w-100" bordered>
       <a-list-item class="ant-backup-list-item">
         <a-list-item-meta>
-          <template #title>{{ i18n "pages.index.importDatabase" }}</template>
-          <template #description>{{ i18n "pages.index.importDatabaseDesc" }}</template>
+          <template #title>{{ i18n "pages.index.restoreFromVpnUi" }}</template>
+          <template #description>{{ i18n "pages.index.restoreFromVpnUiDesc" }}</template>
         </a-list-item-meta>
         <a-button @click="importDatabase()" type="primary" icon="upload" />
       </a-list-item>
@@ -1673,6 +1699,8 @@
 
   const restoreModal = {
     visible: false,
+    loading: false,
+    creating: false,
     show() {
       this.visible = true;
     },
@@ -1707,6 +1735,7 @@
       xraylogModal,
       backupModal,
       restoreModal,
+      localBackups: [],
       loadingTip: '{{ i18n "loading"}}',
       showAlert: false,
       showIp: false,
@@ -2233,6 +2262,74 @@
       },
       openRestore() {
         restoreModal.show();
+      },
+      formatBackupTime(ts) {
+        if (!ts) return '';
+        return typeof moment !== 'undefined' ? moment(ts * 1000).format('YYYY-MM-DD HH:mm') : String(ts);
+      },
+      formatBytes(bytes) {
+        if (bytes === undefined || bytes === null || isNaN(bytes)) return '';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let i = 0;
+        let v = Number(bytes);
+        while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+        return v.toFixed(v >= 10 || i === 0 ? 0 : 1) + ' ' + units[i];
+      },
+      async loadLocalBackups() {
+        restoreModal.loading = true;
+        try {
+          const msg = await HttpUtil.post('/panel/api/server/backupList');
+          if (msg.success && Array.isArray(msg.obj)) {
+            this.localBackups = msg.obj;
+          }
+        } catch (e) {
+          console.error(e);
+        } finally {
+          restoreModal.loading = false;
+        }
+      },
+      async createLocalBackup() {
+        restoreModal.creating = true;
+        try {
+          const msg = await HttpUtil.post('/panel/api/server/createBackup');
+          if (!msg.success) {
+            this.$message.error(msg.msg || '{{ i18n "pages.index.createBackupError" }}');
+            return;
+          }
+          this.$message.success('{{ i18n "pages.index.createBackupSuccess" }}');
+          await this.loadLocalBackups();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          restoreModal.creating = false;
+        }
+      },
+      restoreLocalBackup(fileName) {
+        this.$confirm({
+          title: '{{ i18n "pages.index.restoreBackupConfirmTitle" }}',
+          content: `[[ fileName ]]`,
+          class: themeSwitcher.currentTheme,
+          okText: '{{ i18n "confirm" }}',
+          cancelText: '{{ i18n "cancel" }}',
+          onOk: async () => {
+            this.loading(true);
+            const formData = new FormData();
+            formData.append('fileName', fileName);
+            const msg = await HttpUtil.post('/panel/api/server/restoreBackup', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            this.loading(false);
+            if (!msg.success) return;
+            this.loading(true);
+            const restartMsg = await HttpUtil.post("/panel/setting/restartPanel");
+            this.loading(false);
+            if (restartMsg.success) {
+              this.loading(true);
+              await PromiseUtil.sleep(5000);
+              location.reload();
+            }
+          },
+        });
       },
       pushHistory() {
         const cap = this.HISTORY_POINTS;

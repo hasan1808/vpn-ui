@@ -102,6 +102,17 @@ func GetDBPath() string {
 	return fmt.Sprintf("%s/%s.db", GetDBFolderPath(), dbBaseName)
 }
 
+// GetBackupFolderPath returns the folder that holds local database backups made
+// by the panel itself. It lives under the DB folder so a copied install carries
+// its backups with it; overridable with VPNUI_BACKUP_FOLDER.
+func GetBackupFolderPath() string {
+	backupFolderPath := os.Getenv("VPNUI_BACKUP_FOLDER")
+	if backupFolderPath != "" {
+		return backupFolderPath
+	}
+	return fmt.Sprintf("%s/backups", GetDBFolderPath())
+}
+
 // LegacyDBPaths lists previous database names next to the binary to migrate from
 // on first init when the current DB doesn't exist yet:
 //   - <bindir>/x-ui.db — the prior next-to-binary name (before the vpn-ui rename)

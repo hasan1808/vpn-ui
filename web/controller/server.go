@@ -131,6 +131,9 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.POST("/xraylogs/:count", requireOverviewManage(), a.getXrayLogs)
 	g.POST("/importDB", requireOverviewManage(), a.importDB)
 	g.POST("/importForeignDB", requireOverviewManage(), a.importForeignDB)
+	g.POST("/backupList", requireOverviewManage(), a.getBackupList)
+	g.POST("/createBackup", requireOverviewManage(), a.createBackup)
+	g.POST("/restoreBackup", requireOverviewManage(), a.restoreBackup)
 	g.POST("/getNewEchCert", a.getNewEchCert)
 }
 
@@ -719,6 +722,37 @@ func (a *ServerController) importForeignDB(c *gin.Context) {
 		return
 	}
 	jsonObj(c, report, nil)
+}
+
+// getBackupList returns the database backups stored on the panel itself.
+func (a *ServerController) getBackupList(c *gin.Context) {
+	backups, err := a.serverService.ListLocalBackups()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.index.getBackupListError"), err)
+		return
+	}
+	jsonObj(c, backups, nil)
+}
+
+// createBackup saves a copy of the current database into the panel's backup
+// folder so it can be restored from the panel later without a local copy.
+func (a *ServerController) createBackup(c *gin.Context) {
+	backup, err := a.serverService.CreateLocalBackup()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.index.createBackupError"), err)
+		return
+	}
+	jsonObj(c, backup, nil)
+}
+
+// restoreBackup restores a named on-panel backup over the current database.
+func (a *ServerController) restoreBackup(c *gin.Context) {
+	fileName := c.PostForm("fileName")
+	if err := a.serverService.RestoreLocalBackup(fileName); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.index.importDatabaseError"), err)
+		return
+	}
+	jsonObj(c, I18nWeb(c, "pages.index.importDatabaseSuccess"), nil)
 }
 
 // getNewX25519Cert generates a new X25519 certificate.
