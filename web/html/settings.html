@@ -716,7 +716,7 @@
         get: function () {
           if (!this.allSetting) return [];
           var alerts = []
-          if (window.location.protocol !== "https:") alerts.push('{{ i18n "secAlertSSL" }}');
+          if (window.location.protocol !== "https:") alerts.push('{{ i18n "secAlertSsl" }}');
           if (this.allSetting.webPort === 2083) alerts.push('{{ i18n "secAlertPanelPort" }}');
           panelPath = window.location.pathname.split('/').length < 4
           if (panelPath && this.allSetting.webBasePath == '/') alerts.push('{{ i18n "secAlertPanelURI" }}');
