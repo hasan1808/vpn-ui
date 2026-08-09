@@ -365,7 +365,11 @@ func validatePanelBinaryURL(raw string) (string, error) {
 	switch u.Scheme {
 	case "http", "https":
 	case "":
-		return "", errors.New("that URL is missing its scheme, it has to start with http:// or https://")
+		raw = "https://" + raw
+		u, err = url.Parse(raw)
+		if err != nil {
+			return "", fmt.Errorf("that is not a valid URL: %w", err)
+		}
 	default:
 		return "", fmt.Errorf("%s:// cannot be downloaded from, use http:// or https://", u.Scheme)
 	}
