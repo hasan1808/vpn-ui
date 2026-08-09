@@ -276,6 +276,7 @@
 "title" = "インバウンド一覧"
 "totalDownUp" = "総アップロード / ダウンロード"
 "totalUsage" = "総使用量"
+"outboundTraffic" = "Outbound Traffic"
 "inboundCount" = "インバウンド数"
 "operate" = "メニュー"
 "enable" = "有効化"

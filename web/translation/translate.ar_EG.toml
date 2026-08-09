@@ -276,6 +276,7 @@
 "title" = "الإدخالات"
 "totalDownUp" = "إجمالي المرسل/المستقبل"
 "totalUsage" = "إجمالي الاستخدام"
+"outboundTraffic" = "Outbound Traffic"
 "inboundCount" = "عدد الإدخالات"
 "operate" = "القائمة"
 "enable" = "مفعل"

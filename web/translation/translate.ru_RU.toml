@@ -276,6 +276,7 @@
 "title" = "Подключения"
 "totalDownUp" = "Отправлено/получено"
 "totalUsage" = "Всего трафика"
+"outboundTraffic" = "Outbound Traffic"
 "inboundCount" = "Всего подключений"
 "operate" = "Меню"
 "enable" = "Включить"

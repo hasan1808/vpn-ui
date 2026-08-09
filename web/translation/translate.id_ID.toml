@@ -276,6 +276,7 @@
 "title" = "Masuk"
 "totalDownUp" = "Total Terkirim/Diterima"
 "totalUsage" = "Penggunaan Total"
+"outboundTraffic" = "Outbound Traffic"
 "inboundCount" = "Total Masuk"
 "operate" = "Menu"
 "enable" = "Aktifkan"

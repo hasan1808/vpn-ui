@@ -276,6 +276,7 @@
 "title" = "Gelenler"
 "totalDownUp" = "Toplam Gönderilen/Alınan"
 "totalUsage" = "Toplam Kullanım"
+"outboundTraffic" = "Outbound Traffic"
 "inboundCount" = "Toplam Gelen"
 "operate" = "Menü"
 "enable" = "Etkin"

@@ -25,7 +25,7 @@
                    gap over a --border background with opaque cells, so the
                    dividers come from the grid rather than per-cell borders. -->
               <div class="bo-tile" :style="{ padding: '0', overflow: 'hidden' }">
-                <div class="bo-stat-grid bo-stat-grid--5">
+                <div class="bo-stat-grid bo-stat-grid--6">
                   <div class="bo-stat-cell">
                     <span class="bo-stat-cell-label">{{ i18n "pages.inbounds.totalDownUp" }}</span>
                     <span class="bo-stat-cell-value num">[[ SizeFormatter.sizeFormat(total.up) ]] / [[ SizeFormatter.sizeFormat(total.down) ]]</span>
@@ -33,6 +33,10 @@
                   <div class="bo-stat-cell">
                     <span class="bo-stat-cell-label">{{ i18n "pages.inbounds.totalUsage" }}</span>
                     <span class="bo-stat-cell-value num">[[ SizeFormatter.sizeFormat(total.up + total.down) ]]</span>
+                  </div>
+                  <div class="bo-stat-cell">
+                    <span class="bo-stat-cell-label">{{ i18n "pages.inbounds.outboundTraffic" }}</span>
+                    <span class="bo-stat-cell-value num">[[ SizeFormatter.sizeFormat(outboundTrafficTotal.up) ]] / [[ SizeFormatter.sizeFormat(outboundTrafficTotal.down) ]]</span>
                   </div>
                   <div class="bo-stat-cell">
                     <span class="bo-stat-cell-label">{{ i18n "pages.inbounds.allTimeTrafficUsage" }}</span>
@@ -962,6 +966,7 @@
       pageSize: 0,
       provisioned: true,
       missingProtocols: [],
+      outboundsTraffic: [],
     },
     methods: {
       toggleSidebar() {
@@ -981,11 +986,18 @@
 
         await this.getLastOnlineMap();
         await this.getOnlineUsers();
+        await this.getOutboundsTraffic();
 
         this.setInbounds(msg.obj);
         setTimeout(() => {
           this.refreshing = false;
         }, 500);
+      },
+      async getOutboundsTraffic() {
+        const msg = await HttpUtil.get("/panel/xray/getOutboundsTraffic");
+        if (msg.success) {
+          this.outboundsTraffic = msg.obj || [];
+        }
       },
       // Re-reads the caller's own reseller balance after anything that can move it.
       // Deliberately failure-tolerant: the chip is informational, the server is what
@@ -1789,6 +1801,13 @@
           }
         });
 
+        // Listen for outbounds traffic updates
+        window.wsClient.on('outbounds', (payload) => {
+          if (payload) {
+            this.outboundsTraffic = payload;
+          }
+        });
+
         // Listen for traffic updates
         window.wsClient.on('traffic', (payload) => {
           // Note: Do NOT update total consumed traffic (stats.up, stats.down) from this event
@@ -1915,6 +1934,14 @@
           depleted: depleted,
           expiring: expiring,
         };
+      },
+      outboundTrafficTotal() {
+        let up = 0, down = 0;
+        this.outboundsTraffic.forEach(t => {
+          up += t.up || 0;
+          down += t.down || 0;
+        });
+        return { up, down };
       }
     },
   });

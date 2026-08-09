@@ -276,6 +276,7 @@
 "title" = "Вхідні"
 "totalDownUp" = "Всього надісланих/отриманих"
 "totalUsage" = "Всього використанно"
+"outboundTraffic" = "Outbound Traffic"
 "inboundCount" = "Загальна кількість вхідних"
 "operate" = "Меню"
 "enable" = "Увімкнено"

@@ -276,6 +276,7 @@
 "title" = "Entradas"
 "totalDownUp" = "Subidas/Descargas Totales"
 "totalUsage" = "Uso Total"
+"outboundTraffic" = "Outbound Traffic"
 "inboundCount" = "Número de Entradas"
 "operate" = "Menú"
 "enable" = "Habilitar"

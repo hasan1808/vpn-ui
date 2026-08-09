@@ -787,6 +787,10 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 @media (max-width:1100px) { .bo-stat-grid--5 { grid-template-columns:repeat(2,1fr); } }
 @media (max-width:560px) { .bo-stat-grid--5 { grid-template-columns:1fr; } }
 
+.bo-stat-grid--6 { grid-template-columns:repeat(6,1fr); }
+@media (max-width:1100px) { .bo-stat-grid--6 { grid-template-columns:repeat(3,1fr); } }
+@media (max-width:560px) { .bo-stat-grid--6 { grid-template-columns:1fr; } }
+
 .bo-stat-cell { background:var(--surface); padding:14px 16px; display:flex; flex-direction:column; gap:5px; min-width:0; }
 .bo-stat-cell-label {
   font-size:var(--fs-xs); font-weight:var(--fw-semibold);

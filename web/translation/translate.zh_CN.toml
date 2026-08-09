@@ -276,6 +276,7 @@
 "title" = "入站列表"
 "totalDownUp" = "总上传 / 下载"
 "totalUsage" = "总用量"
+"outboundTraffic" = "Outbound Traffic"
 "inboundCount" = "入站数量"
 "operate" = "菜单"
 "enable" = "启用"

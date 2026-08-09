@@ -419,6 +419,7 @@
 "title" = "Inbounds"
 "totalDownUp" = "Total Sent/Received"
 "totalUsage" = "Total Usage"
+"outboundTraffic" = "Outbound Traffic"
 "inboundCount" = "Total Inbounds"
 "operate" = "Menu"
 "enable" = "Enabled"
