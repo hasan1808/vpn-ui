@@ -376,6 +376,85 @@ func (s *ServerService) UpdatePanel() error {
 	return nil
 }
 
+// ReinstallPanel downloads the binary for the CURRENT version and reinstalls it.
+// Useful when the operator suspects a corrupt binary or wants a clean slate without
+// changing versions. The download URL targets the release tag matching the running
+// version rather than /releases/latest.
+func (s *ServerService) ReinstallPanel() error {
+	if !panelUpdateInFlight.CompareAndSwap(false, true) {
+		return fmt.Errorf("a panel update is already in progress")
+	}
+	resetUpdateCounters()
+	setUpdateProgress(updatePhaseDownloading, 0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	setPanelUpdateCancel(cancel)
+
+	restarting := false
+	cancelled := false
+	defer func() {
+		setPanelUpdateCancel(nil)
+		if !restarting {
+			panelUpdateSpeed.Store(0)
+			if cancelled {
+				setUpdateProgress(updatePhaseCancelled, 0)
+			} else {
+				setUpdateProgress(updatePhaseError, 0)
+			}
+			panelUpdateInFlight.Store(false)
+		}
+	}()
+
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot resolve own path: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+
+	cur := config.GetVersion()
+	reinstallURL := fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", panelRepo, cur, PanelAsset)
+
+	tmp := exe + ".new"
+	logger.Infof("panel reinstall: downloading v%s from %s", cur, reinstallURL)
+	if err := DownloadPanelBinary(ctx, tmp, reinstallURL); err != nil {
+		_ = os.Remove(tmp)
+		if ctx.Err() != nil {
+			cancelled = true
+			logger.Info("panel reinstall: cancelled by user during download")
+			return ErrPanelUpdateCancelled
+		}
+		return err
+	}
+	if !IsCompatibleBinary(tmp) {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("downloaded file is not a %s Linux binary", runtime.GOARCH)
+	}
+	if !HasSQLiteSupport(tmp) {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("downloaded binary lacks CGO/SQLite support")
+	}
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+
+	if ctx.Err() != nil {
+		_ = os.Remove(tmp)
+		cancelled = true
+		logger.Info("panel reinstall: cancelled by user just before installing")
+		return ErrPanelUpdateCancelled
+	}
+
+	if err := installPanelBinary(tmp, exe); err != nil {
+		return err
+	}
+	restarting = true
+	return nil
+}
+
 // installPanelBinary is the point of no return, shared by the download updater and
 // the update-from-file path: snapshot the DB, keep a rollback copy of the running
 // binary, swap `staged` in, record what was replaced, and restart. One

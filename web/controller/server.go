@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/global"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
 	"github.com/mhsanaei/3x-ui/v2/web/session"
@@ -113,6 +115,8 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.POST("/fetchPanelBinary", requireOverviewManage(), a.fetchPanelBinary)
 	g.POST("/applyPanelBinary", requireOverviewManage(), a.applyPanelBinary)
 	g.POST("/discardPanelBinary", requireOverviewManage(), a.discardPanelBinary)
+	g.POST("/reinstallPanel", requireOverviewManage(), a.reinstallPanel)
+	g.POST("/reboot", requireOverviewManage(), a.rebootServer)
 	g.POST("/restartXrayService", requirePerm(model.PermXraySettings), a.restartXrayService)
 	g.POST("/installXray/:version", requirePerm(model.PermXraySettings), a.installXray)
 	// Geofile updates are reached only from the overview's geofiles dialog, so they
@@ -368,6 +372,39 @@ func (a *ServerController) updatePanel(c *gin.Context) {
 		return
 	}
 	jsonObj(c, nil, nil)
+}
+
+// reinstallPanel re-downloads the current version binary and reinstalls it.
+// Useful when the operator suspects a corrupt binary or wants a clean slate
+// without changing versions.
+func (a *ServerController) reinstallPanel(c *gin.Context) {
+	err := a.serverService.ReinstallPanel()
+	if errors.Is(err, service.ErrPanelUpdateCancelled) {
+		jsonObj(c, gin.H{"cancelled": true}, nil)
+		return
+	}
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.index.panelReinstall"), err)
+		return
+	}
+	jsonObj(c, nil, nil)
+}
+
+// rebootServer restarts the host machine after a short delay. The HTTP response
+// is delivered before the machine goes down.
+func (a *ServerController) rebootServer(c *gin.Context) {
+	logger.Info("server: reboot requested from dashboard")
+	go func() {
+		time.Sleep(1500 * time.Millisecond)
+		if err := exec.Command("systemctl", "reboot").Run(); err == nil {
+			return
+		}
+		if err := exec.Command("reboot").Run(); err == nil {
+			return
+		}
+		_ = exec.Command("shutdown", "-r", "now").Run()
+	}()
+	jsonMsg(c, I18nWeb(c, "pages.index.rebooting"), nil)
 }
 
 // uploadPanelBinary receives a binary the operator picked in the browser, stages it

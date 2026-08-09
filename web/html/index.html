@@ -517,6 +517,16 @@
           </button>
           <input type="file" ref="panelBinaryInput" :style="{ display: 'none' }"
             @change="onPanelBinaryPicked">
+          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
+            v-if="!panelUpdate.updating" :disabled="panelUpdate.checking" @click="reinstallPanel">
+            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
+            {{ i18n "pages.index.reinstall" }}
+          </button>
+          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
+            v-if="!panelUpdate.updating" :disabled="rebooting" @click="confirmReboot">
+            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-power"></use></svg>
+            {{ i18n "pages.index.rebootServer" }}
+          </button>
           {{ end }}
         </div>
       </div>
@@ -676,6 +686,18 @@
     <p class="bo-relnotes-foot" v-if="updatedModal.from && updatedModal.from !== updatedModal.to">
       {{ i18n "pages.index.updateDoneFrom" }} <span class="num">v[[ updatedModal.from ]]</span>
     </p>
+  </a-modal>
+
+  <!-- Rebooting overlay: shown after the operator clicks Reboot Server -->
+  <a-modal :visible="rebooting" :title="null" :footer="null" :closable="false"
+    :maskClosable="false" :keyboard="false" :class="themeSwitcher.currentTheme"
+    :width="isMobile ? '95%' : '420px'">
+    <div style="text-align:center; padding:24px 0;">
+      <a-icon type="poweroff" :style="{ fontSize: '48px', color: 'var(--primary)', marginBottom: '16px', display: 'block' }"></a-icon>
+      <div :style="{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }">{{ i18n "pages.index.rebooting" }}</div>
+      <div :style="{ color: 'var(--text-3)', marginBottom: '16px' }">{{ i18n "pages.index.rebootingDesc" }}</div>
+      <a-spin :spinning="true"></a-spin>
+    </div>
   </a-modal>
 
   <a-modal id="version-modal" v-model="versionModal.visible" title='{{ i18n "pages.index.xraySwitch" }}'
@@ -1684,6 +1706,7 @@
         url: '{{ i18n "pages.index.customGeoValidationUrl" }}',
       },
       coreStatuses: [],
+      rebooting: false,
       panelUpdate: { checking: false, checked: false, available: false, latest: '', current: '', notes: '', publishedAt: '', url: '', updating: false, cancelling: false, error: '', percent: 0, phase: '', speed: 0, bytes: 0, total: 0 },
       // The dialog that asks which of the two manual-update sources to use. It holds
       // nothing else: whichever is picked hands straight over to that source's own
@@ -2365,6 +2388,85 @@
         this.panelUpdate.speed = 0;
         this.panelUpdate.bytes = 0;
         this.panelUpdate.total = 0;
+      },
+      // --- Reinstall current version ------------------------------------
+      // Re-downloads the current version binary and reinstalls it.
+      async reinstallPanel() {
+        this.panelUpdate.updating = true;
+        this.panelUpdate.cancelling = false;
+        this.panelUpdate.error = '';
+        this.panelUpdate.percent = 0;
+        this.panelUpdate.phase = 'downloading';
+        this.panelUpdate.speed = 0;
+        this.panelUpdate.bytes = 0;
+        this.panelUpdate.total = 0;
+        const poll = setInterval(async () => {
+          try {
+            const p = await HttpUtil.get('/panel/api/server/updateProgress');
+            if (p && p.success && p.obj) {
+              const phase = p.obj.phase;
+              if (phase === 'error' || phase === 'cancelled') return;
+              if (typeof p.obj.percent === 'number') this.panelUpdate.percent = p.obj.percent;
+              if (phase) this.panelUpdate.phase = phase;
+              if (typeof p.obj.speed === 'number') this.panelUpdate.speed = p.obj.speed;
+              if (typeof p.obj.bytes === 'number') this.panelUpdate.bytes = p.obj.bytes;
+              if (typeof p.obj.total === 'number') this.panelUpdate.total = p.obj.total;
+            }
+          } catch (e) { /* panel restarting - ignore */ }
+        }, 700);
+        try {
+          const msg = await HttpUtil.post('/panel/api/server/reinstallPanel');
+          clearInterval(poll);
+          if (msg && msg.success && msg.obj && msg.obj.cancelled) {
+            this.resetPanelUpdate();
+            return;
+          }
+          if (!msg || !msg.success) {
+            this.panelUpdate.updating = false;
+            this.panelUpdate.cancelling = false;
+            this.panelUpdate.speed = 0;
+            this.panelUpdate.error = (msg && msg.msg) || 'reinstall failed';
+            return;
+          }
+          this.panelUpdate.phase = 'restarting';
+          this.panelUpdate.percent = 100;
+          this.panelUpdate.speed = 0;
+          setTimeout(() => location.reload(), 9000);
+        } catch (e) {
+          clearInterval(poll);
+          this.panelUpdate.updating = false;
+          this.panelUpdate.cancelling = false;
+          this.panelUpdate.speed = 0;
+          this.panelUpdate.error = '' + e;
+        }
+      },
+      // --- Reboot server -----------------------------------------------
+      confirmReboot() {
+        this.$confirm({
+          title: '{{ i18n "pages.index.rebootConfirmTitle" }}',
+          content: '{{ i18n "pages.index.rebootConfirmContent" }}',
+          okText: '{{ i18n "pages.index.rebootServer" }}',
+          okType: 'danger',
+          cancelText: '{{ i18n "cancel" }}',
+          class: this.themeSwitcher.currentTheme,
+          onOk: () => this.doReboot(),
+        });
+      },
+      async doReboot() {
+        try {
+          const msg = await HttpUtil.post('/panel/api/server/reboot');
+          if (!msg || !msg.success) return;
+          this.rebooting = true;
+          const probe = () => {
+            fetch('panel/api/server/status', { method: 'GET', cache: 'no-store' })
+              .then((r) => {
+                if (r.ok || r.status === 401 || r.status === 302) { location.reload(); }
+                else { setTimeout(probe, 5000); }
+              })
+              .catch(() => { setTimeout(probe, 5000); });
+          };
+          setTimeout(probe, 20000);
+        } catch (e) { /* ignore */ }
       },
       // --- manual update: which source ----------------------------------
       // The picker closes on the way through rather than staying behind whatever it
