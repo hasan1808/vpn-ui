@@ -527,6 +527,11 @@
             <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-power"></use></svg>
             {{ i18n "pages.index.rebootServer" }}
           </button>
+          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
+            v-if="!panelUpdate.updating" @click="openRestore">
+            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
+            {{ i18n "pages.index.restore" }}
+          </button>
           {{ end }}
         </div>
       </div>
@@ -958,6 +963,18 @@
         </a-list-item-meta>
         <a-button @click="exportDatabase()" type="primary" icon="download" />
       </a-list-item>
+      <a-list-item class="ant-backup-list-item">
+        <a-list-item-meta>
+          <template #title>{{ i18n "pages.index.importDatabase" }}</template>
+          <template #description>{{ i18n "pages.index.importDatabaseDesc" }}</template>
+        </a-list-item-meta>
+        <a-button @click="importDatabase()" type="primary" icon="upload" />
+      </a-list-item>
+    </a-list>
+  </a-modal>
+  <a-modal id="restore-modal" v-model="restoreModal.visible" title='{{ i18n "pages.index.restore" }}' :closable="true"
+    footer="" :class="themeSwitcher.currentTheme">
+    <a-list class="ant-backup-list w-100" bordered>
       <a-list-item class="ant-backup-list-item">
         <a-list-item-meta>
           <template #title>{{ i18n "pages.index.importDatabase" }}</template>
@@ -1654,6 +1671,16 @@
     },
   };
 
+  const restoreModal = {
+    visible: false,
+    show() {
+      this.visible = true;
+    },
+    hide() {
+      this.visible = false;
+    },
+  };
+
   const customGeoColumns = [
     { title: '{{ i18n "pages.index.customGeoExtColumn" }}', key: 'extDat', scopedSlots: { customRender: 'extDat' }, ellipsis: true },
     { title: '{{ i18n "pages.index.customGeoLastUpdated" }}', key: 'lastUpdatedAt', scopedSlots: { customRender: 'lastUpdatedAt' }, width: 160 },
@@ -1679,6 +1706,7 @@
       logModal,
       xraylogModal,
       backupModal,
+      restoreModal,
       loadingTip: '{{ i18n "loading"}}',
       showAlert: false,
       showIp: false,
@@ -2204,7 +2232,7 @@
         logModal.loading = false;
       },
       openRestore() {
-        this.importDatabase();
+        restoreModal.show();
       },
       pushHistory() {
         const cap = this.HISTORY_POINTS;
