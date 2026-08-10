@@ -399,10 +399,12 @@
     el: '#app',
     // ClientActionsMixin brings every client action, the selection state and the
     // bulk-operation run; this page only has to supply the four hooks and the
-    // state it names. MediaQueryMixin went with the per-inbound tables that used
-    // to need a separate mobile column set: the expander is a flex list now and
-    // reflows on its own.
-    mixins: [ClientActionsMixin],
+    // state it names. MediaQueryMixin is kept for isMobile even though the
+    // per-inbound tables no longer need a separate mobile column set (the
+    // expander is a flex list now and reflows on its own): the shell's hamburger
+    // and toggleSidebar key the mobile drawer off isMobile, and without it the
+    // menu can never open on a phone.
+    mixins: [MediaQueryMixin, ClientActionsMixin],
     data: {
       // themeSwitcher, pageTitle and pageClass are read by the shell in
       // page/shell_start. Omitting any of them makes the WHOLE #app render throw,
