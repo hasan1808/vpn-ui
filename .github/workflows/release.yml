@@ -26,6 +26,17 @@ jobs:
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y gcc gcc-multilib
 
+      # The bundled VPN daemons (telemt, xl2tpd, openvpn, pptpd, ocserv,
+      # accel-ppp, strongSwan, …) are NOT committed: backend/bin is git-ignored,
+      # so a fresh checkout embeds nothing and every bundled core reports "not
+      # installed / binary not bundled for this architecture" — MTProto most
+      # visibly, since telemt exists in no distro repo and can only ever come
+      # from this bundle. Build the amd64 bundle (Docker + Alpine, slow) so the
+      # go build below embeds real daemons via //go:embed all:bin.
+      - name: Build daemon bundle (amd64)
+        run: |
+          bash build/backend/build.sh amd64
+
       - name: Build
         run: |
           CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o vpn-ui-amd64 .
