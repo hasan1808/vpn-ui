@@ -36,6 +36,33 @@
 # pppd-bundle.sh / libreswan-bundle.sh) shipping ocserv + its .so deps + loader.
 set -eu
 
+# dl_retry <destfile> <url>...
+# infradead's ocserv/openconnect hosting is flaky (transient TLS/5xx drops, and
+# the ftp. mirror serves a broken cert). GNU wget dies on the first network
+# error with exit 4, which has bit this recipe once already in CI, so retry each
+# mirror with backoff and a hard timeout instead of hanging on a stalled
+# connection or failing silently on a transient blip.
+dl_retry() {
+    local dest="$1"; shift
+    local part="$dest.part"
+    rm -f "$part"
+    for url in "$@"; do
+        for n in 1 2 3 4 5; do
+            echo "  dl[try $n] $url"
+            if wget -t 1 -T 60 -q -O "$part" "$url" 2>"/tmp/dl.err"; then
+                mv "$part" "$dest"
+                echo "  ok: $dest ($(wc -c < "$dest") bytes) <- $url"
+                return 0
+            fi
+            sed 's/^/    /' "/tmp/dl.err" 2>/dev/null || true
+            sleep "$n"
+        done
+    done
+    rm -f "$part"
+    echo "FATAL: could not download $dest from any mirror" >&2
+    return 1
+}
+
 ARCH="${ARCH:-x86_64}"
 GNUTLS_VER="${GNUTLS_VER:-3.8.13}"     # matches Alpine 3.22's gnutls; source build for the .a
 OCSERV_VER="${OCSERV_VER:-1.3.0}"
@@ -67,7 +94,8 @@ if [ -f /usr/local/lib/pkgconfig/gnutls.pc ]; then
   echo "== gnutls static already present (cached /usr/local) — skipping build =="
 else
 cd /tmp
-wget -q "https://www.gnupg.org/ftp/gcrypt/gnutls/v${GNUTLS_VER%.*}/gnutls-${GNUTLS_VER}.tar.xz"
+dl_retry "gnutls-${GNUTLS_VER}.tar.xz" \
+    "https://www.gnupg.org/ftp/gcrypt/gnutls/v${GNUTLS_VER%.*}/gnutls-${GNUTLS_VER}.tar.xz"
 tar xf "gnutls-${GNUTLS_VER}.tar.xz"
 cd "gnutls-${GNUTLS_VER}"
 ./configure --prefix=/usr/local \
@@ -89,8 +117,9 @@ fi
 # apk archives. Point pkg-config at our static GnuTLS in /usr/local and force
 # --static so gnutls.pc emits its whole transitive static graph (nettle/gmp/…).
 cd /tmp
-wget -q "https://www.infradead.org/ocserv/download/ocserv-${OCSERV_VER}.tar.xz" \
-  || wget -q "https://ftp.infradead.org/pub/ocserv/ocserv-${OCSERV_VER}.tar.xz"
+dl_retry "ocserv-${OCSERV_VER}.tar.xz" \
+    "https://www.infradead.org/ocserv/download/ocserv-${OCSERV_VER}.tar.xz" \
+    "https://ftp.infradead.org/pub/ocserv/ocserv-${OCSERV_VER}.tar.xz"
 tar xf "ocserv-${OCSERV_VER}.tar.xz"
 cd "ocserv-${OCSERV_VER}"
 
@@ -153,7 +182,8 @@ ls -lh /out/ocserv
 # while musl's resolver is self-contained, so looking up the remote gateway keeps
 # working on a host whose libc we know nothing about.
 cd /tmp
-wget -q "https://www.infradead.org/openconnect/download/openconnect-${OPENCONNECT_VER}.tar.gz"
+dl_retry "openconnect-${OPENCONNECT_VER}.tar.gz" \
+    "https://www.infradead.org/openconnect/download/openconnect-${OPENCONNECT_VER}.tar.gz"
 tar xf "openconnect-${OPENCONNECT_VER}.tar.gz"
 cd "openconnect-${OPENCONNECT_VER}"
 
@@ -190,7 +220,8 @@ fi
 # decision to this script: without it a session authenticates and carries no
 # traffic. It is a plain POSIX script driving iproute2 (already a host
 # requirement), so it ships as a data file beside the binaries, not compiled in.
-wget -q "https://gitlab.com/openconnect/vpnc-scripts/-/raw/${VPNC_SCRIPT_REV}/vpnc-script" -O /out/vpnc-script
+dl_retry /out/vpnc-script \
+    "https://gitlab.com/openconnect/vpnc-scripts/-/raw/${VPNC_SCRIPT_REV}/vpnc-script"
 head -1 /out/vpnc-script | grep -q '^#!' \
     || { echo "FATAL: vpnc-script fetch returned something that is not a script" >&2; exit 1; }
 sh -n /out/vpnc-script || { echo "FATAL: fetched vpnc-script does not parse" >&2; exit 1; }
