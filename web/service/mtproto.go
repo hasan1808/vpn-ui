@@ -984,7 +984,11 @@ func (s *MtprotoService) GenerateSecret() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// Available reports whether the telemt binary is bundled for this arch.
+// Available reports whether the telemt binary is BUNDLED for this architecture.
+// It answers "can this host ever install MTProto", not "is it installed right
+// now": a binary that embeds telemt but has not extracted it yet still reports
+// true, so the status card reads "not installed" (installable) instead of the
+// misleading "telemt binary not bundled for this architecture".
 func (s *MtprotoService) Available() bool {
-	return backend.DaemonPath("telemt") != ""
+	return backend.Bundled("telemt")
 }

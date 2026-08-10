@@ -294,6 +294,10 @@
         <span class="bo-ip-label">IPv4</span>
         <span class="bo-ip-value num">[[ showIp ? status.publicIP.ipv4 : maskIp(status.publicIP.ipv4) ]]</span>
       </div>
+      <div class="bo-ip-row" v-for="(ip, i) in extraIpv4s()" :key="i">
+        <span class="bo-ip-label">IPv4 +[[ i + 1 ]]</span>
+        <span class="bo-ip-value num">[[ showIp ? ip : maskIp(ip) ]]</span>
+      </div>
       <div class="bo-ip-row">
         <span class="bo-ip-label">IPv6</span>
         <span class="bo-ip-value num">[[ showIp ? status.publicIP.ipv6 : maskIp(status.publicIP.ipv6) ]]</span>
@@ -1413,7 +1417,7 @@
       this.swapIO = { in: 0, out: 0 };
       this.diskIO = { read: 0, write: 0 };
       this.netTraffic = { sent: 0, recv: 0 };
-      this.publicIP = { ipv4: 0, ipv6: 0 };
+      this.publicIP = { ipv4: 0, ipv6: 0, localIp4: [] };
       this.swap = new CurTotal(0, 0);
       this.tcpCount = 0;
       this.udpCount = 0;
@@ -2077,6 +2081,15 @@
     },
     methods: {
       toggleSidebar() {
+        // On mobile the rail is an off-canvas drawer driven by mobileMenuOpen
+        // (is-mobile-open slides it in and the overlay blocks the page behind
+        // it); sidebarHidden would only flip its desktop collapse state and
+        // persist it, so the drawer would never open. On desktop the hamburger
+        // is the collapse toggle, persisted across visits.
+        if (this.isMobile) {
+          this.mobileMenuOpen = !this.mobileMenuOpen;
+          return;
+        }
         this.sidebarHidden = !this.sidebarHidden;
         localStorage.setItem('isSidebarHidden', this.sidebarHidden);
       },
@@ -2128,6 +2141,13 @@
       // address rather than a blob.
       maskIp(ip) {
         return (ip || '').replace(/[^:.]/g, '•');
+      },
+      // Local IPv4s beyond the public exit IP, so a server with several bound
+      // addresses shows all of them instead of only the single public one.
+      extraIpv4s() {
+        const pub = this.status && this.status.publicIP;
+        if (!pub || !Array.isArray(pub.localIp4)) return [];
+        return pub.localIp4.filter(ip => ip !== pub.ipv4);
       },
       // Rate for the selected interface, falling back to the aggregate when
       // "All" is chosen or the backend has not sent per-NIC counters yet.

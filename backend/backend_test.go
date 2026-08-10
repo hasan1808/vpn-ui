@@ -188,3 +188,15 @@ func TestExtractOnlyEmptyExtractsNothing(t *testing.T) {
 		t.Errorf("ExtractOnly([]) wrote %d file(s), want none: %v", len(files), files)
 	}
 }
+
+// Bundled must never answer yes for a name it cannot resolve to a flat embedded
+// binary. The guard matters because status cards (mtprotoStatus) use Bundled to
+// tell "this arch can never run the core" apart from "not installed yet", and a
+// hostile/broken name must not flip that into a false positive.
+func TestBundledGuards(t *testing.T) {
+	for _, name := range []string{"", "../escape", "a/b", "telemt.tgz"} {
+		if Bundled(name) {
+			t.Errorf("Bundled(%q) = true, want false", name)
+		}
+	}
+}

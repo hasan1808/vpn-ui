@@ -193,8 +193,8 @@
           </div>
         </div>
         <button type="button" class="bo-hamburger" @click="toggleSidebar"
-          :aria-label="sidebarHidden ? 'Show sidebar' : 'Hide sidebar'"
-          :aria-expanded="String(!sidebarHidden)">
+          :aria-label="isMobile ? (mobileMenuOpen ? 'Hide sidebar' : 'Show sidebar') : (sidebarHidden ? 'Show sidebar' : 'Hide sidebar')"
+          :aria-expanded="String(isMobile ? mobileMenuOpen : !sidebarHidden)">
           <svg class="bo-icon" aria-hidden="true">
             <use href="#bo-i-hamburger"></use>
           </svg>

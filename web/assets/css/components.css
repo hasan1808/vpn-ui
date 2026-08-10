@@ -1423,6 +1423,10 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
   }
   .bo-rail.is-mobile-open {
     inset-inline-start:0;
+    /* Override a persisted .bo-rail--hidden (the desktop collapse state): on
+       mobile the drawer must still slide in, so the higher-specificity
+       display:flex beats the collapse's display:none. */
+    display:flex;
   }
 
   .bo-topbar-inner { padding:10px 16px; }

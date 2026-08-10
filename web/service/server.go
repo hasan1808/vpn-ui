@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	gonet "net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -129,6 +130,11 @@ type Status struct {
 	PublicIP struct {
 		IPv4 string `json:"ipv4"`
 		IPv6 string `json:"ipv6"`
+		// LocalIP4 lists every IPv4 address assigned to the machine's up,
+		// non-loopback interfaces. The dashboard renders these as "IPv4 +n"
+		// rows so a server with several bound addresses shows them all, not
+		// just the public exit IP in IPv4 above.
+		LocalIP4 []string `json:"localIp4"`
 	} `json:"publicIP"`
 	AppStats struct {
 		Threads uint32 `json:"threads"`
@@ -634,6 +640,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 
 	status.PublicIP.IPv4 = s.cachedIPv4
 	status.PublicIP.IPv6 = s.cachedIPv6
+	status.PublicIP.LocalIP4 = localIPv4Addresses()
 
 	// Xray status
 	if s.xrayService.IsXrayRunning() {
@@ -700,6 +707,51 @@ func (s *ServerService) selectableInterfaces() map[string]bool {
 		}
 	}
 	return selectable
+}
+
+// localIPv4Addresses returns every IPv4 address on an up, non-loopback
+// interface, deduplicated and sorted. This covers the secondary addresses a
+// hosting provider binds next to the main one, which the public-IP probe can
+// never report; the dashboard shows them as the "IPv4 +n" rows.
+func localIPv4Addresses() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		logger.Warning("get network interfaces failed:", err)
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []string
+	for _, iface := range ifaces {
+		isUp, isLoopback := false, false
+		for _, flag := range iface.Flags {
+			switch flag {
+			case "up":
+				isUp = true
+			case "loopback":
+				isLoopback = true
+			}
+		}
+		if !isUp || isLoopback {
+			continue
+		}
+		for _, a := range iface.Addrs {
+			addr, _, err := gonet.ParseCIDR(a.Addr)
+			if err != nil {
+				addr = gonet.ParseIP(a.Addr)
+			}
+			ip4 := addr.To4()
+			if ip4 == nil {
+				continue
+			}
+			s := ip4.String()
+			if !seen[s] {
+				seen[s] = true
+				out = append(out, s)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (s *ServerService) AppendCpuSample(t time.Time, v float64) {
@@ -1333,6 +1385,16 @@ func (s *ServerService) ImportDB(file multipart.File) error {
 		return common.NewErrorf("Invalid or corrupt db file: %v", err)
 	}
 
+	// Snapshot the settings that must survive the swap, from the live DB, while it
+	// is still the current one. Restoring a backup (even another panel's) must not
+	// move this panel's own reachability/identity: its port, path, listen address,
+	// TLS certs, session secret and session lifetime describe the running install,
+	// and importing a backup's copies would change the cookie secret / base path /
+	// secure flag under a logged-in session and silently log everyone out. This is
+	// the same preservation ImportForeignDB applies; for a like-for-like restore of
+	// this panel's own backup it writes the same values back and is a no-op.
+	preserved := s.snapshotPreservedSettings()
+
 	// Stop Xray (ignore error but log)
 	if errStop := s.StopXrayService(); errStop != nil {
 		logger.Warningf("Failed to stop Xray before DB import: %v", errStop)
@@ -1387,6 +1449,11 @@ func (s *ServerService) ImportDB(file multipart.File) error {
 			return common.NewErrorf("Error migrating db and restoring fallback: %v", errRename)
 		}
 		return common.NewErrorf("Error migrating db: %v", err)
+	}
+
+	// Put this panel's reachability/identity settings back over the backup's.
+	if err = s.restorePreservedSettings(preserved); err != nil {
+		return common.NewErrorf("Imported DB but failed to preserve panel settings: %v", err)
 	}
 
 	s.inboundService.MigrateDB()

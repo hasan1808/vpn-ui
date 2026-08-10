@@ -235,6 +235,10 @@
     },
     methods: {
       toggleSidebar() {
+        if (this.isMobile) {
+          this.mobileMenuOpen = !this.mobileMenuOpen;
+          return;
+        }
         this.sidebarHidden = !this.sidebarHidden;
         localStorage.setItem('isSidebarHidden', this.sidebarHidden);
       },

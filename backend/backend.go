@@ -132,6 +132,24 @@ func DaemonPath(name string) string {
 	return ""
 }
 
+// Bundled reports whether the named daemon binary is EMBEDDED for the running
+// architecture, regardless of whether it has been extracted to disk yet.
+//
+// DaemonPath answers "is it installed right now"; Bundled answers "can this
+// host ever install it". The two must not be conflated: a fresh host has
+// extracted nothing, so DaemonPath alone would make every not-yet-installed
+// daemon read as "not bundled for this architecture" (see mtprotoStatus).
+func Bundled(name string) bool {
+	if name == "" || strings.ContainsAny(name, "/\\") {
+		return false
+	}
+	if strings.HasSuffix(name, ".tgz") {
+		return false // archive bundles extract as trees, not flat BinDir binaries
+	}
+	_, err := bundleFS.ReadFile(archDir() + "/" + name)
+	return err == nil
+}
+
 // Extract writes all bundled daemon binaries for this architecture into BinDir()
 // with 0755 permissions. It is idempotent (overwrites existing files) and a
 // no-op when no bundle is embedded. Returns the list of files written.

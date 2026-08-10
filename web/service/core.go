@@ -717,9 +717,21 @@ func (s *CoreService) mtprotoStatus() CoreStatus {
 	cs := CoreStatus{Name: "mtproto"}
 	inbounds, _ := s.mtprotoService.GetMtprotoInbounds()
 	cs.Inbounds = len(inbounds)
+	// Two distinct "not available" states. Available() answers whether the binary
+	// is embedded for this arch at all; daemonInstalled answers whether it is on
+	// disk. Only the first is permanent — an arch with no bundle genuinely cannot
+	// run telemt — while the second is just "has not been installed yet". The old
+	// single check (Available = DaemonPath != "") reported "telemt binary not
+	// bundled for this architecture" on every fresh amd64/arm64 host, making a
+	// perfectly installable core read as permanently unsupported.
 	if !s.mtprotoService.Available() {
 		cs.State = CoreNotInstalled
 		cs.Detail = "telemt binary not bundled for this architecture"
+		return cs
+	}
+	if !daemonInstalled("telemt") {
+		cs.State = CoreNotInstalled
+		cs.Detail = "telemt not installed"
 		return cs
 	}
 	cs.Version = daemonVersion("telemt")
