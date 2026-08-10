@@ -61,9 +61,29 @@ apk add --no-cache \
     nss-dev nspr-dev libevent-dev gmp-dev libcap-ng-dev flex bison \
     nss nss-tools nspr libevent gmp libcap-ng >/dev/null
 
+# Download with retries + backoff: download.libreswan.org drops connections and
+# the bare `wget -q` dies silently (exit 4) on the first blip, failing the whole
+# bundle. Same hardening as build.sh / ocserv-bundle.sh.
+dl_retry() {
+    local d="$1"; shift
+    for url in "$@"; do
+        for n in 1 2 3 4 5; do
+            echo "  dl[try $n] $url"
+            if wget -t 1 -T 60 -q -O "$d" "$url" 2>/tmp/dl.err; then
+                echo "  ok: $url -> $d ($(wc -c < "$d") bytes)"
+                return 0
+            fi
+            sleep "$n"
+        done
+    done
+    echo "FATAL: download failed: $d" >&2
+    exit 1
+}
+
 # --- fetch source -------------------------------------------------------------
 cd /tmp
-wget -q "https://download.libreswan.org/libreswan-${LIBRESWAN_VER}.tar.gz"
+dl_retry "libreswan-${LIBRESWAN_VER}.tar.gz" \
+    "https://download.libreswan.org/libreswan-${LIBRESWAN_VER}.tar.gz"
 tar xf "libreswan-${LIBRESWAN_VER}.tar.gz"
 cd "libreswan-${LIBRESWAN_VER}"
 

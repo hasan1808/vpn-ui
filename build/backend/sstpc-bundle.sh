@@ -74,11 +74,30 @@ PPP_VER="$(pkgconf --modversion pppd 2>/dev/null || ls /usr/lib/pppd | head -1)"
 [ -d "/usr/lib/pppd/$PPP_VER" ] || { echo "FATAL: /usr/lib/pppd/$PPP_VER missing: ppp-dev and ppp disagree on the version" >&2; exit 1; }
 echo "== building against ppp $PPP_VER (must match pppd-bundle.sh) =="
 
+# Download with retries + backoff (same hardening as the other recipes; the
+# bare `wget -q` dies silently with exit 4 on a transient network blip).
+dl_retry() {
+    local d="$1"; shift
+    for url in "$@"; do
+        for n in 1 2 3 4 5; do
+            echo "  dl[try $n] $url"
+            if wget -t 1 -T 60 -q -O "$d" "$url" 2>/tmp/dl.err; then
+                echo "  ok: $url -> $d ($(wc -c < "$d") bytes)"
+                return 0
+            fi
+            sleep "$n"
+        done
+    done
+    echo "FATAL: download failed: $d" >&2
+    exit 1
+}
+
 # --- source --------------------------------------------------------------------
 # The project moved off SourceForge; GitLab is the only place 1.0.20 exists, and
 # a GitLab archive is a git snapshot with no ./configure, hence autogen.sh.
 cd /tmp
-wget -q "https://gitlab.com/sstp-project/sstp-client/-/archive/${SSTP_VER}/sstp-client-${SSTP_VER}.tar.gz" -O sstp-client.tar.gz
+dl_retry sstp-client.tar.gz \
+    "https://gitlab.com/sstp-project/sstp-client/-/archive/${SSTP_VER}/sstp-client-${SSTP_VER}.tar.gz"
 tar xf sstp-client.tar.gz
 cd "sstp-client-${SSTP_VER}"
 ./autogen.sh >/dev/null 2>&1

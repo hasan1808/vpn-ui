@@ -55,6 +55,26 @@ build_arch() {
             openssl-dev openssl-libs-static libcap-ng-dev libcap-ng-static \
             lzo-dev lz4-dev lz4-static
 
+        # Download with retries + backoff: swupdate.openvpn.org drops/rate-limits
+        # automated fetches and sourceforge reconnects, and the bare `wget -q`
+        # that used to sit here dies silently with exit 4 on the first blip -
+        # which is how CI has failed mid-recipe more than once.
+        dl_retry() {
+            local d="$1"; shift
+            for url in "$@"; do
+                for n in 1 2 3 4 5; do
+                    echo "  dl[try $n] $url"
+                    if wget -t 1 -T 60 -q -O "$d" "$url" 2>/tmp/dl.err; then
+                        echo "  ok: $url -> $d ($(wc -c < "$d") bytes)"
+                        return 0
+                    fi
+                    sleep "$n"
+                done
+            done
+            echo "FATAL: download failed: $d" >&2
+            exit 1
+        }
+
         # --- xl2tpd (static) ---
         git clone --depth 1 https://github.com/xelerance/xl2tpd /src/xl2tpd
         cd /src/xl2tpd
@@ -66,7 +86,8 @@ build_arch() {
         # --- openvpn (static) ---
         cd /tmp
         OVPN_VER=2.6.12
-        wget -q "https://swupdate.openvpn.org/community/releases/openvpn-${OVPN_VER}.tar.gz"
+        dl_retry "openvpn-${OVPN_VER}.tar.gz" \
+            "https://swupdate.openvpn.org/community/releases/openvpn-${OVPN_VER}.tar.gz"
         tar xf "openvpn-${OVPN_VER}.tar.gz"
         cd "openvpn-${OVPN_VER}"
         # No plugins/dco, but lzo AND lz4 are in: a provider profile that says
@@ -88,7 +109,8 @@ build_arch() {
         # pptpd execs pptpctrl at the compile-time SBINDIR path (no PATH lookup),
         # so pin it to a fixed sentinel that provisioning symlinks to the bundle.
         cd /tmp
-        wget -q "https://downloads.sourceforge.net/project/poptop/pptpd/pptpd-1.4.0/pptpd-1.4.0.tar.gz" -O pptpd.tar.gz
+        dl_retry pptpd.tar.gz \
+            "https://downloads.sourceforge.net/project/poptop/pptpd/pptpd-1.4.0/pptpd-1.4.0.tar.gz"
         tar xf pptpd.tar.gz
         cd pptpd-1.4.0
         ./configure --sbindir=/usr/libexec/vpn-ui
@@ -107,7 +129,8 @@ build_arch() {
         # pppd is the parent and that path is never consulted.
         cd /tmp
         PPTP_VER=1.10.0
-        wget -q "https://downloads.sourceforge.net/project/pptpclient/pptp/pptp-${PPTP_VER}/pptp-${PPTP_VER}.tar.gz" -O pptp.tar.gz
+        dl_retry pptp.tar.gz \
+            "https://downloads.sourceforge.net/project/pptpclient/pptp/pptp-${PPTP_VER}/pptp-${PPTP_VER}.tar.gz"
         tar xf pptp.tar.gz
         cd "pptp-${PPTP_VER}"
         make -j"$(nproc)" pptp LDFLAGS="-static"
