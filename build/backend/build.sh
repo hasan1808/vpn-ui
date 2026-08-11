@@ -56,15 +56,17 @@ build_arch() {
             lzo-dev lz4-dev lz4-static
 
         # Download with retries + backoff: swupdate.openvpn.org drops/rate-limits
-        # automated fetches and sourceforge reconnects, and the bare `wget -q`
-        # that used to sit here dies silently with exit 4 on the first blip -
-        # which is how CI has failed mid-recipe more than once.
+        # automated fetches (it 403s the stock BusyBox wget User-Agent when it
+        # has flagged the IP, so dl_retry sends a browser-like -U), and
+        # sourceforge reconnects; the bare `wget -q` that used to sit here dies
+        # silently with exit 4 on the first blip - which is how CI has failed
+        # mid-recipe more than once.
         dl_retry() {
             local d="$1"; shift
             for url in "$@"; do
                 for n in 1 2 3 4 5; do
                     echo "  dl[try $n] $url"
-                    if wget -t 1 -T 60 -q -O "$d" "$url" 2>/tmp/dl.err; then
+                    if wget -t 1 -T 60 -q -U "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" -O "$d" "$url" 2>/tmp/dl.err; then
                         echo "  ok: $url -> $d ($(wc -c < "$d") bytes)"
                         return 0
                     fi
@@ -108,9 +110,12 @@ build_arch() {
         # --- pptpd (static) ---
         # pptpd execs pptpctrl at the compile-time SBINDIR path (no PATH lookup),
         # so pin it to a fixed sentinel that provisioning symlinks to the bundle.
+        # Sourceforge 403s automated egress (rate-limits the IP after a few hits),
+        # so the Ubuntu archive of the identical upstream tarball is the fallback.
         cd /tmp
         dl_retry pptpd.tar.gz \
-            "https://downloads.sourceforge.net/project/poptop/pptpd/pptpd-1.4.0/pptpd-1.4.0.tar.gz"
+            "https://downloads.sourceforge.net/project/poptop/pptpd/pptpd-1.4.0/pptpd-1.4.0.tar.gz" \
+            "https://archive.ubuntu.com/ubuntu/pool/main/p/pptpd/pptpd_1.4.0.orig.tar.gz"
         tar xf pptpd.tar.gz
         cd pptpd-1.4.0
         ./configure --sbindir=/usr/libexec/vpn-ui
@@ -130,7 +135,8 @@ build_arch() {
         cd /tmp
         PPTP_VER=1.10.0
         dl_retry pptp.tar.gz \
-            "https://downloads.sourceforge.net/project/pptpclient/pptp/pptp-${PPTP_VER}/pptp-${PPTP_VER}.tar.gz"
+            "https://downloads.sourceforge.net/project/pptpclient/pptp/pptp-${PPTP_VER}/pptp-${PPTP_VER}.tar.gz" \
+            "https://deb.debian.org/debian/pool/main/p/pptp-linux/pptp-linux_${PPTP_VER}.orig.tar.gz"
         tar xf pptp.tar.gz
         cd "pptp-${PPTP_VER}"
         make -j"$(nproc)" pptp LDFLAGS="-static"

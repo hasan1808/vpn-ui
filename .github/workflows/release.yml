@@ -33,9 +33,22 @@ jobs:
       # visibly, since telemt exists in no distro repo and can only ever come
       # from this bundle. Build the amd64 bundle (Docker + Alpine, slow) so the
       # go build below embeds real daemons via //go:embed all:bin.
+      # The download hosts (OpenVPN, sourceforge, infradead) are flaky from CI
+      # egress, so retry the whole bundle a few times instead of failing on a
+      # single transient blip that dl_retry's in-place retries may not catch.
       - name: Build daemon bundle (amd64)
         run: |
-          bash build/backend/build.sh amd64
+          for attempt in 1 2 3; do
+            echo "=== daemon bundle build attempt $attempt ==="
+            if bash build/backend/build.sh amd64; then
+              echo "=== daemon bundle build succeeded on attempt $attempt ==="
+              exit 0
+            fi
+            echo "=== attempt $attempt failed, retrying in 30s ==="
+            sleep 30
+          done
+          echo "=== daemon bundle build failed after 3 attempts ==="
+          exit 1
 
       - name: Build
         run: |

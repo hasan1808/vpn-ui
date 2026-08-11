@@ -75,13 +75,15 @@ PPP_VER="$(pkgconf --modversion pppd 2>/dev/null || ls /usr/lib/pppd | head -1)"
 echo "== building against ppp $PPP_VER (must match pppd-bundle.sh) =="
 
 # Download with retries + backoff (same hardening as the other recipes; the
-# bare `wget -q` dies silently with exit 4 on a transient network blip).
+# bare `wget -q` dies silently with exit 4 on a transient network blip). The
+# browser-like -U is deliberate: download servers 403 the stock BusyBox wget
+# User-Agent.
 dl_retry() {
     local d="$1"; shift
     for url in "$@"; do
         for n in 1 2 3 4 5; do
             echo "  dl[try $n] $url"
-            if wget -t 1 -T 60 -q -O "$d" "$url" 2>/tmp/dl.err; then
+            if wget -t 1 -T 60 -q -U "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" -O "$d" "$url" 2>/tmp/dl.err; then
                 echo "  ok: $url -> $d ($(wc -c < "$d") bytes)"
                 return 0
             fi

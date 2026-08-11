@@ -41,7 +41,8 @@ set -eu
 # the ftp. mirror serves a broken cert). GNU wget dies on the first network
 # error with exit 4, which has bit this recipe once already in CI, so retry each
 # mirror with backoff and a hard timeout instead of hanging on a stalled
-# connection or failing silently on a transient blip.
+# connection or failing silently on a transient blip. The browser-like -U is
+# deliberate: download servers 403 the stock BusyBox wget User-Agent.
 dl_retry() {
     local dest="$1"; shift
     local part="$dest.part"
@@ -49,7 +50,7 @@ dl_retry() {
     for url in "$@"; do
         for n in 1 2 3 4 5; do
             echo "  dl[try $n] $url"
-            if wget -t 1 -T 60 -q -O "$part" "$url" 2>"/tmp/dl.err"; then
+            if wget -t 1 -T 60 -q -U "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" -O "$part" "$url" 2>"/tmp/dl.err"; then
                 mv "$part" "$dest"
                 echo "  ok: $dest ($(wc -c < "$dest") bytes) <- $url"
                 return 0
