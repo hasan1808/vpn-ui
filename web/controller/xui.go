@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"net/http"
+
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 
 	"github.com/gin-gonic/gin"
@@ -35,6 +37,11 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	// blindly back to this route, which is what used to make gating it impossible.
 	g.GET("/", requireOverviewAccess(), a.index)
 	g.GET("/inbounds", requirePerm(model.PermAccessInbounds), a.inbounds)
+	// A protocol-scoped view of the same page, reached from the protocol tabs:
+	// /inbounds/:proto keeps the same permission and renders the same template
+	// with the scope preset. Unknown slugs are redirected to the unfiltered
+	// page rather than rendered as a filter that matches nothing.
+	g.GET("/inbounds/:proto", requirePerm(model.PermAccessInbounds), a.inbounds)
 	// The account-centric view of the same data the Inbounds page shows, so it
 	// takes the same claim.
 	g.GET("/clients", requirePerm(model.PermAccessInbounds), a.clients)
@@ -66,9 +73,20 @@ func (a *XUIController) index(c *gin.Context) {
 	html(c, "index.html", "pages.index.title", nil)
 }
 
-// inbounds renders the inbounds management page.
+// inbounds renders the inbounds management page. When the URL carries the
+// /inbounds/:proto segment, the page is scoped to that protocol: the template
+// receives it as .Protocol and the protocol tabs highlight the matching tab.
+// The slug is validated before the template runs — model.IsInboundProtocol
+// holds the accepted set, kept in step with the frontend's Protocols list in
+// web/assets/js/model/inbound.js — so a stray slug is redirected to the
+// unfiltered page instead of silently showing an empty filter.
 func (a *XUIController) inbounds(c *gin.Context) {
-	html(c, "inbounds.html", "pages.inbounds.title", nil)
+	proto := c.Param("proto")
+	if proto != "" && !model.IsInboundProtocol(proto) {
+		c.Redirect(http.StatusTemporaryRedirect, c.GetString("base_path")+"panel/inbounds")
+		return
+	}
+	html(c, "inbounds.html", "pages.inbounds.title", gin.H{"Protocol": proto})
 }
 
 // clients renders the account-centric Clients page.

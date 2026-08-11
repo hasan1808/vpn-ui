@@ -341,3 +341,17 @@
 <script src="{{ .base_path }}assets/js/subscription.js?{{ .cur_ver }}"></script>
 
 {{ template "page/body_end" .}}
+<div class="bo-credential-card">
+    <div class="bo-credential-header">
+        <h3 class="bo-credential-title">{{ i18n "subscription.username" }}:</h3>
+        <span class="bo-credential-value">{{ .Email }}</span>
+    </div>
+    <div class="bo-credential-password">
+        <label class="bo-credential-label">{{ i18n "subscription.password" }}:</label>
+        <span class="bo-credential-value">{{ .Password }}</span>
+        <a-button :type=" 'text'" @click="showPassword = !showPassword" class="bo-credential-toggle">
+            <a-icon :type="showPassword ? 'eye' : 'eye-off'" :style="{ verticalAlign: 'middle' }"></a-icon>
+        </a-button>
+    </div>
+</div>
+{{ template "page/body_end" .}}

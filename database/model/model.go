@@ -55,6 +55,28 @@ func IsHysteria(p Protocol) bool {
 	return p == Hysteria || p == Hysteria2
 }
 
+// IsInboundProtocol reports whether p is a protocol the Inbounds page can be
+// scoped to via /panel/inbounds/:proto. It accepts every value the frontend's
+// Protocols list in web/assets/js/model/inbound.js offers — including the
+// legacy "tun" slug and the literal "hysteria2" string, which the UI normalizes
+// to the hysteria tab — so a direct link to any tab resolves rather than
+// bouncing back to the unfiltered page.
+func IsInboundProtocol(p string) bool {
+	if p == "tun" {
+		return true
+	}
+	for _, c := range []Protocol{
+		VMESS, VLESS, Tunnel, HTTP, Trojan, Shadowsocks, Socks, Mixed, WireGuard,
+		L2TP, PPTP, OPENVPN, OPENCONNECT, SSTP, IKEV2, WGC, AWG, GRE, MTPROTO,
+		SSH, ANYTLS, TUIC, NAIVE, Hysteria, Hysteria2,
+	} {
+		if string(c) == p {
+			return true
+		}
+	}
+	return false
+}
+
 // ClientExternalProxy is one alternate endpoint rendered into an account's links
 // instead of this server's own address (a relay/CDN in front of the proxy). It
 // affects generated links only: no daemon ever reads it.

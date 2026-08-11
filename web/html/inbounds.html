@@ -44,7 +44,7 @@
                   </div>
                   <div class="bo-stat-cell">
                     <span class="bo-stat-cell-label">{{ i18n "pages.inbounds.inboundCount" }}</span>
-                    <span class="bo-stat-cell-value num">[[ dbInbounds.length ]]</span>
+                    <span class="bo-stat-cell-value num">[[ protocolInbounds.length ]]</span>
                   </div>
                   <div class="bo-stat-cell">
                     <span class="bo-stat-cell-label">{{ i18n "clients" }}</span>
@@ -186,6 +186,7 @@
                   </a-button-group>
                 </template>
                 <a-space direction="vertical">
+                  {{template "component/inboundTabs" .}}
                   <div
                     :style="isMobile ? {} : { display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }">
                     <a-switch v-model="enableFilter"
@@ -270,6 +271,26 @@
                               <a-icon type="edit"></a-icon>
                               {{ i18n "edit" }}
                             </a-menu-item>
+                            <!-- OpenVPN: fetch the .ovpn profile straight from the row
+                                 menu, without opening the edit dialog. One item per
+                                 enabled transport, mirroring the modal's Client Config
+                                 section (labels match it, hardcoded English as there).
+                                 The endpoint reads the SAVED inbound, which is exactly
+                                 the row state, so nothing needs persisting first. -->
+                            <template v-if="dbInbound.isOpenvpn">
+                              <a-menu-item key="ovpnUdp"
+                                v-if="dbInbound.toInbound().settings.udpEnable">
+                                <a-icon type="download"></a-icon>
+                                UDP Config (.ovpn)
+                              </a-menu-item>
+                              <a-menu-item key="ovpnTcp"
+                                v-if="dbInbound.toInbound().settings.tcpEnable">
+                                <a-icon type="download"></a-icon>
+                                TCP Config (.ovpn)
+                              </a-menu-item>
+                              <a-menu-divider
+                                v-if="dbInbound.toInbound().settings.udpEnable || dbInbound.toInbound().settings.tcpEnable"></a-menu-divider>
+                            </template>
                             <a-menu-item key="qrcode"
                               v-if="(dbInbound.isSS && !dbInbound.toInbound().isSSMultiUser) || dbInbound.isWireguard">
                               <a-icon type="qrcode"></a-icon>
@@ -967,6 +988,13 @@
       provisioned: true,
       missingProtocols: [],
       outboundsTraffic: [],
+      // The protocol scope this page was rendered for. Empty on the unfiltered
+      // /panel/inbounds route, a protocol slug on /inbounds/:proto — where the
+      // server has already validated it against model.IsInboundProtocol.
+      // protocolScope normalizes the empty string to 'all'.
+      activeProtocol: '{{ .Protocol }}',
+      basePath: '{{ .base_path }}',
+      allProtocolsLabel: '{{ i18n "pages.inbounds.allProtocols" }}',
     },
     methods: {
       toggleSidebar() {
@@ -1147,10 +1175,10 @@
 
       searchInbounds(key) {
         if (ObjectUtil.isEmpty(key)) {
-          this.searchedInbounds = this.dbInbounds.slice();
+          this.searchedInbounds = this.protocolInbounds.slice();
         } else {
           this.searchedInbounds.splice(0, this.searchedInbounds.length);
-          this.dbInbounds.forEach(inbound => {
+          this.protocolInbounds.forEach(inbound => {
             if (ObjectUtil.deepSearch(inbound, key)) {
               const newInbound = new DBInbound(inbound);
               const inboundSettings = JSON.parse(inbound.settings);
@@ -1170,10 +1198,10 @@
       },
       filterInbounds() {
         if (ObjectUtil.isEmpty(this.filterBy)) {
-          this.searchedInbounds = this.dbInbounds.slice();
+          this.searchedInbounds = this.protocolInbounds.slice();
         } else {
           this.searchedInbounds.splice(0, this.searchedInbounds.length);
-          this.dbInbounds.forEach(inbound => {
+          this.protocolInbounds.forEach(inbound => {
             const newInbound = new DBInbound(inbound);
             const inboundSettings = JSON.parse(inbound.settings);
             if (this.clientCount[inbound.id] && this.clientCount[inbound.id].hasOwnProperty(this.filterBy)) {
@@ -1199,8 +1227,12 @@
           this.searchKey = '';
         } else {
           this.filterBy = '';
-          this.searchedInbounds = this.dbInbounds.slice();
+          this.searchedInbounds = this.protocolInbounds.slice();
         }
+      },
+      protoTabHref(key) {
+        const base = this.basePath || '/';
+        return base + (key === 'all' ? 'panel/inbounds' : 'panel/inbounds/' + key);
       },
       generalActions(action) {
         switch (action.key) {
@@ -1276,7 +1308,21 @@
           case "moveDown":
             this.moveInbound(this.inboundPosition(dbInbound), this.inboundPosition(dbInbound) + 1);
             break;
+          case "ovpnTcp":
+            this.downloadOvpnConfig(dbInbound.id, 'tcp');
+            break;
+          case "ovpnUdp":
+            this.downloadOvpnConfig(dbInbound.id, 'udp');
+            break;
         }
+      },
+      // OpenVPN "Client Config" download straight from the row menu. The export
+      // endpoint reads the SAVED inbound, which is exactly the row state, so there
+      // is nothing to persist first (unlike the in-modal button, which must save
+      // the form before it can export what the operator just changed).
+      downloadOvpnConfig(id, proto) {
+        const url = '/panel/api/inbounds/' + id + '/ovpn/' + proto;
+        window.open((this.basePath || '/').replace(/\/$/, '') + url, '_blank');
       },
       // Where this inbound sits in the real list, which is dbInbounds and never
       // searchedInbounds: the table may be showing a search result, a filter or one
@@ -1377,6 +1423,13 @@
         await this.submit('/panel/api/inbounds/add', data, inModal);
       },
       openAddInbound() {
+        // On a protocol-scoped page (/panel/inbounds/:proto) the Add modal opens
+        // already set to that protocol, so creating a second VLESS inbound from the
+        // VLESS page is a no-brainer. 'all' and the literal "hysteria2" string
+        // (acceptable in the URL but not creatable through the form) keep the
+        // default VLESS. The form still lets the operator change it.
+        const addProtocol = (this.protocolScope !== 'all' && Object.values(Protocols).includes(this.protocolScope))
+          ? this.protocolScope : null;
         inModal.show({
           title: '{{ i18n "pages.inbounds.addInbound"}}',
           okText: '{{ i18n "create"}}',
@@ -1384,7 +1437,8 @@
           confirm: async (inbound, dbInbound) => {
             await this.addInbound(inbound, dbInbound, inModal);
           },
-          isEdit: false
+          isEdit: false,
+          protocol: addProtocol,
         });
       },
       openEditInbound(dbInboundId) {
@@ -1882,11 +1936,39 @@
       }
     },
     computed: {
+      // The protocol page is scoped to. Empty string (the unfiltered route)
+      // reads as 'all', so the tabs, the filter and the drag gate share one
+      // comparison without each remembering to guard the empty case.
+      protocolScope() {
+        return this.activeProtocol || 'all';
+      },
+      // The inbounds visible on the current protocol page: everything on /all,
+      // only the matching protocol otherwise. Stored Hysteria v2 rows can carry
+      // the literal "hysteria2" string, which the hysteria tab must still show.
+      protocolInbounds() {
+        const proto = this.protocolScope;
+        if (proto === 'all') return this.dbInbounds;
+        return this.dbInbounds.filter(b =>
+          b.protocol === proto || (proto === 'hysteria' && b.protocol === 'hysteria2'));
+      },
+      // Protocol tab bar: "all" first, then one tab per protocol, ordered by the
+      // Protocols object in web/assets/js/model/inbound.js. Labels come from
+      // ProtocolLabels, the same source as the Add/Edit protocol picker.
+      protoTabs() {
+        const tabs = [{ key: 'all', label: this.allProtocolsLabel }];
+        Object.keys(Protocols).forEach(key => {
+          tabs.push({ key, label: ProtocolLabels[key] || key });
+        });
+        return tabs;
+      },
       // Whether to offer reordering at all. The order is the PANEL's and shared by
       // every admin, so it is gated on editInbound, which a reseller never holds.
       // Presentation only: /reorder re-checks the bit and the grants.
+      // Reordering also needs the unfiltered page: on a protocol tab the visible
+      // order is a subset, and a move whose neighbours are a different protocol
+      // would change nothing the operator can see.
       canReorderInbounds() {
-        return !!PERMS.editInbound && this.dbInbounds.length > 1;
+        return !!PERMS.editInbound && this.dbInbounds.length > 1 && this.protocolScope === 'all';
       },
       // Whether the DRAG HANDLE specifically can be trusted. It reports a position in
       // the table as rendered, and the reorder applies it to dbInbounds, so it is only
@@ -1918,7 +2000,7 @@
       total() {
         let down = 0, up = 0, allTime = 0;
         let clients = 0, deactive = [], depleted = [], expiring = [];
-        this.dbInbounds.forEach(dbInbound => {
+        this.protocolInbounds.forEach(dbInbound => {
           down += dbInbound.down;
           up += dbInbound.up;
           allTime += (dbInbound.allTime || (dbInbound.up + dbInbound.down));

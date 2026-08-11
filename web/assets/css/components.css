@@ -347,6 +347,91 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-t-manage .bo-btn-row { margin-top:auto; }
 .bo-t-vit .bo-vit-list { flex:1 1 auto; justify-content:space-around; }
 
+/* ================================================================== *
+ * Manage tile halves
+ * ================================================================== */
+/* The Manage tile splits into two halves: the operator's actions (logs,
+   config, backup, restore) and the server's outbound connectivity check
+   (Internet). They stack on narrow screens and sit side by side, divided by a
+   hairline, once there is room. */
+.bo-manage-split {
+  display:grid; grid-template-columns:1fr; gap:14px;
+  flex:1; min-width:0;
+}
+@media (min-width:520px) {
+  .bo-manage-split { grid-template-columns:1fr 1fr; gap:18px; }
+  .bo-manage-actions {
+    padding-inline-end:18px;
+    border-inline-end:1px solid var(--border);
+  }
+}
+.bo-manage-actions { display:flex; }
+.bo-manage-actions .bo-btn-row {
+  margin:auto 0 0; width:100%;
+  display:grid; grid-template-columns:1fr 1fr; gap:8px;
+  flex-wrap:nowrap;
+}
+.bo-manage-actions .bo-icon-btn { justify-content:flex-start; min-width:0; }
+
+.bo-manage-ping { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.bo-ping-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.bo-ping-title { font-size:var(--fs-sm); font-weight:var(--fw-semibold); color:var(--text-2); margin:0; }
+.bo-ping-overall {
+  display:inline-flex; align-items:center; gap:6px; align-self:flex-start;
+  font-size:var(--fs-xs); font-weight:var(--fw-semibold);
+  color:var(--off); background:var(--off-weak);
+  padding:3px 10px; border-radius:var(--radius-pill);
+}
+.bo-ping-overall--online { color:var(--ok); background:var(--ok-weak); }
+.bo-ping-overall--partial { color:var(--warn); background:var(--warn-weak); }
+.bo-ping-overall--offline { color:var(--error); background:var(--error-weak); }
+.bo-ping-list { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.bo-ping-row {
+  display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:8px;
+  font-size:var(--fs-sm); color:var(--text-2); min-width:0;
+}
+.bo-ping-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bo-ping-dot { width:8px; height:8px; border-radius:50%; background:var(--off); }
+.bo-ping-dot--ok { background:var(--ok); box-shadow:0 0 0 3px var(--ok-weak); }
+.bo-ping-dot--fail { background:var(--error); box-shadow:0 0 0 3px var(--error-weak); }
+.bo-ping-dot--pending { background:var(--off); animation:log-live-pulse 1.2s ease-in-out infinite; }
+.bo-ping-value { font-variant-numeric:tabular-nums; color:var(--text); font-weight:var(--fw-semibold); }
+.bo-ping-value--fail { color:var(--error); }
+.bo-ping-value--pending { color:var(--text-3); }
+
+/* ================================================================== *
+ * Protocol tabs (Inbounds page)
+ * ================================================================== */
+/* The Inbounds page is scoped per protocol via /panel/inbounds/:proto. The tab
+   bar is a horizontally scrollable row of chips: direct links, so every
+   protocol has its own bookmarkable URL and the active tab comes server-
+   rendered from .Protocol, not guessed on the client. */
+.bo-proto-tabs {
+  display:flex; align-items:center; gap:6px;
+  overflow-x:auto; padding-bottom:2px;
+  scrollbar-width:thin;
+}
+.bo-proto-tab {
+  display:inline-flex; align-items:center;
+  flex:0 0 auto;
+  padding:4px 12px;
+  border-radius:var(--radius-pill);
+  border:1px solid var(--border);
+  background:var(--surface-2);
+  color:var(--text-2);
+  font-size:var(--fs-sm); font-weight:var(--fw-medium);
+  line-height:1.4;
+  text-decoration:none;
+  white-space:nowrap;
+  transition:background .15s ease, border-color .15s ease, color .15s ease;
+}
+.bo-proto-tab:hover { color:var(--text); border-color:var(--text-3); }
+.bo-proto-tab.is-active {
+  background:var(--info-weak);
+  border-color:var(--info);
+  color:var(--info);
+}
+
 .bo-tile-head {
   display:flex; align-items:center; justify-content:space-between;
   gap:10px; margin-bottom:12px;

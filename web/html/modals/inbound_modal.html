@@ -46,6 +46,7 @@
             dbInbound = null,
             confirm = (inbound, dbInbound) => { },
             isEdit = false,
+            protocol = null,
         }) {
             this.title = title;
             this.okText = okText;
@@ -60,6 +61,16 @@
                 // where one can be put on several inbounds at once.
                 this.inbound.startEmpty = true;
                 this.inbound.clearClients();
+                // A protocol-scoped Inbounds page (/panel/inbounds/:proto) opens Add
+                // already set to that protocol. The assignment runs the same setter a
+                // manual pick triggers (fresh settings + stream, no seeded client
+                // while startEmpty is set). The port defaults are applied by the
+                // modal's visible watcher — the same code path a manual select's
+                // @change runs — because that change event never fires here.
+                this.preSelectProtocol = protocol;
+                if (protocol && Object.values(Protocols).includes(protocol)) {
+                    this.inbound.protocol = protocol;
+                }
             }
             // Always ensure testseed is initialized for VLESS protocol (even if vision flow is not set yet)
             // This ensures Vue reactivity works properly
@@ -387,6 +398,18 @@
             },
         },
         watch: {
+            // A protocol pre-selected by the Inbounds page (/panel/inbounds/:proto)
+            // is set on inbound before the modal opens, so the select's @change never
+            // fires for it. Run the same port defaults onProtocolChange would have,
+            // once, and only on a fresh add — editing keeps the protocol select
+            // disabled and must not re-seed a saved port.
+            "inModal.visible"(visible) {
+                if (visible && !inModal.isEdit && inModal.preSelectProtocol) {
+                    const p = inModal.preSelectProtocol;
+                    inModal.preSelectProtocol = '';
+                    this.onProtocolChange(p);
+                }
+            },
             "inModal.inbound.stream.security"(newVal, oldVal) {
                 // Clear flow when security changes from reality/tls to none
                 if (

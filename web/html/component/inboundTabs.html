@@ -1,0 +1,18 @@
+{{define "component/inboundTabs"}}
+<!-- Protocol tabs: one route per protocol (/panel/inbounds/:proto), direct
+     links (the panel has no SPA router) so each protocol page is bookmarkable
+     and shareable. The active tab comes from the server-rendered
+     activeProtocol; the tab list is built client-side from ProtocolLabels in
+     web/assets/js/model/inbound.js, so it cannot drift from the picker. -->
+<div class="bo-proto-tabs" role="tablist">
+    <a v-for="tab in protoTabs" :key="tab.key"
+        :href="protoTabHref(tab.key)"
+        class="bo-proto-tab"
+        :class="{ 'is-active': protocolScope === tab.key }"
+        role="tab"
+        :aria-selected="protocolScope === tab.key ? 'true' : 'false'"
+        :aria-current="protocolScope === tab.key ? 'page' : false">
+        [[ tab.label ]]
+    </a>
+</div>
+{{end}}

@@ -109,13 +109,14 @@
   const app = new Vue({
     delimiters: ['[[', ']]'],
     el: '#app',
-    data: {
-      themeSwitcher,
-      app: data,
-      links: rawLinks,
-      lang: '',
-      viewportWidth: (typeof window !== 'undefined' ? window.innerWidth : 1024),
-    },
+data: {
+    themeSwitcher,
+    app: data,
+    links: rawLinks,
+    lang: '',
+    viewportWidth: (typeof window !== 'undefined' ? window.innerWidth : 1024),
+    showPassword: false,
+},
     async mounted() {
       this.lang = LanguageManager.getLanguage();
       const tpl = document.getElementById('subscription-data');

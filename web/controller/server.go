@@ -92,6 +92,10 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	// dashboard first would otherwise consume the notice meant for whoever ran the
 	// update.
 	g.GET("/updateResult", requireOverviewManage(), a.updateResult)
+	// The Manage tile's connectivity widget: does this box have working
+	// Internet? Read-only echo/TCP probes to well-known services, gated with
+	// the tile it feeds (see the delegation note above).
+	g.GET("/ping", requireOverviewManage(), a.pingInternet)
 
 	// Renaming the server relabels the panel for every admin. Offered only from the
 	// overview, so it answers to the bit that says this overview may act. Reading it
@@ -524,6 +528,12 @@ func (a *ServerController) updateProgress(c *gin.Context) {
 // leaves nothing to report.
 func (a *ServerController) updateResult(c *gin.Context) {
 	jsonObj(c, a.serverService.TakePanelUpdateResult(), nil)
+}
+
+// pingInternet answers the Manage tile's connectivity widget: whether the
+// server can reach Google, Cloudflare and YouTube. See PingInternet.
+func (a *ServerController) pingInternet(c *gin.Context) {
+	jsonObj(c, a.serverService.PingInternet(c.Request.Context()), nil)
 }
 
 // installXray installs or updates Xray to the specified version.

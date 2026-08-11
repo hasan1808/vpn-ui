@@ -88,6 +88,8 @@
 "active" = "Active"
 "inactive" = "Inactive"
 "unlimited" = "Unlimited"
+"username" = "Username"
+"password" = "Password"
 "noExpiry" = "No expiry"
 
 [menu]
@@ -392,6 +394,13 @@
 "readDatabaseError" = "An error occurred while reading the database."
 "getDatabaseError" = "An error occurred while retrieving the database."
 "getConfigError" = "An error occurred while retrieving the config file."
+"internet" = "Internet"
+"ping" = "Ping"
+"internetOnline" = "Online"
+"internetPartial" = "Partial"
+"internetOffline" = "Offline"
+"pingUnreachable" = "Unreachable"
+"pingChecking" = "Checking…"
 
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
@@ -452,6 +461,7 @@
 "resetTraffic" = "Reset Traffic"
 "addInbound" = "Add Inbound"
 "generalActions" = "General Actions"
+"allProtocols" = "All"
 "autoRefresh" = "Auto-refresh"
 "autoRefreshInterval" = "Interval"
 "modifyInbound" = "Modify Inbound"

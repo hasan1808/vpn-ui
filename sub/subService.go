@@ -120,19 +120,18 @@ func (s *SubService) resolveTraffic(inbound *model.Inbound, email string) (traff
 }
 
 // GetSubs retrieves subscription links for a given subscription ID and host.
-func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.ClientTraffic, error) {
+func (s *SubService) GetSubs(subId string, host string) (result []string, usage xray.ClientTraffic, err error) {
 	s = s.forResponse()
 	s.address = host
-	var result []string
 	var traffic xray.ClientTraffic
 	usage := newSubUsage()
 	inbounds, err := s.getInboundsBySubId(subId)
 	if err != nil {
-		return nil, 0, traffic, err
+		return nil, traffic, err
 	}
 
 	if len(inbounds) == 0 {
-		return nil, 0, traffic, common.NewError("No inbounds found with ", subId)
+		return nil, traffic, common.NewError("No inbounds found with ", subId)
 	}
 
 	s.datepicker = s.resolveDatepicker()
@@ -158,7 +157,8 @@ func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.C
 				// account's remaining traffic/days for ALL protocols, including ones with
 				// no raw link (wg-c/awg deliver via the Clash sub and gre via the page's
 				// config downloads; the credential VPNs add a connection-info line via
-				// getLink).
+				// getLink).  The subscriber's username is client.Email, and the password
+				// field (if any) is c.Password.
 				ct, accountBacked, _ := s.resolveTraffic(inbound, client.Email)
 				usage.add(client.Email, ct, accountBacked)
 				if link := s.getLink(inbound, client.Email); link != "" {
@@ -168,7 +168,42 @@ func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.C
 		}
 	}
 
-	return result, usage.lastOnline, usage.result(), nil
+	return result, usage.result(), nil
+}
+
+// accountCredential returns the account's username (email) and password for the
+// subscription info page. The subId IS the account's email identity. The password
+// is the first enabled client's Password field (the same credential the modal's
+// genConnectionCard uses for credential VPNs). If no password is found, the
+// username alone is returned; the caller can fall back to showing just the email.
+func (s *SubService) accountCredential(subId string) (email, password string) {
+	inbounds, err := s.getInboundsBySubId(subId)
+	if err != nil {
+		return subId, ""
+	}
+	for _, inbound := range inbounds {
+		clients, err := s.inboundService.GetClients(inbound)
+		if err != nil {
+			continue
+		}
+		for _, client := range clients {
+			if client.Enable && client.SubID == subId {
+				if email == "" {
+					email = client.Email
+				}
+				if password == "" && client.Password != "" {
+					password = client.Password
+				}
+			}
+		}
+		if email != "" && password != "" {
+			break
+		}
+	}
+	if email == "" {
+		email = subId
+	}
+	return email, password
 }
 
 // getInboundsBySubId returns every enabled inbound holding a client with this subId.
@@ -2217,6 +2252,8 @@ type PageData struct {
 	SubClashUrl  string
 	Result       []string
 	Configs      []SubConfigLink
+	Email        string
+	Password     string
 }
 
 // ResolveRequest extracts scheme and host info from request/headers consistently.
@@ -2342,6 +2379,8 @@ func (s *SubService) BuildPageData(subId string, hostHeader string, traffic xray
 		remained = common.FormatTraffic(left)
 	}
 
+	email, password := s.accountCredential(subId)
+
 	return PageData{
 		Host:         hostHeader,
 		BasePath:     basePath,
@@ -2361,6 +2400,8 @@ func (s *SubService) BuildPageData(subId string, hostHeader string, traffic xray
 		SubJsonUrl:   subJsonURL,
 		SubClashUrl:  subClashURL,
 		Result:       subs,
+		Email:        email,
+		Password:     password,
 	}
 }
 

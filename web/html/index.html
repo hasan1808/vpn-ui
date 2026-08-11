@@ -420,19 +420,45 @@
     {{ if .perms.manageOverview }}
     <article class="bo-tile bo-t-manage" aria-label='{{ i18n "menu.link" }}'>
       <div class="bo-tile-head"><h3 class="bo-tile-title">{{ i18n "menu.link" }}</h3></div>
-      <div class="bo-btn-row bo-btn-row--compact">
-        <button type="button" class="bo-icon-btn" @click="openAllLogs()">
-          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
-        </button>
-        <button type="button" class="bo-icon-btn" @click="openConfig">
-          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-sliders"></use></svg>{{ i18n "pages.index.config" }}
-        </button>
-        <button type="button" class="bo-icon-btn" @click="openBackup">
-          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-download"></use></svg>{{ i18n "pages.index.backup" }}
-        </button>
-        <button type="button" class="bo-icon-btn" @click="openRestore">
-          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.restore" }}
-        </button>
+      <!-- The Manage tile is split in two: the operator's actions on the left,
+           the server's outbound connectivity check on the right. -->
+      <div class="bo-manage-split">
+        <div class="bo-manage-actions">
+          <div class="bo-btn-row bo-btn-row--compact">
+            <button type="button" class="bo-icon-btn" @click="openAllLogs()">
+              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
+            </button>
+            <button type="button" class="bo-icon-btn" @click="openConfig">
+              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-sliders"></use></svg>{{ i18n "pages.index.config" }}
+            </button>
+            <button type="button" class="bo-icon-btn" @click="openBackup">
+              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-download"></use></svg>{{ i18n "pages.index.backup" }}
+            </button>
+            <button type="button" class="bo-icon-btn" @click="openRestore">
+              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.restore" }}
+            </button>
+          </div>
+        </div>
+        <div class="bo-manage-ping">
+          <div class="bo-ping-head">
+            <h4 class="bo-ping-title">{{ i18n "pages.index.internet" }}</h4>
+            <button type="button" class="bo-icon-btn bo-icon-btn--accent" :disabled="pingChecking" @click="checkInternet()">
+              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.ping" }}
+            </button>
+          </div>
+          <span v-if="ping && ping.overall" class="bo-ping-overall" :class="'bo-ping-overall--' + ping.overall">
+            [[ pingOverallText ]]
+          </span>
+          <ul class="bo-ping-list">
+            <li v-for="t in pingList" :key="t.name" class="bo-ping-row" :title="t.ip || t.detail || ''">
+              <span class="bo-ping-dot" :class="'bo-ping-dot--' + rowState(t)"></span>
+              <span class="bo-ping-name">[[ t.name ]]</span>
+              <span v-if="t.status === 'ok'" class="bo-ping-value num">[[ formatPing(t.rttMs) ]]</span>
+              <span v-else-if="t.status === 'fail'" class="bo-ping-value bo-ping-value--fail">{{ i18n "pages.index.pingUnreachable" }}</span>
+              <span v-else class="bo-ping-value bo-ping-value--pending">[[ pingText.loading ]]</span>
+            </li>
+          </ul>
+        </div>
       </div>
     </article>
     {{ end }}
@@ -1824,6 +1850,24 @@
       // '' means every interface, which is what the aggregate netIO already is.
       ifaceFilter: '',
       userStats: { total: 0, online: 0, depleted: 0, expiring: 0 },
+      // Manage tile connectivity check (Google / Cloudflare / YouTube). `ping`
+      // holds the last server answer; null until the first check lands.
+      ping: null,
+      pingChecking: false,
+      // Matches the server's requireOverviewManage gate on /panel/api/server/ping
+      // so the auto-check on mount does not fire a 403 for an operator who cannot
+      // see the Manage tile it feeds.
+      canPing: {{ if .perms.manageOverview }}true{{ else }}false{{ end }},
+      // Emitted as JS (like geofileText above) so html/template escapes the
+      // translations as JS strings; an apostrophe would otherwise end the
+      // attribute's string.
+      pingText: {
+        online: '{{ i18n "pages.index.internetOnline" }}',
+        partial: '{{ i18n "pages.index.internetPartial" }}',
+        offline: '{{ i18n "pages.index.internetOffline" }}',
+        loading: '{{ i18n "pages.index.pingChecking" }}',
+        unreachable: '{{ i18n "pages.index.pingUnreachable" }}',
+      },
       mobileMenuOpen: false,
       sidebarHidden: window.__sidebarHidden || false,
       langOpen: false,
@@ -1841,6 +1885,19 @@
         const byName = {};
         (this.geofileStatus || []).forEach(state => { byName[state.name] = state; });
         return byName;
+      },
+      // The Manage tile's ping rows. Before the first answer lands, show the
+      // three known services as pending so the widget never reads empty.
+      pingList() {
+        const targets = (this.ping && this.ping.targets) || [];
+        if (targets.length) return targets;
+        return ['Google', 'Cloudflare', 'YouTube'].map(name => ({ name }));
+      },
+      pingOverallText() {
+        if (!this.ping || !this.ping.overall) {
+          return this.pingChecking ? this.pingText.loading : '';
+        }
+        return this.pingText[this.ping.overall] || this.ping.overall;
       },
       // Identity tile. A user-set name wins; otherwise the distro name; the
       // hostname is the last resort so the tile is never blank.
@@ -2208,6 +2265,24 @@
           const msg = await HttpUtil.get('/panel/api/server/userStats');
           if (msg && msg.success && msg.obj) this.userStats = msg.obj;
         } catch (e) { /* best-effort */ }
+      },
+      // The Manage tile's connectivity widget: asks the server to probe Google,
+      // Cloudflare and YouTube and keeps the answer for the rows to render.
+      async checkInternet() {
+        if (this.pingChecking) return;
+        this.pingChecking = true;
+        try {
+          const msg = await HttpUtil.get('/panel/api/server/ping');
+          if (msg && msg.success && msg.obj) this.ping = msg.obj;
+        } catch (e) { /* best-effort; the tile keeps its previous state */ }
+        finally { this.pingChecking = false; }
+      },
+      formatPing(rttMs) {
+        if (rttMs == null || rttMs < 0) return '';
+        return rttMs.toFixed(0) + ' ms';
+      },
+      rowState(t) {
+        return (t && t.status) || 'pending';
       },
       // The modal's row/level/syslog controls and its refresh icon go through
       // here, so they re-run the loader that opened it instead of always
@@ -3367,6 +3442,7 @@
       this.fetchUserStats();
       this.fetchServerName();
       this.fetchPanelLocation();
+      if (this.canPing) this.checkInternet();
       this.fetchGeofileStatus();
       this.checkForUpdate(false);
       this.announceUpdateResult();

@@ -110,7 +110,17 @@
         methods: {
             isActive(key) {
                 const norm = (s) => (s || '').replace(/\/+$/, '');
-                return norm(key) === norm(this.requestUri);
+                const k = norm(key);
+                const u = norm(this.requestUri);
+                if (k === u) return true;
+                // A protocol-scoped Inbounds page (/panel/inbounds/:proto) keeps
+                // the Inbounds nav item highlighted: base plus exactly one more
+                // segment. Anything deeper stays inactive.
+                if (k.endsWith('/panel/inbounds') && u.startsWith(k + '/')) {
+                    const rest = u.slice(k.length + 1);
+                    return !!rest && !rest.includes('/');
+                }
+                return false;
             },
             openLink(key) {
                 this.$root.mobileMenuOpen = false;

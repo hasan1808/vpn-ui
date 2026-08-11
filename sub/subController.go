@@ -166,6 +166,8 @@ func (a *SUBController) subs(c *gin.Context) {
 				"subClashUrl":  page.SubClashUrl,
 				"result":       page.Result,
 				"configs":      page.Configs,
+				"email":        page.Email,
+				"password":     page.Password,
 			})
 			return
 		}
