@@ -300,26 +300,38 @@ func (p *process) Start() (err error) {
 		return common.NewErrorf("Failed to write configuration file: %v", err)
 	}
 
-	cmd := exec.Command(GetBinaryPath(), "-c", configPath)
-	p.cmd = cmd
+	// Resolve binary path: prefer configured bin folder, but fall back to any xray on PATH.
+		binPath := GetBinaryPath()
+		if _, statErr := os.Stat(binPath); statErr != nil {
+			// Try lookups for architecture-specific name or the generic "xray" on PATH.
+			if lp, lpErr := exec.LookPath(GetBinaryName()); lpErr == nil {
+				binPath = lp
+			} else if lp2, lpErr2 := exec.LookPath("xray"); lpErr2 == nil {
+				binPath = lp2
+			} else {
+				return common.NewErrorf("XRAY binary not found at %s and not available on PATH; place %s in %s or set VPNUI_BIN_FOLDER", binPath, GetBinaryName(), config.GetBinFolderPath())
+			}
+		}
+		cmd := exec.Command(binPath, "-c", configPath)
+		p.cmd = cmd
 
-	// Hand the speed limit sidecar to the patched core out of band. An env var is used
-	// rather than a config section because Xray's app configs are protobuf Any values,
-	// so a plain JSON side-channel there would drag infra/conf and codegen into the
-	// fork patch, and because anything in the config restarts Xray on every change.
-	//
-	// Resolve to an absolute path: cmd.Dir is never set, so Xray inherits whatever cwd
-	// the panel was started with, and GetBinFolderPath is RELATIVE ("bin") unless
-	// VPNUI_BIN_FOLDER overrides it. Resolving here pins the path to the cwd the panel
-	// itself resolves "bin" against, instead of trusting Xray to resolve it the same way.
-	speedLimitPath := GetSpeedLimitPath()
-	if abs, absErr := filepath.Abs(speedLimitPath); absErr == nil {
-		speedLimitPath = abs
-	}
-	cmd.Env = append(os.Environ(), "XRAY_SPEEDLIMIT_FILE="+speedLimitPath)
+		// Hand the speed limit sidecar to the patched core out of band. An env var is used
+		// rather than a config section because Xray's app configs are protobuf Any values,
+		// so a plain JSON side-channel there would drag infra/conf and codegen into the
+		// fork patch, and because anything in the config restarts Xray on every change.
+		//
+		// Resolve to an absolute path: cmd.Dir is never set, so Xray inherits whatever cwd
+		// the panel was started with, and GetBinFolderPath is RELATIVE ("bin") unless
+		// VPNUI_BIN_FOLDER overrides it. Resolving here pins the path to the cwd the panel
+		// itself resolves "bin" against, instead of trusting Xray to resolve it the same way.
+		speedLimitPath := GetSpeedLimitPath()
+		if abs, absErr := filepath.Abs(speedLimitPath); absErr == nil {
+			speedLimitPath = abs
+		}
+		cmd.Env = append(os.Environ(), "XRAY_SPEEDLIMIT_FILE="+speedLimitPath)
 
-	cmd.Stdout = p.logWriter
-	cmd.Stderr = p.logWriter
+		cmd.Stdout = p.logWriter
+		cmd.Stderr = p.logWriter
 
 	go func() {
 		err := cmd.Run()
