@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
+	"github.com/mhsanaei/3x-ui/v2/corebundle"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/util/common"
 )
@@ -300,7 +301,18 @@ func (p *process) Start() (err error) {
 		return common.NewErrorf("Failed to write configuration file: %v", err)
 	}
 
-	// Resolve binary path: prefer configured bin folder, but fall back to any xray on PATH.
+	// Ensure any embedded core is in place before resolving the binary path. This
+		// guards against builds or deploys that skipped the main startup extraction.
+		binDir := config.GetBinFolderPath()
+		if corebundle.HasXray() {
+			if pth, exErr := corebundle.ExtractXray(binDir); exErr != nil {
+				logger.Warning("could not extract bundled xray core at Start():", exErr)
+			} else if pth != "" {
+				logger.Info("extracted bundled xray core to", pth)
+			}
+		}
+
+		// Resolve binary path: prefer configured bin folder, but fall back to any xray on PATH.
 		binPath := GetBinaryPath()
 		if _, statErr := os.Stat(binPath); statErr != nil {
 			// Try lookups for architecture-specific name or the generic "xray" on PATH.
