@@ -294,9 +294,21 @@ trap 'dl_cleanup' EXIT
 trap 'dl_cleanup; exit 130' INT
 trap 'dl_cleanup; exit 143' TERM
 
-msg "Building from source (release asset not built with CGO)"
-BUILD_FROM_SOURCE=1
-if [[ "$BUILD_FROM_SOURCE" -eq 1 ]]; then
+# Build the panel from source ONLY when explicitly asked (BUILD_FROM_SOURCE=1).
+# The default downloads the prebuilt release binary: a ~70MB transfer that needs
+# just curl/wget (already chosen above). The source path recompiles the Xray core
+# and the panel with a full toolchain (git, gcc, Go, and Docker unless
+# SKIP_BACKEND=1), so it takes many minutes and depends on github.com being
+# reachable for the clone — it exists only for platforms/commits without a
+# prebuilt asset.
+BUILD_FROM_SOURCE="${BUILD_FROM_SOURCE:-0}"
+case "$BUILD_FROM_SOURCE" in
+    1|true|yes|on) BUILD_FROM_SOURCE=1 ;;
+    *)             BUILD_FROM_SOURCE=0 ;;
+esac
+
+if [[ "$BUILD_FROM_SOURCE" == "1" ]]; then
+    msg "Building from source (BUILD_FROM_SOURCE=1)"
     if ! command -v git >/dev/null 2>&1; then
         act "installing git..."
         if command -v apt-get >/dev/null 2>&1; then
@@ -361,16 +373,24 @@ if [[ "$BUILD_FROM_SOURCE" -eq 1 ]]; then
     BUILD_DIR="$(mktemp -d)"
     trap 'dl_cleanup; rm -rf "$BUILD_DIR"' EXIT
     act "cloning $REPO..."
-    git clone --depth 1 --recurse-submodules "https://github.com/$REPO.git" "$BUILD_DIR/src" >/dev/null 2>&1 \
-        || die "git clone failed."
+    # Errors are shown, not swallowed: a clone that dies on the wire reads like
+    # "connection reset", not "git clone failed." --shallow-submodules keeps the
+    # submodule clones shallow too (they would otherwise be FULL clones, which is
+    # most of the transfer on a flaky link).
+    if ! clone_out="$(git clone --depth 1 --recurse-submodules --shallow-submodules "https://github.com/$REPO.git" "$BUILD_DIR/src" 2>&1)"; then
+        printf '%s\n' "$clone_out" | sed 's/^/    /' >&2
+        die "git clone failed."
+    fi
     act "building vpn-ui-amd64 (this may take several minutes)..."
-    # Add temporary swap if memory is tight (Go compiler needs ~2GB)
+    # Add temporary swap if memory is tight (Go compiler needs ~2GB). Track
+    # whether WE created it so the teardown below only removes our own file.
+    swapped=0
     if [[ ! -f /swapfile ]] && command -v fallocate >/dev/null 2>&1; then
         TOTAL_MEM="$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
         if (( TOTAL_MEM < 3000000 )); then
             act "low memory, adding temporary swap..."
             SWAP_SIZE="$(( (3000000 - TOTAL_MEM) / 1024 + 512 ))M"
-            fallocate -l "$SWAP_SIZE" /swapfile 2>/dev/null && chmod 600 /swapfile && mkswap /swapfile >/dev/null 2>&1 && swapon /swapfile 2>/dev/null || true
+            fallocate -l "$SWAP_SIZE" /swapfile 2>/dev/null && chmod 600 /swapfile && mkswap /swapfile >/dev/null 2>&1 && swapon /swapfile 2>/dev/null && swapped=1 || true
         fi
     fi
     # Use all available CPU cores for faster build, unless memory is tight
@@ -382,28 +402,57 @@ if [[ "$BUILD_FROM_SOURCE" -eq 1 ]]; then
     else
         act "building with ${NPROC} cores..."
     fi
-    # If Xray core is already built from a previous run, skip the slow rebuild
+    # Reuse a previously built Xray core + geo files instead of recompiling them
+    # on every run. The clone lands in a fresh temp dir, so "inside the source
+    # tree" can never cache across runs (the old check looked there and therefore
+    # NEVER hit — every install rebuilt the core). Keep the artifacts under
+    # $DEST_DIR and key the cache on the pinned Xray-core commit, the same stamp
+    # build/core/build.sh writes: a bumped submodule misses and rebuilds itself.
     export SKIP_CORE=0
     export SKIP_SUBMODULES=0
     export SKIP_BACKEND="${SKIP_BACKEND:-1}"
-    if [[ -f "$BUILD_DIR/src/corebundle/core/amd64/xray" ]]; then
+    CORE_CACHE="$DEST_DIR/.core-cache/corebundle/core"
+    CACHE_ARCH="$(go env GOARCH 2>/dev/null || echo amd64)"
+    xray_commit="$(git -C "$BUILD_DIR/src/third_party/Xray-core" rev-parse HEAD 2>/dev/null || true)"
+    if [[ -n "$xray_commit" && -f "$CORE_CACHE/$CACHE_ARCH/xray" \
+          && "$(cat "$CORE_CACHE/$CACHE_ARCH/.xray.commit" 2>/dev/null || true)" == "$xray_commit" ]]; then
+        install -d -m 0755 "$BUILD_DIR/src/corebundle/core"
+        cp -a "$CORE_CACHE/." "$BUILD_DIR/src/corebundle/core/"
         export SKIP_CORE=1
         export SKIP_SUBMODULES=1
-        act "Xray core already built — skipping rebuild"
+        act "Xray core cache hit @ ${xray_commit:0:12} — skipping rebuild"
+    else
+        act "no cached Xray core for ${xray_commit:0:12} — it will be compiled"
     fi
     if [[ "$SKIP_BACKEND" == "1" ]]; then
         act "skipping backend daemon bundle (set SKIP_BACKEND=0 to include)"
     fi
     (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" bash build.sh) \
         || die "build failed."
-    # Remove temporary swap
-    swapoff /swapfile 2>/dev/null && rm -f /swapfile 2>/dev/null || true
+    # Cache the freshly built core + geo files for the next run. Under the
+    # default download install this dir is simply never touched.
+    if [[ -d "$BUILD_DIR/src/corebundle/core" && -f "$BUILD_DIR/src/corebundle/core/$CACHE_ARCH/xray" ]]; then
+        install -d -m 0755 "$CORE_CACHE"
+        cp -a "$BUILD_DIR/src/corebundle/core/." "$CORE_CACHE/"
+        act "cached Xray core @ ${xray_commit:0:12} for future builds"
+    fi
+    # Remove the temporary swap (only if this run created it)
+    if (( swapped )); then
+        swapoff /swapfile 2>/dev/null && rm -f /swapfile 2>/dev/null || true
+    fi
     if [[ -f "$BUILD_DIR/src/build/out/vpn-ui-amd64" ]]; then
         cp "$BUILD_DIR/src/build/out/vpn-ui-amd64" "$tmp"
     else
         die "build succeeded but output binary not found."
     fi
     rm -rf "$BUILD_DIR"
+else
+    # Default: fetch the prebuilt release binary (the fast path — no toolchain,
+    # no clone, no compile). fetch_asset renders the progress line and returns
+    # the real transfer status; its captured stderr has already been replayed on
+    # failure, so just die here.
+    fetch_asset "$DL_URL" "$tmp" || die "download failed."
+    ok "downloaded $(fmt_bytes "$DL_BYTES") in $(fmt_time "$DL_SECS")  (avg $(fmt_bytes "$DL_RATE")/s)"
 fi
 # Back to the plain tmp-file cleanup for the rest of the run: nothing below this
 # point owns a background job, so the download's signal handling ends here.
@@ -416,7 +465,6 @@ if command -v file >/dev/null 2>&1; then
 else
     [[ "$(head -c4 "$tmp")" == $'\x7fELF' ]] || die "downloaded file is not an ELF binary."
 fi
-ok "downloaded $(fmt_bytes "$DL_BYTES") in $(fmt_time "$DL_SECS")  (avg $(fmt_bytes "$DL_RATE")/s)"
 
 # Install the binary (stop the unit first if we're upgrading in place)
 if systemctl is-active --quiet "$UNIT" 2>/dev/null; then

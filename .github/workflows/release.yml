@@ -55,7 +55,6 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
           echo "$VERSION" > version
-          echo "$VERSION" > config/version
           CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X github.com/mhsanaei/3x-ui/v2/config.version=$VERSION" -o vpn-ui-amd64 .
 
       - name: Verify CGO
