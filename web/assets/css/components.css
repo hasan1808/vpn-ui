@@ -406,31 +406,6 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
    bar is a horizontally scrollable row of chips: direct links, so every
    protocol has its own bookmarkable URL and the active tab comes server-
    rendered from .Protocol, not guessed on the client. */
-.bo-proto-tabs {
-  display:flex; align-items:center; gap:6px;
-  overflow-x:auto; padding-bottom:2px;
-  scrollbar-width:thin;
-}
-.bo-proto-tab {
-  display:inline-flex; align-items:center;
-  flex:0 0 auto;
-  padding:4px 12px;
-  border-radius:var(--radius-pill);
-  border:1px solid var(--border);
-  background:var(--surface-2);
-  color:var(--text-2);
-  font-size:var(--fs-sm); font-weight:var(--fw-medium);
-  line-height:1.4;
-  text-decoration:none;
-  white-space:nowrap;
-  transition:background .15s ease, border-color .15s ease, color .15s ease;
-}
-.bo-proto-tab:hover { color:var(--text); border-color:var(--text-3); }
-.bo-proto-tab.is-active {
-  background:var(--info-weak);
-  border-color:var(--info);
-  color:var(--info);
-}
 
 .bo-tile-head {
   display:flex; align-items:center; justify-content:space-between;

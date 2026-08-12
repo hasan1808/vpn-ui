@@ -461,7 +461,6 @@
 "resetTraffic" = "Reset Traffic"
 "addInbound" = "Add Inbound"
 "generalActions" = "General Actions"
-"allProtocols" = "All"
 "autoRefresh" = "Auto-refresh"
 "autoRefreshInterval" = "Interval"
 "modifyInbound" = "Modify Inbound"

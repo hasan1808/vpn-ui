@@ -186,7 +186,6 @@
                   </a-button-group>
                 </template>
                 <a-space direction="vertical">
-                  {{template "component/inboundTabs" .}}
                   <div
                     :style="isMobile ? {} : { display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }">
                     <a-switch v-model="enableFilter"
@@ -994,7 +993,6 @@
       // protocolScope normalizes the empty string to 'all'.
       activeProtocol: '{{ .Protocol }}',
       basePath: '{{ .base_path }}',
-      allProtocolsLabel: '{{ i18n "pages.inbounds.allProtocols" }}',
     },
     methods: {
       toggleSidebar() {
@@ -1229,10 +1227,6 @@
           this.filterBy = '';
           this.searchedInbounds = this.protocolInbounds.slice();
         }
-      },
-      protoTabHref(key) {
-        const base = this.basePath || '/';
-        return base + (key === 'all' ? 'panel/inbounds' : 'panel/inbounds/' + key);
       },
       generalActions(action) {
         switch (action.key) {
@@ -1950,16 +1944,6 @@
         if (proto === 'all') return this.dbInbounds;
         return this.dbInbounds.filter(b =>
           b.protocol === proto || (proto === 'hysteria' && b.protocol === 'hysteria2'));
-      },
-      // Protocol tab bar: "all" first, then one tab per protocol, ordered by the
-      // Protocols object in web/assets/js/model/inbound.js. Labels come from
-      // ProtocolLabels, the same source as the Add/Edit protocol picker.
-      protoTabs() {
-        const tabs = [{ key: 'all', label: this.allProtocolsLabel }];
-        Object.keys(Protocols).forEach(key => {
-          tabs.push({ key, label: ProtocolLabels[key] || key });
-        });
-        return tabs;
       },
       // Whether to offer reordering at all. The order is the PANEL's and shared by
       // every admin, so it is gated on editInbound, which a reseller never holds.
