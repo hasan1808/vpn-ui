@@ -61,8 +61,21 @@ jobs:
         run: |
           file vpn-ui-amd64 | grep -q "dynamically linked" && echo "CGO OK" || (echo "CGO MISSING - not dynamically linked" && exit 1)
 
+      - name: Build core bundle (amd64)
+        run: |
+          # Build the pinned Xray core and geo files so we can attach them as release assets
+          bash build/core/build.sh amd64
+
+      - name: Package backend and core bundles
+        run: |
+          set -euo pipefail
+          # Create a backend archive containing the built backend binaries and any .tgz relocatable bundles
+          tar -C backend -czf backend-amd64.tgz bin/amd64 || true
+          # Package the corebundle directory (xray + geo files)
+          tar -C corebundle -czf core-amd64.tgz core || true
+
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: vpn-ui-amd64
+          files: vpn-ui-amd64,core-amd64.tgz,backend-amd64.tgz
           generate_release_notes: true
