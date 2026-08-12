@@ -28,6 +28,7 @@ var defaultValueMap = map[string]string{
 	"xrayTemplateConfig":          xrayTemplateConfig,
 	"webListen":                   "",
 	"webDomain":                   "",
+	"publicIp":                    "",
 	"webPort":                     "2083",
 	"webCertFile":                 "",
 	"webKeyFile":                  "",
@@ -531,6 +532,18 @@ func (s *SettingService) GetServerName() (string, error) {
 // SetServerName persists the operator's label for this server. Empty clears it.
 func (s *SettingService) SetServerName(value string) error {
 	return s.setString("serverName", value)
+}
+
+// GetPublicIP returns the operator-pinned public IPv4 for this server. Empty is the
+// default and means the panel falls back to live IP detection in the status probe.
+func (s *SettingService) GetPublicIP() (string, error) {
+	return s.getString("publicIp")
+}
+
+// SetPublicIP persists the operator-pinned public IPv4. Empty clears the override
+// and restores automatic detection.
+func (s *SettingService) SetPublicIP(value string) error {
+	return s.setString("publicIp", value)
 }
 
 func (s *SettingService) GetTwoFactorToken() (string, error) {

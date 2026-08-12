@@ -36,6 +36,13 @@
             </template>
         </a-setting-list-item>
         <a-setting-list-item paddings="small">
+            <template #title>{{ i18n "pages.settings.publicIpOverride"}}</template>
+            <template #description>{{ i18n "pages.settings.publicIpOverrideDesc"}}</template>
+            <template #control>
+                <a-input type="text" v-model="allSetting.publicIp" placeholder="auto-detected"></a-input>
+            </template>
+        </a-setting-list-item>
+        <a-setting-list-item paddings="small">
             <template #title>{{ i18n "pages.settings.panelPort"}}</template>
             <template #description>{{ i18n "pages.settings.panelPortDesc"}}</template>
             <template #control>

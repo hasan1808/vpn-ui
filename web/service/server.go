@@ -130,10 +130,11 @@ type Status struct {
 	PublicIP struct {
 		IPv4 string `json:"ipv4"`
 		IPv6 string `json:"ipv6"`
-		// LocalIP4 lists every IPv4 address assigned to the machine's up,
-		// non-loopback interfaces. The dashboard renders these as "IPv4 +n"
-		// rows so a server with several bound addresses shows them all, not
-		// just the public exit IP in IPv4 above.
+		// LocalIP4 lists every public IPv4 address assigned to the machine's
+		// up, non-loopback interfaces. The dashboard renders these as
+		// "IPv4 +n" rows so a server with several bound public addresses
+		// shows them all, not just the public exit IP in IPv4 above. Private
+		// LAN/Docker/APIPA/CGNAT addresses are excluded on purpose.
 		LocalIP4 []string `json:"localIp4"`
 	} `json:"publicIP"`
 	AppStats struct {
@@ -741,6 +742,14 @@ func localIPv4Addresses() []string {
 			}
 			ip4 := addr.To4()
 			if ip4 == nil {
+				continue
+			}
+			// Only surface public addresses. The dashboard's "IPv4 +n" rows
+			// exist to reveal extra public addresses a host binds, never the
+			// LAN, Docker bridge, APIPA or CGNAT addresses that sit on the
+			// same machine (e.g. 10.x, 172.16/12, 192.168.x, 169.254.x,
+			// 100.64/10). Those should stay internal.
+			if ip4.IsPrivate() {
 				continue
 			}
 			s := ip4.String()

@@ -23,6 +23,11 @@ type AllSetting struct {
 	// Web server settings
 	WebListen     string `json:"webListen" form:"webListen"`         // Web server listen IP address
 	WebDomain     string `json:"webDomain" form:"webDomain"`         // Web server domain for domain validation
+	// PublicIP lets the operator pin the server's public IPv4 address when the
+	// auto-detected one is wrong (e.g. a sample/test IP cached on a staging
+	// host, or an egress whose detected IP differs from the one handed out in
+	// client configs). Left empty, the panel falls back to live detection.
+	PublicIP      string `json:"publicIp" form:"publicIp"`           // Manual server public IPv4 override
 	WebPort       int    `json:"webPort" form:"webPort"`             // Web server port number
 	WebCertFile   string `json:"webCertFile" form:"webCertFile"`     // Path to SSL certificate file for web server
 	WebKeyFile    string `json:"webKeyFile" form:"webKeyFile"`       // Path to SSL private key file for web server

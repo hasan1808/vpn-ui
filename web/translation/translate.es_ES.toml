@@ -582,6 +582,8 @@
 "panelListeningIPDesc" = "Dejar en blanco por defecto para monitorear todas las IPs."
 "panelListeningDomain" = "Dominio de Escucha del Panel"
 "panelListeningDomainDesc" = "Dejar en blanco por defecto para monitorear todos los dominios e IPs."
+"publicIpOverride" = "Sobrescritura de IP Pública"
+"publicIpOverrideDesc" = "Establezca manualmente la IPv4 pública del servidor cuando la detección automática devuelva una dirección incorrecta/de prueba. Déjelo vacío para usar la detección automática."
 "panelPort" = "Puerto del Panel"
 "panelPortDesc" = "El puerto utilizado para mostrar este panel."
 "publicKeyPath" = "Ruta del Archivo de Clave Pública del Certificado del Panel"

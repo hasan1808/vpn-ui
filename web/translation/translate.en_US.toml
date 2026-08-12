@@ -753,6 +753,8 @@
 "panelListeningIPDesc" = "The IP address for the web panel. (leave blank to listen on all IPs)"
 "panelListeningDomain" = "Listen Domain"
 "panelListeningDomainDesc" = "The domain name for the web panel. (leave blank to listen on all domains and IPs)"
+"publicIpOverride" = "Public IP Override"
+"publicIpOverrideDesc" = "Manually set the server's public IPv4 when auto-detection returns a wrong/sample address. Leave empty to use auto-detection."
 "panelPort" = "Listen Port"
 "panelPortDesc" = "The port number for the web panel. (must be an unused port)"
 "publicKeyPath" = "Public Key Path"

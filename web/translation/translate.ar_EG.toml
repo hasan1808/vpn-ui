@@ -585,6 +585,8 @@
 "panelListeningIPDesc" = "عنوان IP للبانل. (سيبه فاضي عشان يستمع على كل الـ IPs)"
 "panelListeningDomain" = "دومين الاستماع"
 "panelListeningDomainDesc" = "اسم الدومين للبانل. (سيبه فاضي عشان يستمع على كل الدومينات والـ IPs)"
+"publicIpOverride" = "تجاوز IP عام"
+"publicIpOverrideDesc" = "عيّن IP عام يدويًا عندما يكشف النظام عنوانًا خاطئًا/نموذجيًا. اتركه فارغًا للاكتشاف التلقائي."
 "panelPort" = "بورت الاستماع"
 "panelPortDesc" = "رقم البورت للبانل. (لازم يكون بورت فاضي)"
 "publicKeyPath" = "مسار المفتاح العام"

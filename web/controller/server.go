@@ -144,6 +144,14 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 // refreshStatus updates the cached server status and collects CPU history.
 func (a *ServerController) refreshStatus() {
 	a.lastStatus = a.serverService.GetStatus(a.lastStatus)
+	// Apply a manually pinned public IPv4, if the operator set one. The auto-detected
+	// IP can be wrong on staging/NAted hosts, which then leaks a sample address as
+	// the server's public IP in the dashboard and client configs.
+	if pub, err := a.settingService.GetPublicIP(); err == nil && pub != "" {
+		if a.lastStatus != nil {
+			a.lastStatus.PublicIP.IPv4 = pub
+		}
+	}
 	// collect cpu history when status is fresh
 	if a.lastStatus != nil {
 		a.serverService.AppendCpuSample(time.Now(), a.lastStatus.Cpu)
