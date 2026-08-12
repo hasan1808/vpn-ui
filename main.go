@@ -216,6 +216,12 @@ func runWebServer() {
 	adminMigrations := &service.AdminService{}
 	adminMigrations.MigrationOverviewAccess()
 
+	// Ensure any prebuilt bundles present in the project's releases are fetched
+	// when the embedded assets are not present. This helps fresh checkouts and CI
+	// deployments that did not run the full build backend step to produce embedded
+	// binaries.
+	backend.DownloadBundlesIfMissing()
+
 	// Extract the pinned Xray core + base geo files baked into the panel. The
 	// core is overwritten on every start so the bundled (patched) fork is always
 	// what runs — switching/updating it from the dashboard is disabled. Geo files
