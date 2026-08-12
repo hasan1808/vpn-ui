@@ -302,7 +302,11 @@ fetch_asset() {
 }
 
 install -d -m 0755 "$DEST_DIR"
-tmp="$(mktemp "${DEST}.XXXXXX")"
+# Stage the download in $TMPDIR (default /tmp), NOT in $DEST_DIR: the gz + its
+# decompressed form briefly need ~3x the binary's size, and $DEST_DIR may sit on a
+# small partition. The final `mv` copies into $DEST_DIR, which only needs room for
+# the one binary.
+tmp="$(mktemp -p "${TMPDIR:-/tmp}" vpn-ui-amd64.XXXXXX)"
 DL_PID=""; DL_ERR=""
 # One teardown for everything the download owns: the partial file, the captured
 # stderr, and the transfer itself. Wired to INT/TERM as well as EXIT because a
@@ -535,6 +539,14 @@ if [[ "$MODE" == "update" && -f "$DB" ]]; then
 fi
 
 chmod +x "$tmp"
+# Fail loudly (not with a cryptic "No space left on device") if $DEST_DIR can't hold
+# the binary. df reports 1K blocks; convert to bytes and compare against the downloaded size.
+if command -v df >/dev/null 2>&1; then
+    _have="$(df -Pk "$DEST_DIR" 2>/dev/null | awk 'NR==2{print $4*1024}')"
+    if [[ "$_have" =~ ^[0-9]+$ && "$_have" -lt "$DL_BYTES" ]]; then
+        die "not enough free space in $DEST_DIR (have $(fmt_bytes "$_have"), need ~$(fmt_bytes "$DL_BYTES")). Free disk space and retry."
+    fi
+fi
 mv -f "$tmp" "$DEST"
 trap - EXIT
 ok "installed -> $DEST"
