@@ -125,6 +125,22 @@ else
     act "mode:   ${GREEN}fresh install${R}"
 fi
 
+# GitHub serves release assets off objects.githubusercontent.com, which is
+# blocked/throttled in some regions even though github.com itself is reachable.
+# Try the direct URL first, then community GitHub proxies that fetch the asset
+# server-side and re-serve it to the client. (A proxy is a MITM by design — only
+# use these where you cannot reach the GitHub CDN directly.)
+if [[ -n "$ver" ]]; then
+    ASSET_BASE="https://github.com/$REPO/releases/download/$ver/$ASSET"
+else
+    ASSET_BASE="https://github.com/$REPO/releases/latest/download/$ASSET"
+fi
+MIRRORS=(
+    "$ASSET_BASE"
+    "https://ghfast.top/$ASSET_BASE"
+    "https://ghproxy.net/$ASSET_BASE"
+)
+
 # Millisecond clock for the transfer rates below. GNU date has %3N; a date
 # without it (busybox) falls back to whole seconds, which only coarsens the rate.
 now_ms() {
@@ -448,10 +464,15 @@ if [[ "$BUILD_FROM_SOURCE" == "1" ]]; then
     rm -rf "$BUILD_DIR"
 else
     # Default: fetch the prebuilt release binary (the fast path — no toolchain,
-    # no clone, no compile). fetch_asset renders the progress line and returns
-    # the real transfer status; its captured stderr has already been replayed on
-    # failure, so just die here.
-    fetch_asset "$DL_URL" "$tmp" || die "download failed."
+    # no clone, no compile). Try each mirror in order; fetch_asset renders the
+    # progress line and returns the real transfer status.
+    rc=1
+    for url in "${MIRRORS[@]}"; do
+        act "downloading from: $url"
+        if fetch_asset "$url" "$tmp"; then rc=0; break; fi
+        warn "mirror failed, trying next"
+    done
+    (( rc == 0 )) || die "download failed (all mirrors)."
     ok "downloaded $(fmt_bytes "$DL_BYTES") in $(fmt_time "$DL_SECS")  (avg $(fmt_bytes "$DL_RATE")/s)"
 fi
 # Back to the plain tmp-file cleanup for the rest of the run: nothing below this
