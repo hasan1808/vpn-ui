@@ -135,11 +135,22 @@ if [[ -n "$ver" ]]; then
 else
     ASSET_BASE="https://github.com/$REPO/releases/latest/download/$ASSET"
 fi
+# Primary mirror: the asset re-published (gzip-compressed) on the `dist` branch and
+# served from raw.githubusercontent.com, which is reachable even where the release CDN
+# (objects.githubusercontent.com) is blocked. We gunzip it after download below.
+RAW_MIRROR="https://raw.githubusercontent.com/$REPO/dist/$ASSET.gz"
 MIRRORS=(
+    "$RAW_MIRROR"
     "$ASSET_BASE"
     "https://ghfast.top/$ASSET_BASE"
     "https://ghproxy.net/$ASSET_BASE"
+    "https://github.moeyy.xyz/$ASSET_BASE"
 )
+# Operator override: point at ANY reachable URL for the binary (self-hosted, a
+# region-specific proxy, …). Takes precedence over the built-in list.
+if [[ -n "${VPN_UI_BINARY_URL:-}" ]]; then
+    MIRRORS=( "$VPN_UI_BINARY_URL" )
+fi
 
 # Millisecond clock for the transfer rates below. GNU date has %3N; a date
 # without it (busybox) falls back to whole seconds, which only coarsens the rate.
@@ -473,6 +484,13 @@ else
         warn "mirror failed, trying next"
     done
     (( rc == 0 )) || die "download failed (all mirrors)."
+    # The raw.githubusercontent.com dist mirror serves a gzip-compressed asset;
+    # decompress it before the ELF sanity check below.
+    if [[ "$(head -c2 "$tmp")" == $'\x1f\x8b' ]]; then
+        mv "$tmp" "$tmp.gz"
+        gunzip -f "$tmp.gz" || die "failed to decompress gzip asset."
+        DL_BYTES="$(stat -c %s "$tmp" 2>/dev/null || echo 0)"
+    fi
     ok "downloaded $(fmt_bytes "$DL_BYTES") in $(fmt_time "$DL_SECS")  (avg $(fmt_bytes "$DL_RATE")/s)"
 fi
 # Back to the plain tmp-file cleanup for the rest of the run: nothing below this
