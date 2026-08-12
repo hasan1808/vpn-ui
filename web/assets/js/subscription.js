@@ -154,6 +154,17 @@ data: {
         const trafficOk = !this.app.totalByte || (this.app.uploadByte + this.app.downloadByte) <= this.app.totalByte;
         return expiryOk && trafficOk;
       },
+      usagePercent() {
+        if (!this.app.totalByte) return 0;
+        const used = this.app.downloadByte + this.app.uploadByte;
+        return Math.min(100, Math.round((used / this.app.totalByte) * 100));
+      },
+      usageLevel() {
+        const p = this.usagePercent;
+        if (p >= 90) return 'error';
+        if (p >= 70) return 'warn';
+        return 'ok';
+      },
       shadowrocketUrl() {
         const rawUrl = this.app.subUrl + '?flag=shadowrocket';
         const base64Url = btoa(rawUrl);
