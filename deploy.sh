@@ -4,7 +4,8 @@ set -euo pipefail
 
 REPO="hasan1808/vpn-ui"
 ASSET="vpn-ui-amd64"
-DEST_DIR="/opt/vpn-ui"
+# Install location; override with VPN_UI_DIR=... to use a filesystem with more room.
+DEST_DIR="${VPN_UI_DIR:-/opt/vpn-ui}"
 DEST="$DEST_DIR/$ASSET"
 UNIT="vpn-ui"
 # The management menu (`vpn-ui`). Installed from INSIDE the binary we just placed
@@ -302,31 +303,30 @@ fetch_asset() {
 }
 
 install -d -m 0755 "$DEST_DIR"
-# --- disk space pre-flight (fail fast instead of a cryptic curl 23 / gzip error)
-# Staging needs ~3x the binary size (gz + decompressed form), $DEST_DIR ~1.4x.
-# Stage in whichever of $TMPDIR / $DEST_DIR has MORE free space, then check both.
+# --- disk pre-flight (fail fast instead of a cryptic curl 23 / "No space left") --
+# The binary (~123MB) is streamed/decompressed straight into $DEST_DIR, so only it
+# needs ~150MB free there; no staging filesystem is involved. Before giving up, we
+# auto-free ONLY safe, self-inflicted junk: our own leftovers + apt cache +
+# orphaned apt packages + journal.
 _free_kb() { df -Pk "$1" 2>/dev/null | awk 'NR==2{print $4}'; }   # KiB free
-_stage_free="$(( $(_free_kb "${TMPDIR:-/tmp}") * 1024 ))"
 _dest_free="$(( $(_free_kb "$DEST_DIR") * 1024 ))"
-[[ "$_stage_free" =~ ^-?[0-9]+$ ]] || _stage_free=0
 [[ "$_dest_free" =~ ^-?[0-9]+$ ]] || _dest_free=0
-if (( _stage_free < 200*1024*1024 || _dest_free < 130*1024*1024 )); then
-    act "low disk: staging has $(fmt_bytes "$_stage_free") free, $DEST_DIR has $(fmt_bytes "$_dest_free") free"
-    # Auto-clean ONLY safe, self-inflicted stuff: our own leftovers + apt cache + journal.
-    rm -f /tmp/vpn-ui-amd64.* "$DEST_DIR"/vpn-ui-amd64.* 2>/dev/null
-    if command -v apt-get >/dev/null 2>&1; then apt-get clean 2>/dev/null || true; fi
-    if command -v journalctl >/dev/null 2>&1; then journalctl --vacuum-size=20M >/dev/null 2>&1 || true; fi
-    _stage_free="$(( $(_free_kb "${TMPDIR:-/tmp}") * 1024 ))"
-    _dest_free="$(( $(_free_kb "$DEST_DIR") * 1024 ))"
-    if (( _stage_free < 200*1024*1024 || _dest_free < 130*1024*1024 )); then
-        die "disk still too full after auto-cleanup (staging has $(fmt_bytes "$_stage_free") free, $DEST_DIR has $(fmt_bytes "$_dest_free") free). Free ~250MB on the server and retry — see: df -h"
+if (( _dest_free < 150*1024*1024 )); then
+    act "low disk: $DEST_DIR has $(fmt_bytes "$_dest_free") free, need ~150MB"
+    rm -f /tmp/vpn-ui-amd64.* "$DEST_DIR"/vpn-ui-amd64.* "$DEST_DIR"/vpn-ui-amd64.download 2>/dev/null
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get clean 2>/dev/null || true
+        apt-get -y autoremove --purge >/dev/null 2>&1 || true
     fi
-    ok "freed space: staging now $(fmt_bytes "$_stage_free"), $DEST_DIR now $(fmt_bytes "$_dest_free")"
+    if command -v journalctl >/dev/null 2>&1; then journalctl --vacuum-size=20M >/dev/null 2>&1 || true; fi
+    _dest_free="$(( $(_free_kb "$DEST_DIR") * 1024 ))"
+    if (( _dest_free < 150*1024*1024 )); then
+        die "disk still too full after auto-cleanup: $DEST_DIR has $(fmt_bytes "$_dest_free") free, need ~150MB. Free ~200MB on the server and retry (see: df -h)."
+    fi
+    ok "freed space: $DEST_DIR now has $(fmt_bytes "$_dest_free") free"
 fi
-# Stage in the roomier of /tmp and $DEST_DIR so a small tmpfs or small data disk never
-# blocks the transfer. The final `mv` (cross-device => copy) lands the binary in $DEST_DIR.
-STAGE_DIR="${TMPDIR:-/tmp}"; (( _dest_free > _stage_free )) && STAGE_DIR="$DEST_DIR"
-tmp="$(mktemp -p "$STAGE_DIR" vpn-ui-amd64.XXXXXX)"
+tmp="$DEST_DIR/vpn-ui-amd64.download"
+rm -f "$tmp"
 DL_PID=""; DL_ERR=""
 # One teardown for everything the download owns: the partial file, the captured
 # stderr, and the transfer itself. Wired to INT/TERM as well as EXIT because a
@@ -503,19 +503,25 @@ else
     # progress line and returns the real transfer status.
     rc=1
     for url in "${MIRRORS[@]}"; do
-        act "downloading from: $url"
-        if fetch_asset "$url" "$tmp"; then rc=0; break; fi
+        if [[ "$url" == *.gz && -x "$(command -v gzip 2>/dev/null)" ]]; then
+            # dist-branch mirror is gzip (GitHub caps repo files at 100MB). Stream it
+            # through gzip -dc straight into the destination so ONLY the decompressed
+            # binary ever sits on disk — peak need ~1x the binary size, not ~3x.
+            act "downloading from: $url (streaming, decompressing)"
+            if curl -fL --retry 3 -sS "$url" 2>"$DL_ERR" | gzip -dc > "$tmp" 2>/dev/null; then
+                rc=0; break
+            fi
+            [[ -s "$DL_ERR" ]] && warn "$(tail -n1 "$DL_ERR")"
+            rm -f "$tmp" 2>/dev/null
+        else
+            act "downloading from: $url"
+            if fetch_asset "$url" "$tmp"; then rc=0; break; fi
+        fi
         warn "mirror failed, trying next"
     done
     (( rc == 0 )) || die "download failed (all mirrors)."
-    # The raw.githubusercontent.com dist mirror serves a gzip-compressed asset;
-    # decompress it before the ELF sanity check below.
-    if [[ "$(head -c2 "$tmp")" == $'\x1f\x8b' ]]; then
-        mv "$tmp" "$tmp.gz"
-        gunzip -f "$tmp.gz" || die "failed to decompress gzip asset."
-        DL_BYTES="$(stat -c %s "$tmp" 2>/dev/null || echo 0)"
-    fi
-    ok "downloaded $(fmt_bytes "$DL_BYTES") in $(fmt_time "$DL_SECS")  (avg $(fmt_bytes "$DL_RATE")/s)"
+    DL_BYTES="$(stat -c %s "$tmp" 2>/dev/null || echo 0)"
+    ok "downloaded $(fmt_bytes "$DL_BYTES")"
 fi
 # Back to the plain tmp-file cleanup for the rest of the run: nothing below this
 # point owns a background job, so the download's signal handling ends here.
