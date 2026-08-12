@@ -302,11 +302,31 @@ fetch_asset() {
 }
 
 install -d -m 0755 "$DEST_DIR"
-# Stage the download in $TMPDIR (default /tmp), NOT in $DEST_DIR: the gz + its
-# decompressed form briefly need ~3x the binary's size, and $DEST_DIR may sit on a
-# small partition. The final `mv` copies into $DEST_DIR, which only needs room for
-# the one binary.
-tmp="$(mktemp -p "${TMPDIR:-/tmp}" vpn-ui-amd64.XXXXXX)"
+# --- disk space pre-flight (fail fast instead of a cryptic curl 23 / gzip error)
+# Staging needs ~3x the binary size (gz + decompressed form), $DEST_DIR ~1.4x.
+# Stage in whichever of $TMPDIR / $DEST_DIR has MORE free space, then check both.
+_free_kb() { df -Pk "$1" 2>/dev/null | awk 'NR==2{print $4}'; }   # KiB free
+_stage_free="$(( $(_free_kb "${TMPDIR:-/tmp}") * 1024 ))"
+_dest_free="$(( $(_free_kb "$DEST_DIR") * 1024 ))"
+[[ "$_stage_free" =~ ^-?[0-9]+$ ]] || _stage_free=0
+[[ "$_dest_free" =~ ^-?[0-9]+$ ]] || _dest_free=0
+if (( _stage_free < 200*1024*1024 || _dest_free < 130*1024*1024 )); then
+    act "low disk: staging has $(fmt_bytes "$_stage_free") free, $DEST_DIR has $(fmt_bytes "$_dest_free") free"
+    # Auto-clean ONLY safe, self-inflicted stuff: our own leftovers + apt cache + journal.
+    rm -f /tmp/vpn-ui-amd64.* "$DEST_DIR"/vpn-ui-amd64.* 2>/dev/null
+    if command -v apt-get >/dev/null 2>&1; then apt-get clean 2>/dev/null || true; fi
+    if command -v journalctl >/dev/null 2>&1; then journalctl --vacuum-size=20M >/dev/null 2>&1 || true; fi
+    _stage_free="$(( $(_free_kb "${TMPDIR:-/tmp}") * 1024 ))"
+    _dest_free="$(( $(_free_kb "$DEST_DIR") * 1024 ))"
+    if (( _stage_free < 200*1024*1024 || _dest_free < 130*1024*1024 )); then
+        die "disk still too full after auto-cleanup (staging has $(fmt_bytes "$_stage_free") free, $DEST_DIR has $(fmt_bytes "$_dest_free") free). Free ~250MB on the server and retry — see: df -h"
+    fi
+    ok "freed space: staging now $(fmt_bytes "$_stage_free"), $DEST_DIR now $(fmt_bytes "$_dest_free")"
+fi
+# Stage in the roomier of /tmp and $DEST_DIR so a small tmpfs or small data disk never
+# blocks the transfer. The final `mv` (cross-device => copy) lands the binary in $DEST_DIR.
+STAGE_DIR="${TMPDIR:-/tmp}"; (( _dest_free > _stage_free )) && STAGE_DIR="$DEST_DIR"
+tmp="$(mktemp -p "$STAGE_DIR" vpn-ui-amd64.XXXXXX)"
 DL_PID=""; DL_ERR=""
 # One teardown for everything the download owns: the partial file, the captured
 # stderr, and the transfer itself. Wired to INT/TERM as well as EXIT because a
