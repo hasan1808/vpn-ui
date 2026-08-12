@@ -120,18 +120,18 @@ func (s *SubService) resolveTraffic(inbound *model.Inbound, email string) (traff
 }
 
 // GetSubs retrieves subscription links for a given subscription ID and host.
-func (s *SubService) GetSubs(subId string, host string) (result []string, usage xray.ClientTraffic, err error) {
+func (s *SubService) GetSubs(subId string, host string) (result []string, lastOnline int64, traffic xray.ClientTraffic, err error) {
 	s = s.forResponse()
 	s.address = host
-	var traffic xray.ClientTraffic
+	var t xray.ClientTraffic
 	usage := newSubUsage()
 	inbounds, err := s.getInboundsBySubId(subId)
 	if err != nil {
-		return nil, traffic, err
+		return nil, 0, t, err
 	}
 
 	if len(inbounds) == 0 {
-		return nil, traffic, common.NewError("No inbounds found with ", subId)
+		return nil, 0, t, common.NewError("No inbounds found with ", subId)
 	}
 
 	s.datepicker = s.resolveDatepicker()
@@ -168,7 +168,7 @@ func (s *SubService) GetSubs(subId string, host string) (result []string, usage 
 		}
 	}
 
-	return result, usage.result(), nil
+	return result, usage.lastOnline, usage.result(), nil
 }
 
 // accountCredential returns the account's username (email) and password for the
