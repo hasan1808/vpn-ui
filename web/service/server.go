@@ -607,7 +607,13 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		logger.Warning("get udp connections failed:", err)
 	}
 
-	// IP fetching with caching
+	// 1) Collect public IPs from local interfaces (NICs). If the server has a
+	// public IP directly on an interface, use that as the primary address — it's
+	// authoritative and doesn't depend on external services.
+	localPubIPs := localIPv4Addresses()
+
+	// 2) IP fetching with caching (external services) — only used if no local
+	// public IP is present.
 	showIp4ServiceLists := publicIPv4Services
 	showIp6ServiceLists := []string{
 		"https://api6.ipify.org",
@@ -639,9 +645,14 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		s.noIPv6 = true
 	}
 
-	status.PublicIP.IPv4 = s.cachedIPv4
+	// Prefer a public IP from the local NIC; fall back to external detection.
+	if len(localPubIPs) > 0 {
+		status.PublicIP.IPv4 = localPubIPs[0]
+	} else {
+		status.PublicIP.IPv4 = s.cachedIPv4
+	}
 	status.PublicIP.IPv6 = s.cachedIPv6
-	status.PublicIP.LocalIP4 = localIPv4Addresses()
+	status.PublicIP.LocalIP4 = localPubIPs
 
 	// Xray status
 	if s.xrayService.IsXrayRunning() {
