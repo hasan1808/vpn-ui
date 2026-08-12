@@ -89,6 +89,9 @@ patch_present "[general.modes] hot-reload (live mode toggles)" \
 # reproducible and cannot silently pull a newer transitive crate.
 export CARGO_HOME=/tmp/cargo
 export RUSTFLAGS="-C target-feature=+crt-static"
+# GCC 14+ turns implicit-function-declaration/implicit-int/int-conversion into hard
+# errors; ring's C build script (via the `cc` crate, which honours $CFLAGS) would fail.
+export CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion"
 
 TRIPLE="${ARCH}-unknown-linux-musl"
 echo "== building for $TRIPLE (this takes ~4 min) =="

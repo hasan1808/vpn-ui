@@ -81,7 +81,7 @@ build_arch() {
         git clone --depth 1 https://github.com/xelerance/xl2tpd /src/xl2tpd
         cd /src/xl2tpd
         # Only the main daemon + control tool are needed (pfc requires libpcap).
-        make -j"$(nproc)" xl2tpd xl2tpd-control LDFLAGS="-static"
+        make -j"$(nproc)" xl2tpd xl2tpd-control LDFLAGS="-static" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
         cp xl2tpd xl2tpd-control /out/
         strip /out/xl2tpd /out/xl2tpd-control || true
 
@@ -104,7 +104,7 @@ build_arch() {
             LIBCAPNG_CFLAGS=" " LIBCAPNG_LIBS="-l:libcap-ng.a" \
             LZO_CFLAGS=" " LZO_LIBS="-l:liblzo2.a" \
             LZ4_CFLAGS=" " LZ4_LIBS="-l:liblz4.a"
-        make -j"$(nproc)" LDFLAGS="-all-static -s"
+        make -j"$(nproc)" LDFLAGS="-all-static -s" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
         cp src/openvpn/openvpn /out/openvpn
 
         # --- pptpd (static) ---
@@ -119,7 +119,7 @@ build_arch() {
         tar xf pptpd.tar.gz
         cd pptpd-1.4.0
         ./configure --sbindir=/usr/libexec/vpn-ui
-        make pptpd pptpctrl LDFLAGS="-static"
+        make pptpd pptpctrl LDFLAGS="-static" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
         cp pptpd pptpctrl /out/
         strip /out/pptpd /out/pptpctrl || true
 
@@ -139,7 +139,7 @@ build_arch() {
             "https://deb.debian.org/debian/pool/main/p/pptp-linux/pptp-linux_${PPTP_VER}.orig.tar.gz"
         tar xf pptp.tar.gz
         cd "pptp-${PPTP_VER}"
-        make -j"$(nproc)" pptp LDFLAGS="-static"
+        make -j"$(nproc)" pptp LDFLAGS="-static" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
         cp pptp /out/pptp
         strip /out/pptp || true
 

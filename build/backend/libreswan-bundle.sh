@@ -113,10 +113,16 @@ MAKE_VARS="
 "
 # STAGE is overridable so an already-compiled tree can be reused (fast iteration
 # on the relocatable-tree assembly without a ~3-minute recompile).
+#
+# GCC 14+ made -Wimplicit-function-declaration / -Wimplicit-int / -Wint-conversion
+# ERRORS by default (not via -Werror), so the existing WERROR_CFLAGS=-Wno-error above
+# no longer downgrades them. Override CC on the make command line (single-quoted so
+# make gets the whole string as one value) to inject the downgrade into every compile.
+CC_OVERRIDE='CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
 STAGE="${STAGE:-$ROOT/staging}"
 if [ ! -x "$STAGE$EXECDIR/pluto" ]; then
-    make $MAKE_VARS -j"$(nproc)" base
-    make $MAKE_VARS DESTDIR="$STAGE" install-base
+    make $MAKE_VARS $CC_OVERRIDE -j"$(nproc)" base
+    make $MAKE_VARS $CC_OVERRIDE DESTDIR="$STAGE" install-base
 fi
 
 REAL_EXECDIR="$STAGE$EXECDIR"

@@ -123,7 +123,7 @@ grep -q "MPPE-Keys.*yes" /tmp/sstp-conf.log \
     || { echo "FATAL: configure disabled MPPE key export: the SSTP crypto binding cannot be computed" >&2; exit 1; }
 
 # --- phase 1: normal build (gives us the plugin as a real .so) ------------------
-make -j"$(nproc)" >/tmp/sstp-make.log 2>&1 \
+make -j"$(nproc)" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion' >/tmp/sstp-make.log 2>&1 \
     || { echo "FATAL: sstp-client build failed" >&2; tail -40 /tmp/sstp-make.log >&2; exit 1; }
 
 # --- the relocatable tree ------------------------------------------------------
@@ -158,7 +158,7 @@ mkdir -p "$DEST/sbin" "$DEST/lib" "$DEST/lib/ossl-modules"
 # /usr/sbin/sstpc, which is also what makes the ldd walk below resolve libsstp_api.
 # Installing into the container's own /usr is safe: the container is disposable, and
 # the tree we ship is assembled at $PREFIX.
-make install >/tmp/sstp-install.log 2>&1 \
+make install 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion' >/tmp/sstp-install.log 2>&1 \
     || { echo "FATAL: sstp-client install failed" >&2; tail -30 /tmp/sstp-install.log >&2; exit 1; }
 [ -f /usr/sbin/sstpc ] || { echo "FATAL: /usr/sbin/sstpc missing after install" >&2; exit 1; }
 cp /usr/sbin/sstpc "$DEST/sbin/sstpc.bin"
@@ -210,7 +210,7 @@ mkdir -p /out
 PLUGIN_OBJ="$(ls src/pppd-plugin/.libs/*sstp-plugin.o 2>/dev/null | head -1)"
 [ -n "$PLUGIN_OBJ" ] || { echo "FATAL: plugin object not found under src/pppd-plugin/.libs" >&2; exit 1; }
 [ -f src/libsstp-api/.libs/libsstp_api.a ] || { echo "FATAL: PIC libsstp_api.a not built (did --with-pic take effect?)" >&2; exit 1; }
-gcc -shared -o /out/sstp-pppd-plugin.so "$PLUGIN_OBJ" src/libsstp-api/.libs/libsstp_api.a
+gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -shared -o /out/sstp-pppd-plugin.so "$PLUGIN_OBJ" src/libsstp-api/.libs/libsstp_api.a
 strip /out/sstp-pppd-plugin.so 2>/dev/null || true
 
 # --- self-checks ---------------------------------------------------------------

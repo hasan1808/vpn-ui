@@ -106,7 +106,7 @@ cd "gnutls-${GNUTLS_VER}"
     --disable-doc --disable-tests --disable-tools --disable-nls \
     --disable-guile --disable-libdane --disable-cxx \
     --without-tpm --without-tpm2 --disable-full-test-suite >/dev/null
-make -j"$(nproc)" >/dev/null
+make -j"$(nproc)" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion' >/dev/null
 make install >/dev/null
 echo "== gnutls static installed =="
 fi
@@ -146,7 +146,7 @@ export PKG_CONFIG="pkgconf --static"
     LIBS="-Wl,--start-group -lreadline -lncurses -Wl,--end-group"
 echo "== ocserv ./configure summary =="
 grep -iE "radius|gnutls|seccomp|lz4|talloc|protobuf|pcl|compat" config.log | grep -iE "yes|no|enabled|disabled|found" | head -20 || true
-make -j"$(nproc)"
+make -j"$(nproc)" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
 
 mkdir -p /out
 cp src/ocserv /out/ocserv
@@ -203,7 +203,7 @@ cd "openconnect-${OPENCONNECT_VER}"
     || { echo "FATAL: openconnect configure failed" >&2; tail -30 /tmp/openconnect-conf.log >&2; exit 1; }
 echo "== openconnect ./configure summary =="
 sed -n '/SSL library/,$p' /tmp/openconnect-conf.log | head -14
-make -j"$(nproc)" LDFLAGS="-all-static -s" >/tmp/openconnect-make.log 2>&1 \
+make -j"$(nproc)" LDFLAGS="-all-static -s" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion' >/tmp/openconnect-make.log 2>&1 \
     || { echo "FATAL: openconnect build failed" >&2; tail -40 /tmp/openconnect-make.log >&2; exit 1; }
 cp .libs/openconnect /out/openconnect 2>/dev/null || cp openconnect /out/openconnect
 strip /out/openconnect 2>/dev/null || true
