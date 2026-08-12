@@ -95,7 +95,9 @@ if [ -f /usr/local/lib/pkgconfig/gnutls.pc ]; then
   echo "== gnutls static already present (cached /usr/local) — skipping build =="
 else
 cd /tmp
+# gnupg.org now 403s CI egress; mirrors.dotsrc.org mirrors the same /gcrypt tree.
 dl_retry "gnutls-${GNUTLS_VER}.tar.xz" \
+    "https://mirrors.dotsrc.org/gcrypt/gnutls/v${GNUTLS_VER%.*}/gnutls-${GNUTLS_VER}.tar.xz" \
     "https://www.gnupg.org/ftp/gcrypt/gnutls/v${GNUTLS_VER%.*}/gnutls-${GNUTLS_VER}.tar.xz"
 tar xf "gnutls-${GNUTLS_VER}.tar.xz"
 cd "gnutls-${GNUTLS_VER}"
