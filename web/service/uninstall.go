@@ -258,6 +258,11 @@ func Uninstall(opts UninstallOptions) *UninstallReport {
 		"/etc/modprobe.d un-blacklist edits — not reversible without your original",
 	)
 
+	// Defensive cleanup of legacy install locations the installer historically used.
+	// New installs place the binary at /usr/local/bin/vpn-ui; remove the old path too.
+	removePath(r, "/usr/local/bin/vpn-ui")
+	removePath(r, "/usr/local/vpn-ui")
+
 	logger.Info("uninstall: host teardown complete")
 	return r
 }

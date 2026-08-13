@@ -10,8 +10,7 @@ import (
 	"strings"
 )
 
-//go:embed version
-var version string
+var version = "0.0.0-dev"
 
 //go:embed name
 var name string

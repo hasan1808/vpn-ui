@@ -65,7 +65,7 @@ func (s *SystemdService) GetServiceName() string {
 func DefaultUnit(name string) string {
 	exe, err := os.Executable()
 	if err != nil || exe == "" {
-		exe = "/usr/local/vpn-ui/vpn-ui"
+		exe = "/usr/local/bin/vpn-ui"
 	}
 	return fmt.Sprintf(`[Unit]
 Description=%s panel service
