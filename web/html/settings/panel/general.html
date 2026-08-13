@@ -173,19 +173,24 @@
                 </template>
             </a-setting-list-item>
         </template>
-        <a-divider v-if="allSetting.acmeEnable" />
+        <a-divider v-if="allSetting.acmeEnable"
+            :style="{ marginLeft: '20px', marginRight: '20px' }" />
         <a-setting-list-item paddings="small">
             <template #title>{{ i18n "pages.settings.publicKeyPath"}}</template>
             <template #description>{{ i18n "pages.settings.publicKeyPathDesc"}}</template>
             <template #control>
-                <a-input type="text" v-model="allSetting.webCertFile"></a-input>
+                <a-input type="text" v-model="allSetting.webCertFile"
+                    :style="{ width: '100%', fontFamily: 'monospace', direction: 'ltr', textAlign: 'left' }"
+                    placeholder="/path/to/fullchain.pem"></a-input>
             </template>
         </a-setting-list-item>
         <a-setting-list-item paddings="small">
             <template #title>{{ i18n "pages.settings.privateKeyPath"}}</template>
             <template #description>{{ i18n "pages.settings.privateKeyPathDesc"}}</template>
             <template #control>
-                <a-input type="text" v-model="allSetting.webKeyFile"></a-input>
+                <a-input type="text" v-model="allSetting.webKeyFile"
+                    :style="{ width: '100%', fontFamily: 'monospace', direction: 'ltr', textAlign: 'left' }"
+                    placeholder="/path/to/privkey.pem"></a-input>
             </template>
         </a-setting-list-item>
     </a-collapse-panel>

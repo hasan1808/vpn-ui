@@ -95,22 +95,25 @@
                     @change="onSearchChange"></a-input-search>
                 </div>
 
-                <!-- Status filter buttons -->
-                <div :style="{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '10px' }">
-                  <a-button size="small" :type="statusFilter === '' ? 'primary' : 'default'"
-                    @click="filterByStatus('')">{{ i18n "pages.clients.all" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'active' ? 'primary' : 'default'"
-                    @click="filterByStatus('active')">&#10003; {{ i18n "pages.clients.active" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'online' ? 'primary' : 'default'"
-                    @click="filterByStatus('online')">&#128246; {{ i18n "pages.clients.online" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'expiring' ? 'primary' : 'default'"
-                    @click="filterByStatus('expiring')">&#9200; {{ i18n "pages.clients.expiring" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'expired' ? 'primary' : 'default'"
-                    @click="filterByStatus('expired')">&#10007; {{ i18n "pages.clients.expired" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'disabled' ? 'primary' : 'default'"
-                    @click="filterByStatus('disabled')">&#9208; {{ i18n "pages.clients.disabled" }}</a-button>
+                <!-- Status filter (dropdown) + sort -->
+                <div :style="{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginTop: '10px' }">
+                  <a-select v-model="statusFilter" size="small" :style="{ minWidth: '170px' }"
+                    @change="filterByStatus" :dropdown-class-name="themeSwitcher.currentTheme">
+                    <a-select-option value="">{{ i18n "pages.clients.all" }}</a-select-option>
+                    <a-select-option value="active">&#10003; {{ i18n "pages.clients.active" }}</a-select-option>
+                    <a-select-option value="online">&#128246; {{ i18n "pages.clients.online" }}</a-select-option>
+                    <a-select-option value="expiring">&#9200; {{ i18n "pages.clients.expiring" }}</a-select-option>
+                    <a-select-option value="expired">&#10007; {{ i18n "pages.clients.expired" }}</a-select-option>
+                    <a-select-option value="disabled">&#9208; {{ i18n "pages.clients.disabled" }}</a-select-option>
+                  </a-select>
 
-                  <a-select v-model="sortBy" size="small" :style="{ minWidth: '150px', marginInlineStart: '8px' }"
+                  <a-select v-model="protocolFilter" size="small" :style="{ minWidth: '160px' }"
+                    @change="filterByProtocol" :dropdown-class-name="themeSwitcher.currentTheme">
+                    <a-select-option value="">{{ i18n "pages.clients.all" }}</a-select-option>
+                    <a-select-option v-for="p in protocolOptions()" :key="p" :value="p">[[ ProtocolLabels[p] || p ]]</a-select-option>
+                  </a-select>
+
+                  <a-select v-model="sortBy" size="small" :style="{ minWidth: '150px' }"
                     @change="onSortChange" :dropdown-class-name="themeSwitcher.currentTheme">
                     <a-select-option value="email">&#128269; {{ i18n "pages.clients.email" }}</a-select-option>
                     <a-select-option value="newest">&#128315; {{ i18n "pages.clients.newest" }}</a-select-option>
@@ -435,6 +438,7 @@
       search: '',
       searchTimer: null,
       statusFilter: '',
+      protocolFilter: '',
       sortBy: localStorage.getItem('clientsSortBy') || 'email',
       selectedEmails: [],
       expandedRowKeys: [],
@@ -699,7 +703,7 @@
       },
 
       async loadClients() {
-        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}&sort=${encodeURIComponent(this.sortBy || 'email')}`;
+        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}&sort=${encodeURIComponent(this.sortBy || 'email')}&protocol=${encodeURIComponent(this.protocolFilter || '')}`;
         const msg = await HttpUtil.get('/panel/api/clients/list' + q);
         if (!msg || !msg.success) return;
         this.clients = (msg.obj && msg.obj.rows) || [];
@@ -711,6 +715,23 @@
         this.statusFilter = status;
         this.pagination.current = 1;
         this.loadClients();
+      },
+      filterByProtocol(protocol) {
+        this.protocolFilter = protocol;
+        this.pagination.current = 1;
+        this.loadClients();
+      },
+      // The protocols actually configured, so the dropdown only offers ones an
+      // account could be on. Order is whatever the inbounds list returned.
+      protocolOptions() {
+        const seen = {};
+        const out = [];
+        for (const db of this.dbInbounds) {
+          if (!db.protocol || seen[db.protocol]) continue;
+          seen[db.protocol] = true;
+          out.push(db.protocol);
+        }
+        return out;
       },
       onSortChange(val) {
         localStorage.setItem('clientsSortBy', val);

@@ -95,7 +95,7 @@ type AccountListResult struct {
 //     other sellers' customers too;
 //   - an ordinary admin sees accounts with at least one membership on an inbound
 //     they hold, which is exactly what the Inbounds page already shows them.
-func (s *AccountService) ListAccounts(user *model.User, page, size int, search string, status string, sortBy string) (*AccountListResult, error) {
+func (s *AccountService) ListAccounts(user *model.User, page, size int, search string, status string, sortBy string, protocol string) (*AccountListResult, error) {
 	if user == nil {
 		// No identity, no rows. Never an unscoped list.
 		return &AccountListResult{Rows: []AccountRow{}}, nil
@@ -158,6 +158,7 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 
 	needle := strings.ToLower(strings.TrimSpace(search))
 	statusFilter := strings.ToLower(strings.TrimSpace(status))
+	protocolFilter := strings.ToLower(strings.TrimSpace(protocol))
 	now := time.Now().UnixMilli()
 	expireDiffMs := int64(7) * 86400000 // 7 day warning threshold
 
@@ -224,6 +225,21 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 				if !isOnline {
 					continue
 				}
+			}
+		}
+
+		// Protocol filter: an account matches when ANY inbound serving it speaks
+		// the requested protocol, so a mixed-protocol account still shows up.
+		if protocolFilter != "" {
+			matches := false
+			for i := range mine {
+				if strings.ToLower(mine[i].Protocol) == protocolFilter {
+					matches = true
+					break
+				}
+			}
+			if !matches {
+				continue
 			}
 		}
 
