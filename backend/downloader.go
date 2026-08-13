@@ -24,23 +24,56 @@ import (
 // answer for.
 const bundleDownloadTimeout = 45 * time.Second
 
+// xrayOnDisk reports whether the panel's expected Xray binary already exists in
+// BinDir. The release pipeline does NOT embed the core: build/core/build.sh runs
+// after the go build and ships core-<arch>.tgz as a separate release asset, so
+// the first start downloads it once and extraction drops the binary here. That
+// file being present is therefore the "core already satisfied" signal.
+func xrayOnDisk() bool {
+	binDir := BinDir()
+	for _, n := range []string{"xray-" + runtime.GOOS + "-" + runtime.GOARCH, "xray"} {
+		if fi, err := os.Stat(filepath.Join(binDir, n)); err == nil && !fi.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+// daemonsOnDisk reports whether at least one bundled daemon has already been
+// extracted to BinDir (from the embedded bundle or a previous backend download).
+// Mirrors xrayOnDisk so a checkout build that fetched backend-<arch>.tgz once
+// stops re-downloading it on every start.
+func daemonsOnDisk() bool {
+	binDir := BinDir()
+	for _, d := range Daemons {
+		if fi, err := os.Stat(filepath.Join(binDir, d.Name)); err == nil && !fi.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
 // DownloadBundlesIfMissing attempts to download prebuilt core and daemon bundles
-// from this repository's GitHub release for the current version when embedded
-// bundles are not present. It writes binaries into BinDir(). This is a best-effort
+// from this repository's GitHub release for the current version when the assets
+// are not already present. It writes binaries into BinDir(). This is a best-effort
 // fallback to reduce "no such file" startup failures on fresh checkouts.
 //
-// The release binary embeds BOTH bundles, so on a real install the fast path
-// below is a pure no-op and startup never touches the network. The old code
-// re-downloaded core-<arch>.tgz (tens of megabytes) on EVERY start with a bare
-// http.Get (no timeout), so a stalled connection hung the panel before the web
-// server ever came up — the "panel stopped, unit active" state after an update.
+// The release binary embeds the daemon bundle, while the core ships as a separate
+// release asset that the first start downloads once. Either way, once everything
+// needed is on disk (embedded or extracted) the fast path below is a pure no-op
+// and startup never touches the network. The old code re-ran the downloader on
+// EVERY start with a bare http.Get (no timeout), so a stalled github.com link
+// parked the panel before its web server ever came up — the "panel stopped,
+// unit active" state after an update.
 func DownloadBundlesIfMissing() {
 	ver := config.GetVersion()
 	if ver == "" {
 		logger.Info("no release version available; skipping bundle download")
 		return
 	}
-	if Available() && corebundle.HasXray() {
+	haveCore := corebundle.HasXray() || xrayOnDisk()
+	haveDaemons := Available() || daemonsOnDisk()
+	if haveCore && haveDaemons {
 		return
 	}
 	client := &http.Client{Timeout: bundleDownloadTimeout}
@@ -51,49 +84,59 @@ func DownloadBundlesIfMissing() {
 	osName := runtime.GOOS
 
 	// Try to fetch a core archive for this arch, or a flat xray binary.
-	tryFiles := []string{
-		fmt.Sprintf("core-%s.tgz", arch),
-		fmt.Sprintf("core-%s.tar.gz", arch),
-		fmt.Sprintf("xray-%s-%s", osName, arch),
-		fmt.Sprintf("xray-%s", arch),
-	}
+	if !haveCore {
+		tryFiles := []string{
+			fmt.Sprintf("core-%s.tgz", arch),
+			fmt.Sprintf("core-%s.tar.gz", arch),
+			fmt.Sprintf("xray-%s-%s", osName, arch),
+			fmt.Sprintf("xray-%s", arch),
+		}
 
-	for _, f := range tryFiles {
-		url := fmt.Sprintf("https://github.com/hasan1808/vpn-ui/releases/download/v%s/%s", ver, f)
-		if tryDownloadFile(client, url, f, binDir) {
-			logger.Info("downloaded and installed bundle file:", f)
-			// If we downloaded an archive, extraction already placed files in binDir.
-			// If we downloaded a flat xray binary, ensure it's executable.
-			return
+		for _, f := range tryFiles {
+			url := fmt.Sprintf("https://github.com/hasan1808/vpn-ui/releases/download/v%s/%s", ver, f)
+			if tryDownloadFile(client, url, f, binDir) {
+				logger.Info("downloaded and installed bundle file:", f)
+				// If we downloaded an archive, extraction already placed files in binDir.
+				// If we downloaded a flat xray binary, ensure it's executable.
+				if haveDaemons {
+					return
+				}
+				haveCore = true
+				break
+			}
 		}
 	}
 
 	// Try the backend bundle archives (daemons)
-	tryBackends := []string{
-		fmt.Sprintf("backend-%s.tgz", arch),
-		fmt.Sprintf("backend-%s.tar.gz", arch),
-		fmt.Sprintf("daemons-%s.tgz", arch),
-	}
-	for _, f := range tryBackends {
-		url := fmt.Sprintf("https://github.com/hasan1808/vpn-ui/releases/download/v%s/%s", ver, f)
-		if tryDownloadFile(client, url, f, binDir) {
-			logger.Info("downloaded and installed backend bundle:", f)
-			return
+	if !haveDaemons {
+		tryBackends := []string{
+			fmt.Sprintf("backend-%s.tgz", arch),
+			fmt.Sprintf("backend-%s.tar.gz", arch),
+			fmt.Sprintf("daemons-%s.tgz", arch),
+		}
+		for _, f := range tryBackends {
+			url := fmt.Sprintf("https://github.com/hasan1808/vpn-ui/releases/download/v%s/%s", ver, f)
+			if tryDownloadFile(client, url, f, binDir) {
+				logger.Info("downloaded and installed backend bundle:", f)
+				return
+			}
 		}
 	}
 
 	// Fallback: try individual daemon names
-	for _, d := range Daemons {
-		candidates := []string{
-			fmt.Sprintf("%s-%s-%s", d.Name, osName, arch),
-			fmt.Sprintf("%s-%s", d.Name, arch),
-			d.Name,
-		}
-		for _, c := range candidates {
-			url := fmt.Sprintf("https://github.com/hasan1808/vpn-ui/releases/download/v%s/%s", ver, c)
-			if tryDownloadFile(client, url, c, binDir) {
-				logger.Infof("downloaded daemon %s", c)
-				break
+	if !haveDaemons {
+		for _, d := range Daemons {
+			candidates := []string{
+				fmt.Sprintf("%s-%s-%s", d.Name, osName, arch),
+				fmt.Sprintf("%s-%s", d.Name, arch),
+				d.Name,
+			}
+			for _, c := range candidates {
+				url := fmt.Sprintf("https://github.com/hasan1808/vpn-ui/releases/download/v%s/%s", ver, c)
+				if tryDownloadFile(client, url, c, binDir) {
+					logger.Infof("downloaded daemon %s", c)
+					break
+				}
 			}
 		}
 	}
