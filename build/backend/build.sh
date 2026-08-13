@@ -81,7 +81,7 @@ build_arch() {
         git clone --depth 1 https://github.com/xelerance/xl2tpd /src/xl2tpd
         cd /src/xl2tpd
         # Only the main daemon + control tool are needed (pfc requires libpcap).
-        make -j"$(nproc)" xl2tpd xl2tpd-control LDFLAGS="-static" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
+        make -j"$(nproc)" xl2tpd xl2tpd-control LDFLAGS="-static" CC="gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion"
         cp xl2tpd xl2tpd-control /out/
         strip /out/xl2tpd /out/xl2tpd-control || true
 
@@ -104,7 +104,7 @@ build_arch() {
             LIBCAPNG_CFLAGS=" " LIBCAPNG_LIBS="-l:libcap-ng.a" \
             LZO_CFLAGS=" " LZO_LIBS="-l:liblzo2.a" \
             LZ4_CFLAGS=" " LZ4_LIBS="-l:liblz4.a"
-        make -j"$(nproc)" LDFLAGS="-all-static -s" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
+        make -j"$(nproc)" LDFLAGS="-all-static -s" CC="gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion"
         cp src/openvpn/openvpn /out/openvpn
 
         # --- pptpd (static) ---
@@ -119,7 +119,7 @@ build_arch() {
         tar xf pptpd.tar.gz
         cd pptpd-1.4.0
         ./configure --sbindir=/usr/libexec/vpn-ui
-        make pptpd pptpctrl LDFLAGS="-static" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
+        make pptpd pptpctrl LDFLAGS="-static" CC="gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion"
         cp pptpd pptpctrl /out/
         strip /out/pptpd /out/pptpctrl || true
 
@@ -139,7 +139,7 @@ build_arch() {
             "https://deb.debian.org/debian/pool/main/p/pptp-linux/pptp-linux_${PPTP_VER}.orig.tar.gz"
         tar xf pptp.tar.gz
         cd "pptp-${PPTP_VER}"
-        make -j"$(nproc)" pptp LDFLAGS="-static" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion'
+        make -j"$(nproc)" pptp LDFLAGS="-static" CC="gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion"
         cp pptp /out/pptp
         strip /out/pptp || true
 
@@ -272,6 +272,29 @@ build_arch() {
         -v "$REPO_ROOT/build/backend/telemt-bundle.sh:/telemt-bundle.sh:ro" \
         -v "$REPO_ROOT/third_party/telemt:/src:ro" \
         rust:alpine sh -e /telemt-bundle.sh
+
+    # The bundle is the ONLY source of these daemons for the release binary
+    # (backend/bin is git-ignored and embedded via //go:embed all:bin), so an
+    # incomplete bundle must fail the build, not ship a release where the panel
+    # reports "daemons not in this build's bundle". This is also what makes CI
+    # retry (release.yml loops the whole build 3x) on a genuinely flaky host.
+    local missing=()
+    local f
+    for f in xl2tpd xl2tpd-control openvpn pptpd pptpctrl pptp \
+             pppd-bundle.tgz libreswan-bundle.tgz \
+             ocserv occtl ocserv-worker openconnect vpnc-script \
+             accel-ppp-bundle.tgz sstpc-bundle.tgz sstp-pppd-plugin.so \
+             strongswan-bundle.tgz telemt; do
+        if [[ ! -s "$outdir/$f" ]]; then
+            missing+=("$f")
+        fi
+    done
+    if ((${#missing[@]})); then
+        err "bundle for $goarch is incomplete — missing: ${missing[*]}"
+        err "the release would ship a broken bundle; failing build"
+        exit 1
+    fi
+    ok "bundle verified: all $goarch daemons present"
 
     ok "Done: $(ls -lh "$outdir")"
 }
