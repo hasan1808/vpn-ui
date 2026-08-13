@@ -115,11 +115,32 @@ func BinDir() string {
 	if filepath.IsAbs(bin) {
 		return bin
 	}
+
+	// Candidate directories (in order of preference) where the bin/ folder might live.
+	// 1) next to the running executable (usual install: /usr/local/vpn-ui/bin)
+	// 2) sibling of the executable when the executable is placed in a system 'bin'
+	//    directory (e.g. /usr/local/bin -> /usr/local/vpn-ui/bin)
+	// 3) a distro/libexec location used by some bundles
+	// 4) fallback: next to the executable
 	exe, err := os.Executable()
 	if err != nil {
 		return filepath.Join("/usr/local/vpn-ui", bin)
 	}
-	return filepath.Join(filepath.Dir(exe), bin)
+	exeDir := filepath.Dir(exe)
+	candidates := []string{
+		filepath.Join(exeDir, bin),                                 // ./bin next to exe
+		filepath.Join(filepath.Dir(exeDir), "vpn-ui", bin),       // sibling /usr/local/vpn-ui/bin
+		filepath.Join("/usr/local/vpn-ui", bin),                  // legacy
+		filepath.Join("/usr/libexec/vpn-ui", "bin"),            // alternate
+	}
+	// Return the first candidate that already exists; otherwise return the first
+	// candidate so callers can create it.
+	for _, c := range candidates {
+		if fi, err := os.Stat(c); err == nil && fi.IsDir() {
+			return c
+		}
+	}
+	return candidates[0]
 }
 
 // DaemonPath returns the extracted path of a bundled daemon if it exists on
