@@ -116,7 +116,8 @@ func tryDownloadFile(url, destName, binDir string) bool {
 			if hdr.Typeflag != tar.TypeReg {
 				continue
 			}
-			tgt := filepath.Join(binDir, filepath.Base(hdr.Name))
+			base := filepath.Base(hdr.Name)
+			tgt := filepath.Join(binDir, base)
 			f, err := os.Create(tgt)
 			if err != nil {
 				logger.Debug("create file failed:", err)
@@ -129,6 +130,18 @@ func tryDownloadFile(url, destName, binDir string) bool {
 			}
 			f.Close()
 			_ = os.Chmod(tgt, 0o755)
+			// Special-case: if the archive contained a plain "xray" binary, also
+			// write the architecture-specific name the panel expects (xray-<os>-<arch>),
+			// since some archives produce a flat "xray" while the code looks for
+			// xray-<os>-<arch> first.
+			if base == "xray" {
+				archName := fmt.Sprintf("xray-%s-%s", osName, arch)
+				alt := filepath.Join(binDir, archName)
+				// Copy the file to the alt name.
+				if data, err := os.ReadFile(tgt); err == nil {
+					_ = os.WriteFile(alt, data, 0o755)
+				}
+			}
 		}
 		return true
 	}
