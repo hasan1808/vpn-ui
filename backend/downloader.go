@@ -135,7 +135,7 @@ func tryDownloadFile(url, destName, binDir string) bool {
 			// since some archives produce a flat "xray" while the code looks for
 			// xray-<os>-<arch> first.
 			if base == "xray" {
-				archName := fmt.Sprintf("xray-%s-%s", osName, arch)
+				archName := fmt.Sprintf("xray-%s-%s", runtime.GOOS, runtime.GOARCH)
 				alt := filepath.Join(binDir, archName)
 				// Copy the file to the alt name.
 				if data, err := os.ReadFile(tgt); err == nil {
