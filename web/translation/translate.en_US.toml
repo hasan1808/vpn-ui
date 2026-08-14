@@ -401,6 +401,9 @@
 "internetOffline" = "Offline"
 "pingUnreachable" = "Unreachable"
 "pingChecking" = "Checking…"
+"outbounds" = "Outbounds"
+"outboundTestAll" = "Test all"
+"outboundNoData" = "No outbounds in the current Xray config."
 
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
@@ -1091,6 +1094,7 @@
 "outboundStatus" = "Outbound Status"
 "sendThrough" = "Send Through"
 "test" = "Test"
+"testAll" = "Test All"
 "testResult" = "Test Result"
 "testing" = "Testing connection..."
 "testSuccess" = "Test successful"

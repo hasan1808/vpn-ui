@@ -463,6 +463,40 @@
     </article>
     {{ end }}
 
+    <!-- ===== outbound connectivity ===== -->
+    <!-- Read-only for anyone who can see the overview: the endpoints behind
+         this tile are registered outside the PermXraySettings gate (see
+         XraySettingController.initRouter) so a dashboard-only user is not
+         locked out of the traffic picture. -->
+    <article class="bo-tile bo-t-outbounds" aria-label='{{ i18n "pages.index.outbounds" }}'>
+      <div class="bo-tile-head">
+        <h3 class="bo-tile-title">{{ i18n "pages.index.outbounds" }}</h3>
+        <button type="button" class="bo-icon-btn bo-icon-btn--accent"
+          :disabled="outboundStatusTesting" @click="runOutboundTests()">
+          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
+          {{ i18n "pages.index.outboundTestAll" }}
+        </button>
+      </div>
+      <p v-if="outboundStatusLoading && outboundStatusList.length === 0"
+        class="bo-status-line">{{ i18n "loading" }}</p>
+      <p v-else-if="outboundStatusList.length === 0" class="bo-status-line">
+        {{ i18n "pages.index.outboundNoData" }}
+      </p>
+      <ul v-else class="bo-ping-list">
+        <li v-for="row in outboundStatusList" :key="row.tag" class="bo-ping-row"
+          :title="outboundRowError(row)">
+          <span class="bo-ping-dot" :class="'bo-ping-dot--' + outboundRowState(row)"></span>
+          <span class="bo-ping-name">[[ outboundRowLabel(row) ]]</span>
+          <span v-if="row.status && row.status.success" class="bo-ping-value num">
+            [[ row.status.delay ]]ms <span class="bo-ping-traffic num">[[ outboundTrafficText(row) ]]</span>
+          </span>
+          <span v-else-if="row.status" class="bo-ping-value bo-ping-value--fail">[[
+            outboundRowError(row) ]]</span>
+          <span v-else class="bo-ping-value bo-ping-value--pending">[[ pingText.loading ]]</span>
+        </li>
+      </ul>
+    </article>
+
     <!-- ===== VPN-UI panel + updater ===== -->
     <article class="bo-tile bo-t-vpnui" aria-label="VPN-UI">
       <div class="bo-tile-head">
@@ -1795,6 +1829,12 @@
       coreStatuses: [],
       rebooting: false,
       panelUpdate: { checking: false, checked: false, available: false, latest: '', current: '', notes: '', publishedAt: '', url: '', updating: false, cancelling: false, error: '', percent: 0, phase: '', speed: 0, bytes: 0, total: 0 },
+      // Outbound connectivity card: tag/protocol/traffic per outbound plus the
+      // last test outcome persisted by the Xray page (or refreshed from here).
+      outboundStatusList: [],
+      outboundStatusLoading: false,
+      outboundStatusTesting: false,
+      outboundStatusTimer: null,
       // The dialog that asks which of the two manual-update sources to use. It holds
       // nothing else: whichever is picked hands straight over to that source's own
       // flow, which owns everything from there.
@@ -2283,6 +2323,67 @@
       },
       rowState(t) {
         return (t && t.status) || 'pending';
+      },
+      // Loads the dashboard outbound card: tag/protocol/traffic plus the last
+      // test outcome for each outbound. Read-only, so it runs for any user who
+      // can see the overview, not only PermXraySettings holders.
+      async fetchOutboundStatus() {
+        if (this.outboundStatusLoading) return;
+        this.outboundStatusLoading = true;
+        try {
+          const msg = await HttpUtil.get('/panel/xray/outboundStatus');
+          if (msg && msg.success && Array.isArray(msg.obj)) {
+            this.outboundStatusList = msg.obj;
+          }
+        } finally {
+          this.outboundStatusLoading = false;
+        }
+      },
+      // Kicks off a server-side test of every testable outbound (sequenced by
+      // the service's semaphore), then polls until the persisted results catch
+      // up. Nothing else on the dashboard is this expensive, but the card has a
+      // spinner and the request is fire-and-forget, so the page never blocks.
+      async runOutboundTests() {
+        if (this.outboundStatusTesting) return;
+        this.outboundStatusTesting = true;
+        try {
+          const msg = await HttpUtil.post('/panel/xray/testAllOutbounds');
+          if (!msg || !msg.success) {
+            return;
+          }
+          // Poll every 3s until every TESTABLE row has a result (blackhole and
+          // blocked are never tested) or ~90s elapses.
+          const deadline = Date.now() + 90000;
+          while (Date.now() < deadline) {
+            await PromiseUtil.sleep(3000);
+            await this.fetchOutboundStatus();
+            const testable = this.outboundStatusList.filter((r) => r.protocol !== 'blackhole' && r.tag !== 'blocked');
+            if (testable.length === 0 || testable.every((r) => r.status)) {
+              break;
+            }
+          }
+        } finally {
+          this.outboundStatusTesting = false;
+        }
+      },
+      outboundRowState(row) {
+        if (row && row.status) {
+          return row.status.success ? 'ok' : 'fail';
+        }
+        return 'pending';
+      },
+      outboundRowLabel(row) {
+        if (!row) return '';
+        return row.protocol ? row.protocol + ' - ' + row.tag : row.tag;
+      },
+      outboundTrafficText(row) {
+        if (!row) return '';
+        const up = this.formatBytes(row.up);
+        const down = this.formatBytes(row.down);
+        return '↑ ' + up + ' ↓ ' + down;
+      },
+      outboundRowError(row) {
+        return (row && row.status && row.status.error) || '{{ i18n "pages.index.pingUnreachable" }}';
       },
       // The modal's row/level/syslog controls and its refresh icon go through
       // here, so they re-run the loader that opened it instead of always
@@ -3447,6 +3548,11 @@
       this.checkForUpdate(false);
       this.announceUpdateResult();
 
+      // Outbound card: load once, keep it fresh on a poll (the 60s auto-tests
+      // on the Xray page also persist into this card's view).
+      this.fetchOutboundStatus();
+      this.outboundStatusTimer = setInterval(() => this.fetchOutboundStatus(), 30000);
+
       // Setup WebSocket for real-time updates
       if (window.wsClient) {
         window.wsClient.connect();
@@ -3495,6 +3601,12 @@
       } else {
         // Fallback to polling if WebSocket is not available
         this.startPolling();
+      }
+    },
+    beforeDestroy() {
+      if (this.outboundStatusTimer) {
+        clearInterval(this.outboundStatusTimer);
+        this.outboundStatusTimer = null;
       }
     },
   });

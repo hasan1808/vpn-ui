@@ -316,6 +316,41 @@ func (s *SettingService) SetXrayOutboundTestUrl(url string) error {
 	return s.setString("xrayOutboundTestUrl", url)
 }
 
+// outboundStatusKey persists the last outbound test results (keyed by tag) so
+// the Xray page and the dashboard can render connectivity after a reload.
+const outboundStatusKey = "outboundStatus"
+
+// GetOutboundStatuses returns the persisted outbound test results keyed by tag.
+// It never errors on a missing or corrupt value; both just yield an empty map.
+func (s *SettingService) GetOutboundStatuses() (map[string]*OutboundStatus, error) {
+	statuses := make(map[string]*OutboundStatus)
+	setting, err := s.getSetting(outboundStatusKey)
+	if database.IsNotFound(err) || err != nil {
+		return statuses, nil
+	}
+	if setting.Value == "" {
+		return statuses, nil
+	}
+	if err := json.Unmarshal([]byte(setting.Value), &statuses); err != nil {
+		return statuses, nil
+	}
+	return statuses, nil
+}
+
+// SaveOutboundStatus records the latest test result for one outbound tag.
+func (s *SettingService) SaveOutboundStatus(tag string, status *OutboundStatus) error {
+	statuses, err := s.GetOutboundStatuses()
+	if err != nil {
+		statuses = make(map[string]*OutboundStatus)
+	}
+	statuses[tag] = status
+	data, err := json.Marshal(statuses)
+	if err != nil {
+		return err
+	}
+	return s.saveSetting(outboundStatusKey, string(data))
+}
+
 func (s *SettingService) GetListen() (string, error) {
 	return s.getString("webListen")
 }

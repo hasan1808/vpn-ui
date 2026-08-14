@@ -66,6 +66,11 @@ var knownMissing = keySet(
 	"pages.index.virtualized", "pages.index.virtYes", "pages.index.virtNo",
 	"pages.index.panelLocation", "pages.index.panelLocationError",
 	"pages.index.virtContainer",
+	// The outbound connectivity card + auto-test: newly added, only en_US + fa_IR
+	// translated so far; the English fallback carries the rest.
+	"pages.index.outbounds", "pages.index.outboundTestAll",
+	"pages.index.outboundNoData",
+	"pages.xray.outbound.testAll",
 
 	"pages.core.absent", "pages.core.actions", "pages.core.consoleTitle",
 	"pages.core.cores", "pages.core.disabled", "pages.core.editConfig",

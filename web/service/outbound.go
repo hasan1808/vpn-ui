@@ -132,6 +132,30 @@ type TestOutboundResult struct {
 	Exit *ExitInfo `json:"exit,omitempty"`
 }
 
+// OutboundStatus captures the last test outcome for an outbound. Persisted
+// server-side (keyed by outbound tag) so both the Xray page and the dashboard
+// overview can render connectivity after a reload.
+type OutboundStatus struct {
+	Success    bool      `json:"success"`
+	Delay      int64     `json:"delay"`
+	StatusCode int       `json:"statusCode,omitempty"`
+	Error      string    `json:"error,omitempty"`
+	Exit       *ExitInfo `json:"exit,omitempty"`
+	TestedAt   int64     `json:"testedAt"`
+}
+
+// OutboundStatusRow is the dashboard-facing view of one outbound: its tag and
+// protocol from the current config, its accumulated traffic, and the last test
+// outcome when one exists.
+type OutboundStatusRow struct {
+	Tag      string          `json:"tag"`
+	Protocol string          `json:"protocol"`
+	Up       int64           `json:"up"`
+	Down     int64           `json:"down"`
+	Total    int64           `json:"total"`
+	Status   *OutboundStatus `json:"status,omitempty"`
+}
+
 // TestOutbound tests an outbound by creating a temporary xray instance and measuring response time.
 // allOutboundsJSON must be a JSON array of all outbounds; they are copied into the test config unchanged.
 // Only the test inbound and a route rule (to the tested outbound tag) are added.

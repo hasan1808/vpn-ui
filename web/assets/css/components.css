@@ -398,6 +398,9 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-ping-value { font-variant-numeric:tabular-nums; color:var(--text); font-weight:var(--fw-semibold); }
 .bo-ping-value--fail { color:var(--error); }
 .bo-ping-value--pending { color:var(--text-3); }
+/* Traffic (↑/↓) shown next to the latency on the outbound card: smaller and
+   dimmer so the number that matters is the one the operator reads first. */
+.bo-ping-traffic { font-size:11.5px; color:var(--text-3); font-weight:var(--fw-regular); }
 
 /* ================================================================== *
  * Protocol tabs (Inbounds page)
@@ -1071,6 +1074,13 @@ body.dark .bo-distro--photon{--distro-ink:#2C67A6}
 .ob-exit-ip {
   font-size:12px; line-height:1.5; color:var(--info); font-weight:var(--fw-semibold);
   overflow-wrap:anywhere; word-break:break-all;
+}
+
+/* Timestamp under the test result: "last tested at HH:MM:SS". Deliberately
+   dimmer than the result itself so an old outcome reads as historical. */
+.ob-last { margin-top:2px; }
+.ob-last-time {
+  font-size:11px; line-height:1.4; color:var(--text-secondary, #888);
 }
 
 /* ============================================================

@@ -285,6 +285,9 @@
       vpnOutKindList: null,
       outboundsTraffic: [],
       outboundTestStates: {}, // Track testing state and results for each outbound
+      // True while the sequential test-all pass is running; drives the button.
+      autoTesting: false,
+      autoTestTimer: null,
       saveBtnDisable: true,
       refreshing: false,
       restartResult: '',
@@ -1016,7 +1019,7 @@
         const exit = this.exitInfo(index);
         return exit ? GeoUtil.countryName(exit.countryCode) : '';
       },
-      async testOutbound(index) {
+      async testOutbound(index, silent = false) {
         const outbound = this.templateSettings.outbounds[index];
         if (!outbound) {
           Vue.prototype.$message.error('{{ i18n "pages.xray.outbound.testError" }}');
@@ -1024,7 +1027,9 @@
         }
 
         if (outbound.protocol === 'blackhole' || outbound.tag === 'blocked') {
-          Vue.prototype.$message.warning('{{ i18n "pages.xray.outbound.testError" }}: blocked/blackhole outbound');
+          if (!silent) {
+            Vue.prototype.$message.warning('{{ i18n "pages.xray.outbound.testError" }}: blocked/blackhole outbound');
+          }
           return;
         }
 
@@ -1054,31 +1059,100 @@
 
           if (msg.success && msg.obj) {
             const result = msg.obj;
+            // Local timestamp so the row can show "last tested" without a
+            // round trip; the backend also persists it for reloads.
+            result.testedAt = Math.floor(Date.now() / 1000);
             this.$set(this.outboundTestStates[index], 'result', result);
-            
-            if (result.success) {
-              Vue.prototype.$message.success(
-                `{{ i18n "pages.xray.outbound.testSuccess" }}: ${result.delay}ms (${result.statusCode})`
-              );
-            } else {
-              Vue.prototype.$message.error(
-                `{{ i18n "pages.xray.outbound.testFailed" }}: ${result.error || 'Unknown error'}`
-              );
+
+            if (!silent) {
+              if (result.success) {
+                Vue.prototype.$message.success(
+                  `{{ i18n "pages.xray.outbound.testSuccess" }}: ${result.delay}ms (${result.statusCode})`
+                );
+              } else {
+                Vue.prototype.$message.error(
+                  `{{ i18n "pages.xray.outbound.testFailed" }}: ${result.error || 'Unknown error'}`
+                );
+              }
             }
           } else {
             this.$set(this.outboundTestStates[index], 'result', {
               success: false,
+              testedAt: Math.floor(Date.now() / 1000),
               error: msg.msg || '{{ i18n "pages.xray.outbound.testError" }}'
             });
-            Vue.prototype.$message.error(msg.msg || '{{ i18n "pages.xray.outbound.testError" }}');
+            if (!silent) {
+              Vue.prototype.$message.error(msg.msg || '{{ i18n "pages.xray.outbound.testError" }}');
+            }
           }
         } catch (error) {
           this.$set(this.outboundTestStates[index], 'testing', false);
           this.$set(this.outboundTestStates[index], 'result', {
             success: false,
+            testedAt: Math.floor(Date.now() / 1000),
             error: error.message || '{{ i18n "pages.xray.outbound.testError" }}'
           });
-          Vue.prototype.$message.error('{{ i18n "pages.xray.outbound.testError" }}: ' + error.message);
+          if (!silent) {
+            Vue.prototype.$message.error('{{ i18n "pages.xray.outbound.testError" }}: ' + error.message);
+          }
+        }
+      },
+      // Restore the last test results persisted server-side (keyed by tag) so
+      // the table shows yesterday's outcome until a fresh run overwrites it.
+      async loadOutboundStatus() {
+        try {
+          const msg = await HttpUtil.get('/panel/xray/outboundStatus');
+          if (!msg || !msg.success || !Array.isArray(msg.obj)) {
+            return;
+          }
+          const byTag = {};
+          msg.obj.forEach((row) => {
+            if (row.tag) byTag[row.tag] = row;
+          });
+          // Hydrate each row that has a persisted outcome, without touching a
+          // row that is already mid-test.
+          this.outboundData.forEach((ob, index) => {
+            const row = byTag[ob.tag];
+            if (!row || !row.status) return;
+            if (this.outboundTestStates[index] && this.outboundTestStates[index].testing) return;
+            this.$set(this.outboundTestStates, index, {
+              testing: false,
+              result: row.status
+            });
+          });
+        } catch (e) {
+          // Dashboard-style read-only endpoint; never let a failure break the page.
+        }
+      },
+      // Human-readable "last tested" time for a row, from the persisted or fresh
+      // result's testedAt, or '' when the row has never been tested.
+      lastTestedAt(index) {
+        const st = this.outboundTestStates[index];
+        const ts = st && st.result && st.result.testedAt;
+        if (!ts) return '';
+        return new Date(ts * 1000).toLocaleTimeString();
+      },
+      // Run a reachability test for every testable outbound, one at a time,
+      // silently updating each row. Fired on page load, on a 60s timer, and by
+      // the "Test All" button.
+      async autoTestOutbounds() {
+        if (this.autoTesting || !this.templateSettings || !this.templateSettings.outbounds) {
+          return;
+        }
+        this.autoTesting = true;
+        try {
+          for (let index = 0; index < this.templateSettings.outbounds.length; index++) {
+            const ob = this.templateSettings.outbounds[index];
+            if (!ob || ob.protocol === 'blackhole' || ob.tag === 'blocked') {
+              continue;
+            }
+            if (this.outboundTestStates[index] && this.outboundTestStates[index].testing) {
+              continue;
+            }
+            await this.testOutbound(index, true);
+          }
+        } finally {
+          this.autoTesting = false;
         }
       },
       addReverse() {
@@ -1507,6 +1581,12 @@
       await this.getXrayResult();
       await this.getOutboundsTraffic();
 
+      // Show the persisted connectivity story immediately, then refresh it with
+      // a silent test-all pass, then keep it fresh on a 60s timer.
+      await this.loadOutboundStatus();
+      this.autoTestOutbounds();
+      this.autoTestTimer = setInterval(() => this.autoTestOutbounds(), 60000);
+
       if (window.wsClient) {
           window.wsClient.connect();
           window.wsClient.on('outbounds', (payload) => {
@@ -1528,6 +1608,12 @@
       while (true) {
         await PromiseUtil.sleep(800);
         this.saveBtnDisable = this.oldXraySetting === this.xraySetting && this.oldOutboundTestUrl === this.outboundTestUrl;
+      }
+    },
+    beforeDestroy() {
+      if (this.autoTestTimer) {
+        clearInterval(this.autoTestTimer);
+        this.autoTestTimer = null;
       }
     },
     computed: {
