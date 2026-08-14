@@ -325,7 +325,7 @@ func runWebServer() {
 			global.SetWebServer(server)
 			err = server.Start()
 			if err != nil {
-			log.Fatalf("Error restarting web server: %v", err)
+				log.Fatalf("Error restarting web server: %v", err)
 			}
 			log.Println("Web server restarted successfully.")
 
@@ -1117,8 +1117,9 @@ func runUpdate() error {
 	}
 
 	tmp := exe + ".new"
-	fmt.Printf("Downloading %s ...\n", service.PanelDownloadURL)
-	if err := service.DownloadPanelBinary(context.Background(), tmp, service.PanelDownloadURL); err != nil {
+	fmt.Printf("Downloading %s (compressed, resumable) ...\n", service.PanelDownloadGZURL)
+	tmp, err = service.DownloadPanelUpdate(context.Background(), exe, "")
+	if err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("download failed: %w", err)
 	}

@@ -61,6 +61,13 @@ jobs:
         run: |
           file vpn-ui-amd64 | grep -q "dynamically linked" && echo "CGO OK" || (echo "CGO MISSING - not dynamically linked" && exit 1)
 
+      - name: Compress binary asset
+        run: |
+          # Ship a gzip of the binary too: the self-updater and deploy.sh prefer the
+          # ~3x smaller .gz over slow or throttled links, decompressing on the server.
+          gzip -9 -k vpn-ui-amd64
+          ls -lh vpn-ui-amd64 vpn-ui-amd64.gz
+
       - name: Build core bundle (amd64)
         run: |
           # Build the pinned Xray core and geo files so we can attach them as release assets
@@ -77,5 +84,5 @@ jobs:
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: vpn-ui-amd64,core-amd64.tgz,backend-amd64.tgz
+          files: vpn-ui-amd64,vpn-ui-amd64.gz,core-amd64.tgz,backend-amd64.tgz
           generate_release_notes: true

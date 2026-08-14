@@ -142,6 +142,10 @@ fi
 RAW_MIRROR="https://raw.githubusercontent.com/$REPO/dist/$ASSET.gz"
 MIRRORS=(
     "$RAW_MIRROR"
+    # Every release also ships its own gzip-compressed asset now: a ~3x smaller
+    # transfer than the raw binary, streamed through gzip -dc below just like the
+    # dist-branch mirror.
+    "$ASSET_BASE.gz"
     "$ASSET_BASE"
     "https://ghfast.top/$ASSET_BASE"
     "https://ghproxy.net/$ASSET_BASE"

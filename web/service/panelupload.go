@@ -318,7 +318,7 @@ func StagePanelBinaryFromURL(rawURL string) (StagedPanelInfo, error) {
 	setUpdateProgress(updatePhaseDownloading, 0)
 
 	info, err = StagePanelBinary(
-		&phaseFlipReader{r: newProgressReader(resp.Body, resp.ContentLength)},
+		&phaseFlipReader{r: newProgressReader(resp.Body, resp.ContentLength, 0)},
 		resp.ContentLength,
 	)
 	if err != nil {
@@ -336,7 +336,7 @@ func StagePanelBinaryFromURL(rawURL string) (StagedPanelInfo, error) {
 // info parse, and a -v probe that execs it), and reporting a download through all of
 // that shows a bar frozen at 99% with the speed decaying to zero.
 type phaseFlipReader struct {
-	r      io.Reader
+	r       io.Reader
 	flipped bool
 }
 

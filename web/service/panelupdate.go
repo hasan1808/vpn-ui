@@ -1,6 +1,7 @@
 package service
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -47,7 +48,7 @@ var (
 //
 // PanelAsset and PanelDownloadURL are exported because `vpn-ui-amd64 update` (the
 // CLI/menu updater in main.go) installs from the very same release asset. It
-// reuses these plus DownloadPanelBinary/IsCompatibleBinary rather than reaching
+// reuses these plus DownloadPanelUpdate/IsCompatibleBinary rather than reaching
 // for UpdatePanel: that path ends in restartPanel, whose no-systemd branch
 // syscall.Exec's os.Args back into itself. That is harmless for the panel, but from
 // a CLI process it would re-exec the CLI with its own `update` arguments, in a loop.
@@ -58,6 +59,11 @@ const (
 	// PanelDownloadURL is the release asset both the in-panel updater and the CLI
 	// `update` subcommand download.
 	PanelDownloadURL = "https://github.com/" + panelRepo + "/releases/latest/download/" + PanelAsset
+	// PanelDownloadGZURL is the same asset gzip-compressed (~3x smaller). The
+	// self-updater prefers it: over a slow or throttled link (Iran, China, …) the
+	// compressed transfer finishes far sooner and is decompressed on the server.
+	// Shipped alongside the raw binary by the release workflow.
+	PanelDownloadGZURL = PanelDownloadURL + ".gz"
 )
 
 // PanelUpdateInfo reports the running version vs. the latest published release,
@@ -143,9 +149,9 @@ const (
 	// the fetch request itself: nothing further happens until they answer.
 	updatePhaseStaged     = "staged"
 	updatePhaseInstalling = "installing"
-	updatePhaseRestarting  = "restarting"
-	updatePhaseCancelled   = "cancelled"
-	updatePhaseError       = "error"
+	updatePhaseRestarting = "restarting"
+	updatePhaseCancelled  = "cancelled"
+	updatePhaseError      = "error"
 )
 
 // Self-update progress, polled by the overview to render a % bar and a speed
@@ -240,12 +246,12 @@ type progressReader struct {
 	lastSampleBytes int64
 }
 
-func newProgressReader(r io.Reader, total int64) *progressReader {
+func newProgressReader(r io.Reader, total, start int64) *progressReader {
 	if total < 0 {
 		total = 0 // unknown length (chunked): still count bytes, just skip percent
 	}
 	panelUpdateTotal.Store(total)
-	return &progressReader{r: r, total: total, lastSampleAt: time.Now()}
+	return &progressReader{r: r, total: total, read: start, lastSampleAt: time.Now(), lastSampleBytes: start}
 }
 
 func (pr *progressReader) Read(p []byte) (int, error) {
@@ -324,10 +330,9 @@ func (s *ServerService) UpdatePanel() error {
 		exe = resolved
 	}
 
-	tmp := exe + ".new"
-	logger.Infof("panel update: downloading %s", PanelDownloadURL)
-	if err := DownloadPanelBinary(ctx, tmp, PanelDownloadURL); err != nil {
-		_ = os.Remove(tmp)
+	logger.Infof("panel update: downloading %s", PanelDownloadGZURL)
+	tmp, err := DownloadPanelUpdate(ctx, exe, "")
+	if err != nil {
 		// A cancelled download surfaces as a transport error; ctx is what says the
 		// user asked for it rather than the network failing.
 		if ctx.Err() != nil {
@@ -337,26 +342,9 @@ func (s *ServerService) UpdatePanel() error {
 		}
 		return err
 	}
-	// Validate it's an ELF for THIS architecture — a 404 HTML page, a truncated
-	// file, or a wrong-arch asset would otherwise be renamed over the running binary
-	// and brick the panel (the restart would fail with exec-format-error).
-	if !IsCompatibleBinary(tmp) {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("downloaded file is not a %s Linux binary (no valid '%s' asset?)", runtime.GOARCH, PanelAsset)
-	}
-	// Non-CGO binaries (CGO_ENABLED=0) cannot use SQLite and will crash on
-	// startup. Reject them instead of silently bricking the panel.
-	if !HasSQLiteSupport(tmp) {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("downloaded binary lacks CGO/SQLite support — update via deploy.sh on the server instead")
-	}
-	if err := os.Chmod(tmp, 0o755); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
 
 	// A cancel can land between the download returning and the hook being dropped
-	// below. ctx is not consulted anywhere after DownloadPanelBinary, so without
+	// below. ctx is not consulted anywhere after DownloadPanelUpdate, so without
 	// this the user would get an HTTP success for their cancel and be updated
 	// anyway. Checked before the install starts, which is the last moment aborting
 	// is free.
@@ -415,29 +403,14 @@ func (s *ServerService) ReinstallPanel() error {
 	}
 
 	cur := config.GetVersion()
-	reinstallURL := fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", panelRepo, cur, PanelAsset)
-
-	tmp := exe + ".new"
-	logger.Infof("panel reinstall: downloading v%s from %s", cur, reinstallURL)
-	if err := DownloadPanelBinary(ctx, tmp, reinstallURL); err != nil {
-		_ = os.Remove(tmp)
+	logger.Infof("panel reinstall: downloading v%s", cur)
+	tmp, err := DownloadPanelUpdate(ctx, exe, cur)
+	if err != nil {
 		if ctx.Err() != nil {
 			cancelled = true
 			logger.Info("panel reinstall: cancelled by user during download")
 			return ErrPanelUpdateCancelled
 		}
-		return err
-	}
-	if !IsCompatibleBinary(tmp) {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("downloaded file is not a %s Linux binary", runtime.GOARCH)
-	}
-	if !HasSQLiteSupport(tmp) {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("downloaded binary lacks CGO/SQLite support")
-	}
-	if err := os.Chmod(tmp, 0o755); err != nil {
-		_ = os.Remove(tmp)
 		return err
 	}
 
@@ -529,29 +502,173 @@ func (s *ServerService) CancelPanelUpdate() error {
 }
 
 // DownloadPanelBinary streams url into dst (0755), aborting if ctx is cancelled.
+// Unlike a plain GET, it resumes from dst's existing size via an HTTP Range request
+// when the server supports byte ranges, so a dropped or throttled connection picks
+// up where it left off instead of restarting the whole transfer.
 func DownloadPanelBinary(ctx context.Context, dst, url string) error {
+	return downloadPanelAsset(ctx, dst, url)
+}
+
+// DownloadPanelUpdate downloads and validates the panel binary for the given version
+// ("" = latest), preferring the gzip-compressed asset for speed on slow links and
+// falling back to the raw binary. Both downloads resume from any partial file left
+// by a previous attempt. Returns the path of the validated, executable binary
+// (exe+".new") ready for installPanelBinary. The caller owns installing it and
+// removing it on failure.
+func DownloadPanelUpdate(ctx context.Context, exe, version string) (string, error) {
+	var gzURL, rawURL string
+	if version == "" {
+		gzURL = PanelDownloadGZURL
+		rawURL = PanelDownloadURL
+	} else {
+		base := fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", panelRepo, version, PanelAsset)
+		gzURL, rawURL = base+".gz", base
+	}
+
+	tmp := exe + ".new"
+	if err := downloadGunzip(ctx, gzURL, tmp); err == nil {
+		if IsCompatibleBinary(tmp) && HasSQLiteSupport(tmp) {
+			return finalizeBinary(tmp)
+		}
+		_ = os.Remove(tmp)
+		logger.Warningf("panel update: compressed asset from %s was invalid, falling back to raw binary", gzURL)
+	} else if ctx.Err() != nil {
+		// A cancelled transfer must not fall through to a second (raw) download:
+		// the caller reads ctx to report the cancel.
+		return "", ctx.Err()
+	}
+
+	// Fall back to the raw binary (or it IS the fallback target for an old release
+	// that predates the .gz asset). No stale partial from a gz attempt should leak
+	// into the raw download target, so truncate first.
+	_ = os.Remove(tmp)
+	if err := downloadPanelAsset(ctx, tmp, rawURL); err != nil {
+		return "", err
+	}
+	if !IsCompatibleBinary(tmp) {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("downloaded file is not a %s Linux binary (no valid '%s' asset?)", runtime.GOARCH, PanelAsset)
+	}
+	if !HasSQLiteSupport(tmp) {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("downloaded binary lacks CGO/SQLite support — update via deploy.sh on the server instead")
+	}
+	return finalizeBinary(tmp)
+}
+
+// downloadGunzip fetches gzURL (resuming a partial file) and decompresses it into
+// dst. The .gz is downloaded to a temp sibling first — resume operates on the
+// compressed bytes, which is only valid at byte offsets if we keep the stream whole
+// — then decompressed once complete.
+func downloadGunzip(ctx context.Context, gzURL, dst string) error {
+	gzTmp := dst + ".gz"
+	if err := downloadPanelAsset(ctx, gzTmp, gzURL); err != nil {
+		return err
+	}
+	if err := gunzipFile(gzTmp, dst); err != nil {
+		// A corrupt/incomplete archive: drop it so the next attempt restarts clean.
+		_ = os.Remove(gzTmp)
+		_ = os.Remove(dst)
+		return err
+	}
+	_ = os.Remove(gzTmp)
+	return nil
+}
+
+func gunzipFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	gz, err := gzip.NewReader(in)
+	if err != nil {
+		return err
+	}
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		gz.Close()
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, gz); err != nil {
+		gz.Close()
+		return err
+	}
+	return gz.Close()
+}
+
+func finalizeBinary(tmp string) (string, error) {
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	return tmp, nil
+}
+
+// downloadPanelAsset fetches url into dst, resuming from dst's existing size when the
+// server supports byte ranges. A 416 (range not satisfiable) means the partial is
+// already complete or stale: it is discarded and the download restarts. Progress is
+// reported through the overview counters, including the already-present prefix on a
+// resumed transfer so the % bar reflects the whole asset.
+func downloadPanelAsset(ctx context.Context, dst, url string) error {
 	client := &http.Client{Timeout: 5 * time.Minute}
+
+	var offset int64
+	if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
+		offset = fi.Size()
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "vpn-ui")
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+
+	// The existing partial is as long as (or longer than) the whole asset: it is stale
+	// or complete garbage, so drop it and retry cleanly once.
+	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		resp.Body.Close()
+		_ = os.Remove(dst)
+		return downloadPanelAsset(ctx, dst, url)
+	}
+
+	restart := resp.StatusCode == http.StatusOK
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		return fmt.Errorf("download failed: HTTP %d from %s", resp.StatusCode, url)
 	}
-	f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, 0o755)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	// Feed the overview's % bar and speed readout. Attached even when the length is
-	// unknown: bytes and speed are still meaningful, only the percent isn't.
-	if _, err := io.Copy(f, newProgressReader(resp.Body, resp.ContentLength)); err != nil {
+
+	// A 200 means the server ignored our range (no resume support or stale partial):
+	// truncate and write the full body so we never append onto old bytes.
+	if restart {
+		if err := f.Truncate(0); err != nil {
+			return err
+		}
+		offset = 0
+	} else if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return err
+	}
+
+	// Feed the overview's % bar and speed readout. total already includes the offset
+	// prefix (offset + Content-Length) so a resumed bar starts at the right place.
+	// Attached even when the length is unknown: bytes and speed are still meaningful,
+	// only the percent isn't.
+	if _, err := io.Copy(f, newProgressReader(resp.Body, offset+resp.ContentLength, offset)); err != nil {
 		return err
 	}
 	return nil
