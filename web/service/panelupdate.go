@@ -611,8 +611,14 @@ func finalizeBinary(tmp string) (string, error) {
 // already complete or stale: it is discarded and the download restarts. Progress is
 // reported through the overview counters, including the already-present prefix on a
 // resumed transfer so the % bar reflects the whole asset.
+//
+// No overall deadline: on a slow or throttled link (Iran, China, …) a whole-binary
+// transfer can legitimately take well past any fixed cap, and an arbitrary timeout
+// is what fails the user mid-transfer (context deadline exceeded while reading the
+// body). panelFetchClient guards only the connection stages (dial / TLS / response
+// headers) and lets ctx, via the cancel button, bound the actual download.
 func downloadPanelAsset(ctx context.Context, dst, url string) error {
-	client := &http.Client{Timeout: 5 * time.Minute}
+	client := panelFetchClient()
 
 	var offset int64
 	if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
