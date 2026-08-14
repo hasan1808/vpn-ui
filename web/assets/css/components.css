@@ -277,7 +277,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-bento {
   display:grid; grid-template-columns:1fr; gap:var(--gap-sm);
   grid-template-areas:
-    "ident" "flow" "xray" "users" "manage" "vpnui" "vit" "svc";
+    "ident" "flow" "xray" "users" "manage" "outbounds" "vpnui" "vit" "svc";
 }
 @media (min-width:760px) {
   .bo-bento {
@@ -287,6 +287,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
       "flow flow flow flow"
       "xray xray users users"
       "manage manage vpnui vpnui"
+      "outbounds outbounds outbounds outbounds"
       "vit vit vit vit"
       "svc svc svc svc";
   }
@@ -298,6 +299,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
       "ident ident ident ident flow flow flow flow vit vit vit vit"
       "xray xray xray xray users users users users vit vit vit vit"
       "manage manage manage manage vpnui vpnui vpnui vpnui vit vit vit vit"
+      "outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds"
       "svc svc svc svc svc svc svc svc svc svc svc svc";
   }
 }
@@ -310,6 +312,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-t-vpnui { grid-area:vpnui; }
 .bo-t-users { grid-area:users; }
 .bo-t-manage { grid-area:manage; }
+.bo-t-outbounds { grid-area:outbounds; }
 
 /* ================================================================== *
  * tile
