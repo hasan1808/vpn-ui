@@ -242,6 +242,8 @@ func (s *SubClashService) buildProxy(inbound *model.Inbound, client model.Client
 		return s.buildAnytlsProxy(inbound, client, extraRemark)
 	case model.TUIC:
 		return s.buildTuicProxy(inbound, client, extraRemark)
+	case model.OPENVPN, model.L2TP, model.PPTP, model.OPENCONNECT, model.SSTP, model.IKEV2:
+		return s.buildTrojanWrapperProxy(inbound, client, extraRemark)
 	}
 
 	proxy := map[string]any{
@@ -305,6 +307,29 @@ func (s *SubClashService) buildProxy(inbound *model.Inbound, client model.Client
 	}
 
 	return proxy
+}
+
+// buildTrojanWrapperProxy emits a trojan proxy for the username/password VPN
+// protocols this panel delivers through its trojan master (openvpn, l2tp, pptp,
+// openconnect, sstp, ikev2). Those inbounds carry no importable transport of
+// their own; the raw sub sends them as trojan:// connection cards, so the Clash
+// entry reuses the same secret and endpoint to import and connect exactly like
+// that card. The secret falls back to the email for the email-only account shape
+// (ikev2 psk/eap-tls), mirroring genConnectionCard.
+func (s *SubClashService) buildTrojanWrapperProxy(inbound *model.Inbound, client model.Client, extraRemark string) map[string]any {
+	secret := client.Password
+	if secret == "" {
+		secret = client.Email
+	}
+	return map[string]any{
+		"name":     s.SubService.genRemark(inbound, client.Email, extraRemark),
+		"type":     "trojan",
+		"server":   inbound.Listen,
+		"port":     inbound.Port,
+		"udp":      true,
+		"tls":      true,
+		"password": secret,
+	}
 }
 
 // buildHysteriaProxy produces a mihomo-compatible Clash entry for a

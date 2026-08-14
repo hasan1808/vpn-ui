@@ -8,6 +8,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
+	"github.com/mhsanaei/3x-ui/v2/xray"
 
 	"github.com/gin-gonic/gin"
 )
@@ -193,7 +194,9 @@ func (a *SUBController) subs(c *gin.Context) {
 	case "json":
 		jsonSub, header, err := a.subJsonService.GetJson(subId, host)
 		if err != nil || len(jsonSub) == 0 {
-			c.String(400, "Error!")
+			// No JSON form for this account's protocols (e.g. openvpn/l2tp);
+			// serve the raw links instead so a template choice never breaks the link.
+			a.serveRawLinks(c, subs, traffic, profileUrl)
 			return
 		}
 		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
@@ -201,7 +204,9 @@ func (a *SUBController) subs(c *gin.Context) {
 	case "clash":
 		clashSub, header, err := a.subClashService.GetClash(subId, host)
 		if err != nil || len(clashSub) == 0 {
-			c.String(400, "Error!")
+			// Same fallback as json: protocols with no Clash proxy (naive, mtproto,
+			// ssh, gre) still get the raw links instead of "Error!".
+			a.serveRawLinks(c, subs, traffic, profileUrl)
 			return
 		}
 		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
@@ -230,6 +235,21 @@ func (a *SUBController) subs(c *gin.Context) {
 		} else {
 			c.String(200, result)
 		}
+	}
+}
+
+// serveRawLinks serves the account's raw links (base64-encoded when subEncrypt is
+// set) with the standard headers. It is the fallback for templates that have no
+// representation of the account's protocols, so a template choice never turns a
+// working link into "Error!".
+func (a *SUBController) serveRawLinks(c *gin.Context, subs []string, traffic xray.ClientTraffic, profileUrl string) {
+	result := strings.Join(subs, "\n")
+	header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
+	a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
+	if a.subEncrypt {
+		c.String(200, base64.StdEncoding.EncodeToString([]byte(result)))
+	} else {
+		c.String(200, result)
 	}
 }
 
