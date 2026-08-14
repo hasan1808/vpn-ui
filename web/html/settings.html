@@ -141,6 +141,7 @@
       oldAllSetting: new AllSetting(),
       allSetting: new AllSetting(),
       saveBtnDisable: true,
+      lastSavedSubTemplate: null,
       subPreviewVisible: false,
       subPreviewLoading: false,
       subPreviewContent: '',
@@ -337,6 +338,7 @@
 
           this.oldAllSetting = new AllSetting(msg.obj);
           this.allSetting = new AllSetting(msg.obj);
+          this.lastSavedSubTemplate = this.allSetting.subTemplate;
           app.changeRemarkSample();
           this.saveBtnDisable = true;
         }
@@ -407,6 +409,10 @@
         }
       },
       async onSubTemplateChange() {
+        if (!this.loadingStates.fetched) return;
+        const value = this.allSetting.subTemplate;
+        if (value === this.lastSavedSubTemplate) return;
+        this.lastSavedSubTemplate = value;
         await this.updateAllSetting();
       },
       async loadSubPreview() {
