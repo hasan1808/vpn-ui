@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/mhsanaei/3x-ui/v2/sub"
 	"github.com/mhsanaei/3x-ui/v2/util/crypto"
 	"github.com/mhsanaei/3x-ui/v2/web/entity"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
@@ -72,6 +73,7 @@ func (a *SettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/acme/issue", a.acmeIssue)
 	g.GET("/acme/status", a.acmeStatus)
 	g.POST("/acme/renew", a.acmeRenew)
+	g.POST("/subPreview", a.subPreview)
 }
 
 // serviceStatus returns the current systemd unit state for the panel.
@@ -161,6 +163,44 @@ func (a *SettingController) updateUser(c *gin.Context) {
 func (a *SettingController) restartPanel(c *gin.Context) {
 	err := a.panelService.RestartPanel(time.Second * 3)
 	jsonMsg(c, I18nWeb(c, "pages.settings.restartPanelSuccess"), err)
+}
+
+// subPreviewRequest carries the CURRENT (possibly unsaved) template choice, so the
+// operator can preview a format before saving it.
+type subPreviewRequest struct {
+	Template string `json:"template"`
+	Custom   string `json:"custom"`
+}
+
+// subPreview renders the subscription payload for the selected template against a
+// real account, so the operator sees exactly what a subscriber gets before saving.
+// The template/custom fields come from the form (they may be unsaved); everything
+// else is drawn from the currently saved settings.
+func (a *SettingController) subPreview(c *gin.Context) {
+	req := &subPreviewRequest{}
+	if err := c.ShouldBind(req); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.settings.subTemplate"), err)
+		return
+	}
+	template := req.Template
+	if template == "" {
+		template = "base64"
+	}
+	subId, found := sub.FirstSubId()
+	if !found {
+		jsonMsg(c, I18nWeb(c, "pages.settings.subTemplateNoAccounts"), errors.New(""))
+		return
+	}
+	content, err := sub.RenderTemplate(subId, c.Request.Host, template, req.Custom)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.settings.subTemplate"), err)
+		return
+	}
+	jsonObj(c, map[string]any{
+		"content":  content,
+		"subId":    subId,
+		"template": template,
+	}, nil)
 }
 
 // getDefaultXrayConfig retrieves the default Xray configuration.

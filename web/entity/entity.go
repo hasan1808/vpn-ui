@@ -21,8 +21,8 @@ type Msg struct {
 // AllSetting contains all configuration settings for the vpn-ui panel including web server, Telegram bot, and subscription settings.
 type AllSetting struct {
 	// Web server settings
-	WebListen     string `json:"webListen" form:"webListen"`         // Web server listen IP address
-	WebDomain     string `json:"webDomain" form:"webDomain"`         // Web server domain for domain validation
+	WebListen string `json:"webListen" form:"webListen"` // Web server listen IP address
+	WebDomain string `json:"webDomain" form:"webDomain"` // Web server domain for domain validation
 	// PublicIP lets the operator pin the server's public IPv4 address when the
 	// auto-detected one is wrong (e.g. a sample/test IP cached on a staging
 	// host, or an egress whose detected IP differs from the one handed out in
@@ -88,6 +88,12 @@ type AllSetting struct {
 	SubJsonNoises               string `json:"subJsonNoises" form:"subJsonNoises"`                             // JSON subscription noise configuration
 	SubJsonMux                  string `json:"subJsonMux" form:"subJsonMux"`                                   // JSON subscription mux configuration
 	SubJsonRules                string `json:"subJsonRules" form:"subJsonRules"`
+	// The format the raw subscription link returns: base64 (default), plain,
+	// clash, json or custom. Read per-request by the sub server, so a save applies
+	// without a restart. Custom templates interpolate the $vars rendered by
+	// package sub's renderSubTemplate.
+	SubTemplate       string `json:"subTemplate" form:"subTemplate"`             // Subscription output template
+	SubCustomTemplate string `json:"subCustomTemplate" form:"subCustomTemplate"` // Custom subscription template body
 
 	// LDAP settings
 	LdapEnable     bool   `json:"ldapEnable" form:"ldapEnable"`

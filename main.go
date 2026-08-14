@@ -292,6 +292,7 @@ func runWebServer() {
 
 	var subServer *sub.Server
 	subServer = sub.NewServer()
+	subServer.SetEmbedded(web.EmbeddedHTML(), web.EmbeddedAssets())
 	global.SetSubServer(subServer)
 	err = subServer.Start()
 	if err != nil {
@@ -330,6 +331,7 @@ func runWebServer() {
 			log.Println("Web server restarted successfully.")
 
 			subServer = sub.NewServer()
+			subServer.SetEmbedded(web.EmbeddedHTML(), web.EmbeddedAssets())
 			global.SetSubServer(subServer)
 			err = subServer.Start()
 			if err != nil {

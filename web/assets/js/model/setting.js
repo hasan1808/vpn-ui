@@ -53,8 +53,10 @@ class AllSetting {
         this.subClashURI = "";
         this.subJsonFragment = "";
         this.subJsonNoises = "";
-        this.subJsonMux = "";
-        this.subJsonRules = "";
+    this.subJsonMux = "";
+    this.subJsonRules = "";
+    this.subTemplate = "base64";
+    this.subCustomTemplate = "";
 
         this.timeLocation = "Local";
 

@@ -81,6 +81,8 @@ var defaultValueMap = map[string]string{
 	"subJsonNoises":               "",
 	"subJsonMux":                  "",
 	"subJsonRules":                "",
+	"subTemplate":                 "base64",
+	"subCustomTemplate":           "",
 	"datepicker":                  "gregorian",
 	"warp":                        "",
 	"nord":                        "",
@@ -760,6 +762,19 @@ func (s *SettingService) GetSubJsonMux() (string, error) {
 
 func (s *SettingService) GetSubJsonRules() (string, error) {
 	return s.getString("subJsonRules")
+}
+
+// GetSubTemplate returns which output format the raw subscription link serves:
+// base64 (default), plain, clash, json or custom.
+func (s *SettingService) GetSubTemplate() (string, error) {
+	return s.getString("subTemplate")
+}
+
+// GetSubCustomTemplate returns the operator-authored template body used when
+// subTemplate is "custom". Placeholders ($links, $email, ...) are expanded by the
+// sub server per request.
+func (s *SettingService) GetSubCustomTemplate() (string, error) {
+	return s.getString("subCustomTemplate")
 }
 
 func (s *SettingService) GetDatepicker() (string, error) {

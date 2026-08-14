@@ -17,7 +17,6 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/util/common"
-	webpkg "github.com/mhsanaei/3x-ui/v2/web"
 	"github.com/mhsanaei/3x-ui/v2/web/locale"
 	"github.com/mhsanaei/3x-ui/v2/web/middleware"
 	"github.com/mhsanaei/3x-ui/v2/web/network"
@@ -27,9 +26,9 @@ import (
 )
 
 // setEmbeddedTemplates parses and sets embedded templates on the engine
-func setEmbeddedTemplates(engine *gin.Engine) error {
+func (s *Server) setEmbeddedTemplates(engine *gin.Engine) error {
 	t, err := template.New("").Funcs(engine.FuncMap).ParseFS(
-		webpkg.EmbeddedHTML(),
+		s.htmlFS,
 		"html/common/page.html",
 		"html/component/aThemeSwitch.html",
 		"html/settings/panel/subscription/subpage.html",
@@ -49,6 +48,14 @@ type Server struct {
 	sub            *SUBController
 	settingService service.SettingService
 
+	// htmlFS/assetsFS are the embedded templates/static assets owned by the web
+	// package. They are injected by main (which imports both web and sub) so that
+	// package sub never imports package web: the panel's controllers import sub
+	// for the subscription-template preview, and web imports controller, so sub
+	// importing web would close an import cycle.
+	htmlFS   fs.FS
+	assetsFS fs.FS
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -60,6 +67,13 @@ func NewServer() *Server {
 		ctx:    ctx,
 		cancel: cancel,
 	}
+}
+
+// SetEmbedded sets the embedded HTML templates and static assets filesystems for
+// this subscription server, supplied by the process that builds it (main).
+func (s *Server) SetEmbedded(htmlFS fs.FS, assetsFS fs.FS) {
+	s.htmlFS = htmlFS
+	s.assetsFS = assetsFS
 }
 
 // initRouter configures the subscription server's Gin engine, middleware,
@@ -197,7 +211,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.SetFuncMap(map[string]any{"i18n": i18nWebFunc})
 
 	// Templates: prefer embedded; fallback to disk if necessary
-	if err := setEmbeddedTemplates(engine); err != nil {
+	if err := s.setEmbeddedTemplates(engine); err != nil {
 		logger.Warning("sub: failed to parse embedded templates:", err)
 		if files, derr := s.getHtmlFiles(); derr == nil {
 			engine.LoadHTMLFiles(files...)
@@ -224,7 +238,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	if _, err := os.Stat("web/assets"); err == nil {
 		assetsFS = http.FS(os.DirFS("web/assets"))
 	} else {
-		if subFS, err := fs.Sub(webpkg.EmbeddedAssets(), "assets"); err == nil {
+		if subFS, err := fs.Sub(s.assetsFS, "assets"); err == nil {
 			assetsFS = http.FS(subFS)
 		} else {
 			logger.Error("sub: failed to mount embedded assets:", err)

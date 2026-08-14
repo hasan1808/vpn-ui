@@ -96,6 +96,16 @@
           </template>
         </transition>
       </a-spin>
+      <a-modal v-model="subPreviewVisible"
+        :title="'{{ i18n "pages.settings.subTemplatePreview" }}'"
+        :footer="null" :width="720" :mask-closable="true">
+        <div style="margin-bottom: 4px; font-size: 12px; opacity: 0.7;">
+          {{ i18n "pages.settings.subTemplatePreviewAccount" }}: [[
+            subPreviewSubId ]]
+        </div>
+        <pre
+          style="white-space: pre-wrap; word-break: break-all; max-height: 60vh; overflow: auto; margin: 8px 0 0; padding: 12px; background: rgba(0,0,0,0.04); border-radius: 6px; font-size: 12px; line-height: 1.5;">[[ subPreviewContent ]]</pre>
+      </a-modal>
 {{template "page/shell_end" . }}
 {{template "page/body_scripts" .}}
 <script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .cur_ver }}"></script>
@@ -131,6 +141,10 @@
       oldAllSetting: new AllSetting(),
       allSetting: new AllSetting(),
       saveBtnDisable: true,
+      subPreviewVisible: false,
+      subPreviewLoading: false,
+      subPreviewContent: '',
+      subPreviewSubId: '',
       entryHost: null,
       entryPort: null,
       entryProtocol: null,
@@ -388,6 +402,21 @@
         if (msg.success) {
           await this.getAllSetting();
         }
+      },
+      async loadSubPreview() {
+        this.subPreviewLoading = true;
+        const msg = await HttpUtil.post("/panel/setting/subPreview", {
+          template: this.allSetting.subTemplate,
+          custom: this.allSetting.subCustomTemplate || ''
+        });
+        this.subPreviewLoading = false;
+        if (!msg.success) {
+          this.$message.error(msg.msg);
+          return;
+        }
+        this.subPreviewContent = msg.obj ? msg.obj.content : '';
+        this.subPreviewSubId = msg.obj ? msg.obj.subId : '';
+        this.subPreviewVisible = true;
       },
       async updateUser() {
         const sendUpdateUserRequest = async () => {

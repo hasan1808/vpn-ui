@@ -115,6 +115,14 @@ var knownMissing = keySet(
 	"pages.settings.service.statusDesc", "pages.settings.service.unit",
 	"pages.settings.service.unitDesc", "pages.settings.serviceSettings",
 
+	// Subscription output templates: newly added, only en_US + fa_IR translated
+	// so far; the English fallback carries the rest until translations land.
+	"pages.settings.subTemplate", "pages.settings.subTemplateDesc",
+	"pages.settings.subTemplateCustom", "pages.settings.subTemplatePreview",
+	"pages.settings.subTemplatePreviewDesc", "pages.settings.subTemplatePreviewAccount",
+	"pages.settings.subTemplateNoAccounts", "pages.settings.subCustomTemplate",
+	"pages.settings.subCustomTemplateDesc", "pages.settings.subTemplateVars",
+
 	"pages.index.importForeignTitle", "pages.index.importForeignDesc",
 	"pages.index.importForeignConfirm",
 	// The Manual Update picker: which END of the transfer does the work is not
