@@ -467,8 +467,12 @@
     <!-- Read-only for anyone who can see the overview: the endpoints behind
          this tile are registered outside the PermXraySettings gate (see
          XraySettingController.initRouter) so a dashboard-only user is not
-         locked out of the traffic picture. -->
-    <article class="bo-tile bo-t-outbounds" aria-label='{{ i18n "pages.index.outbounds" }}'>
+         locked out of the traffic picture. Only rendered when the current
+         config actually has an outbound the operator created: a panel whose
+         outbounds list is nothing but built-in routing targets (direct,
+         blocked, …) gets no card. -->
+    <article v-if="outboundStatusList.length > 0" class="bo-tile bo-t-outbounds"
+      aria-label='{{ i18n "pages.index.outbounds" }}'>
       <div class="bo-tile-head">
         <h3 class="bo-tile-title">{{ i18n "pages.index.outbounds" }}</h3>
         <button type="button" class="bo-icon-btn bo-icon-btn--accent"
@@ -477,12 +481,7 @@
           {{ i18n "pages.index.outboundTestAll" }}
         </button>
       </div>
-      <p v-if="outboundStatusLoading && outboundStatusList.length === 0"
-        class="bo-status-line">{{ i18n "loading" }}</p>
-      <p v-else-if="outboundStatusList.length === 0" class="bo-status-line">
-        {{ i18n "pages.index.outboundNoData" }}
-      </p>
-      <ul v-else class="bo-ping-list">
+      <ul class="bo-ping-list">
         <li v-for="row in outboundStatusList" :key="row.tag" class="bo-ping-row"
           :title="outboundRowError(row)">
           <span class="bo-ping-dot" :class="'bo-ping-dot--' + outboundRowState(row)"></span>

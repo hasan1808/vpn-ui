@@ -418,6 +418,16 @@ func outboundTagFromJSON(outboundJSON string) (string, bool) {
 	return tag, tag != ""
 }
 
+// systemOutboundTags are the built-in routing targets the panel always carries:
+// the default config's direct/blocked, the IPv4/IPv6 domain-strategy outbounds,
+// the DNS outbound and the metrics collector. None is a connectivity option the
+// operator created, so the dashboard card must not list them (nor test them).
+var systemOutboundTags = map[string]bool{
+	"direct": true, "blocked": true,
+	"IPv4": true, "IPv6": true,
+	"dns-out": true, "metrics_out": true,
+}
+
 // outboundStatus returns the dashboard-facing view of every outbound in the
 // current config: tag, protocol, accumulated traffic, and the last test outcome.
 func (a *XraySettingController) outboundStatus(c *gin.Context) {
@@ -456,6 +466,11 @@ func (a *XraySettingController) outboundStatus(c *gin.Context) {
 
 	rows := make([]*service.OutboundStatusRow, 0, len(cfg.Outbounds))
 	for _, ob := range cfg.Outbounds {
+		// Skip the built-in routing targets: they are not connectivity options,
+		// and a panel with nothing but them has no outbounds to show.
+		if systemOutboundTags[ob.Tag] {
+			continue
+		}
 		row := &service.OutboundStatusRow{
 			Tag:      ob.Tag,
 			Protocol: ob.Protocol,
@@ -501,7 +516,7 @@ func (a *XraySettingController) testAllOutbounds(c *gin.Context) {
 		}
 		tag, _ := ob["tag"].(string)
 		protocol, _ := ob["protocol"].(string)
-		if protocol == "blackhole" || tag == "blocked" {
+		if systemOutboundTags[tag] || protocol == "blackhole" || tag == "blocked" {
 			continue
 		}
 		all = append(all, ob)

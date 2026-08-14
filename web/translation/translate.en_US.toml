@@ -403,7 +403,6 @@
 "pingChecking" = "Checking…"
 "outbounds" = "Outbounds"
 "outboundTestAll" = "Test all"
-"outboundNoData" = "No outbounds in the current Xray config."
 
 [pages.inbounds]
 "inboundMembership" = "Inbounds"

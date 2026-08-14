@@ -226,7 +226,6 @@
 "pingChecking" = "در حال بررسی…"
 "outbounds" = "خروجیها"
 "outboundTestAll" = "تست همه"
-"outboundNoData" = "هیچ خروجیای در تنظیمات فعلی Xray وجود ندارد."
 "customGeoTitle" = "GeoSite / GeoIP سفارشی"
 "customGeoAdd" = "افزودن"
 "customGeoType" = "نوع"
