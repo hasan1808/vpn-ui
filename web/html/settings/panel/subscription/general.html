@@ -182,7 +182,8 @@
                 "pages.settings.subTemplateDesc" }}</template>
             <template #control>
                 <a-radio-group v-model="allSetting.subTemplate"
-                    :style="{ display: 'flex', flexDirection: 'column', gap: '6px' }">
+                    :style="{ display: 'flex', flexDirection: 'column', gap: '6px' }"
+                    @change="onSubTemplateChange">
                     <a-radio value="base64">Base64</a-radio>
                     <a-radio value="plain">Plain</a-radio>
                     <a-radio value="clash">Clash / Mihomo</a-radio>

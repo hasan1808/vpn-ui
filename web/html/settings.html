@@ -400,8 +400,14 @@
         const msg = await HttpUtil.post("/panel/setting/update", this.allSetting);
         this.loading(false);
         if (msg.success) {
+          this.$message.success(msg.msg || '{{ i18n "pages.settings.save" }}');
           await this.getAllSetting();
+        } else {
+          this.$message.error(msg.msg || '{{ i18n "pages.settings.save" }}');
         }
+      },
+      async onSubTemplateChange() {
+        await this.updateAllSetting();
       },
       async loadSubPreview() {
         this.subPreviewLoading = true;
