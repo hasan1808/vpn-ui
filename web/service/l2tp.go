@@ -275,6 +275,13 @@ func (s *L2tpService) GeneratePPPOptions(inbound *model.Inbound) error {
 	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
 	if !enableVpnIpv6 {
 		b.WriteString("noipv6\n")
+	} else {
+		// Phase 2: negotiate IPv6CP so the ppp link carries IPv6 (link-local at
+		// first). The server still has no IPv6 forwarding or policy route, so any
+		// IPv6 arriving on the link is dropped there — confined, nothing leaks.
+		b.WriteString("+ipv6\n")
+		b.WriteString("ipv6cp-accept-local\n")
+		b.WriteString("ipv6cp-accept-remote\n")
 	}
 	b.WriteString(fmt.Sprintf("ms-dns %s\n", dns1))
 	b.WriteString(fmt.Sprintf("ms-dns %s\n", dns2))

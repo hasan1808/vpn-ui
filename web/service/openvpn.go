@@ -587,6 +587,15 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 	b.WriteString(fmt.Sprintf("dev %s\n", tunDev))
 	b.WriteString("dev-type tun\n")
 	b.WriteString("topology subnet\n")
+	var settingService SettingService
+	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
+	if enableVpnIpv6 {
+		// Phase 2: let the tun carry IPv6 so the link negotiates it (link-local at
+		// first). No server-ipv6/route is pushed yet, and the server has no IPv6
+		// forwarding or policy route, so any IPv6 arriving on the tun is dropped
+		// there — confined, nothing leaks.
+		b.WriteString("tun-ipv6\n")
+	}
 	b.WriteString(fmt.Sprintf("server %s %s\n", subnet, subnetMask))
 	// Pin every user to a deterministic tunnel IP so per-user routing rules work.
 	b.WriteString(fmt.Sprintf("client-config-dir %s/ccd-%s\n", dir, proto))
@@ -621,8 +630,6 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 	// route, bypassing Xray entirely (mirrors the L2TP/PPTP noipv6 fix).
 	// SettingService.enableVpnIpv6 lifts the ban once the IPv6 data path lands
 	// (later phases); off is the default and keeps this line exactly as before.
-	var settingService SettingService
-	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
 	if !enableVpnIpv6 {
 		b.WriteString("push \"block-ipv6\"\n")
 	}
@@ -865,6 +872,14 @@ func (s *OpenVpnService) GenerateClientConfig(inbound *model.Inbound, proto stri
 	var b strings.Builder
 	b.WriteString("client\n")
 	b.WriteString("dev tun\n")
+	// Phase 2: keep the client's tun in step with the server so IPv6 can be
+	// negotiated on the link. Harmless when the server still pushes nothing for
+	// IPv6; the client's own native IPv6 routing is untouched either way.
+	var settingService SettingService
+	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
+	if enableVpnIpv6 {
+		b.WriteString("tun-ipv6\n")
+	}
 	b.WriteString(fmt.Sprintf("proto %s\n", protoStr))
 	for _, r := range remotes {
 		b.WriteString(fmt.Sprintf("remote %s %d\n", r.host, r.port))
