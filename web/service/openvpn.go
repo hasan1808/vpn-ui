@@ -644,6 +644,12 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 	if !enableVpnIpv6 {
 		b.WriteString("push \"block-ipv6\"\n")
 	}
+	if enableVpnIpv6 && mtu < 1280 {
+		// The kernel refuses to attach an IPv6 address to an interface with an
+		// MTU below the IPv6 minimum (1280) — EINVAL, then OpenVPN bails out.
+		// Clamp the tun MTU so the ULA gateway can actually be configured.
+		mtu = 1280
+	}
 	b.WriteString(fmt.Sprintf("tun-mtu %d\n", mtu))
 	caPath, certPath, keyPath, tcPath := s.certPaths(inbound, settings)
 	b.WriteString(fmt.Sprintf("ca %s\n", caPath))
