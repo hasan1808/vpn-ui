@@ -889,6 +889,11 @@ func (s *OpenVpnService) GenerateClientConfig(inbound *model.Inbound, proto stri
 	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
 	if enableVpnIpv6 {
 		b.WriteString("tun-ipv6\n")
+		// Phase 3 belt-and-suspenders: pull global IPv6 into the tunnel on the
+		// client itself, so a client that filters server pushes (pull-filter,
+		// nopull) can never leak IPv6 out its own uplink. The server side confines
+		// it at the other end until the TPROXY data path lands.
+		b.WriteString("route-ipv6 2000::/3\n")
 	}
 	b.WriteString(fmt.Sprintf("proto %s\n", protoStr))
 	for _, r := range remotes {
