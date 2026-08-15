@@ -885,7 +885,7 @@
 "externalTraffic" = "External Traffic"
 "dateAndTime" = "Date and Time"
 "vpnIpv6" = "VPN Tunnels — IPv6"
-"vpnIpv6Desc" = "Negotiate IPv6 on the VPN tunnel links (L2TP/PPTP/OpenVPN). Keep OFF until the IPv6 data path (routing/TPROXY/DNS) is available, or dual-stack clients may leak IPv6 traffic and DNS past the tunnel."
+"vpnIpv6Desc" = "Negotiate IPv6 on the VPN tunnel links. For OpenVPN each client gets a routed ULA prefix and all its IPv6 is pulled into the tunnel; L2TP/PPTP only negotiate IPv6 on the link (PPP cannot hand OS-native clients a routable IPv6). The server confines this IPv6 until the TPROXY data path lands — client IPv6 internet stays off until then, but nothing leaks."
 "proxyAndServer" = "Proxy and Server"
 "intervals" = "Intervals"
 "information" = "Information"

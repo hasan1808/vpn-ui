@@ -597,6 +597,16 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 		b.WriteString("tun-ipv6\n")
 	}
 	b.WriteString(fmt.Sprintf("server %s %s\n", subnet, subnetMask))
+	if enableVpnIpv6 {
+		// Phase 3: hand each client a routable server-side IPv6 (ULA /64 from the
+		// transport's /48 pool, deterministic from its v4 block). OpenVPN handles
+		// the return route for every client /64 back through the tun itself. The
+		// client's whole global v6 is then pulled into the tunnel by the
+		// route-ipv6 push below, and the nftables v6 backstop drops it at the
+		// server until TPROXY lands (phase 4) — confined, nothing leaks.
+		b.WriteString(fmt.Sprintf("server-ipv6 %s\n", v6UlaPrefix(subnet)))
+		b.WriteString("push \"route-ipv6 2000::/3\"\n")
+	}
 	// Pin every user to a deterministic tunnel IP so per-user routing rules work.
 	b.WriteString(fmt.Sprintf("client-config-dir %s/ccd-%s\n", dir, proto))
 	// User Limit is enforced by the client-connect hook for EVERY K (>=1): it leases

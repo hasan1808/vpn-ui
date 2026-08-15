@@ -206,11 +206,23 @@ func (s *NftService) ApplyNftRules() error {
 		return err
 	}
 
-	// If no VPN inbounds, remove the table entirely
+	// If no VPN inbounds, remove the tables entirely
 	if len(l2tpInbounds) == 0 && len(pptpInbounds) == 0 && len(ovpnInbounds) == 0 && len(ocservInbounds) == 0 && len(sstpInbounds) == 0 && len(ikev2Inbounds) == 0 && len(wgcInbounds) == 0 && len(awgInbounds) == 0 && len(greInbounds) == 0 {
 		s.runCmd("nft", "delete", "table", "ip", "vpn")
+		s.runCmd("nft", "delete", "table", "ip6", "vpn")
 		os.Remove(nftConfigFile)
 		return nil
+	}
+
+	// IPv6 confinement is driven by the same master switch that lets the tunnel
+	// links negotiate IPv6 (SettingService.enableVpnIpv6). Off (the default)
+	// leaves the v6 table out of the picture entirely.
+	var settingService SettingService
+	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
+	if !enableVpnIpv6 {
+		// Drop a leftover v6 table from an earlier ON period so a later toggle
+		// back does not carry stale backstop rules.
+		s.runCmd("nft", "delete", "table", "ip6", "vpn")
 	}
 
 	// VPN is active — make sure the host's rp_filter/firewalld defaults don't
@@ -683,6 +695,30 @@ func (s *NftService) ApplyNftRules() error {
 			logger.Warning("GRE: inbound", id,
 				"requires IPsec but has dynamic peer slots while another inbound allows raw GRE;",
 				"bare GRE cannot be refused for those peers - pin their peer IPs to enforce it")
+		}
+	}
+
+	// IPv6 backstop: confine every tunnel's v6 to this host. Accept only what
+	// terminates on the server itself (the ULA gateway, DNS, …), drop everything
+	// else, so no client v6 can be forwarded out the host's real uplink — before
+	// TPROXY for v6 lands (phase 4) the kernel would otherwise drop it anyway
+	// (net.ipv6.conf.all.forwarding stays off), and this is the belt-and-suspenders
+	// guard that keeps it that way even if something else enables forwarding.
+	if enableVpnIpv6 {
+		b.WriteString("add table ip6 vpn\n")
+		b.WriteString("add chain ip6 vpn prerouting { type filter hook prerouting priority mangle; policy accept; }\n")
+		b.WriteString("flush chain ip6 vpn prerouting\n")
+		seenV6 := map[string]bool{}
+		for _, n := range allNets {
+			for _, s := range n.subnets {
+				p := v6UlaPrefix(s)
+				if p == "" || seenV6[p] {
+					continue
+				}
+				seenV6[p] = true
+				b.WriteString(fmt.Sprintf("add rule ip6 vpn prerouting ip6 saddr %s fib daddr type local accept\n", p))
+				b.WriteString(fmt.Sprintf("add rule ip6 vpn prerouting ip6 saddr %s drop\n", p))
+			}
 		}
 	}
 

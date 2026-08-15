@@ -315,3 +315,20 @@ func TestNormalizeOvpnRangesUserLimit(t *testing.T) {
 		t.Errorf("prefix = %d want 22", prefix)
 	}
 }
+
+func TestV6UlaPrefix(t *testing.T) {
+	cases := map[string]string{
+		"10.0.5.0/24":  "fd00:0:0005::/48", // L2TP base 0, block 5
+		"10.1.10.0/24": "fd00:0:010a::/48", // PPTP base 1, block 10
+		"10.2.5.0/24":  "fd00:0:0205::/48", // OpenVPN UDP base 2, block 5
+		"10.3.6.0/24":  "fd00:0:0306::/48", // OpenVPN TCP mirror base 3, block 6
+	}
+	for subnet, want := range cases {
+		if got := v6UlaPrefix(subnet); got != want {
+			t.Errorf("v6UlaPrefix(%s) = %s want %s", subnet, got, want)
+		}
+	}
+	if got := v6UlaPrefix("garbage"); got != "" {
+		t.Errorf("v6UlaPrefix(garbage) = %s want empty", got)
+	}
+}
