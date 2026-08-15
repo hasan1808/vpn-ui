@@ -82,6 +82,9 @@ class AllSetting {
         this.ldapDefaultExpiryDays = 0;
         this.ldapDefaultLimitIP = 0;
 
+        // VPN tunnels: master switch for IPv6 on the tunnel links (L2TP/PPTP/OpenVPN).
+        this.enableVpnIpv6 = false;
+
         if (data == null) {
             return
         }

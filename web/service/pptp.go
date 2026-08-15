@@ -244,7 +244,13 @@ func (s *PptpService) GeneratePPPOptions(inbound *model.Inbound) error {
 	b.WriteString("require-mppe-128\n")
 	// Disable IPv6CP: the PPTP data path (nftables TPROXY -> Xray) is IPv4-only,
 	// so a negotiated IPv6 link would leak IPv6 traffic and DNS past Xray.
-	b.WriteString("noipv6\n")
+	// SettingService.enableVpnIpv6 lifts the ban once the IPv6 data path lands
+	// (later phases); off is the default and keeps this line exactly as before.
+	var settingService SettingService
+	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
+	if !enableVpnIpv6 {
+		b.WriteString("noipv6\n")
+	}
 	b.WriteString(fmt.Sprintf("ms-dns %s\n", dns1))
 	b.WriteString(fmt.Sprintf("ms-dns %s\n", dns2))
 	b.WriteString("proxyarp\n")

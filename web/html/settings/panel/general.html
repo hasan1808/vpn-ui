@@ -356,5 +356,14 @@
             </template>
         </a-setting-list-item>
     </a-collapse-panel>
+    <a-collapse-panel key="7" header='{{ i18n "pages.settings.vpnIpv6" }}'>
+        <a-setting-list-item paddings="small">
+            <template #title>{{ i18n "pages.settings.vpnIpv6" }}</template>
+            <template #description>{{ i18n "pages.settings.vpnIpv6Desc" }}</template>
+            <template #control>
+                <a-switch v-model="allSetting.enableVpnIpv6"></a-switch>
+            </template>
+        </a-setting-list-item>
+    </a-collapse-panel>
 </a-collapse>
 {{end}}

@@ -774,6 +774,8 @@
 "certs" = "گواهی‌ها"
 "externalTraffic" = "ترافیک خارجی"
 "dateAndTime" = "تاریخ و زمان"
+"vpnIpv6" = "تونل‌های VPN — IPv6"
+"vpnIpv6Desc" = "فعال‌سازی مذاکره IPv6 روی لینک تونل‌های VPN (L2TP/PPTP/OpenVPN). تا زمان پیاده‌سازی مسیر داده IPv6 (مسیریابی/TPROXY/DNS) خاموش بماند؛ در غیر این صورت کلاینت‌های dual-stack ممکن است ترافیک و DNS نسخه ۶ را بیرون از تونل نشت دهند."
 "proxyAndServer" = "پراکسی و سرور"
 "intervals" = "فواصل"
 "information" = "اطلاعات"

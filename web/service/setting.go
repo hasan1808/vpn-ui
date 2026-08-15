@@ -137,6 +137,10 @@ var defaultValueMap = map[string]string{
 	"acmeCfToken":   "",
 	"acmeCertDir":   "/root/.acme.sh/certs/panel",
 	"acmeAutoRenew": "true",
+	// Master switch for IPv6 on the VPN tunnel links (L2TP/PPTP/OpenVPN). Off by
+	// default: keeps the leak-safe noipv6/block-ipv6 directives in the generated
+	// configs until the IPv6 data path (routing/TPROXY/DNS) lands in later phases.
+	"enableVpnIpv6": "false",
 }
 
 // SettingService provides business logic for application settings management.
@@ -951,6 +955,18 @@ func (s *SettingService) GetRadiusSecret() (string, error) {
 
 func (s *SettingService) SetRadiusSecret(secret string) error {
 	return s.setString("radiusSecret", secret)
+}
+
+// GetEnableVpnIpv6 reports whether IPv6 should be negotiated on the VPN tunnel
+// links (L2TP/PPTP/OpenVPN). Off (the default) keeps the leak-safe noipv6/
+// block-ipv6 directives in the generated configs. It only becomes safe to turn
+// on once the IPv6 data path (routing/TPROXY/DNS) lands in later phases.
+func (s *SettingService) GetEnableVpnIpv6() (bool, error) {
+	return s.getBool("enableVpnIpv6")
+}
+
+func (s *SettingService) SetEnableVpnIpv6(value bool) error {
+	return s.setBool("enableVpnIpv6", value)
 }
 
 func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {

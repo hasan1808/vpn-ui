@@ -619,7 +619,13 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 	// The VPN data path (nftables TPROXY -> Xray) is IPv4-only. Block IPv6 on the
 	// client so a dual-stack host can't leak IPv6 traffic/DNS out its own default
 	// route, bypassing Xray entirely (mirrors the L2TP/PPTP noipv6 fix).
-	b.WriteString("push \"block-ipv6\"\n")
+	// SettingService.enableVpnIpv6 lifts the ban once the IPv6 data path lands
+	// (later phases); off is the default and keeps this line exactly as before.
+	var settingService SettingService
+	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
+	if !enableVpnIpv6 {
+		b.WriteString("push \"block-ipv6\"\n")
+	}
 	b.WriteString(fmt.Sprintf("tun-mtu %d\n", mtu))
 	caPath, certPath, keyPath, tcPath := s.certPaths(inbound, settings)
 	b.WriteString(fmt.Sprintf("ca %s\n", caPath))

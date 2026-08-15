@@ -71,6 +71,10 @@ var knownMissing = keySet(
 	"pages.index.outbounds", "pages.index.outboundTestAll",
 	"pages.xray.outbound.testAll",
 
+	// The VPN-tunnel IPv6 master switch (phase 1 groundwork): only en_US + fa_IR
+	// translated so far; the English fallback carries the rest.
+	"pages.settings.vpnIpv6", "pages.settings.vpnIpv6Desc",
+
 	"pages.core.absent", "pages.core.actions", "pages.core.consoleTitle",
 	"pages.core.cores", "pages.core.disabled", "pages.core.editConfig",
 	"pages.core.enabled", "pages.core.hideLog", "pages.core.inbounds",

@@ -127,6 +127,12 @@ type AllSetting struct {
 	AcmeCfToken   string `json:"acmeCfToken" form:"acmeCfToken"`     // Cloudflare API token (for DNS-01)
 	AcmeCertDir   string `json:"acmeCertDir" form:"acmeCertDir"`     // Directory to store certs
 	AcmeAutoRenew bool   `json:"acmeAutoRenew" form:"acmeAutoRenew"` // Enable auto-renewal
+
+	// VPN tunnels: master switch for IPv6 on the tunnel links (L2TP/PPTP/
+	// OpenVPN). Default off keeps the leak-safe noipv6/block-ipv6 directives in
+	// the generated configs; the IPv6 data path (routing/TPROXY/DNS) is added by
+	// later phases, so this flag only becomes safe to turn on once those land.
+	EnableVpnIpv6 bool `json:"enableVpnIpv6" form:"enableVpnIpv6"`
 }
 
 // CheckValid validates all settings in the AllSetting struct, checking IP addresses, ports, SSL certificates, and other configuration values.

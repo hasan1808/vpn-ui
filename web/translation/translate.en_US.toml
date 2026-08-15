@@ -884,6 +884,8 @@
 "certs" = "Certificaties"
 "externalTraffic" = "External Traffic"
 "dateAndTime" = "Date and Time"
+"vpnIpv6" = "VPN Tunnels — IPv6"
+"vpnIpv6Desc" = "Negotiate IPv6 on the VPN tunnel links (L2TP/PPTP/OpenVPN). Keep OFF until the IPv6 data path (routing/TPROXY/DNS) is available, or dual-stack clients may leak IPv6 traffic and DNS past the tunnel."
 "proxyAndServer" = "Proxy and Server"
 "intervals" = "Intervals"
 "information" = "Information"

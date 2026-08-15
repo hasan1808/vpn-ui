@@ -268,7 +268,14 @@ func (s *L2tpService) GeneratePPPOptions(inbound *model.Inbound) error {
 	// The VPN data path (nftables TPROXY -> Xray) is IPv4-only; without this,
 	// a dual-stack client could negotiate IPv6 and leak IPv6 traffic and DNS
 	// straight out the host's default route, bypassing Xray entirely.
-	b.WriteString("noipv6\n")
+	//
+	// SettingService.enableVpnIpv6 lifts the ban once the IPv6 data path lands
+	// (later phases); off is the default and keeps this line exactly as before.
+	var settingService SettingService
+	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
+	if !enableVpnIpv6 {
+		b.WriteString("noipv6\n")
+	}
 	b.WriteString(fmt.Sprintf("ms-dns %s\n", dns1))
 	b.WriteString(fmt.Sprintf("ms-dns %s\n", dns2))
 	b.WriteString("proxyarp\n")
