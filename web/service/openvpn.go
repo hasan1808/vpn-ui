@@ -598,10 +598,11 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 	}
 	b.WriteString(fmt.Sprintf("server %s %s\n", subnet, subnetMask))
 	if enableVpnIpv6 {
-		// Phase 3: hand each client a routable server-side IPv6 (ULA /64 from the
-		// transport's /48 pool, deterministic from its v4 block). OpenVPN handles
-		// the return route for every client /64 back through the tun itself. The
-		// client's whole global v6 is then pulled into the tunnel by the
+		// Phase 3: give the server a ULA /64 (deterministic from the transport's
+		// v4 block) and let OpenVPN hand each client an address out of it.
+		// OpenVPN rejects pools wider than /64, so the pool is exactly the /64
+		// and the hextet in the third group keeps every transport's pool unique.
+		// The client's whole global v6 is then pulled into the tunnel by the
 		// route-ipv6 push below, and the nftables v6 backstop drops it at the
 		// server until TPROXY lands (phase 4) — confined, nothing leaks.
 		b.WriteString(fmt.Sprintf("server-ipv6 %s\n", v6UlaPrefix(subnet)))

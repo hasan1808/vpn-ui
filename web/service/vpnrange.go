@@ -159,13 +159,13 @@ func protocolBase(proto string) int {
 }
 
 // v6UlaPrefix maps a VPN client subnet "10.{b}.{n}.0/24" to a deterministic
-// ULA /48 "fd00:0:BBnn::/48" (BBnn = b<<8|n as one hextet). The (b,n) pair is
+// ULA /64 "fd00:0:BBnn::/64" (BBnn = b<<8|n as one hextet). The (b,n) pair is
 // unique per protocol+transport block, so every block owns a distinct pool with
 // no allocation bookkeeping: the third hextet carries the whole identity, and
-// OpenVPN's server-ipv6 subdivides the /48 into per-client /64s (up to 65536,
-// far beyond any /24). ULA (fc00::/7) is chosen on purpose: it is not routable
-// on the internet, so anything confined to it can never reach a real v6 site
-// through a misconfigured forward path.
+// OpenVPN's server-ipv6 hands each client an address out of the /64 (it rejects
+// anything wider than /64). ULA (fc00::/7) is chosen on purpose: it is not
+// routable on the internet, so anything confined to it can never reach a real
+// v6 site through a misconfigured forward path.
 func v6UlaPrefix(subnet string) string {
 	parts := strings.Split(subnet, ".")
 	if len(parts) < 3 {
@@ -182,7 +182,7 @@ func v6UlaPrefix(subnet string) string {
 	if b < 0 || b > 0xfe || n < 0 || n > 0xff {
 		return ""
 	}
-	return fmt.Sprintf("fd00:0:%04x::/48", b<<8|n)
+	return fmt.Sprintf("fd00:0:%04x::/64", b<<8|n)
 }
 
 // nextFreeSubnet returns the lowest free "10.{base}.{n}" /24 (n in 2..254) for a
