@@ -602,11 +602,15 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 		// v4 block) and let OpenVPN hand each client an address out of it.
 		// OpenVPN rejects pools wider than /64, so the pool is exactly the /64
 		// and the hextet in the third group keeps every transport's pool unique.
-		// The client's whole global v6 is then pulled into the tunnel by the
-		// route-ipv6 push below, and the nftables v6 backstop drops it at the
-		// server until TPROXY lands (phase 4) — confined, nothing leaks.
+		//
+		// NOTE: the global-v6 route (push "route-ipv6 2000::/3") is deliberately
+		// NOT sent yet. The server cannot forward IPv6 until the TPROXY data path
+		// lands (phase 4), so routing the client's whole v6 into a dead tunnel made
+		// dual-stack clients flap their whole connection (connect, ~5s, drop,
+		// reconnect) — their connectivity probes saw IPv6 go dark and blamed the
+		// tunnel. IPv6 stays negotiated on the link (clients get a ULA address);
+		// the v6 route pull ships together with phase 4.
 		b.WriteString(fmt.Sprintf("server-ipv6 %s\n", v6UlaPrefix(subnet)))
-		b.WriteString("push \"route-ipv6 2000::/3\"\n")
 	}
 	// Pin every user to a deterministic tunnel IP so per-user routing rules work.
 	b.WriteString(fmt.Sprintf("client-config-dir %s/ccd-%s\n", dir, proto))
@@ -896,11 +900,10 @@ func (s *OpenVpnService) GenerateClientConfig(inbound *model.Inbound, proto stri
 	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
 	if enableVpnIpv6 {
 		b.WriteString("tun-ipv6\n")
-		// Phase 3 belt-and-suspenders: pull global IPv6 into the tunnel on the
-		// client itself, so a client that filters server pushes (pull-filter,
-		// nopull) can never leak IPv6 out its own uplink. The server side confines
-		// it at the other end until the TPROXY data path lands.
-		b.WriteString("route-ipv6 2000::/3\n")
+		// No `route-ipv6 2000::/3` here on purpose: the server cannot forward
+		// IPv6 until the TPROXY data path lands (phase 4), and routing v6 into a
+		// dead tunnel made dual-stack clients flap the whole connection. The v6
+		// route is added together with phase 4.
 	}
 	b.WriteString(fmt.Sprintf("proto %s\n", protoStr))
 	for _, r := range remotes {
