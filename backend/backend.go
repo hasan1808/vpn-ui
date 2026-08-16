@@ -20,7 +20,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/config"
+	"github.com/hasan1808/pro-ui/config"
 )
 
 // bundleFS holds the per-architecture daemon binaries. The `all:` prefix keeps

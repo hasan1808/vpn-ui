@@ -710,11 +710,11 @@ class CookieManager {
 // Xray.
 //
 // Storage follows the convention already set by the unsupported-distro warning
-// on the dashboard: a `vpnui.`-namespaced localStorage key, written inside a
+// on the dashboard: a `proui.`-namespaced localStorage key, written inside a
 // try/catch because a browser with storage denied (private mode, blocked
 // third-party context) throws on setItem and must not take the page with it.
 class SecAlertDismissal {
-    static KEY = 'vpnui.secAlertDismissed';
+    static KEY = 'proui.secAlertDismissed';
 
     static isDismissed() {
         try {

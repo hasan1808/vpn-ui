@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/xray"
 )
 
 // The synthesis is the only writer of these outbounds, so anything it does not carry

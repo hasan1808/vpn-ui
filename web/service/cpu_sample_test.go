@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/util/sys"
+	"github.com/hasan1808/pro-ui/util/sys"
 )
 
 // CPU utilization is a ratio of DELTAS between two reads of a cumulative counter,

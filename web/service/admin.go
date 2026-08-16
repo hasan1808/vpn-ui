@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/database"
-	"github.com/mhsanaei/3x-ui/v2/database/model"
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/util/crypto"
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/database"
+	"github.com/hasan1808/pro-ui/database/model"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/util/crypto"
+	"github.com/hasan1808/pro-ui/xray"
 
 	"gorm.io/gorm"
 )

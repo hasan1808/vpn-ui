@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database"
-	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/hasan1808/pro-ui/database"
+	"github.com/hasan1808/pro-ui/database/model"
 )
 
 // A wg-c inbound's 10.7 block is not stored as an assignment decision; it is

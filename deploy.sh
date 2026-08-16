@@ -88,7 +88,7 @@ fi
 
 # Preflight
 hr
-printf '%s[%sVPN-UI%s]%s deploy\n' "$B$TEAL" "$GREEN" "$TEAL" "$R"
+printf '%s[%sPRO-UI%s]%s deploy\n' "$B$TEAL" "$GREEN" "$TEAL" "$R"
 hr
 
 command -v systemctl >/dev/null 2>&1 || die "systemctl not found — this host isn't running systemd."

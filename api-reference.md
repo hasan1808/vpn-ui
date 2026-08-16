@@ -1,4 +1,4 @@
-# vpn-ui panel API reference
+# pro-ui panel API reference
 
 Request and response shapes for the panel's HTTP API, covering all 19 protocols (the 5
 Xray-native ones inherited from upstream 3x-ui, the 3 native ones this fork adds, and the

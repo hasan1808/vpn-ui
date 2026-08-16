@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/xray"
 )
 
 func tags(t *testing.T, raw []byte) map[string]map[string]any {

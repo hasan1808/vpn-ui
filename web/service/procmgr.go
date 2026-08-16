@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/backend"
-	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/hasan1808/pro-ui/backend"
+	"github.com/hasan1808/pro-ui/logger"
 )
 
 // daemonBin resolves a bundled daemon (preferred) or a host binary from PATH.

@@ -125,8 +125,8 @@
 
 [pages.index]
 "donate" = "Ủng hộ"
-"donateTitle" = "Ủng hộ VPN-UI"
-"donateIntro" = "Nếu VPN-UI hữu ích với bạn, một khoản ủng hộ tới bất kỳ địa chỉ nào dưới đây sẽ giúp duy trì dự án."
+"donateTitle" = "Ủng hộ PRO-UI"
+"donateIntro" = "Nếu PRO-UI hữu ích với bạn, một khoản ủng hộ tới bất kỳ địa chỉ nào dưới đây sẽ giúp duy trì dự án."
 "restore" = "Khôi phục"
 "systemStatus" = "Trạng thái hệ thống"
 "title" = "Trạng thái hệ thống"
@@ -982,7 +982,7 @@
 "report" = "🕰 Báo cáo định kỳ: {{ .RunTime }}\r\n"
 "datetime" = "⏰ Ngày-Giờ: {{ .DateTime }}\r\n"
 "hostname" = "💻 Tên máy chủ: {{ .Hostname }}\r\n"
-"version" = "🚀 Phiên bản VPN-UI: {{ .Version }}\r\n"
+"version" = "🚀 Phiên bản PRO-UI: {{ .Version }}\r\n"
 "xrayVersion" = "📡 Phiên bản Xray: {{ .XrayVersion }}\r\n"
 "ipv6" = "🌐 IPv6: {{ .IPv6 }}\r\n"
 "ipv4" = "🌐 IPv4: {{ .IPv4 }}\r\n"

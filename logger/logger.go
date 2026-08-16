@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/config"
+	"github.com/hasan1808/pro-ui/config"
 	"github.com/op/go-logging"
 )
 

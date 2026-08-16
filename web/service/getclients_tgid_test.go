@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/hasan1808/pro-ui/database/model"
 )
 
 // GetClients discards its json.Unmarshal error, and that discard is LOAD-BEARING.

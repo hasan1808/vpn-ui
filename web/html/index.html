@@ -496,21 +496,21 @@
       </ul>
     </article>
 
-    <!-- ===== VPN-UI panel + updater ===== -->
-    <article class="bo-tile bo-t-vpnui" aria-label="VPN-UI">
+    <!-- ===== PRO-UI panel + updater ===== -->
+    <article class="bo-tile bo-t-proui" aria-label="PRO-UI">
       <div class="bo-tile-head">
-        <h3 class="bo-tile-title">VPN-UI</h3>
+        <h3 class="bo-tile-title">PRO-UI</h3>
         <button type="button" class="bo-icon-btn bo-icon-btn--accent"
           :disabled="panelUpdate.checking" @click="checkForUpdate(true)">
           <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
           {{ i18n "pages.index.checkUpdate" }}
         </button>
       </div>
-      <div class="bo-vpnui-body">
+      <div class="bo-proui-body">
         <div>
           <a rel="noopener" href="https://github.com/hasan1808/vpn-ui" target="_blank"
             :style="{ color: 'inherit', textDecoration: 'none' }">
-            <div class="bo-vpnui-version num">v{{ .cur_ver }}</div>
+            <div class="bo-proui-version num">v{{ .cur_ver }}</div>
           </a>
           <p v-if="panelUpdate.checked && !panelUpdate.available && !panelUpdate.checking"
             class="bo-status-line bo-status-line--ok">
@@ -1110,7 +1110,7 @@
     </template>
     <div style="padding:4px 2px">
       <p style="margin-bottom:10px">
-        <b>[[ distroModal.pretty ]]</b> is not on vpn-ui's officially tested distro list.
+        <b>[[ distroModal.pretty ]]</b> is not on pro-ui's officially tested distro list.
         The panel may still run, but <b style="color:#cf1322">expect errors</b>.
       </p>
       <p style="margin-bottom:0;opacity:0.7;font-size:12px;line-height:1.5">
@@ -1596,7 +1596,7 @@
       this.visible = true;
       this.mode = 'panel';
       this.logs = logs;
-      this.render([{ source: 'vpn-ui', text: (logs || []).join('\n') }]);
+      this.render([{ source: 'pro-ui', text: (logs || []).join('\n') }]);
     },
     // Every log the panel shows goes through LogFormatter, so the panel's own
     // lines, Xray's and each daemon's are coloured and laid out identically.
@@ -2424,7 +2424,7 @@
         const panel = await HttpUtil.post('/panel/api/server/logs/' + logModal.rows,
           { level: logModal.level, syslog: logModal.syslog });
         if (panel && panel.success) {
-          sections.push({ name: 'VPN-UI', text: (panel.obj || []).join('\n') });
+          sections.push({ name: 'PRO-UI', text: (panel.obj || []).join('\n') });
         }
 
         // Core logs sit behind PermCoreSettings, which someone looking at
@@ -2583,7 +2583,7 @@
           this.updatedModal.visible = true;
         } catch (e) { /* nothing to announce */ }
       },
-      // --- Panel self-update (VPN-UI card) ------------------------------
+      // --- Panel self-update (PRO-UI card) ------------------------------
       // Runs automatically on every overview load (manual=false, silent) and on
       // the "Check for Update" button (manual=true, surfaces errors in the card).
       async checkForUpdate(manual) {
@@ -3049,7 +3049,7 @@
           if (msg.obj.supported) return;
           // "don't show again" is keyed by the distro name, so moving to a
           // different unsupported distro warns again.
-          if (localStorage.getItem('vpnui.distroWarnDismissed') === msg.obj.pretty) return;
+          if (localStorage.getItem('proui.distroWarnDismissed') === msg.obj.pretty) return;
           this.distroModal.pretty = msg.obj.pretty || 'This system';
           this.distroModal.tested = msg.obj.tested || '';
           this.distroModal.visible = true;
@@ -3057,7 +3057,7 @@
       },
       dismissDistroWarning(forever) {
         if (forever) {
-          try { localStorage.setItem('vpnui.distroWarnDismissed', this.distroModal.pretty); } catch (e) { /* ignore */ }
+          try { localStorage.setItem('proui.distroWarnDismissed', this.distroModal.pretty); } catch (e) { /* ignore */ }
         }
         this.distroModal.visible = false;
       },

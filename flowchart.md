@@ -33,7 +33,7 @@ flowchart TB
   KClient["Key-based VPN Client<br/>(WireGuard (C) · AmneziaWG)"]
   RClient["Relay Client<br/>(Telegram over MTProto · ssh -D dynamic SOCKS)"]
 
-  subgraph PANEL["vpn-ui panel (root process)"]
+  subgraph PANEL["pro-ui panel (root process)"]
     PROC["procmgr<br/>supervises the daemons"]
     RAD["in-binary RADIUS<br/>127.0.0.1:1812 auth · :1813 acct"]
     HOOK["OpenVPN hooks<br/>auth / connect / disconnect / evict"]

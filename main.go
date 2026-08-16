@@ -1,4 +1,4 @@
-// Package main is the entry point for the vpn-ui web panel application.
+// Package main is the entry point for the pro-ui web panel application.
 // It initializes the database, web server, and handles command-line operations for managing the panel.
 package main
 
@@ -25,19 +25,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/backend"
-	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/corebundle"
-	"github.com/mhsanaei/3x-ui/v2/database"
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/sub"
-	"github.com/mhsanaei/3x-ui/v2/util/crypto"
-	"github.com/mhsanaei/3x-ui/v2/util/random"
-	"github.com/mhsanaei/3x-ui/v2/util/sys"
-	"github.com/mhsanaei/3x-ui/v2/web"
-	"github.com/mhsanaei/3x-ui/v2/web/global"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/backend"
+	"github.com/hasan1808/pro-ui/config"
+	"github.com/hasan1808/pro-ui/corebundle"
+	"github.com/hasan1808/pro-ui/database"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/sub"
+	"github.com/hasan1808/pro-ui/util/crypto"
+	"github.com/hasan1808/pro-ui/util/random"
+	"github.com/hasan1808/pro-ui/util/sys"
+	"github.com/hasan1808/pro-ui/web"
+	"github.com/hasan1808/pro-ui/web/global"
+	"github.com/hasan1808/pro-ui/web/service"
+	"github.com/hasan1808/pro-ui/xray"
 
 	"github.com/joho/godotenv"
 	"github.com/op/go-logging"
@@ -66,7 +66,7 @@ func initLogger() {
 	}
 }
 
-// runWebServer initializes and starts the web server for the vpn-ui panel.
+// runWebServer initializes and starts the web server for the pro-ui panel.
 // stdoutIsTTY reports whether stdout is an interactive terminal, so ANSI colour
 // is only emitted when it will render (and not when output is piped/redirected).
 func stdoutIsTTY() bool {
@@ -104,11 +104,11 @@ func requireRoot() {
 	os.Exit(1)
 }
 
-// ansiVpnUI renders "[VPN-UI]" in the panel logo's colours — teal brackets,
+// ansiProUI renders "[PRO-UI]" in the panel logo's colours — teal brackets,
 // deep-teal letters, a green hyphen — as a bold CLI banner. Falls back to plain
 // text when NO_COLOR is set or stdout isn't a TTY.
-func ansiVpnUI() string {
-	const text = "[VPN-UI]"
+func ansiProUI() string {
+	const text = "[PRO-UI]"
 	if os.Getenv("NO_COLOR") != "" || !stdoutIsTTY() {
 		return text
 	}
@@ -136,7 +136,7 @@ func ansiVpnUI() string {
 }
 
 // warnUnsupportedDistro prints a prominent warning at panel startup when the host
-// distro is not on vpn-ui's tested list (service.DistroSupported). Colorful when
+// distro is not on pro-ui's tested list (service.DistroSupported). Colorful when
 // stdout is a TTY (honors NO_COLOR); always also emits a logger.Warning so it lands
 // in the journal / non-TTY logs too.
 func warnUnsupportedDistro() {
@@ -144,13 +144,13 @@ func warnUnsupportedDistro() {
 	if ok {
 		return
 	}
-	logger.Warningf("unsupported distro: %s (%s) — not officially supported by vpn-ui, expect errors",
+	logger.Warningf("unsupported distro: %s (%s) — not officially supported by pro-ui, expect errors",
 		pretty, reason)
 
 	tested := service.SupportedDistroSummary()
 	if os.Getenv("NO_COLOR") != "" || !stdoutIsTTY() {
 		fmt.Fprintf(os.Stderr,
-			"\nWARNING: %s is NOT officially supported by vpn-ui. It may run, but expect errors.\n"+
+			"\nWARNING: %s is NOT officially supported by pro-ui. It may run, but expect errors.\n"+
 				"Tested distros: %s.\n\n", pretty, tested)
 		return
 	}
@@ -163,7 +163,7 @@ func warnUnsupportedDistro() {
 	rule := yb + strings.Repeat("━", 64) + reset
 	fmt.Fprintln(os.Stderr, "\n"+rule)
 	fmt.Fprintln(os.Stderr, rb+"⚠  UNSUPPORTED DISTRO"+reset)
-	fmt.Fprintf(os.Stderr, "%s%s%s is not officially supported by vpn-ui — %sexpect errors%s.\n",
+	fmt.Fprintf(os.Stderr, "%s%s%s is not officially supported by pro-ui — %sexpect errors%s.\n",
 		yb, pretty, reset, rb, reset)
 	fmt.Fprintf(os.Stderr, "%sTested: %s%s\n", dim, tested, reset)
 	fmt.Fprintln(os.Stderr, rule+"\n")
@@ -171,7 +171,7 @@ func warnUnsupportedDistro() {
 
 func runWebServer() {
 	requireRoot()
-	fmt.Println(ansiVpnUI())
+	fmt.Println(ansiProUI())
 	log.Printf("Starting %v %v", config.GetName(), config.GetVersion())
 
 	initLogger()
@@ -408,11 +408,11 @@ func runUninstall(assumeYes bool) {
 	exePath, _ := os.Executable()
 
 	if !assumeYes {
-		fmt.Println("This will REMOVE vpn-ui and everything it installed on this host:")
+		fmt.Println("This will REMOVE pro-ui and everything it installed on this host:")
 		fmt.Println("  • the systemd unit, child daemons (openvpn/xl2tpd/pptpd/pluto)")
 		fmt.Println("  • nftables 'ip vpn' table, firewalld trust, fwmark routing (table 100)")
 		fmt.Println("  • /etc configs, /usr/libexec/vpn-ui bundles, logs, bin/, the database")
-		fmt.Println("  • the vpn-ui binary itself")
+		fmt.Println("  • the pro-ui binary itself")
 		fmt.Println("Distro packages and boot/modprobe edits are kept and listed at the end.")
 		fmt.Print("Type 'yes' to proceed: ")
 		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
@@ -422,7 +422,7 @@ func runUninstall(assumeYes bool) {
 		}
 	}
 
-	fmt.Println("Uninstalling vpn-ui...")
+	fmt.Println("Uninstalling pro-ui...")
 	report := service.Uninstall(service.UninstallOptions{ExePath: exePath})
 
 	// Remove the database (next to the binary) — done here, after the service
@@ -473,7 +473,7 @@ func runUninstall(assumeYes bool) {
 			fmt.Println("  !", e)
 		}
 	}
-	fmt.Println("\nvpn-ui uninstalled.")
+	fmt.Println("\npro-ui uninstalled.")
 }
 
 // randomFreePort returns a random, currently-bindable TCP port in a high range,
@@ -551,7 +551,7 @@ func randomizeSetting() error {
 	}
 	ip, url := panelAccessURL(&settingService, port, normPath)
 
-	fmt.Println(ansiVpnUI())
+	fmt.Println(ansiProUI())
 	fmt.Println("Randomized panel settings:")
 	fmt.Printf("  Port:     %d\n", port)
 	fmt.Printf("  Username: %s\n", username)
@@ -924,7 +924,7 @@ func emitInfoField(field string) error {
 
 // printPanelInfo renders the human view, in the same shape as --random's printout.
 func printPanelInfo(info panelInfo) {
-	fmt.Println(ansiVpnUI())
+	fmt.Println(ansiProUI())
 	fmt.Println("Panel:")
 	fmt.Printf("  Version:  %s\n", info.Version)
 	fmt.Printf("  Username: %s\n", info.Username)
@@ -1098,7 +1098,7 @@ func runUpdate() error {
 	}
 
 	var serverService service.ServerService
-	fmt.Println(ansiVpnUI())
+	fmt.Println(ansiProUI())
 	upd, err := serverService.CheckPanelUpdate()
 	if err != nil {
 		return fmt.Errorf("could not check for updates: %w", err)
@@ -1356,7 +1356,7 @@ func installMenuScript(args []string) {
 		fmt.Fprintln(os.Stderr, "Failed to install the management menu:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Installed the vpn-ui management menu -> %s (run: %s)\n", dest, filepath.Base(dest))
+	fmt.Printf("Installed the pro-ui management menu -> %s (run: %s)\n", dest, filepath.Base(dest))
 }
 
 // ensureMenuInstalled writes the `vpn-ui` management menu to MenuScriptPath on panel
@@ -1377,10 +1377,10 @@ func ensureMenuInstalled() {
 		return
 	}
 	if err := backend.WriteFileAtomic(dest, menuScript, 0o755); err != nil {
-		logger.Warning("could not install the vpn-ui management menu at", dest, ":", err)
+		logger.Warning("could not install the pro-ui management menu at", dest, ":", err)
 		return
 	}
-	logger.Info("installed the vpn-ui management menu at", dest)
+	logger.Info("installed the pro-ui management menu at", dest)
 }
 
 // applyCredential updates the first user's login from the CLI: both fields set both;
@@ -1695,7 +1695,7 @@ func GetListenIP(getListen bool) {
 	}
 }
 
-// migrateDb performs database migration operations for the vpn-ui panel.
+// migrateDb performs database migration operations for the pro-ui panel.
 // revertAccounts is the operator's way out of the accounts layer.
 //
 // Safe by construction for the panels that would want it: settings.clients is
@@ -2510,7 +2510,7 @@ func openvpnDisconnect() {
 	os.Exit(0)
 }
 
-// main is the entry point of the vpn-ui application.
+// main is the entry point of the pro-ui application.
 // It parses command-line arguments to run the web server, migrate database, or update settings.
 func main() {
 	if len(os.Args) < 2 {

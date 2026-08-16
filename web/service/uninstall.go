@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/backend"
-	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/backend"
+	"github.com/hasan1808/pro-ui/config"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/xray"
 )
 
 // MenuScriptPath is where the `vpn-ui` management menu is installed, by

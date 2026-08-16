@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database"
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
+	"github.com/hasan1808/pro-ui/database"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/web/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/op/go-logging"

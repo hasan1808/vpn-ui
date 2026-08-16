@@ -15,12 +15,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/util/common"
-	"github.com/mhsanaei/3x-ui/v2/web/locale"
-	"github.com/mhsanaei/3x-ui/v2/web/middleware"
-	"github.com/mhsanaei/3x-ui/v2/web/network"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/util/common"
+	"github.com/hasan1808/pro-ui/web/locale"
+	"github.com/hasan1808/pro-ui/web/middleware"
+	"github.com/hasan1808/pro-ui/web/network"
+	"github.com/hasan1808/pro-ui/web/service"
 
 	"github.com/gin-gonic/gin"
 )

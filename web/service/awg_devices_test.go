@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/hasan1808/pro-ui/database/model"
 )
 
 // User Limit K must yield K SEPARATE configs: K keypairs and K distinct tunnel IPs.

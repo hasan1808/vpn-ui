@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/hasan1808/pro-ui/database/model"
 )
 
 // The psk/eap-tls admission gate is the whole of quota/disable enforcement for those two

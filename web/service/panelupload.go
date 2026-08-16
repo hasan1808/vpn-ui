@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/util/random"
+	"github.com/hasan1808/pro-ui/config"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/util/random"
 )
 
 // Manual update: the operator names a vpn-ui binary themselves, either by picking a
@@ -50,7 +50,7 @@ const (
 	PanelUploadSame      = "same"
 	PanelUploadUnknown   = "unknown"
 
-	// A version probe should answer instantly; anything slower is not a vpn-ui binary
+	// A version probe should answer instantly; anything slower is not a pro-ui binary
 	// behaving normally and must not hold a request open.
 	panelVersionProbeTimeout = 15 * time.Second
 	panelVersionProbeMaxOut  = 4 << 10
@@ -167,7 +167,7 @@ func StagePanelBinary(src io.Reader, declaredSize int64) (StagedPanelInfo, error
 	// else's ELF is refused before the probe below ever runs it.
 	if !isGoBinary(staged) {
 		_ = os.Remove(staged)
-		return info, errors.New("that file is not a Go binary, so it is not a vpn-ui panel")
+		return info, errors.New("that file is not a Go binary, so it is not a pro-ui panel")
 	}
 
 	version, err := panelBinaryVersion(staged)
@@ -290,7 +290,7 @@ func StagePanelBinaryFromURL(rawURL string) (StagedPanelInfo, error) {
 	if err != nil {
 		return info, fmt.Errorf("that URL could not be requested: %w", err)
 	}
-	req.Header.Set("User-Agent", "vpn-ui")
+	req.Header.Set("User-Agent", "pro-ui")
 
 	resp, err := panelFetchClient().Do(req)
 	if err != nil {
@@ -489,9 +489,9 @@ func panelBinaryVersion(path string) (string, error) {
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
-			return "", errors.New("that binary did not answer with a version (it hung), so it is not a vpn-ui build")
+			return "", errors.New("that binary did not answer with a version (it hung), so it is not a pro-ui build")
 		}
-		return "", errors.New("that binary could not be run to read its version, so it is not a usable vpn-ui build")
+		return "", errors.New("that binary could not be run to read its version, so it is not a usable pro-ui build")
 	}
 
 	// First line only. -v prints the version and exits, so anything after it is noise
@@ -501,7 +501,7 @@ func panelBinaryVersion(path string) (string, error) {
 		version = strings.TrimSpace(version[:i])
 	}
 	if !panelVersionPattern.MatchString(version) {
-		return "", errors.New("that file did not report a version number, so it is not a vpn-ui binary")
+		return "", errors.New("that file did not report a version number, so it is not a pro-ui binary")
 	}
 	return strings.TrimPrefix(version, "v"), nil
 }

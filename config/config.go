@@ -1,4 +1,4 @@
-// Package config provides configuration management utilities for the vpn-ui panel,
+// Package config provides configuration management utilities for the pro-ui panel,
 // including version information, logging levels, database paths, and environment variable handling.
 package config
 
@@ -27,12 +27,12 @@ const (
 	Error   LogLevel = "error"
 )
 
-// GetVersion returns the version string of the vpn-ui application.
+// GetVersion returns the version string of the pro-ui application.
 func GetVersion() string {
 	return strings.TrimSpace(version)
 }
 
-// GetName returns the name of the vpn-ui application.
+// GetName returns the name of the pro-ui application.
 func GetName() string {
 	return strings.TrimSpace(name)
 }

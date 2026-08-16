@@ -7,10 +7,10 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/web/entity"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
-	"github.com/mhsanaei/3x-ui/v2/web/session"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/web/entity"
+	"github.com/hasan1808/pro-ui/web/service"
+	"github.com/hasan1808/pro-ui/web/session"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"

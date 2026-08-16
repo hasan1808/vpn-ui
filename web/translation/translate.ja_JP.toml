@@ -125,8 +125,8 @@
 
 [pages.index]
 "donate" = "寄付"
-"donateTitle" = "VPN-UI を支援する"
-"donateIntro" = "VPN-UI がお役に立っているなら、以下のいずれかのアドレスへの寄付が開発の継続に役立ちます。"
+"donateTitle" = "PRO-UI を支援する"
+"donateIntro" = "PRO-UI がお役に立っているなら、以下のいずれかのアドレスへの寄付が開発の継続に役立ちます。"
 "restore" = "復元"
 "systemStatus" = "システム状態"
 "title" = "システムステータス"
@@ -982,7 +982,7 @@
 "report" = "🕰 定期報告：{{ .RunTime }}\r\n"
 "datetime" = "⏰ 日時：{{ .DateTime }}\r\n"
 "hostname" = "💻 ホスト名：{{ .Hostname }}\r\n"
-"version" = "🚀 VPN-UI バージョン：{{ .Version }}\r\n"
+"version" = "🚀 PRO-UI バージョン：{{ .Version }}\r\n"
 "xrayVersion" = "📡 Xray バージョン: {{ .XrayVersion }}\r\n"
 "ipv6" = "🌐 IPv6：{{ .IPv6 }}\r\n"
 "ipv4" = "🌐 IPv4：{{ .IPv4 }}\r\n"

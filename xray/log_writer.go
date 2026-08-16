@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/hasan1808/pro-ui/logger"
 )
 
 // NewLogWriter returns a new LogWriter for processing Xray log output.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/hasan1808/pro-ui/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nicksnyder/go-i18n/v2/i18n"

@@ -3,9 +3,9 @@ package service
 import (
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database"
-	"github.com/mhsanaei/3x-ui/v2/database/model"
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/database"
+	"github.com/hasan1808/pro-ui/database/model"
+	"github.com/hasan1808/pro-ui/xray"
 )
 
 // An account is one identity on SEVERAL inbounds and ONE client_traffics row, and

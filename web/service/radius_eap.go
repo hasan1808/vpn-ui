@@ -9,7 +9,7 @@ import (
 	"encoding/hex"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/hasan1808/pro-ui/logger"
 
 	"layeh.com/radius"
 	"layeh.com/radius/rfc2759"

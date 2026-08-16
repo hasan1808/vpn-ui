@@ -125,8 +125,8 @@
 
 [pages.index]
 "donate" = "贊助"
-"donateTitle" = "支持 VPN-UI"
-"donateIntro" = "如果 VPN-UI 對你有幫助，向以下任一地址贊助可以幫助它持續維護。"
+"donateTitle" = "支持 PRO-UI"
+"donateIntro" = "如果 PRO-UI 對你有幫助，向以下任一地址贊助可以幫助它持續維護。"
 "restore" = "還原"
 "systemStatus" = "系統狀態"
 "title" = "系統狀態"
@@ -982,7 +982,7 @@
 "report" = "🕰 定時報告：{{ .RunTime }}\r\n"
 "datetime" = "⏰ 日期時間：{{ .DateTime }}\r\n"
 "hostname" = "💻 主機名：{{ .Hostname }}\r\n"
-"version" = "🚀 VPN-UI 版本：{{ .Version }}\r\n"
+"version" = "🚀 PRO-UI 版本：{{ .Version }}\r\n"
 "xrayVersion" = "📡 Xray 版本: {{ .XrayVersion }}\r\n"
 "ipv6" = "🌐 IPv6：{{ .IPv6 }}\r\n"
 "ipv4" = "🌐 IPv4：{{ .IPv4 }}\r\n"

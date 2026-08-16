@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/config"
+	"github.com/hasan1808/pro-ui/web/service"
+	"github.com/hasan1808/pro-ui/xray"
 
 	"github.com/gin-gonic/gin"
 )

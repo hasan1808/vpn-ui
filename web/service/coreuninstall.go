@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mhsanaei/3x-ui/v2/backend"
-	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/hasan1808/pro-ui/backend"
+	"github.com/hasan1808/pro-ui/logger"
 )
 
 // Per-core uninstall.

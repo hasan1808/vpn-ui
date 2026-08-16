@@ -874,7 +874,7 @@ show_menu() {
 
     printf '\n'
     hr
-    printf '%s[%sVPN-UI%s]%s management   %sv%s%s\n' \
+    printf '%s[%sPRO-UI%s]%s management   %sv%s%s\n' \
         "$B$TEAL" "$GREEN" "$TEAL" "$R" "$D" "$(info_get version)" "$R"
     printf '  %spanel%s %s   %sunit%s %s (%s)\n' "$D" "$R" "$panel" "$D" "$R" "$unit" "$state"
     hr

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/backend"
+	"github.com/hasan1808/pro-ui/backend"
 )
 
 // packageManager abstracts the host's package manager. It's used for the one

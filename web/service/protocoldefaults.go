@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/database/model"
-	"github.com/mhsanaei/3x-ui/v2/util/common"
-	"github.com/mhsanaei/3x-ui/v2/util/random"
+	"github.com/hasan1808/pro-ui/database/model"
+	"github.com/hasan1808/pro-ui/util/common"
+	"github.com/hasan1808/pro-ui/util/random"
 )
 
 // Server-side settings defaults and validation for the 14 non-Xray protocols.

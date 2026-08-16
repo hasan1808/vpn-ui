@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/corebundle"
-	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/hasan1808/pro-ui/config"
+	"github.com/hasan1808/pro-ui/corebundle"
+	"github.com/hasan1808/pro-ui/logger"
 )
 
 // bundleDownloadTimeout bounds every network request this downloader makes.

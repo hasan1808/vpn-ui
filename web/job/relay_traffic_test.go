@@ -3,7 +3,7 @@ package job
 import (
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/xray"
 )
 
 func ct(email string, up, down int64) *xray.ClientTraffic {

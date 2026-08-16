@@ -19,9 +19,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/database"
-	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/hasan1808/pro-ui/config"
+	"github.com/hasan1808/pro-ui/database"
+	"github.com/hasan1808/pro-ui/logger"
 )
 
 // panelUpdateInFlight guards against a second UpdatePanel running concurrently
@@ -100,7 +100,7 @@ func (s *ServerService) CheckPanelUpdate() (*PanelUpdateInfo, error) {
 	if err != nil {
 		return info, err
 	}
-	req.Header.Set("User-Agent", "vpn-ui") // GitHub API rejects requests without a UA
+	req.Header.Set("User-Agent", "pro-ui") // GitHub API rejects requests without a UA
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := client.Do(req)
@@ -629,7 +629,7 @@ func downloadPanelAsset(ctx context.Context, dst, url string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "vpn-ui")
+	req.Header.Set("User-Agent", "pro-ui")
 	if offset > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}

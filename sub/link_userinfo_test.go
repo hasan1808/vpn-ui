@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/hasan1808/pro-ui/database/model"
 )
 
 // A credential carrying an "@" is the one input that silently breaks a share link.

@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/backend"
-	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/database"
-	"github.com/mhsanaei/3x-ui/v2/database/model"
-	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/hasan1808/pro-ui/backend"
+	"github.com/hasan1808/pro-ui/config"
+	"github.com/hasan1808/pro-ui/database"
+	"github.com/hasan1808/pro-ui/database/model"
+	"github.com/hasan1808/pro-ui/logger"
 )
 
 // vpnKernelModules are the REQUIRED kernel modules the L2TP/PPTP/OpenVPN backends

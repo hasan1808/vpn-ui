@@ -127,8 +127,8 @@
 
 [pages.index]
 "donate" = "حمایت مالی"
-"donateTitle" = "حمایت از VPN-UI"
-"donateIntro" = "اگر VPN-UI برای شما مفید بوده است، کمک مالی به هر یک از این آدرس‌ها به نگهداری آن کمک می‌کند."
+"donateTitle" = "حمایت از PRO-UI"
+"donateIntro" = "اگر PRO-UI برای شما مفید بوده است، کمک مالی به هر یک از این آدرس‌ها به نگهداری آن کمک می‌کند."
 "restore" = "بازیابی"
 "systemStatus" = "وضعیت سیستم"
 "title" = "نمای کلی"
@@ -202,7 +202,7 @@
 "exportDatabaseDesc" = "برای دانلود یک فایل .db حاوی پشتیبان از پایگاه داده فعلی خود به دستگاهتان کلیک کنید."
 "importDatabase" = "بازیابی"
 "importDatabaseDesc" = "برای انتخاب و آپلود یک فایل .db از دستگاهتان و بازیابی پایگاه داده از یک پشتیبان کلیک کنید."
-"restoreFromVpnUi" = "بازیابی از vpn-ui اصلی"
+"restoreFromVpnUi" = "بازیابی از pro-ui اصلی"
 "restoreFromVpnUiDesc" = "یک فایل .db ساخته‌شده توسط این پنل انتخاب کنید تا اینباندها، کاربران و تنظیمات بازیابی شوند. دیتابیس هنگام ورود به نسخه فعلی مهاجرت می‌شود."
 "localBackups" = "پشتیبان‌های ذخیره‌شده روی پنل"
 "createBackup" = "ایجاد پشتیبان"
@@ -1060,7 +1060,7 @@
 "report" = "🕰 گزارشات‌زمان‌بندی‌شده: {{ .RunTime }}\r\n"
 "datetime" = "⏰ تاریخ‌وزمان: {{ .DateTime }}\r\n"
 "hostname" = "💻 نام‌میزبان: {{ .Hostname }}\r\n"
-"version" = "🚀 نسخه VPN-UI: {{ .Version }}\r\n"
+"version" = "🚀 نسخه PRO-UI: {{ .Version }}\r\n"
 "xrayVersion" = "📡 نسخه‌هسته: {{ .XrayVersion }}\r\n"
 "ipv6" = "🌐 IPv6: {{ .IPv6 }}\r\n"
 "ipv4" = "🌐 IPv4: {{ .IPv4 }}\r\n"

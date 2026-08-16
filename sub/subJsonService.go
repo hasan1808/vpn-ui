@@ -7,11 +7,11 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/database/model"
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/util/json_util"
-	"github.com/mhsanaei/3x-ui/v2/util/random"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
+	"github.com/hasan1808/pro-ui/database/model"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/util/json_util"
+	"github.com/hasan1808/pro-ui/util/random"
+	"github.com/hasan1808/pro-ui/web/service"
 )
 
 //go:embed default.json

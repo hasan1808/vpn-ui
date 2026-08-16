@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/util/common"
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/util/common"
+	"github.com/hasan1808/pro-ui/xray"
 )
 
 // XraySettingService provides business logic for Xray configuration management.

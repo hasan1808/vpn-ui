@@ -337,7 +337,7 @@
     <div class="term term--setup">
       <div class="term-bar">
         <a-icon type="code" class="term-bar-icon"></a-icon>
-        <span class="term-bar-title">vpn-ui · [[ consoleLabel() ]]</span>
+        <span class="term-bar-title">pro-ui · [[ consoleLabel() ]]</span>
         <span class="term-count" v-if="provisionResult.length">[[ okCount() ]]/[[ provisionResult.length ]]</span>
       </div>
       <div class="term-progress">
@@ -961,7 +961,7 @@
       },
       coreBackend(name) {
         // The actual software powering each core (shown in the Backend row).
-        return ({ xray: 'Xray-core', l2tp: 'xl2tpd', ipsec: 'strongSwan (charon)', pptp: 'pptpd', openvpn: 'OpenVPN', openconnect: 'ocserv', sstp: 'accel-ppp', ikev2: 'strongSwan (charon)', wgc: 'WireGuard (kernel)', awg: 'AmneziaWG (kernel)', gre: 'GRE (kernel)', mtproto: 'telemt', ssh: 'Built-in (vpn-ui)', radius: 'Built-in (vpn-ui)' })[name] || '-';
+        return ({ xray: 'Xray-core', l2tp: 'xl2tpd', ipsec: 'strongSwan (charon)', pptp: 'pptpd', openvpn: 'OpenVPN', openconnect: 'ocserv', sstp: 'accel-ppp', ikev2: 'strongSwan (charon)', wgc: 'WireGuard (kernel)', awg: 'AmneziaWG (kernel)', gre: 'GRE (kernel)', mtproto: 'telemt', ssh: 'Built-in (pro-ui)', radius: 'Built-in (pro-ui)' })[name] || '-';
       },
       coreIcon(name) {
         // A single lock icon represents every core (Xray + all VPN daemons).

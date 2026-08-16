@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database"
-	"github.com/mhsanaei/3x-ui/v2/util/crypto"
+	"github.com/hasan1808/pro-ui/database"
+	"github.com/hasan1808/pro-ui/util/crypto"
 )
 
 // TestCliSettingMutations covers the setting/credential mutations that back the

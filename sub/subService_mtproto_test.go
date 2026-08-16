@@ -3,7 +3,7 @@ package sub
 import (
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/hasan1808/pro-ui/database/model"
 )
 
 // These lock genMtprotoLink to MtprotoUser.links() in web/assets/js/model/inbound.js

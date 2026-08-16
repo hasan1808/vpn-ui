@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/web/entity"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
+	"github.com/hasan1808/pro-ui/config"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/web/entity"
+	"github.com/hasan1808/pro-ui/web/service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mhsanaei/3x-ui/v2/database/model"
-	"github.com/mhsanaei/3x-ui/v2/web/session"
+	"github.com/hasan1808/pro-ui/database/model"
+	"github.com/hasan1808/pro-ui/web/session"
 )
 
 // getRemoteIp extracts the real IP address from the request headers or remote address.

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/corebundle"
-	"github.com/mhsanaei/3x-ui/v2/database"
+	"github.com/hasan1808/pro-ui/corebundle"
+	"github.com/hasan1808/pro-ui/database"
 )
 
 // binDirForTest points config.GetBinFolderPath() at an empty temp directory and

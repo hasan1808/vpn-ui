@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/xray"
 
 	"github.com/goccy/go-json"
 	"github.com/vishvananda/netlink"

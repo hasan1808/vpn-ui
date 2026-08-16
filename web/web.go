@@ -18,16 +18,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/config"
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/util/common"
-	"github.com/mhsanaei/3x-ui/v2/web/controller"
-	"github.com/mhsanaei/3x-ui/v2/web/job"
-	"github.com/mhsanaei/3x-ui/v2/web/locale"
-	"github.com/mhsanaei/3x-ui/v2/web/middleware"
-	"github.com/mhsanaei/3x-ui/v2/web/network"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
-	"github.com/mhsanaei/3x-ui/v2/web/websocket"
+	"github.com/hasan1808/pro-ui/config"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/util/common"
+	"github.com/hasan1808/pro-ui/web/controller"
+	"github.com/hasan1808/pro-ui/web/job"
+	"github.com/hasan1808/pro-ui/web/locale"
+	"github.com/hasan1808/pro-ui/web/middleware"
+	"github.com/hasan1808/pro-ui/web/network"
+	"github.com/hasan1808/pro-ui/web/service"
+	"github.com/hasan1808/pro-ui/web/websocket"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/sessions"
@@ -235,7 +235,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		sessionOptions.MaxAge = sessionMaxAge * 60 // minutes -> seconds
 	}
 	store.Options(sessionOptions)
-	engine.Use(sessions.Sessions(config.GetName(), store))
+	// Session cookie name stays "vpn-ui" for compatibility with external API
+	// consumers (e.g. the sales bot) that authenticate with the vpn-ui cookie,
+	// even though the panel brand is now pro-ui.
+	engine.Use(sessions.Sessions("vpn-ui", store))
 	engine.Use(middleware.LoginRateLimit())
 	engine.Use(func(c *gin.Context) {
 		c.Set("base_path", basePath)

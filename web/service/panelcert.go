@@ -37,8 +37,8 @@ func GeneratePanelSelfSignedCert(dir, ip string) (certPath, keyPath string, err 
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject: pkix.Name{
-			Organization: []string{"vpn-ui"},
-			CommonName:   "vpn-ui panel",
+			Organization: []string{"pro-ui"},
+			CommonName:   "pro-ui panel",
 		},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),

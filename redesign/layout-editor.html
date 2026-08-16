@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>vpn-ui Overview layout editor</title>
+<title>pro-ui Overview layout editor</title>
 <style>
   :root{
     --bg:#f4f6f8; --surface:#fff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
@@ -90,14 +90,14 @@ const TILES = [
   ['svc',     '#2f9fb5', 'VPN Services'],
   ['xray',    '#c4506b', 'Xray'],
   ['manage',  '#5d7d3a', 'Manage'],
-  ['vpnui',   '#7069c9', 'VPN-UI'],
+  ['proui',   '#7069c9', 'PRO-UI'],
   ['process', '#b06a3c', 'Usage'],
 ];
 const COLOR = Object.fromEntries(TILES.map(t => [t[0], t[1]]));
 
 // Seeded from the live components.css so "Reset" restores what is shipping.
 const INITIAL = {
-  mobile: [['ident'],['flow'],['users'],['vit'],['svc'],['xray'],['manage'],['vpnui'],['process']],
+  mobile: [['ident'],['flow'],['users'],['vit'],['svc'],['xray'],['manage'],['proui'],['process']],
   tablet: [
     ['ident','ident','ident','ident'],
     ['flow','flow','flow','flow'],
@@ -105,12 +105,12 @@ const INITIAL = {
     ['vit','vit','vit','vit'],
     ['svc','svc','svc','svc'],
     ['xray','xray','manage','manage'],
-    ['vpnui','vpnui','process','process'],
+    ['proui','proui','process','process'],
   ],
   desktop: [
     ['ident','ident','ident','ident','flow','flow','flow','flow','flow','vit','vit','vit'],
     ['xray','xray','xray','xray','users','users','users','users','users','vit','vit','vit'],
-    ['manage','manage','manage','manage','vpnui','vpnui','vpnui','vpnui','vpnui','vit','vit','vit'],
+    ['manage','manage','manage','manage','proui','proui','proui','proui','proui','vit','vit','vit'],
     ['svc','svc','svc','svc','svc','svc','svc','svc','process','process','process','process'],
   ],
 };

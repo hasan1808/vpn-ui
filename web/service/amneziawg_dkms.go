@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mhsanaei/3x-ui/v2/awgsrc"
+	"github.com/hasan1808/pro-ui/awgsrc"
 )
 
 // awgBuildDir is where the embedded module source is extracted for the DKMS build.

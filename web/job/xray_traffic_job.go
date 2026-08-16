@@ -3,11 +3,11 @@ package job
 import (
 	"encoding/json"
 
-	"github.com/mhsanaei/3x-ui/v2/logger"
-	"github.com/mhsanaei/3x-ui/v2/web/service"
-	"github.com/mhsanaei/3x-ui/v2/web/service/rbridge"
-	"github.com/mhsanaei/3x-ui/v2/web/websocket"
-	"github.com/mhsanaei/3x-ui/v2/xray"
+	"github.com/hasan1808/pro-ui/logger"
+	"github.com/hasan1808/pro-ui/web/service"
+	"github.com/hasan1808/pro-ui/web/service/rbridge"
+	"github.com/hasan1808/pro-ui/web/websocket"
+	"github.com/hasan1808/pro-ui/xray"
 
 	"github.com/valyala/fasthttp"
 )

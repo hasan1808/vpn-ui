@@ -125,8 +125,8 @@
 
 [pages.index]
 "donate" = "Bağış"
-"donateTitle" = "VPN-UI'ye destek ol"
-"donateIntro" = "VPN-UI işinize yarıyorsa, bu adreslerden herhangi birine yapacağınız bağış bakımına katkı sağlar."
+"donateTitle" = "PRO-UI'ye destek ol"
+"donateIntro" = "PRO-UI işinize yarıyorsa, bu adreslerden herhangi birine yapacağınız bağış bakımına katkı sağlar."
 "restore" = "Geri yükle"
 "systemStatus" = "Sistem durumu"
 "title" = "Genel Bakış"
@@ -982,7 +982,7 @@
 "report" = "🕰 Planlanmış Raporlar: {{ .RunTime }}\r\n"
 "datetime" = "⏰ Tarih&Zaman: {{ .DateTime }}\r\n"
 "hostname" = "💻 Sunucu: {{ .Hostname }}\r\n"
-"version" = "🚀 VPN-UI Sürümü: {{ .Version }}\r\n"
+"version" = "🚀 PRO-UI Sürümü: {{ .Version }}\r\n"
 "xrayVersion" = "📡 Xray Sürümü: {{ .XrayVersion }}\r\n"
 "ipv6" = "🌐 IPv6: {{ .IPv6 }}\r\n"
 "ipv4" = "🌐 IPv4: {{ .IPv4 }}\r\n"

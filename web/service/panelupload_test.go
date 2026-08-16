@@ -36,7 +36,7 @@ func TestComparePanelVersions(t *testing.T) {
 	}
 }
 
-// A binary that does not answer with a version is not a vpn-ui build, and installing
+// A binary that does not answer with a version is not a pro-ui build, and installing
 // it would replace the panel with something that cannot come back up.
 func TestPanelBinaryVersionRejectsNonPanelOutput(t *testing.T) {
 	dir := t.TempDir()

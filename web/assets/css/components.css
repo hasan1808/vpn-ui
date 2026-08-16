@@ -277,7 +277,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-bento {
   display:grid; grid-template-columns:1fr; gap:var(--gap-sm);
   grid-template-areas:
-    "ident" "flow" "xray" "users" "manage" "outbounds" "vpnui" "vit" "svc";
+    "ident" "flow" "xray" "users" "manage" "outbounds" "proui" "vit" "svc";
 }
 @media (min-width:760px) {
   .bo-bento {
@@ -286,7 +286,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
       "ident ident ident ident"
       "flow flow flow flow"
       "xray xray users users"
-      "manage manage vpnui vpnui"
+      "manage manage proui proui"
       "outbounds outbounds outbounds outbounds"
       "vit vit vit vit"
       "svc svc svc svc";
@@ -298,7 +298,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
     grid-template-areas:
       "ident ident ident ident flow flow flow flow vit vit vit vit"
       "xray xray xray xray users users users users vit vit vit vit"
-      "manage manage manage manage vpnui vpnui vpnui vpnui vit vit vit vit"
+      "manage manage manage manage proui proui proui proui vit vit vit vit"
       "outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds"
       "svc svc svc svc svc svc svc svc svc svc svc svc";
   }
@@ -309,7 +309,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-t-vit { grid-area:vit; }
 .bo-t-svc { grid-area:svc; }
 .bo-t-xray { grid-area:xray; }
-.bo-t-vpnui { grid-area:vpnui; }
+.bo-t-proui { grid-area:proui; }
 .bo-t-users { grid-area:users; }
 .bo-t-manage { grid-area:manage; }
 .bo-t-outbounds { grid-area:outbounds; }
@@ -663,8 +663,8 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-btn--ghost:hover { color:var(--accent); border-color:var(--accent); transform:translateY(-1px); }
 .bo-btn[disabled] { opacity:.5; cursor:not-allowed; transform:none; filter:none; }
 
-.bo-vpnui-body { display:flex; flex-direction:column; justify-content:space-between; gap:18px; flex:1; }
-.bo-vpnui-version { font-size:24px; font-weight:var(--fw-bold); color:var(--accent); }
+.bo-proui-body { display:flex; flex-direction:column; justify-content:space-between; gap:18px; flex:1; }
+.bo-proui-version { font-size:24px; font-weight:var(--fw-bold); color:var(--accent); }
 .bo-status-line { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:var(--fw-semibold); margin-top:var(--sp-2); }
 .bo-status-line--ok { color:var(--ok); }
 .bo-status-line--warn { color:var(--warn); }

@@ -12,7 +12,7 @@ import (
 // unit, and Fedora/RHEL don't package one at all, so the panel provides it.
 func xl2tpdUnit(binDir, envLine string) string {
 	return fmt.Sprintf(`[Unit]
-Description=Level 2 Tunnel Protocol Daemon (L2TP) [vpn-ui bundled]
+Description=Level 2 Tunnel Protocol Daemon (L2TP) [pro-ui bundled]
 After=network-online.target ipsec.service
 Wants=ipsec.service
 
@@ -35,7 +35,7 @@ WantedBy=multi-user.target
 // this uses Type=simple (the panel's config runs openvpn in the foreground).
 func openvpnTemplateUnit(binDir string) string {
 	return fmt.Sprintf(`[Unit]
-Description=OpenVPN service for %%I [vpn-ui bundled]
+Description=OpenVPN service for %%I [pro-ui bundled]
 After=network-online.target
 Wants=network-online.target
 
@@ -59,7 +59,7 @@ WantedBy=multi-user.target
 // by the panel). --fg keeps it in the foreground for Type=simple.
 func pptpdUnit(binDir, envLine, pppArg string) string {
 	return fmt.Sprintf(`[Unit]
-Description=PoPToP PPTP Server [vpn-ui bundled]
+Description=PoPToP PPTP Server [pro-ui bundled]
 After=network-online.target
 Wants=network-online.target
 

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mhsanaei/3x-ui/v2/backend"
-	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/hasan1808/pro-ui/backend"
+	"github.com/hasan1808/pro-ui/logger"
 )
 
 // This file lets the panel run its OWN bundled libreswan (pluto) as a supervised
