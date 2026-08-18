@@ -6,616 +6,978 @@
 <script src="{{ .base_path }}assets/js/util/index.js?{{ .asset_ver }}"></script>
 <script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .asset_ver }}"></script>
 <style>
-    /* ---- QR boxes (kept from the previous layout) ---- */
-    .subscription-page tr-qr-box.qr-box {
-        display: inline-flex;
-        flex-direction: column;
-        align-items: center;
-        width: 220px;
+    .subscription-page {
+        --bg: #070d1b;
+        --bg-soft: #0b1325;
+        --card: #101a30;
+        --card-light: #14213a;
+        --border: #263754;
+        --primary: #20d3c2;
+        --primary-dark: #0ca89a;
+        --purple: #9b5cff;
+        --purple-soft: rgba(155, 92, 255, .14);
+        --success: #22c55e;
+        --danger: #ef4444;
+        --text: #f3f7ff;
+        --muted: #7f8da8;
+        --muted-light: #aeb9cc;
     }
 
-    .subscription-page tr-qr-box.qr-box .qr-tag {
-        width: 100%;
-        justify-content: center;
+    .subscription-page,
+    .subscription-page .ant-layout-content {
+        background: transparent;
     }
 
-    .subscription-page tr-qr-box.qr-box .qr-bg,
-    .subscription-page tr-qr-box.qr-box .qr-bg-sub {
-        margin-inline: auto;
-    }
-
-    /* Config-file downloads. Secondary to the Android/iOS buttons (which stay the one
-       accent-filled action on the page), so these are a neutral surface with the accent
-       kept for the icon and hover. Tokens carry the theme, so there is no dark/light pair
-       to keep in sync. Labels can be long ("AmneziaWG Device 2 cdn (my-inbound)"), hence
-       wrapping and an auto height instead of ant's nowrap single line. */
-    .subscription-page .sub-config-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: var(--sp-2);
-        width: 100%;
-        max-width: 340px;
-        height: auto;
-        min-height: 40px;
-        padding: var(--sp-2) var(--sp-4);
-        white-space: normal;
-        line-height: var(--lh-tight);
-        text-align: center;
-        border-radius: var(--radius-sm);
-        background: var(--surface-2);
-        border: 1px solid var(--border);
+    .subscription-page.ant-layout {
+        min-height: 100vh;
+        background:
+            radial-gradient(circle at 10% 0%, rgba(32, 211, 194, .07), transparent 30%),
+            radial-gradient(circle at 90% 10%, rgba(155, 92, 255, .07), transparent 25%),
+            var(--bg);
         color: var(--text);
-        box-shadow: none;
-        transition: background var(--dur-fast) var(--ease),
-            border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
     }
 
-    .subscription-page .sub-config-btn:hover,
-    .subscription-page .sub-config-btn:focus {
-        background: var(--surface);
-        border-color: var(--accent);
-        color: var(--accent);
+    .subscription-page button {
+        font-family: inherit;
     }
 
-    .subscription-page .sub-config-btn .anticon {
-        color: var(--accent);
+    .subscription-page .container {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 30px 0 60px;
     }
 
-    /* ===================== New Subscription design ===================== */
-
-    .subscription-page .sub-wrap {
+    /* ---- TOP BAR ---- */
+    .subscription-page .topbar {
         display: flex;
-        flex-direction: column;
-        gap: var(--sp-4);
-        margin: var(--sp-4) 0 var(--sp-8);
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 22px;
     }
 
-    /* ---------- Hero ---------- */
-    .subscription-page .sub-hero {
+    .subscription-page .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .subscription-page .brand-logo {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, var(--primary), #16a89c);
+        color: #031614;
+        font-weight: 900;
+        font-size: 18px;
+        box-shadow: 0 10px 30px rgba(32, 211, 194, .15);
+    }
+
+    .subscription-page .brand-text h1 {
+        font-size: 17px;
+        font-weight: 700;
+        margin: 0;
+        color: var(--text);
+    }
+
+    .subscription-page .brand-text span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 3px;
+    }
+
+    .subscription-page .top-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .subscription-page .icon-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 11px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, .025);
+        color: var(--muted-light);
+        cursor: pointer;
+        font-size: 15px;
+        line-height: 1;
+        transition: .2s;
+    }
+
+    .subscription-page .icon-btn:hover {
+        color: var(--primary);
+        border-color: rgba(32, 211, 194, .4);
+        background: rgba(32, 211, 194, .06);
+    }
+
+    /* ---- MAIN SUBSCRIPTION CARD ---- */
+    .subscription-page .subscription-card {
         position: relative;
-        border-radius: var(--radius-xl);
-        padding: var(--sp-5) var(--sp-6) var(--sp-6);
-        color: var(--on-accent);
-        background: linear-gradient(135deg, var(--accent-strong), var(--accent));
-        box-shadow: var(--shadow-lg);
         overflow: hidden;
+        padding: 28px;
+        border: 1px solid rgba(32, 211, 194, .35);
+        border-radius: 20px;
+        background: linear-gradient(135deg, rgba(32, 211, 194, .12), rgba(32, 211, 194, .035));
+        box-shadow: 0 25px 80px rgba(0, 0, 0, .22);
     }
 
-    .subscription-page .sub-hero::after {
+    .subscription-page .subscription-card::after {
         content: "";
         position: absolute;
-        right: -70px;
-        top: -70px;
-        width: 220px;
-        height: 220px;
+        width: 300px;
+        height: 300px;
+        right: -100px;
+        top: -150px;
         border-radius: 50%;
-        background: rgba(255, 255, 255, .12);
-        filter: blur(6px);
+        background: rgba(32, 211, 194, .12);
+        filter: blur(60px);
         pointer-events: none;
     }
 
-    .subscription-page .sub-hero-top {
+    .subscription-page .subscription-header {
         position: relative;
-        z-index: 1;
+        z-index: 2;
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: var(--sp-3);
+        gap: 20px;
     }
 
-    .subscription-page .sub-hero-label {
-        display: block;
-        font-size: var(--fs-xs);
-        text-transform: uppercase;
-        letter-spacing: .06em;
-        opacity: .85;
-        margin-bottom: 6px;
-    }
-
-    .subscription-page .sub-hero-id-row {
-        display: flex;
-        align-items: center;
-        gap: var(--sp-3);
-        flex-wrap: wrap;
-    }
-
-    .subscription-page .sub-hero-sid {
-        font-size: var(--fs-xl);
+    .subscription-page .label {
+        color: var(--muted);
+        font-size: 10px;
         font-weight: 700;
-        letter-spacing: -.01em;
-        font-family: var(--font-mono);
-        line-height: 1.1;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+
+    .subscription-page .subscription-id {
+        margin-top: 7px;
+        font-size: 19px;
+        font-weight: 700;
+        color: var(--text);
         word-break: break-all;
     }
 
-    .subscription-page .sub-pill {
+    .subscription-page .status {
         display: inline-flex;
         align-items: center;
         gap: 7px;
-        padding: 5px 12px;
-        border-radius: var(--radius-pill);
-        font-size: var(--fs-sm);
-        font-weight: 650;
-        background: rgba(255, 255, 255, .16);
-        color: var(--on-accent);
-        backdrop-filter: blur(4px);
-        -webkit-backdrop-filter: blur(4px);
+        padding: 7px 11px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
         white-space: nowrap;
     }
 
-    .subscription-page .sub-pill .dot {
-        width: 8px;
-        height: 8px;
+    .subscription-page .status--active {
+        background: rgba(34, 197, 94, .09);
+        border: 1px solid rgba(34, 197, 94, .25);
+        color: #71e89a;
+    }
+
+    .subscription-page .status--inactive {
+        background: rgba(239, 68, 68, .09);
+        border: 1px solid rgba(239, 68, 68, .25);
+        color: #fca5a5;
+    }
+
+    .subscription-page .status--unlimited {
+        background: var(--purple-soft);
+        border: 1px solid rgba(155, 92, 255, .3);
+        color: #c4a5ff;
+    }
+
+    .subscription-page .status-dot {
+        width: 7px;
+        height: 7px;
         border-radius: 50%;
-        flex: 0 0 auto;
+        background: currentColor;
+        box-shadow: 0 0 12px rgba(34, 197, 94, .7);
     }
 
-    .subscription-page .sub-pill--ok .dot {
-        background: #bbf7d0;
-        box-shadow: 0 0 0 3px rgba(187, 247, 208, .35);
+    .subscription-page .status--inactive .status-dot {
+        box-shadow: 0 0 12px rgba(239, 68, 68, .7);
     }
 
-    .subscription-page .sub-pill--err .dot {
-        background: #fecaca;
-        box-shadow: 0 0 0 3px rgba(254, 202, 202, .35);
+    .subscription-page .status--unlimited .status-dot {
+        box-shadow: 0 0 12px rgba(155, 92, 255, .7);
     }
 
-    .subscription-page .sub-pill--unl .dot {
-        background: #e9d5ff;
-        box-shadow: 0 0 0 3px rgba(233, 213, 255, .35);
-    }
-
-    .subscription-page .sub-hero-actions {
-        position: relative;
-        z-index: 1;
-    }
-
-    .subscription-page .sub-hero-actions .ant-btn {
-        background: rgba(255, 255, 255, .18);
-        border-color: transparent;
-        color: var(--on-accent);
-    }
-
-    .subscription-page .sub-hero-actions .ant-btn:hover {
-        background: rgba(255, 255, 255, .3);
-    }
-
-    .subscription-page .sub-usage {
-        position: relative;
-        z-index: 1;
-        margin-top: var(--sp-6);
-    }
-
-    .subscription-page .sub-usage-head {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        margin-bottom: var(--sp-2);
-    }
-
-    .subscription-page .sub-usage-label {
-        font-size: var(--fs-sm);
-        opacity: .9;
-    }
-
-    .subscription-page .sub-usage-pct {
-        font-size: var(--fs-lg);
-        font-weight: 700;
-        font-variant-numeric: tabular-nums;
-    }
-
-    .subscription-page .sub-bar {
-        height: 9px;
-        border-radius: var(--radius-pill);
-        background: rgba(255, 255, 255, .22);
-        overflow: hidden;
-    }
-
-    .subscription-page .sub-bar-fill {
-        height: 100%;
-        border-radius: var(--radius-pill);
-        background: #ffffff;
-        transition: width var(--dur-med) var(--ease);
-    }
-
-    .subscription-page .sub-bar-fill--ok {
-        background: #bbf7d0;
-    }
-
-    .subscription-page .sub-bar-fill--warn {
-        background: #fde68a;
-    }
-
-    .subscription-page .sub-bar-fill--err {
-        background: #fecaca;
-    }
-
-    .subscription-page .sub-usage-meta {
-        display: flex;
-        justify-content: space-between;
-        margin-top: var(--sp-2);
-        font-size: var(--fs-sm);
-        opacity: .9;
-        font-variant-numeric: tabular-nums;
-    }
-
-    /* ---------- Generic panel ---------- */
-    .subscription-page .sub-panel {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        padding: var(--sp-5);
-        box-shadow: var(--shadow-md);
-    }
-
-    .subscription-page .sub-panel-title {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: .05em;
-        color: var(--text-3);
-        font-weight: 700;
-        margin: 0 0 var(--sp-4);
-    }
-
-    /* ---------- QR ---------- */
-    .subscription-page .sub-qr-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--sp-4);
-        justify-content: center;
-    }
-
-    /* ---------- Stats mosaic ---------- */
-    .subscription-page .sub-stats {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-        gap: 1px;
-        background: var(--border);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        overflow: hidden;
-    }
-
-    .subscription-page .sub-stat {
-        background: var(--surface);
-        padding: var(--sp-4);
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    .subscription-page .sub-stat-label {
-        font-size: 10.5px;
-        text-transform: uppercase;
-        letter-spacing: .04em;
-        color: var(--text-3);
-        font-weight: 700;
-    }
-
-    .subscription-page .sub-stat-value {
-        font-size: var(--fs-md);
-        font-weight: 650;
-        color: var(--text);
-        font-variant-numeric: tabular-nums;
-    }
-
-    /* ---------- Individual links ---------- */
-    .subscription-page .sub-link-name {
-        margin-bottom: -10px;
+    /* ---- STATS ---- */
+    .subscription-page .stats {
         position: relative;
         z-index: 2;
-        box-shadow: var(--shadow-sm);
-    }
-
-    .subscription-page .sub-link-box {
-        cursor: pointer;
-        border-radius: var(--radius-md);
-        padding: var(--sp-3) var(--sp-4);
-        word-break: break-all;
-        font-size: 13px;
-        line-height: 1.5;
-        text-align: start;
-        font-family: var(--font-mono);
-        background: var(--surface-2);
-        border: 1px solid var(--border);
-        color: var(--text);
-        transition: border-color var(--dur-fast) var(--ease),
-            background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
-    }
-
-    .subscription-page .sub-link-box:hover {
-        border-color: var(--accent);
-        background: var(--accent-weak);
-        color: var(--accent-strong);
-    }
-
-    /* ---------- Apps ---------- */
-    .subscription-page .sub-apps {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--sp-3);
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-top: 25px;
     }
 
-    @media (max-width: 480px) {
-        .subscription-page .sub-apps {
-            grid-template-columns: 1fr;
-        }
+    .subscription-page .stat {
+        padding: 16px;
+        border-radius: 13px;
+        background: rgba(0, 0, 0, .15);
+        border: 1px solid rgba(255, 255, 255, .06);
     }
 
-    /* ---------- Credentials ---------- */
-    .subscription-page .sub-creds {
-        display: flex;
-        flex-direction: column;
-        gap: var(--sp-3);
+    .subscription-page .stat-title {
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: .05em;
     }
 
-    .subscription-page .sub-cred-row {
+    .subscription-page .stat-value {
+        margin-top: 7px;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .subscription-page .stat-value small {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 500;
+    }
+
+    /* ---- QR + CONNECTION ---- */
+    .subscription-page .connection-grid {
+        display: grid;
+        grid-template-columns: 330px 1fr;
+        gap: 18px;
+        margin-top: 18px;
+    }
+
+    .subscription-page .card {
+        border: 1px solid var(--border);
+        border-radius: 17px;
+        background: linear-gradient(145deg, rgba(18, 29, 52, .95), rgba(11, 19, 36, .95));
+        box-shadow: 0 15px 40px rgba(0, 0, 0, .12);
+    }
+
+    .subscription-page .card-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: var(--sp-3);
+        padding: 17px 19px;
+        border-bottom: 1px solid rgba(255, 255, 255, .05);
+    }
+
+    .subscription-page .card-title {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: var(--muted-light);
+        margin: 0;
+    }
+
+    .subscription-page .qr-card {
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 320px;
+    }
+
+    .subscription-page .qr-box {
+        width: 205px;
+        height: 205px;
+        padding: 10px;
+        border-radius: 15px;
+        background: white;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, .25);
+        display: grid;
+        place-items: center;
+    }
+
+    .subscription-page .qr-box canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
+
+    .subscription-page .qr-label {
+        margin-top: 15px;
+        color: var(--muted);
+        font-size: 11px;
+    }
+
+    .subscription-page .qr-extra {
+        display: flex;
         flex-wrap: wrap;
+        justify-content: center;
+        gap: 14px;
+        margin-top: 16px;
     }
 
-    .subscription-page .sub-cred-key {
-        font-size: var(--fs-sm);
-        color: var(--text-3);
+    .subscription-page .qr-extra-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 7px;
     }
 
-    .subscription-page .sub-cred-val {
-        font-family: var(--font-mono);
-        font-size: var(--fs-base);
+    .subscription-page .qr-extra-box .qr-mini {
+        width: 96px;
+        height: 96px;
+        padding: 6px;
+        border-radius: 10px;
+        background: white;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, .2);
+    }
+
+    .subscription-page .qr-extra-box .qr-mini canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
+
+    .subscription-page .qr-extra-box span {
+        color: var(--muted);
+        font-size: 10px;
+    }
+
+    .subscription-page .connection-content {
+        padding: 22px;
+    }
+
+    .subscription-page .connection-status {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 25px;
+    }
+
+    .subscription-page .connection-icon {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        color: var(--primary);
+        background: rgba(32, 211, 194, .08);
+        border: 1px solid rgba(32, 211, 194, .2);
+        font-size: 20px;
+    }
+
+    .subscription-page .connection-status strong {
+        display: block;
+        font-size: 14px;
         color: var(--text);
+    }
+
+    .subscription-page .connection-status span {
+        display: block;
+        margin-top: 3px;
+        font-size: 11px;
+        color: var(--muted);
+    }
+
+    .subscription-page .copy-main {
+        width: 100%;
+        border: none;
+        border-radius: 11px;
+        padding: 12px 16px;
+        color: #041614;
+        background: var(--primary);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: .2s;
+    }
+
+    .subscription-page .copy-main:hover {
+        background: #35e3d3;
+        transform: translateY(-1px);
+    }
+
+    /* ---- SECTION ---- */
+    .subscription-page .section {
+        margin-top: 18px;
+    }
+
+    .subscription-page .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+    }
+
+    .subscription-page .section-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text);
+    }
+
+    .subscription-page .section-subtitle {
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 3px;
+    }
+
+    /* ---- LINKS ---- */
+    .subscription-page .links-card {
+        padding: 10px;
+    }
+
+    .subscription-page .link-item {
+        padding: 17px;
+        border-radius: 13px;
+        background: rgba(255, 255, 255, .018);
+        border: 1px solid rgba(255, 255, 255, .04);
+        transition: .2s;
+    }
+
+    .subscription-page .link-item + .link-item {
+        margin-top: 9px;
+    }
+
+    .subscription-page .link-item:hover {
+        border-color: rgba(32, 211, 194, .2);
+        background: rgba(32, 211, 194, .025);
+    }
+
+    .subscription-page .link-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 11px;
+    }
+
+    .subscription-page .protocol {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text);
+        min-width: 0;
+    }
+
+    .subscription-page .protocol-icon {
+        width: 27px;
+        height: 27px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        color: var(--purple);
+        background: var(--purple-soft);
+        border: 1px solid rgba(155, 92, 255, .2);
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .subscription-page .protocol-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .subscription-page .link-actions {
+        display: flex;
+        gap: 6px;
+        flex: 0 0 auto;
+    }
+
+    .subscription-page .small-btn {
+        padding: 7px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, .025);
+        color: var(--muted-light);
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        transition: .2s;
+    }
+
+    .subscription-page .small-btn:hover {
+        color: var(--primary);
+        border-color: rgba(32, 211, 194, .3);
+    }
+
+    .subscription-page .link-url {
+        padding: 12px;
+        border-radius: 9px;
+        background: #080f1e;
+        border: 1px solid rgba(255, 255, 255, .04);
+        color: #7e8ca7;
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 10px;
+        line-height: 1.6;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* ---- DOWNLOAD ---- */
+    .subscription-page .download-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .subscription-page .download-card {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 19px;
+        cursor: pointer;
+        transition: .2s;
+    }
+
+    .subscription-page .download-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(32, 211, 194, .3);
+    }
+
+    .subscription-page .download-icon {
+        width: 47px;
+        height: 47px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border-radius: 13px;
+        background: rgba(32, 211, 194, .08);
+        color: var(--primary);
+        font-size: 22px;
+    }
+
+    .subscription-page .download-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .subscription-page .download-info strong {
+        display: block;
+        font-size: 13px;
+        color: var(--text);
+    }
+
+    .subscription-page .download-info span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 10px;
+    }
+
+    .subscription-page .arrow {
+        color: var(--muted);
+        font-size: 17px;
+    }
+
+    /* ---- ACCOUNT ---- */
+    .subscription-page .account-card {
+        padding: 8px;
+    }
+
+    .subscription-page .account-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 15px 13px;
+        border-bottom: 1px solid rgba(255, 255, 255, .04);
+    }
+
+    .subscription-page .account-row:last-child {
+        border-bottom: none;
+    }
+
+    .subscription-page .account-label {
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        flex: 0 0 auto;
+    }
+
+    .subscription-page .account-value {
+        color: var(--text);
+        font-size: 12px;
         font-weight: 600;
         word-break: break-all;
+        text-align: right;
     }
 
-    .subscription-page .sub-cred-val.masked {
+    .subscription-page .account-value.masked {
         letter-spacing: .18em;
     }
 
-    .subscription-page .sub-cred-toggle {
-        color: var(--text-3);
+    /* ---- RESPONSIVE ---- */
+    @media (max-width: 850px) {
+        .subscription-page .stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .subscription-page .connection-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .subscription-page .qr-card {
+            min-height: auto;
+        }
     }
 
-    .subscription-page .sub-cred-toggle:hover {
-        color: var(--accent);
+    @media (max-width: 600px) {
+        .subscription-page .container {
+            width: min(100% - 20px, 1180px);
+            padding-top: 15px;
+        }
+
+        .subscription-page .topbar {
+            margin-bottom: 14px;
+        }
+
+        .subscription-page .brand-text h1 {
+            font-size: 15px;
+        }
+
+        .subscription-page .subscription-card {
+            padding: 20px;
+            border-radius: 16px;
+        }
+
+        .subscription-page .subscription-header {
+            flex-direction: column;
+        }
+
+        .subscription-page .subscription-id {
+            font-size: 16px;
+        }
+
+        .subscription-page .stats {
+            gap: 8px;
+            margin-top: 18px;
+        }
+
+        .subscription-page .stat {
+            padding: 13px;
+        }
+
+        .subscription-page .stat-value {
+            font-size: 15px;
+        }
+
+        .subscription-page .connection-grid {
+            gap: 10px;
+        }
+
+        .subscription-page .download-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .subscription-page .link-top {
+            align-items: flex-start;
+        }
+
+        .subscription-page .link-actions {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .subscription-page .small-btn {
+            padding: 6px 8px;
+        }
+
+        .subscription-page .link-url {
+            font-size: 9px;
+        }
+
+        .subscription-page .account-row {
+            align-items: flex-start;
+        }
+
+        .subscription-page .account-value {
+            max-width: 60%;
+        }
     }
 </style>
 {{ template "page/head_end" .}}
 
 {{ template "page/body_start" .}}
 <a-layout id="app" v-cloak :class="themeSwitcher.currentTheme + ' subscription-page'">
-    <a-layout-content class="p-2">
-        <a-row type="flex" justify="center" class="mt-2">
-            <a-col :xs="24" :sm="22" :md="18" :lg="14" :xl="12">
-                <div class="sub-wrap">
+    <a-layout-content>
+        <div class="container">
 
-                    <!-- ===================== HERO ===================== -->
-                    <section class="sub-hero">
-                        <div class="sub-hero-top">
-                            <div class="sub-hero-id">
-                                <span class="sub-hero-label">{{ i18n "subscription.subId" }}</span>
-                                <div class="sub-hero-id-row">
-                                    <span class="sub-hero-sid">[[ app.sId ]]</span>
-                                    <template v-if="isUnlimited">
-                                        <span class="sub-pill sub-pill--unl"><span class="dot"></span>{{ i18n "subscription.unlimited" }}</span>
-                                    </template>
-                                    <template v-else>
-                                        <span class="sub-pill" :class="isActive ? 'sub-pill--ok' : 'sub-pill--err'">
-                                            <span class="dot"></span>[[ isActive ? '{{ i18n "subscription.active" }}' : '{{ i18n "subscription.inactive" }}' ]]
-                                        </span>
-                                    </template>
-                                </div>
-                            </div>
-                            <div class="sub-hero-actions">
-                                <a-popover :overlay-class-name="themeSwitcher.currentTheme" title='{{ i18n "menu.settings" }}'
-                                    placement="bottomRight" trigger="click">
-                                    <template #content>
-                                        <a-space direction="vertical" :size="10">
-                                            <a-theme-switch-login></a-theme-switch-login>
-                                            <span>{{ i18n "pages.settings.language"
-                                                }}</span>
-                                            <a-select ref="selectLang" class="w-100" v-model="lang"
-                                                @change="LanguageManager.setLanguage(lang)"
-                                                :dropdown-class-name="themeSwitcher.currentTheme">
-                                                <a-select-option :value="l.value" label="English"
-                                                    v-for="l in LanguageManager.supportedLanguages" :key="l.value">
-                                                    <span role="img" :aria-label="l.name" v-text="l.icon"></span>
-                                                    &nbsp;&nbsp;<span v-text="l.name"></span>
-                                                </a-select-option>
-                                            </a-select>
-                                        </a-space>
-                                    </template>
-                                    <a-button shape="circle" icon="setting"></a-button>
-                                </a-popover>
-                            </div>
-                        </div>
-
-                        <div class="sub-usage">
-                            <div class="sub-usage-head">
-                                <span class="sub-usage-label">{{ i18n "usage" }}</span>
-                                <span class="sub-usage-pct" v-if="!isUnlimited">[[ usagePercent ]]%</span>
-                            </div>
-                            <div class="sub-bar" v-if="!isUnlimited">
-                                <div class="sub-bar-fill" :class="'sub-bar-fill--' + usageLevel"
-                                    :style="{ width: usagePercent + '%' }"></div>
-                            </div>
-                            <div class="sub-usage-meta" v-if="!isUnlimited">
-                                <span>[[ app.used ]]</span>
-                                <span>[[ app.total ]]</span>
-                            </div>
-                            <div class="sub-usage-meta" v-else>
-                                <span>{{ i18n "subscription.unlimited" }}</span>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- ===================== QR ===================== -->
-                    <section class="sub-panel">
-                        <h3 class="sub-panel-title">{{ i18n "qrCode" }}</h3>
-                        <div class="sub-qr-grid">
-                            <tr-qr-box class="qr-box">
-                                <a-tag color="purple" class="qr-tag">
-                                    <span>{{ i18n "pages.settings.subSettings"}}</span>
-                                </a-tag>
-                                <tr-qr-bg class="qr-bg-sub">
-                                    <tr-qr-bg-inner class="qr-bg-sub-inner">
-                                        <canvas id="qrcode" class="qr-cv" title='{{ i18n "copy" }}'
-                                            @click="copy(app.subUrl)"></canvas>
-                                    </tr-qr-bg-inner>
-                                </tr-qr-bg>
-                            </tr-qr-box>
-                            <tr-qr-box class="qr-box" v-if="app.subJsonUrl">
-                                <a-tag color="purple" class="qr-tag">
-                                    <span>{{ i18n "pages.settings.subSettings"}} Json</span>
-                                </a-tag>
-                                <tr-qr-bg class="qr-bg-sub">
-                                    <tr-qr-bg-inner class="qr-bg-sub-inner">
-                                        <canvas id="qrcode-subjson" class="qr-cv" title='{{ i18n "copy" }}'
-                                            @click="copy(app.subJsonUrl)"></canvas>
-                                    </tr-qr-bg-inner>
-                                </tr-qr-bg>
-                            </tr-qr-box>
-                            <tr-qr-box class="qr-box" v-if="app.subClashUrl">
-                                <a-tag color="purple" class="qr-tag">
-                                    <span>Clash / Mihomo</span>
-                                </a-tag>
-                                <tr-qr-bg class="qr-bg-sub">
-                                    <tr-qr-bg-inner class="qr-bg-sub-inner">
-                                        <canvas id="qrcode-subclash" class="qr-cv" title='{{ i18n "copy" }}'
-                                            @click="copy(app.subClashUrl)"></canvas>
-                                    </tr-qr-bg-inner>
-                                </tr-qr-bg>
-                            </tr-qr-box>
-                        </div>
-                    </section>
-
-                    <!-- ===================== STATS ===================== -->
-                    <section class="sub-panel">
-                        <div class="sub-stats">
-                            <div class="sub-stat">
-                                <span class="sub-stat-label">{{ i18n "subscription.downloaded" }}</span>
-                                <span class="sub-stat-value">[[ app.download ]]</span>
-                            </div>
-                            <div class="sub-stat">
-                                <span class="sub-stat-label">{{ i18n "subscription.uploaded" }}</span>
-                                <span class="sub-stat-value">[[ app.upload ]]</span>
-                            </div>
-                            <div class="sub-stat" v-if="!isUnlimited">
-                                <span class="sub-stat-label">{{ i18n "subscription.totalQuota" }}</span>
-                                <span class="sub-stat-value">[[ app.total ]]</span>
-                            </div>
-                            <div class="sub-stat" v-if="!isUnlimited && app.totalByte > 0">
-                                <span class="sub-stat-label">{{ i18n "remained" }}</span>
-                                <span class="sub-stat-value">[[ app.remained ]]</span>
-                            </div>
-                            <div class="sub-stat">
-                                <span class="sub-stat-label">{{ i18n "lastOnline" }}</span>
-                                <span class="sub-stat-value">[[ app.lastOnlineMs > 0 ? IntlUtil.formatDate(app.lastOnlineMs) : '-' ]]</span>
-                            </div>
-                            <div class="sub-stat">
-                                <span class="sub-stat-label">{{ i18n "subscription.expiry" }}</span>
-                                <span class="sub-stat-value">[[ app.expireMs === 0 ? '{{ i18n "subscription.noExpiry" }}' : IntlUtil.formatDate(app.expireMs) ]]</span>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- ===================== INDIVIDUAL LINKS ===================== -->
-                    <section class="sub-panel" v-if="links.length">
-                        <h3 class="sub-panel-title">{{ i18n "subscription.individualLinks" }}</h3>
-                        <a-space direction="vertical" :size="12" style="width:100%">
-                            <div v-for="(link, idx) in links" :key="link">
-                                <a-tag color="purple" class="sub-link-name">[[ linkName(link, idx) ]]</a-tag>
-                                <div @click="copy(link)" class="sub-link-box">[[ link ]]</div>
-                            </div>
-                        </a-space>
-                    </section>
-
-                    <!-- ===================== CONFIG FILES ===================== -->
-                    {{ if .configs }}
-                    <section class="sub-panel">
-                        <h3 class="sub-panel-title">{{ i18n "subscription.configFiles" }}</h3>
-                        <a-row type="flex" justify="center" :gutter="[8,8]" style="width:100%;">
-                            {{ range .configs }}
-                            <a-col :xs="24" :sm="12" style="text-align:center;">
-                                <a class="ant-btn sub-config-btn" href="{{ .Url }}"
-                                    download="{{ .Filename }}" title="{{ .Filename }}">
-                                    <a-icon type="download"></a-icon>
-                                    <span>{{ .Label }}</span>
-                                </a>
-                            </a-col>
-                            {{ end }}
-                        </a-row>
-                    </section>
-                    {{ end }}
-
-                    <!-- ===================== APPS ===================== -->
-                    <section class="sub-panel">
-                        <div class="sub-apps">
-                            <a-dropdown :trigger="['click']">
-                                <a-button icon="android" :block="true" size="large" type="primary">
-                                    Android <a-icon type="down" />
-                                </a-button>
-                                <a-menu slot="overlay" :class="themeSwitcher.currentTheme">
-                                    <a-menu-item key="android-v2box"
-                                        @click="open('v2box://install-sub?url=' + encodeURIComponent(app.subUrl) + '&name=' + encodeURIComponent(app.sId))">V2Box</a-menu-item>
-                                    <a-menu-item key="android-v2rayng"
-                                        @click="open('v2rayng://install-config?url=' + encodeURIComponent(app.subUrl))">V2RayNG</a-menu-item>
-                                    <a-menu-item key="android-singbox"
-                                        @click="copy(app.subUrl)">Sing-box</a-menu-item>
-                                    <a-menu-item key="android-v2raytun"
-                                        @click="copy(app.subUrl)">V2RayTun</a-menu-item>
-                                    <a-menu-item key="android-npvtunnel" @click="copy(app.subUrl)">NPV
-                                        Tunnel</a-menu-item>
-                                    <a-menu-item key="android-happ"
-                                        @click="open('happ://add/' + app.subUrl)">Happ</a-menu-item>
-                                </a-menu>
-                            </a-dropdown>
-                            <a-dropdown :trigger="['click']">
-                                <a-button icon="apple" :block="true" size="large" type="primary">
-                                    iOS <a-icon type="down" />
-                                </a-button>
-                                <a-menu slot="overlay" :class="themeSwitcher.currentTheme">
-                                    <a-menu-item key="ios-shadowrocket"
-                                        @click="open(shadowrocketUrl)">Shadowrocket</a-menu-item>
-                                    <a-menu-item key="ios-v2box" @click="open(v2boxUrl)">V2Box</a-menu-item>
-                                    <a-menu-item key="ios-streisand"
-                                        @click="open(streisandUrl)">Streisand</a-menu-item>
-                                    <a-menu-item key="ios-v2raytun"
-                                        @click="copy(v2raytunUrl)">V2RayTun</a-menu-item>
-                                    <a-menu-item key="ios-npvtunnel" @click="copy(npvtunUrl)">NPV
-                                        Tunnel
-                                    </a-menu-item>
-                                    <a-menu-item key="ios-happ" @click="open(happUrl)">Happ</a-menu-item>
-                                </a-menu>
-                            </a-dropdown>
-                        </div>
-                    </section>
-
-                    <!-- ===================== CREDENTIALS ===================== -->
-                    <section class="sub-panel sub-creds">
-                        <h3 class="sub-panel-title">{{ i18n "subscription.username" }}</h3>
-                        <div class="sub-cred-row">
-                            <span class="sub-cred-key">{{ i18n "subscription.username" }}</span>
-                            <span class="sub-cred-val">{{ .Email }}</span>
-                        </div>
-                        <div class="sub-cred-row">
-                            <span class="sub-cred-key">{{ i18n "subscription.password" }}</span>
-                            <span class="sub-cred-val" v-if="showPassword">{{ .Password }}</span>
-                            <span class="sub-cred-val masked" v-else>••••••••••</span>
-                            <a-button :type="'text'" @click="showPassword = !showPassword" class="sub-cred-toggle">
-                                <a-icon :type="showPassword ? 'eye' : 'eye-off'" :style="{ verticalAlign: 'middle' }"></a-icon>
-                            </a-button>
-                        </div>
-                    </section>
-
+            <!-- TOP BAR -->
+            <header class="topbar">
+                <div class="brand">
+                    <div class="brand-logo">P</div>
+                    <div class="brand-text">
+                        <h1>Pro Subscription</h1>
+                        <span>Manage your connection</span>
+                    </div>
                 </div>
-            </a-col>
-        </a-row>
+                <div class="top-actions">
+                    <a-popover :overlay-class-name="themeSwitcher.currentTheme" title='{{ i18n "menu.settings" }}'
+                        placement="bottomRight" trigger="click">
+                        <template #content>
+                            <a-space direction="vertical" :size="10">
+                                <a-theme-switch-login></a-theme-switch-login>
+                                <span>{{ i18n "pages.settings.language"
+                                    }}</span>
+                                <a-select ref="selectLang" class="w-100" v-model="lang"
+                                    @change="LanguageManager.setLanguage(lang)"
+                                    :dropdown-class-name="themeSwitcher.currentTheme">
+                                    <a-select-option :value="l.value" label="English"
+                                        v-for="l in LanguageManager.supportedLanguages" :key="l.value">
+                                        <span role="img" :aria-label="l.name" v-text="l.icon"></span>
+                                        &nbsp;&nbsp;<span v-text="l.name"></span>
+                                    </a-select-option>
+                                </a-select>
+                            </a-space>
+                        </template>
+                        <button class="icon-btn" title="Settings">⚙</button>
+                    </a-popover>
+                </div>
+            </header>
+
+            <!-- SUBSCRIPTION -->
+            <section class="subscription-card">
+                <div class="subscription-header">
+                    <div>
+                        <div class="label">{{ i18n "subscription.subId" }}</div>
+                        <div class="subscription-id">[[ app.sId ]]</div>
+                    </div>
+                    <template v-if="isUnlimited">
+                        <div class="status status--unlimited">
+                            <span class="status-dot"></span>{{ i18n "subscription.unlimited" }}
+                        </div>
+                    </template>
+                    <template v-else>
+                        <div class="status" :class="isActive ? 'status--active' : 'status--inactive'">
+                            <span class="status-dot"></span>[[ isActive ? '{{ i18n "subscription.active" }}' : '{{ i18n "subscription.inactive" }}' ]]
+                        </div>
+                    </template>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-title">{{ i18n "subscription.downloaded" }}</div>
+                        <div class="stat-value">[[ app.download ]]</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-title">{{ i18n "subscription.uploaded" }}</div>
+                        <div class="stat-value">[[ app.upload ]]</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-title">{{ i18n "subscription.totalQuota" }}</div>
+                        <div class="stat-value" v-if="isUnlimited">{{ i18n "subscription.unlimited" }}</div>
+                        <div class="stat-value" v-else>[[ app.total ]]</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-title">{{ i18n "subscription.expiry" }}</div>
+                        <div class="stat-value" v-if="app.expireMs === 0">{{ i18n "subscription.noExpiry" }}</div>
+                        <div class="stat-value" v-else>[[ IntlUtil.formatDate(app.expireMs) ]]</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- QR + CONNECTION -->
+            <section class="connection-grid">
+
+                <div class="card qr-card">
+                    <div class="card-title" style="margin-bottom:18px;">{{ i18n "qrCode" }}</div>
+                    <div class="qr-box">
+                        <canvas id="qrcode" class="qr-cv" title='{{ i18n "copy" }}'
+                            @click="copy(app.subUrl)"></canvas>
+                    </div>
+                    <div class="qr-label">{{ i18n "subscription.subId" }}</div>
+                    <div class="qr-extra" v-if="app.subJsonUrl || app.subClashUrl">
+                        <div class="qr-extra-box" v-if="app.subJsonUrl">
+                            <div class="qr-mini"><canvas id="qrcode-subjson" class="qr-cv"></canvas></div>
+                            <span>JSON</span>
+                        </div>
+                        <div class="qr-extra-box" v-if="app.subClashUrl">
+                            <div class="qr-mini"><canvas id="qrcode-subclash" class="qr-cv"></canvas></div>
+                            <span>Clash</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">{{ i18n "subscription.status" }}</div>
+                        <template v-if="isUnlimited">
+                            <div class="status status--unlimited">
+                                <span class="status-dot"></span>{{ i18n "subscription.unlimited" }}
+                            </div>
+                        </template>
+                        <template v-else>
+                            <div class="status" :class="isActive ? 'status--active' : 'status--inactive'">
+                                <span class="status-dot"></span>[[ isActive ? '{{ i18n "subscription.active" }}' : '{{ i18n "subscription.inactive" }}' ]]
+                            </div>
+                        </template>
+                    </div>
+                    <div class="connection-content">
+                        <div class="connection-status">
+                            <div class="connection-icon">↯</div>
+                            <div>
+                                <strong>{{ i18n "subscription.active" }}</strong>
+                                <span>Your connection is ready to use</span>
+                            </div>
+                        </div>
+                        <button class="copy-main" @click="copy(app.subUrl)">
+                            {{ i18n "copy" }} {{ i18n "subscription.title" }}
+                        </button>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- LINKS -->
+            <section class="section" v-if="links.length">
+                <div class="section-head">
+                    <div>
+                        <div class="section-title">{{ i18n "subscription.individualLinks" }}</div>
+                        <div class="section-subtitle">Select any configuration to connect</div>
+                    </div>
+                </div>
+                <div class="card links-card">
+                    <div class="link-item" v-for="(link, idx) in links" :key="link">
+                        <div class="link-top">
+                            <div class="protocol">
+                                <div class="protocol-icon">[[ protocolOf(link).charAt(0) ]]</div>
+                                <span class="protocol-name">[[ linkName(link, idx) ]]</span>
+                            </div>
+                            <div class="link-actions">
+                                <button class="small-btn" @click="copy(link)">{{ i18n "copy" }}</button>
+                                <button class="small-btn" @click="showLinkQR(link)">{{ i18n "qrCode" }}</button>
+                            </div>
+                        </div>
+                        <div class="link-url">[[ link ]]</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CONFIG FILES -->
+            {{ if .configs }}
+            <section class="section">
+                <div class="section-head">
+                    <div>
+                        <div class="section-title">{{ i18n "subscription.configFiles" }}</div>
+                        <div class="section-subtitle">{{ i18n "subscription.individualLinks" }}</div>
+                    </div>
+                </div>
+                <div class="card links-card">
+                    {{ range .configs }}
+                    <div class="link-item">
+                        <div class="link-top">
+                            <div class="protocol">
+                                <div class="protocol-icon">↓</div>
+                                <span class="protocol-name">{{ .Label }}</span>
+                            </div>
+                            <div class="link-actions">
+                                <a class="small-btn" href="{{ .Url }}" download="{{ .Filename }}">{{ i18n "download" }}</a>
+                            </div>
+                        </div>
+                        <div class="link-url">{{ .Filename }}</div>
+                    </div>
+                    {{ end }}
+                </div>
+            </section>
+            {{ end }}
+
+            <!-- DOWNLOAD -->
+            <section class="section">
+                <div class="section-head">
+                    <div>
+                        <div class="section-title">{{ i18n "download" }}</div>
+                        <div class="section-subtitle">Choose your platform</div>
+                    </div>
+                </div>
+                <div class="download-grid">
+                    <a-dropdown :trigger="['click']">
+                        <div class="card download-card">
+                            <div class="download-icon">🍎</div>
+                            <div class="download-info">
+                                <strong>iOS</strong>
+                                <span>Download for iPhone &amp; iPad</span>
+                            </div>
+                            <div class="arrow">→</div>
+                        </div>
+                        <a-menu slot="overlay" :class="themeSwitcher.currentTheme">
+                            <a-menu-item key="ios-shadowrocket" @click="open(shadowrocketUrl)">Shadowrocket</a-menu-item>
+                            <a-menu-item key="ios-v2box" @click="open(v2boxUrl)">V2Box</a-menu-item>
+                            <a-menu-item key="ios-streisand" @click="open(streisandUrl)">Streisand</a-menu-item>
+                            <a-menu-item key="ios-v2raytun" @click="copy(v2raytunUrl)">V2RayTun</a-menu-item>
+                            <a-menu-item key="ios-npvtunnel" @click="copy(npvtunUrl)">NPV Tunnel</a-menu-item>
+                            <a-menu-item key="ios-happ" @click="open(happUrl)">Happ</a-menu-item>
+                        </a-menu>
+                    </a-dropdown>
+                    <a-dropdown :trigger="['click']">
+                        <div class="card download-card">
+                            <div class="download-icon">🤖</div>
+                            <div class="download-info">
+                                <strong>Android</strong>
+                                <span>Download for Android devices</span>
+                            </div>
+                            <div class="arrow">→</div>
+                        </div>
+                        <a-menu slot="overlay" :class="themeSwitcher.currentTheme">
+                            <a-menu-item key="android-v2box" @click="open(v2boxUrl)">V2Box</a-menu-item>
+                            <a-menu-item key="android-v2rayng" @click="open('v2rayng://install-config?url=' + encodeURIComponent(app.subUrl))">V2RayNG</a-menu-item>
+                            <a-menu-item key="android-singbox" @click="copy(app.subUrl)">Sing-box</a-menu-item>
+                            <a-menu-item key="android-v2raytun" @click="copy(app.subUrl)">V2RayTun</a-menu-item>
+                            <a-menu-item key="android-npvtunnel" @click="copy(app.subUrl)">NPV Tunnel</a-menu-item>
+                            <a-menu-item key="android-happ" @click="open('happ://add/' + app.subUrl)">Happ</a-menu-item>
+                        </a-menu>
+                    </a-dropdown>
+                </div>
+            </section>
+
+            <!-- ACCOUNT -->
+            <section class="section">
+                <div class="section-head">
+                    <div>
+                        <div class="section-title">{{ i18n "subscription.status" }}</div>
+                        <div class="section-subtitle">Your account information</div>
+                    </div>
+                </div>
+                <div class="card account-card">
+                    <div class="account-row">
+                        <div class="account-label">{{ i18n "username" }}</div>
+                        <div class="account-value">{{ .Email }}</div>
+                    </div>
+                    <div class="account-row">
+                        <div class="account-label">{{ i18n "password" }}</div>
+                        <div class="account-value" :class="{ masked: !showPassword }">
+                            <span v-if="showPassword">{{ .Password }}</span>
+                            <span v-else>••••••••••</span>
+                        </div>
+                        <button class="small-btn" @click="showPassword = !showPassword">
+                            <a-icon :type="showPassword ? 'eye' : 'eye-off'"></a-icon>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+        </div>
     </a-layout-content>
 </a-layout>
+
+<!-- Link QR dialog -->
+<a-modal v-model="linkQrVisible" :footer="null" :width="300" :centered="true"
+    :wrap-class-name="themeSwitcher.currentTheme" title='{{ i18n "qrCode" }}'>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:8px 0;">
+        <div class="qr-box">
+            <canvas id="qrcode-link" class="qr-cv"></canvas>
+        </div>
+    </div>
+</a-modal>
 
 <!-- Bootstrap data for external JS -->
 <template id="subscription-data" data-sid="{{ .sId }}" data-sub-url="{{ .subUrl }}" data-subjson-url="{{ .subJsonUrl }}" data-subclash-url="{{ .subClashUrl }}"

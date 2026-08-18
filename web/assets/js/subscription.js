@@ -116,6 +116,7 @@ data: {
     lang: '',
     viewportWidth: (typeof window !== 'undefined' ? window.innerWidth : 1024),
     showPassword: false,
+    linkQrVisible: false,
 },
     async mounted() {
       this.lang = LanguageManager.getLanguage();
@@ -192,6 +193,23 @@ data: {
       copy,
       open,
       linkName,
+      showLinkQR(link) {
+        this.linkQrVisible = true;
+        this.$nextTick(() => {
+          try {
+            new QRious({ element: document.getElementById('qrcode-link'), value: link, size: 200 });
+          } catch (e) {
+            console.warn(e);
+          }
+        });
+      },
+      protocolOf(link) {
+        try {
+          const m = /^([a-z0-9+.-]+):\/\//i.exec(link);
+          if (m) return m[1].toUpperCase();
+        } catch (e) { /* ignore */ }
+        return 'LINK';
+      },
       i18nLabel(key) {
         return '{{ i18n "' + key + '" }}';
       },
