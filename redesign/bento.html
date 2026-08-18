@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>pro-ui Overview: Bento</title>
+<title>PRO-UI Overview: Bento</title>
 <style>*{box-sizing:border-box}html,body{margin:0;padding:0;min-height:100vh}body{background:var(--bg)}</style>
 </head>
 <body>
@@ -132,7 +132,7 @@
 .bo-bento{
   display:grid; grid-template-columns:1fr; gap:16px;
   grid-template-areas:
-    "ident" "flow" "vit" "svc" "xray" "manage" "proui" "process" "conn" "ips";
+    "ident" "flow" "vit" "svc" "xray" "manage" "vpnui" "process" "conn" "ips";
 }
 @media (min-width:760px){
   .bo-bento{
@@ -143,7 +143,7 @@
       "vit vit vit vit"
       "svc svc svc svc"
       "xray xray manage manage"
-      "proui proui proui proui"
+      "vpnui vpnui vpnui vpnui"
       "process process conn conn"
       "ips ips ips ips";
   }
@@ -155,8 +155,8 @@
       "ident ident ident ident flow flow flow flow flow vit vit vit"
       "ident ident ident ident flow flow flow flow flow vit vit vit"
       "xray xray xray xray flow flow flow flow flow vit vit vit"
-      "xray xray xray xray proui proui proui proui proui vit vit vit"
-      "manage manage manage manage proui proui proui proui proui vit vit vit"
+      "xray xray xray xray vpnui vpnui vpnui vpnui vpnui vit vit vit"
+      "manage manage manage manage vpnui vpnui vpnui vpnui vpnui vit vit vit"
       "svc svc svc svc svc svc svc svc svc svc svc svc"
       "process process process process conn conn conn conn ips ips ips ips"
       "process process process process conn conn conn conn ips ips ips ips";
@@ -169,7 +169,7 @@
 .bo-t-svc{ grid-area:svc; }
 .bo-t-xray{ grid-area:xray; }
 .bo-t-manage{ grid-area:manage; }
-.bo-t-proui{ grid-area:proui; }
+.bo-t-vpnui{ grid-area:vpnui; }
 .bo-t-process{ grid-area:process; }
 .bo-t-conn{ grid-area:conn; }
 .bo-t-ips{ grid-area:ips; }
@@ -261,7 +261,7 @@
 .bo-svc-cell[data-state="idle"] .bo-svc-state{ color:var(--info); }
 .bo-svc-cell[data-state="stopped"] .bo-svc-state{ color:var(--warn); }
 
-/* ===== xray / manage / proui ===== */
+/* ===== xray / manage / vpnui ===== */
 .bo-status-pill{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px 4px 8px; border-radius:999px; }
 .bo-status-pill--ok{ background:var(--ok-weak); color:var(--ok); }
 .bo-kv-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; }
@@ -279,8 +279,8 @@
 .bo-icon-btn--ghost{ background:transparent; border-color:transparent; padding:5px 10px; }
 .bo-icon-btn--ghost:hover{ border-color:var(--accent); }
 
-.bo-proui-body{ display:flex; flex-direction:column; justify-content:space-between; gap:18px; flex:1; }
-.bo-proui-version{ font-size:28px; font-weight:700; color:var(--text); }
+.bo-vpnui-body{ display:flex; flex-direction:column; justify-content:space-between; gap:18px; flex:1; }
+.bo-vpnui-version{ font-size:28px; font-weight:700; color:var(--text); }
 .bo-status-line{ display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600; margin-top:8px; }
 .bo-status-line--ok{ color:var(--ok); }
 .bo-btn{ font-size:13.5px; font-weight:600; border-radius:9px; padding:10px 18px; cursor:pointer; border:1px solid transparent; transition:filter .15s ease, transform .15s ease; }
@@ -354,7 +354,7 @@
   <aside class="bo-rail">
     <div class="bo-rail-brand">
       <svg class="bo-icon" aria-hidden="true"><use href="#bo-i-shield"></use></svg>
-      <span>pro-ui</span>
+      <span>PRO-UI</span>
     </div>
     <nav class="bo-rail-nav" aria-label="Primary">
       <button type="button" class="bo-rail-item is-active" aria-current="page">
@@ -586,11 +586,11 @@
           </div>
         </article>
 
-        <article class="bo-tile bo-t-proui" aria-label="PRO-UI update status">
+        <article class="bo-tile bo-t-vpnui" aria-label="PRO-UI update status">
           <div class="bo-tile-head"><h3 class="bo-tile-title">PRO-UI</h3></div>
-          <div class="bo-proui-body">
+          <div class="bo-vpnui-body">
             <div>
-              <div class="bo-proui-version num">v1.7.6</div>
+              <div class="bo-vpnui-version num">v1.7.6</div>
               <p class="bo-status-line bo-status-line--ok">
                 <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-check-circle"></use></svg>
                 Up to date
@@ -643,7 +643,7 @@
 
       </div>
 
-      <footer class="bo-foot">Design mockup, pro-ui Overview, Bento</footer>
+      <footer class="bo-foot">Design mockup, PRO-UI Overview, Bento</footer>
     </main>
   </div>
 </div>

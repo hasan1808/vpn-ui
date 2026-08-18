@@ -816,6 +816,72 @@ func effectiveUserLimit(p *int) int {
 	return normUserLimit(*p)
 }
 
+// resolveUserLimitOverride folds an ACCOUNT's own device cap into the inbound's resolved
+// K. The override may only LOWER it, and that is a hard rule rather than a policy choice.
+//
+// An account's addresses are its block in a fixed grid: vpnAccountBlock places account i at
+// (i%per + 1) * k inside its /24, so every block on the inbound is exactly K wide and the
+// next account starts where this one ends. Widening ONE account's block therefore does not
+// give it more addresses, it gives it the NEXT account's addresses: two customers on one
+// tunnel IP, no error anywhere, and the symptom is "two customers keep knocking each other
+// off" weeks later. Re-placing that one account does not fix it either, because the grid has
+// no variable-width layout to re-place it into, and the pool RANGES themselves are sized
+// from the same K (accountsPerSubnet), which is what the auto-expand daemon restart keys on.
+//
+// Tightening is free: the account simply uses fewer of the addresses it already owns, and
+// every address it gives up stays unused rather than being handed to a neighbour.
+//
+// Enforced HERE, on read, and not only in the form. The value arrives inside a settings blob
+// that any API caller can post, so a UI-only clamp would be no clamp at all.
+//
+// nil, 0 and negatives all mean INHERIT. 0 is deliberately not given a fourth meaning: it
+// already means "no limit -> 16" in normUserLimit, "no limit -> 64" in wgcEffectiveK and
+// "truly unlimited" in effectiveSshK, and a per-account read that disagreed with the inbound
+// read sitting beside it would be indefensible. An account that wants no cap inherits the
+// inbound's, which is where "no cap" is expressible.
+//
+// k==0 (only effectiveSshK produces it, meaning unlimited) is a ceiling of infinity, so an
+// override tightens it to a real number. That is exactly minNonZero's 0-loses rule, reused
+// rather than restated so the two cannot drift.
+func resolveUserLimitOverride(k int, override *int) int {
+	if override == nil || *override < 1 {
+		return k
+	}
+	return minNonZero(k, *override)
+}
+
+// userLimitOverrideApplies reports whether a per-account device cap means anything on this
+// inbound. Where it does not, the field is not offered and nothing reads it.
+//
+// The excluded set is the GATEWAY MODEL: wg-c, awg, gre and ikev2 in psk/eap-tls mode hand
+// ONE account a whole CIDR rather than K owned addresses, precisely so a router behind that
+// single link can put an entire site on it. Counting the addresses such an account presents
+// and calling the excess a second device would refuse a network that is doing exactly what
+// it was sold. Same reasoning, and the same set, as ipLimitEnforcedInCore's own exclusion of
+// them from the in-core IP cap.
+//
+// The Xray-native wireguard inbound joins them: a peer is authorised by its allowedIPs, so
+// its accounts are blocks too.
+//
+// ikev2 is per INBOUND rather than per protocol because only two of its three auth modes are
+// gateway-shaped. eap-mschapv2 gives each account its own pooled addresses like l2tp, and
+// that is the mode nearly every ikev2 inbound runs.
+func userLimitOverrideApplies(inbound *model.Inbound) bool {
+	if inbound == nil {
+		return false
+	}
+	switch inbound.Protocol {
+	case model.WGC, model.AWG, model.GRE, model.WireGuard:
+		return false
+	case model.IKEV2:
+		switch ikev2AuthMode(inbound) {
+		case "psk", "eap-tls":
+			return false
+		}
+	}
+	return true
+}
+
 // --- Account slots -----------------------------------------------------------------
 //
 // An account's addresses come from its SLOT in the inbound's pool, which is stored on the

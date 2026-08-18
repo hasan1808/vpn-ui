@@ -156,6 +156,37 @@ func (d *ikev2OutDriver) parse(cfg VpnOutboundConfig) (*ikev2OutSettings, error)
 	return s, nil
 }
 
+// ServerHost names the IKEv2 gateway, so this tunnel can be carried inside another.
+//
+// This is the driver the destination selector was chosen for. charon's kernel ESP has
+// no mark knob in this build, so there is nothing to ask the daemon for and no way to
+// tag its packets; steering by the address the SA is negotiated with is the only thing
+// that reaches proto 50 at all.
+func (d *ikev2OutDriver) ServerHost(cfg VpnOutboundConfig) (string, error) {
+	s, err := d.parse(cfg)
+	if err != nil {
+		return "", err
+	}
+	return s.Server, nil
+}
+
+// CarriableOverProxy answers yes: this tunnel puts nothing but UDP on the wire WHEN IT IS
+// CARRIED, because writeConnConf then forces UDP encapsulation with `encap = yes`.
+//
+// Untouched, an IKEv2 tunnel is UDP 500/4500 for the IKE exchange and RAW ESP (IP protocol
+// 50) for every payload packet, and a bridged carrier dispatches TCP and UDP only, so the
+// ESP would be dropped by the carrier tun while the SA sat there ESTABLISHED. The knob
+// removes the raw half rather than the framework refusing the whole protocol, which is why
+// this returns true instead of a refusal.
+//
+// It is not taken on trust. Up reads the negotiated state back out of charon and refuses
+// to hand over an interface whose ESP is not actually inside UDP, so the one case this
+// answer could be wrong about - a gateway that declines NAT traversal - fails at bring-up
+// with a sentence rather than as a tunnel that reports up and moves nothing.
+func (d *ikev2OutDriver) CarriableOverProxy(cfg VpnOutboundConfig) (bool, string) {
+	return true, ""
+}
+
 // Validate refuses a config that cannot authenticate, before anything is brought up.
 func (d *ikev2OutDriver) Validate(cfg VpnOutboundConfig) error {
 	s, err := d.parse(cfg)
@@ -237,8 +268,18 @@ func (d *ikev2OutDriver) Up(cfg VpnOutboundConfig) (string, error) {
 	// merely being up. Up runs on save, at boot and on reconcile; returning early on a
 	// live-but-stale tunnel would report a changed password as saved while charon kept
 	// using the old one.
-	if ikev2OutStoredFingerprint(name) == ikev2OutFingerprint(s) {
-		if up, vip := ikev2OutSAState(conn); up {
+	//
+	// The fingerprint covers cfg.CarriedOverProxy as well as the settings, because that
+	// flag decides whether the connection file carries `encap = yes` and it is NOT part of
+	// Settings (it is json:"-", derived from the carrier the operator picked). Hashing the
+	// settings alone would leave a tunnel that has just been put behind an Xray outbound
+	// looking unchanged, so it would keep its raw-ESP connection and carry nothing.
+	if ikev2OutStoredFingerprint(name) == ikev2OutFingerprint(s, cfg.CarriedOverProxy) {
+		// The encapsulation is re-checked here and not only where it is negotiated: this
+		// is the branch a reconcile pass takes on a live tunnel, and a carried tunnel whose
+		// ESP is not inside UDP is dead traffic. Falling through re-dials it and lets the
+		// negotiated state below produce the real error.
+		if up, vip, encap := ikev2OutSAState(conn); up && (!cfg.CarriedOverProxy || encap) {
 			// Re-asserted, not assumed: the address is the one thing here that another
 			// process (charon, on reauthentication) moves out from under us.
 			if err := d.ensureXfrmLink(iface, ifID, s); err == nil {
@@ -267,7 +308,7 @@ func (d *ikev2OutDriver) Up(cfg VpnOutboundConfig) (string, error) {
 	if err := d.writeCreds(name, s); err != nil {
 		return "", err
 	}
-	if err := d.writeConnConf(name, iface, ifID, s); err != nil {
+	if err := d.writeConnConf(name, iface, ifID, s, cfg.CarriedOverProxy); err != nil {
 		return "", err
 	}
 	// ensureCharonRunning, never syncCharon: syncCharon decides charon's fate from the
@@ -281,10 +322,10 @@ func (d *ikev2OutDriver) Up(cfg VpnOutboundConfig) (string, error) {
 		return "", err
 	}
 
-	up, vip := false, ""
+	up, vip, encap := false, "", false
 	deadline := time.Now().Add(ikev2OutSATimeout)
 	for {
-		if up, vip = ikev2OutSAState(conn); up {
+		if up, vip, encap = ikev2OutSAState(conn); up {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -293,6 +334,19 @@ func (d *ikev2OutDriver) Up(cfg VpnOutboundConfig) (string, error) {
 				s.Server, ikev2OutSATimeout)
 		}
 		time.Sleep(time.Second)
+	}
+
+	// `encap = yes` is what we ASKED for; this is what the gateway agreed to. The two can
+	// differ, and when they do nothing says so: the IKE_SA is ESTABLISHED, the CHILD_SA is
+	// INSTALLED, Up would return an interface, and every payload packet would then be raw
+	// ESP that the carrier tun drops without a log line. Refusing here is the difference
+	// between an error an operator can act on and a tunnel that is green and dead.
+	if cfg.CarriedOverProxy && !encap {
+		d.teardown(name, iface)
+		return "", fmt.Errorf("the IKEv2 SA to %s established without UDP encapsulation, so its ESP is raw IP protocol 50: "+
+			"the gateway did not negotiate NAT traversal, and an Xray outbound carries TCP and UDP only. "+
+			"Carry this tunnel with another VPN tunnel, or with a freedom outbound pinned to an interface, "+
+			"which steer packets into a device and take ESP whole", s.Server)
 	}
 
 	if err := d.syncTunnelAddr(iface, s, vip); err != nil {
@@ -360,7 +414,11 @@ func (d *ikev2OutDriver) Status(cfg VpnOutboundConfig) (bool, string) {
 		// syncCharon, which stops the shared daemon when no INBOUND still needs it.
 		return false, "the shared IPsec daemon is not running"
 	}
-	up, vip := ikev2OutSAState(ikev2OutConnName(name))
+	// The encapsulation is deliberately NOT judged here. Status is served from the stored
+	// list, where CarriedOverProxy is always false (it is json:"-", derived per raise), so
+	// a check on it would read as a guard and do nothing. Up is where the flag is real,
+	// and it refuses rather than reports.
+	up, vip, _ := ikev2OutSAState(ikev2OutConnName(name))
 	if !up {
 		return false, "IKE SA down"
 	}
@@ -692,7 +750,19 @@ func (d *ikev2OutDriver) removeCreds(name string) {
 
 // writeConnConf writes the swanctl connection that turns the shared charon into an
 // initiator for this tunnel.
-func (d *ikev2OutDriver) writeConnConf(name, iface string, ifID uint32, s *ikev2OutSettings) error {
+func (d *ikev2OutDriver) writeConnConf(name, iface string, ifID uint32, s *ikev2OutSettings, carried bool) error {
+	// 0600: the file holds the account's password or the pre-shared key.
+	return os.WriteFile(ikev2OutConnFile(name),
+		[]byte(ikev2OutBuildConnConf(name, iface, ifID, s, carried)), 0600)
+}
+
+// ikev2OutBuildConnConf renders that connection file.
+//
+// Split from the write so the rendered text can be pinned by a test with no filesystem, no
+// charon and no kernel, which is the same split the inbound side already has in
+// buildL2tpSwanctlConn. `carried` is VpnOutboundConfig.CarriedOverProxy: it decides one
+// line, and that line is the difference between this tunnel carrying traffic and not.
+func ikev2OutBuildConnConf(name, iface string, ifID uint32, s *ikev2OutSettings, carried bool) string {
 	conn := ikev2OutConnName(name)
 	base := ikev2OutCredBase(name)
 	remoteID := s.ServerID
@@ -705,11 +775,11 @@ func (d *ikev2OutDriver) writeConnConf(name, iface string, ifID uint32, s *ikev2
 	}
 
 	var b strings.Builder
-	b.WriteString("# Auto-generated by pro-ui (IKEv2 client outbound on the shared charon) - do not edit\n")
+	b.WriteString("# Auto-generated by vpn-ui (IKEv2 client outbound on the shared charon) - do not edit\n")
 	// Named here so an operator reading conf.d can tie the connection to the netdev its
 	// traffic actually leaves through; the if_id below is the only thing that binds them.
 	b.WriteString(fmt.Sprintf("# egress interface: %s (if_id %d)\n", iface, ifID))
-	b.WriteString(ikev2OutFingerprintMark + ikev2OutFingerprint(s) + "\n")
+	b.WriteString(ikev2OutFingerprintMark + ikev2OutFingerprint(s, carried) + "\n")
 	b.WriteString("connections {\n")
 	b.WriteString(fmt.Sprintf("    %s {\n", conn))
 	b.WriteString("        version = 2\n")
@@ -719,6 +789,26 @@ func (d *ikev2OutDriver) writeConnConf(name, iface string, ifID uint32, s *ikev2
 	b.WriteString("        fragmentation = yes\n")
 	// mobike lets the SA survive our own address changing, which is what a client wants.
 	b.WriteString("        mobike = yes\n")
+	// UDP encapsulation, forced, and ONLY when an Xray outbound is carrying this tunnel.
+	//
+	// An IKEv2 tunnel is UDP 500/4500 for the exchange and RAW ESP (IP protocol 50) for
+	// every payload packet. A carrier tun dispatches TCP and UDP only (measured on the
+	// bundled core 26.4.17: raw IP protocols are not dispatched at all), so the ESP half
+	// is dropped by the device while the IKE half sails through - the SA establishes, the
+	// panel reports the tunnel up, and nothing crosses.
+	//
+	// `encap = yes` makes charon fake the NAT-D payloads so both ends float to UDP 4500
+	// and every ESP packet leaves wrapped in UDP. Supported by the bundle: the string is a
+	// connection-level parse rule in the bundled libstrongswan-vici.so, beside aggressive,
+	// mobike and fragmentation, and the bundled libcharon 5.9.14 carries the runtime path
+	// "faking NAT situation to enforce UDP encapsulation".
+	//
+	// Conditional, because it is not free: an uncarried tunnel would pay 8 bytes of UDP
+	// header on every packet and hide a genuine NAT from anyone reading the SA, for a
+	// property nothing on that path needs.
+	if carried {
+		b.WriteString("        encap = yes\n")
+	}
 	// We propose, the gateway picks. Strong suites first, `default` to cover the rest.
 	b.WriteString("        proposals = aes256-sha256-modp2048,aes256gcm16-prfsha256-ecp256,aes128-sha256-modp2048,aes256-sha1-modp1024,default\n")
 	if s.LocalAddr == "" {
@@ -815,8 +905,7 @@ func (d *ikev2OutDriver) writeConnConf(name, iface string, ifID uint32, s *ikev2
 		b.WriteString("}\n")
 	}
 
-	// 0600: the file holds the account's password or the pre-shared key.
-	return os.WriteFile(ikev2OutConnFile(name), []byte(b.String()), 0600)
+	return b.String()
 }
 
 // ikev2OutFingerprintMark introduces the settings fingerprint comment in the generated
@@ -825,12 +914,19 @@ const ikev2OutFingerprintMark = "# vpn-ui-settings = "
 
 // ikev2OutFingerprint hashes the operator's settings, so a later Up can tell "already
 // running" from "already running with what the operator just typed".
-func ikev2OutFingerprint(s *ikev2OutSettings) string {
+//
+// `carried` is mixed in BY HAND, and has to be: VpnOutboundConfig.CarriedOverProxy is
+// json:"-" and is not in Settings at all, so marshalling the settings cannot see it. It
+// nevertheless changes the generated connection (`encap = yes`), so leaving it out of the
+// hash would make "the operator just put this tunnel behind an Xray outbound" look like no
+// change: Up would return early on the live tunnel, the raw-ESP connection would stay
+// loaded, and the carrier would silently drop everything it sent.
+func ikev2OutFingerprint(s *ikev2OutSettings, carried bool) string {
 	b, err := json.Marshal(s)
 	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("%08x", ikev2OutHash(string(b)))
+	return fmt.Sprintf("%08x", ikev2OutHash(fmt.Sprintf("%s|carried=%t", b, carried)))
 }
 
 func ikev2OutStoredFingerprint(name string) string {
@@ -881,24 +977,47 @@ func ikev2OutParseVip(s string) string {
 	return ""
 }
 
+// ipsecOutEncapMark is what `swanctl --list-sas` prints on a CHILD_SA whose ESP travels
+// inside UDP. Read by both IPsec-speaking outbound drivers: the IKEv2 client here and the
+// L2TP client's IKEv1 transport leg in vpnout_l2tp.go.
+//
+// swanctl renders the flag rather than naming it. Its child line is formatted
+// "  %s: #%s, reqid %s, %s, %s%s, %s:" and the sixth field is "-in-UDP" exactly when the
+// vici attribute `encap` is yes, so a listing reads `TUNNEL-in-UDP` for an IKEv2 child and
+// `TRANSPORT-in-UDP` for the L2TP one. Both format strings are in the bundled swanctl
+// 5.9.14. Matching the suffix is matching the attribute, and it is the only spelling the
+// human listing has: `encap: yes` appears only under `--raw`, which nothing here parses.
+const ipsecOutEncapMark = "-in-UDP"
+
+// ipsecOutEncapInstalled reports whether a swanctl listing shows UDP-encapsulated ESP.
+func ipsecOutEncapInstalled(listing string) bool {
+	return strings.Contains(listing, ipsecOutEncapMark)
+}
+
 // ikev2OutSAState reports whether the connection has a live IKE_SA with an installed
-// child, plus the virtual IP the gateway assigned.
+// child, the virtual IP the gateway assigned, and whether its ESP is UDP-encapsulated.
 //
 // Both halves of the state matter: an ESTABLISHED IKE_SA whose CHILD_SA was never
 // installed carries nothing, and that is exactly what a traffic-selector the gateway
 // refuses to narrow to leaves behind.
+//
+// The encapsulation comes back from the same listing rather than from a second swanctl
+// run, because the two would be separate snapshots of a state charon changes on its own
+// (a rekey re-installs the CHILD_SA), and because this is called in a poll loop inside an
+// HTTP handler where a second process launch per iteration is pure cost.
 //
 // --noblock, always: `swanctl --list-sas` otherwise WAITS on any IKE_SA that is checked
 // out, which on this shared charon includes an inbound client sitting mid-authentication
 // against the panel's own RADIUS server (ikev2.go documents the deadlock from the other
 // side). This runs inside the panel's save handler, so a blocking listing would stall an
 // HTTP request behind an unrelated client's login.
-func ikev2OutSAState(conn string) (bool, string) {
+func ikev2OutSAState(conn string) (bool, string, bool) {
 	out, err := exec.Command(swanctlBin(), "--list-sas", "--noblock", "--ike", conn).CombinedOutput()
 	if err != nil {
-		return false, ""
+		return false, "", false
 	}
 	s := string(out)
 	return strings.Contains(s, "ESTABLISHED") && strings.Contains(s, "INSTALLED"),
-		ikev2OutParseVip(s)
+		ikev2OutParseVip(s),
+		ipsecOutEncapInstalled(s)
 }

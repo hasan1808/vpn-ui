@@ -23,7 +23,7 @@ func TestProgressReaderPublishesCounters(t *testing.T) {
 	resetUpdateStateForTest()
 
 	body := bytes.Repeat([]byte("x"), 1000)
-	pr := newProgressReader(bytes.NewReader(body), int64(len(body)), 0)
+	pr := newProgressReader(bytes.NewReader(body), int64(len(body)))
 	if _, err := io.Copy(io.Discard, pr); err != nil {
 		t.Fatalf("copy: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestProgressReaderPublishesCounters(t *testing.T) {
 
 	// Unknown length: bytes still count, total/percent stay 0.
 	resetUpdateStateForTest()
-	pr = newProgressReader(bytes.NewReader(body), -1, 0)
+	pr = newProgressReader(bytes.NewReader(body), -1)
 	if _, err := io.Copy(io.Discard, pr); err != nil {
 		t.Fatalf("copy: %v", err)
 	}

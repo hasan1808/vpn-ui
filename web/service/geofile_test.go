@@ -349,3 +349,82 @@ func TestSaveXraySettingAllowsAnEditWhenTheBrokenRefWasAlreadyStored(t *testing.
 		t.Fatalf("error should not blame the pre-existing reference, got: %v", err)
 	}
 }
+
+// TestBuiltinGeofileOrderCoversEveryFile pins the two builtin geofile collections
+// together.
+//
+// This is load-bearing, not tidiness: UpdateGeofile("") builds its download queue
+// from builtinGeofileOrder, not from the map. A name added to builtinGeofiles and
+// forgotten here would be offered in the dashboard list, downloadable one at a
+// time, and silently skipped by "Update all" - the one path most operators use.
+func TestBuiltinGeofileOrderCoversEveryFile(t *testing.T) {
+	if len(builtinGeofileOrder) != len(builtinGeofiles) {
+		t.Fatalf("order lists %d files, the map holds %d", len(builtinGeofileOrder), len(builtinGeofiles))
+	}
+	seen := map[string]bool{}
+	for _, name := range builtinGeofileOrder {
+		if _, ok := builtinGeofiles[name]; !ok {
+			t.Errorf("builtinGeofileOrder names %q, which is not in builtinGeofiles", name)
+		}
+		if seen[name] {
+			t.Errorf("builtinGeofileOrder repeats %q, so it would be downloaded twice", name)
+		}
+		seen[name] = true
+	}
+	for name := range builtinGeofiles {
+		if !seen[name] {
+			t.Errorf("builtinGeofiles holds %q but builtinGeofileOrder does not, so "+
+				`UpdateGeofile("") would skip it`, name)
+		}
+	}
+}
+
+// TestGeofileRunStateLifecycle covers the progress record the overview re-attaches
+// to after the operator navigated away mid-download.
+func TestGeofileRunStateLifecycle(t *testing.T) {
+	t.Cleanup(func() { geofileRunEnd(false, ""); geofileRun.done = false })
+
+	var s ServerService
+	if st := s.GeofileRunState(); st.Running {
+		t.Fatalf("a fresh process reports a run in flight: %+v", st)
+	}
+
+	if !geofileRunBegin([]string{"geoip.dat", "geosite.dat"}) {
+		t.Fatal("the first claim was refused")
+	}
+	// A second click must join the first rather than starting a duplicate transfer.
+	if geofileRunBegin([]string{"geoip.dat"}) {
+		t.Fatal("a second run was allowed to start on top of the first")
+	}
+
+	geofileRunCurrent("geoip.dat")
+	st := s.GeofileRunState()
+	if !st.Running || st.Current != "geoip.dat" || len(st.Files) != 2 {
+		t.Fatalf("mid-run state is wrong: %+v", st)
+	}
+
+	geofileRunFetched("geoip.dat")
+	geofileRunCurrent("")
+	geofileRunEnd(false, "")
+	st = s.GeofileRunState()
+	if st.Running {
+		t.Errorf("still running after the end: %+v", st)
+	}
+	// done survives so a page that arrives after the fact can report the outcome it
+	// missed, rather than showing an idle panel.
+	if !st.Done || st.Failed || len(st.Fetched) != 1 {
+		t.Errorf("finished state is wrong: %+v", st)
+	}
+
+	// A new run must clear the previous outcome, not inherit it.
+	if !geofileRunBegin([]string{"geoip.dat"}) {
+		t.Fatal("a new run was refused after the previous one finished")
+	}
+	if st := s.GeofileRunState(); st.Done || len(st.Fetched) != 0 {
+		t.Errorf("a new run inherited the previous outcome: %+v", st)
+	}
+	geofileRunEnd(true, "boom")
+	if st := s.GeofileRunState(); !st.Failed || st.Summary != "boom" {
+		t.Errorf("failure was not recorded: %+v", st)
+	}
+}

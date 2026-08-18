@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/hasan1808/pro-ui/database"
 	"github.com/hasan1808/pro-ui/database/model"
@@ -50,6 +49,32 @@ type AccountMembershipView struct {
 	ClientId string `json:"clientId"`
 }
 
+// AccountCredentials is the account's own credential columns, reported ONLY for an
+// account no inbound serves.
+//
+// Every other row leaves them out and the page reads them off the stored client
+// entries instead (see loadCredentialsFrom in modals/client_membership_modal.html),
+// because those entries are what the daemon actually authenticates and the two can
+// legitimately differ - a 2022-blake3 membership holds a PSK minted for itself
+// alone. An account on no inbound has no stored entry anywhere, so the columns are
+// the only copy there is, and without them the edit form opens with every credential
+// box blank. That is not cosmetic: ticking an inbound then mints a fresh credential
+// for a field that only LOOKED empty, and every config the customer already
+// installed stops authenticating.
+//
+// No new exposure. The same page already loads every inbound's settings blob to
+// render the credentials in its expander, so this is the same data for the one kind
+// of account that is in no blob.
+type AccountCredentials struct {
+	UUID        string `json:"uuid,omitempty"`
+	Password    string `json:"password,omitempty"`
+	VpnUsername string `json:"vpnUsername,omitempty"`
+	Auth        string `json:"auth,omitempty"`
+	Secret      string `json:"secret,omitempty"`
+	NaiveUser   string `json:"naiveUsername,omitempty"`
+	Security    string `json:"security,omitempty"`
+}
+
 // AccountRow is one line of the Clients table.
 type AccountRow struct {
 	Id         int    `json:"id"`
@@ -63,16 +88,31 @@ type AccountRow struct {
 	LimitIP    int    `json:"limitIp"`
 	// TgID is the Telegram chat the bot notifies. Reported so the Clients form can
 	// edit it without a second read; 0 means the account is not linked.
-	TgID        int64                   `json:"tgId"`
-	Up          int64                   `json:"up"`
-	Down        int64                   `json:"down"`
-	Memberships []AccountMembershipView `json:"memberships"`
+	TgID int64 `json:"tgId"`
+	// The three per-account limit OVERRIDES, reported so the client form can show
+	// what is actually set without a second read.
+	//
+	// Pointers all the way out to the browser, and NOT omitempty. The form has to
+	// tell "this account overrides the inbound with 0, meaning unlimited" from "this
+	// account inherits whatever the inbound says", and those are the same value once
+	// a nil becomes a 0. omitempty would collapse an explicit 0 into an absent key
+	// and lose exactly that distinction; null on the wire is what the empty box in
+	// the Limits tab reads back as.
+	//
+	// LimitIP above is the IP-limit override and is deliberately NOT one of these: it
+	// is a plain int that predates the feature, where 0 already means "inherit" (see
+	// resolveIPLimit).
+	SpeedLimitDown    *int                    `json:"speedLimitDown"`
+	SpeedLimitUp      *int                    `json:"speedLimitUp"`
+	UserLimitOverride *int                    `json:"userLimitOverride"`
+	Up                int64                   `json:"up"`
+	Down              int64                   `json:"down"`
+	Memberships       []AccountMembershipView `json:"memberships"`
+	// Credentials is set only when Memberships is empty. See AccountCredentials.
+	Credentials *AccountCredentials `json:"credentials,omitempty"`
 	// OwnedByReseller is the reseller's user id, or 0 for a house account. Shown
 	// only to whoever may already see resellers.
 	OwnedByReseller int `json:"ownedByReseller"`
-	AdminId         int    `json:"adminId"`
-	AdminRemark     string `json:"adminRemark"`
-	CreatedAt       int64  `json:"createdAt"`
 }
 
 // AccountListResult is one page of the Clients table.
@@ -81,7 +121,27 @@ type AccountListResult struct {
 	Total int          `json:"total"` // rows matching the search, before paging
 	Page  int          `json:"page"`
 	Size  int          `json:"size"`
+	// Sort echoes back the ordering that was actually applied, normalised. The menu
+	// ticks its selected item from THIS rather than from what it asked for, so a key
+	// the server does not know falls back visibly instead of leaving the menu
+	// pointing at an ordering the list is not in.
+	Sort string `json:"sort"`
 }
+
+// The orderings the Clients table offers. Each one is a COMPLETE ordering, not a
+// field to be combined with a direction: "newest" already says which way it runs.
+// That is why there is no dir parameter and no ascending/descending toggle - an
+// operator picks an answer, not a column plus an arrow.
+//
+// Named constants because they cross the wire; clients.html uses these exact
+// strings as its menu keys.
+const (
+	AccountSortNewest   = "newest"
+	AccountSortOldest   = "oldest"
+	AccountSortOnline   = "online"
+	AccountSortEnabled  = "enable"
+	AccountSortDisabled = "disable"
+)
 
 // ListAccounts returns the accounts the caller may see, filtered and paged.
 //
@@ -95,10 +155,10 @@ type AccountListResult struct {
 //     other sellers' customers too;
 //   - an ordinary admin sees accounts with at least one membership on an inbound
 //     they hold, which is exactly what the Inbounds page already shows them.
-func (s *AccountService) ListAccounts(user *model.User, page, size int, search string, status string, sortBy string, protocol string) (*AccountListResult, error) {
+func (s *AccountService) ListAccounts(user *model.User, page, size int, search, sortKey string) (*AccountListResult, error) {
 	if user == nil {
 		// No identity, no rows. Never an unscoped list.
-		return &AccountListResult{Rows: []AccountRow{}}, nil
+		return &AccountListResult{Rows: []AccountRow{}, Sort: AccountSortNewest}, nil
 	}
 	if page < 1 {
 		page = 1
@@ -138,31 +198,18 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 		owner[accountKey(rc.Email)] = rc.UserId
 	}
 
-	creatorName := map[int]string{}
-	var users []model.User
-	if err := db.Select("id", "username", "nickname").Find(&users).Error; err != nil {
-		return nil, err
-	}
-	for _, u := range users {
-		if u.Nickname != "" {
-			creatorName[u.Id] = u.Nickname
-		} else {
-			creatorName[u.Id] = u.Username
-		}
-	}
-
 	visible, err := s.visibilityFilter(user)
 	if err != nil {
 		return nil, err
 	}
 
 	needle := strings.ToLower(strings.TrimSpace(search))
-	statusFilter := strings.ToLower(strings.TrimSpace(status))
-	protocolFilter := strings.ToLower(strings.TrimSpace(protocol))
-	now := time.Now().UnixMilli()
-	expireDiffMs := int64(7) * 86400000 // 7 day warning threshold
-
 	rows := make([]AccountRow, 0, len(accounts))
+	// When each account was created, for the newest/oldest orderings. Kept beside
+	// the rows rather than added to AccountRow because nothing on the page renders
+	// it: the table has no created column, and a field the browser never reads is a
+	// field that goes stale without anyone noticing.
+	createdAt := make(map[int]int64, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
 		key := accountKey(account.Email)
@@ -173,99 +220,59 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 		if needle != "" && !accountMatches(account, mine, needle) {
 			continue
 		}
-
-		// Build row first so we have traffic-overlaid data for status checks
 		row := AccountRow{
 			Id: account.Id, Email: account.Email, Enable: account.Enable,
 			SubID: account.SubID, Comment: account.Comment,
 			TotalGB: account.TotalGB, ExpiryTime: account.ExpiryTime,
 			Reset: account.Reset, LimitIP: account.LimitIP, TgID: account.TgID,
-			Memberships: mine, OwnedByReseller: owner[key],
-			AdminId: account.CreatedBy, CreatedAt: account.CreatedAt,
+			SpeedLimitDown: account.SpeedLimitDown, SpeedLimitUp: account.SpeedLimitUp,
+			UserLimitOverride: account.UserLimitOverride,
+			Memberships:       mine, OwnedByReseller: owner[key],
 		}
-		if account.CreatedBy > 0 {
-			row.AdminRemark = creatorName[account.CreatedBy]
+		if len(mine) == 0 {
+			// Nothing serves it, so no settings blob carries its credentials and this
+			// row is the only place the edit form can read them from.
+			row.Credentials = &AccountCredentials{
+				UUID: account.UUID, Password: account.Password,
+				VpnUsername: account.VpnUsername, Auth: account.Auth,
+				Secret: account.Secret, NaiveUser: account.NaiveUser,
+				Security: account.Security,
+			}
 		}
+		// client_traffics is one row per account panel-wide, and it is what the
+		// enforcement paths actually read, so it wins over the account row for the
+		// three fields both carry.
+		//
+		// Not belt-and-braces: several paths write settings.clients and
+		// client_traffics without going through the accounts layer at all, the
+		// depletion sweep in disableInvalidClients most of all. Reading enable off
+		// the account row showed a depleted account as still on, days after the
+		// data plane had cut it off.
 		if t := usage[key]; t != nil {
 			row.Up, row.Down = t.Up, t.Down
 			row.Enable = t.Enable
 			row.TotalGB = t.Total
 			row.ExpiryTime = t.ExpiryTime
 		}
-
-		// Status filter
-		if statusFilter != "" {
-			isExpired := row.ExpiryTime > 0 && row.ExpiryTime <= now
-			isExpiring := row.ExpiryTime > 0 && row.ExpiryTime <= now+expireDiffMs && !isExpired
-			isDisabled := !row.Enable
-			hasTraffic := row.TotalGB <= 0 || (row.Up+row.Down) < row.TotalGB
-			isOnline := false
-			if t := usage[key]; t != nil && t.LastOnline > 0 {
-				isOnline = (now - t.LastOnline) < 5*60*1000
-			}
-
-			switch statusFilter {
-			case "active":
-				if isDisabled || isExpired || !hasTraffic {
-					continue
-				}
-			case "expired":
-				if !isExpired {
-					continue
-				}
-			case "expiring":
-				if !isExpiring {
-					continue
-				}
-			case "disabled":
-				if !isDisabled {
-					continue
-				}
-			case "online":
-				if !isOnline {
-					continue
-				}
-			}
-		}
-
-		// Protocol filter: an account matches when ANY inbound serving it speaks
-		// the requested protocol, so a mixed-protocol account still shows up.
-		if protocolFilter != "" {
-			matches := false
-			for i := range mine {
-				if strings.ToLower(mine[i].Protocol) == protocolFilter {
-					matches = true
-					break
-				}
-			}
-			if !matches {
-				continue
-			}
-		}
-
+		createdAt[account.Id] = account.CreatedAt
 		rows = append(rows, row)
 	}
 
-	sort.SliceStable(rows, func(i, j int) bool {
-		switch sortBy {
-		case "newest":
-			return rows[i].CreatedAt > rows[j].CreatedAt
-		case "oldest":
-			return rows[i].CreatedAt < rows[j].CreatedAt
-		case "expiring":
-			// Active accounts with soonest expiry first; zero (never) and negative (frozen/delayed) last.
-			if rows[i].ExpiryTime > 0 && rows[j].ExpiryTime > 0 {
-				return rows[i].ExpiryTime < rows[j].ExpiryTime
-			}
-			return rows[i].ExpiryTime > rows[j].ExpiryTime
-		case "traffic":
-			usedI := rows[i].Up + rows[i].Down
-			usedJ := rows[j].Up + rows[j].Down
-			return usedI > usedJ
-		default:
-			return strings.ToLower(rows[i].Email) < strings.ToLower(rows[j].Email)
+	// Ordered BEFORE paging, which is the whole reason this is server-side. The
+	// page only ever holds one slice of the list, so sorting in the browser would
+	// order fifty rows out of two hundred and call it a sort.
+	// The online set is fetched only when it is the ordering being asked for. It
+	// reads the running core's in-memory session list, which is cheap but not free
+	// of meaning: on a box where Xray never started it is empty, and every account
+	// then sorts as offline rather than the call failing.
+	online := map[string]bool{}
+	if sortKey == AccountSortOnline {
+		var inboundService InboundService
+		for _, email := range inboundService.GetOnlineClients() {
+			online[accountKey(email)] = true
 		}
-	})
+	}
+	sortKey = sortAccountRows(rows, createdAt, online, sortKey)
 
 	total := len(rows)
 	start := (page - 1) * size
@@ -276,7 +283,77 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search s
 	if end > total {
 		end = total
 	}
-	return &AccountListResult{Rows: rows[start:end], Total: total, Page: page, Size: size}, nil
+	return &AccountListResult{
+		Rows: rows[start:end], Total: total, Page: page, Size: size,
+		Sort: sortKey,
+	}, nil
+}
+
+// sortAccountRows orders the whole filtered list in place and returns the ordering
+// it actually applied, which is what the caller echoes back.
+//
+// An unknown or empty key falls back to "newest" rather than erroring. A sort is a
+// view preference, and refusing the request would leave an operator with an error
+// toast instead of a list; the echoed key is how the menu learns which item to tick.
+//
+// EVERY comparison falls through to a unique tie-break, and that is load-bearing
+// rather than tidy. Paging is applied to this slice immediately afterwards, so with
+// an unstable order two accounts comparing equal could swap between the request for
+// page 1 and the request for page 2, and the operator would see one of them twice
+// and the other not at all. The three status orderings tie-break on email because
+// that is the useful reading inside a group; the two age orderings tie-break on id,
+// which is monotonic, so accounts created in the same millisecond still come back in
+// the order they were made.
+func sortAccountRows(rows []AccountRow, createdAt map[int]int64, online map[string]bool, sortKey string) string {
+	switch sortKey {
+	case AccountSortNewest, AccountSortOldest, AccountSortOnline,
+		AccountSortEnabled, AccountSortDisabled:
+	default:
+		sortKey = AccountSortNewest
+	}
+
+	// Each case returns "is a before b" outright. Written as a full comparison per
+	// ordering rather than a shared key function plus a direction flag, because these
+	// are five different questions and only two of them are about the same value.
+	less := func(a, b *AccountRow) bool {
+		switch sortKey {
+		case AccountSortOldest:
+			if createdAt[a.Id] != createdAt[b.Id] {
+				return createdAt[a.Id] < createdAt[b.Id]
+			}
+			return a.Id < b.Id
+		case AccountSortOnline:
+			// Connected right now first. Not a health question: an account can be
+			// online AND nearly out of data, and this ordering answers only the
+			// first half.
+			ao, bo := online[accountKey(a.Email)], online[accountKey(b.Email)]
+			if ao != bo {
+				return ao
+			}
+			return accountKey(a.Email) < accountKey(b.Email)
+		case AccountSortEnabled:
+			if a.Enable != b.Enable {
+				return a.Enable
+			}
+			return accountKey(a.Email) < accountKey(b.Email)
+		case AccountSortDisabled:
+			// The mirror of the one above, and the more useful of the pair: a
+			// disabled account is the one an operator is looking for, because the
+			// panel switches accounts off by itself when they expire or run out.
+			if a.Enable != b.Enable {
+				return b.Enable
+			}
+			return accountKey(a.Email) < accountKey(b.Email)
+		default: // AccountSortNewest
+			if createdAt[a.Id] != createdAt[b.Id] {
+				return createdAt[a.Id] > createdAt[b.Id]
+			}
+			return a.Id > b.Id
+		}
+	}
+
+	sort.SliceStable(rows, func(i, j int) bool { return less(&rows[i], &rows[j]) })
+	return sortKey
 }
 
 // membershipViews maps every account id to the inbounds serving it, named.
@@ -428,7 +505,16 @@ func inboundMethod(settings string) string {
 	return m
 }
 
-func settingsHoldClients(settings string) bool {
+func settingsHoldClients(protocol model.Protocol, settings string) bool {
+	// The Xray-native wireguard inbound stores `peers`, not `clients`, so on this
+	// test alone it looked like an inbound nothing could be a member of: the picker
+	// never offered it, and an operator could create one and then had no way at all
+	// to put an account on it. It holds clients now (see web/service/wgxray.go); the
+	// array is created by the reconcile, so answer for the protocol rather than
+	// waiting for the first reconcile to make the inbound assignable.
+	if protocol == model.WireGuard {
+		return true
+	}
 	var root map[string]any
 	if err := json.Unmarshal([]byte(settings), &root); err != nil || root == nil {
 		return false
@@ -472,7 +558,7 @@ func (s *AccountService) AssignableInboundsFor(user *model.User) ([]AccountMembe
 		// An inbound with no client list has nothing to be a member OF, and
 		// offering it only produces a save the server refuses. Same rule the
 		// client form's own checklist applies (modals/client_modal.html).
-		if !settingsHoldClients(in.Settings) {
+		if !settingsHoldClients(in.Protocol, in.Settings) {
 			continue
 		}
 		out = append(out, AccountMembershipView{

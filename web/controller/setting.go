@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/hasan1808/pro-ui/database/model"
-	"github.com/hasan1808/pro-ui/sub"
 	"github.com/hasan1808/pro-ui/util/crypto"
 	"github.com/hasan1808/pro-ui/web/entity"
 	"github.com/hasan1808/pro-ui/web/service"
@@ -28,6 +27,7 @@ type SettingController struct {
 	userService    service.UserService
 	panelService   service.PanelService
 	systemdService service.SystemdService
+	sslService     service.SSLService
 }
 
 // NewSettingController creates a new SettingController and initializes its routes.
@@ -63,17 +63,48 @@ func (a *SettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/updateUser", a.updateUser)
 	g.POST("/twoFactor", a.updateTwoFactor)
 	g.POST("/restartPanel", a.restartPanel)
+	// Its own route rather than a field in AllSetting: the switch is on the
+	// inbounds page, which never loads the settings blob, so posting through
+	// /update would mean fetching every setting just to send them all back -
+	// and any field that round trip got wrong would be saved along with it.
+	g.POST("/inboundForm", a.setLegacyInboundForm)
 	g.GET("/getDefaultJsonConfig", a.getDefaultXrayConfig)
 	g.GET("/service", a.serviceStatus)
 	g.GET("/service/log", a.serviceLog)
 	// Writes a systemd unit as root: escalation-class, so no permission bit stands
 	// in for it.
 	g.POST("/service", requireSuperAdmin(), a.saveService)
-	// Auto SSL / Let's Encrypt
-	g.POST("/acme/issue", a.acmeIssue)
-	g.GET("/acme/status", a.acmeStatus)
-	g.POST("/acme/renew", a.acmeRenew)
-	g.POST("/subPreview", a.subPreview)
+
+	// The SSL certificate manager. Reading rides the PermPanelSettings gate above;
+	// every route that ACTS carries requireSuperAdmin() inline, for the same reason
+	// saveService does and the reason spelled out at core.go:44-49. Driving acme.sh
+	// as a subprocess and then writing the files this webserver loads as its own TLS
+	// identity is running code as root on the host, and no permission bit stands in
+	// for that. Handlers are in ssl.go; the gating stays here, where the group is.
+	g.GET("/ssl/status", a.sslStatus)
+	g.GET("/ssl/run-status", a.sslRunStatus)
+	// A POST only because it carries the identifier list. It contacts no CA and
+	// changes nothing, so it is a read.
+	g.POST("/ssl/preflight", a.sslPreflight)
+	// Also a read: it probes this host and reports which validation method it
+	// would use for a set of names, without contacting anything.
+	g.POST("/ssl/suggest", a.sslSuggest)
+	g.GET("/ssl/consumers", a.sslConsumers)
+	g.POST("/ssl/start", requireSuperAdmin(), a.sslStart)
+	g.POST("/ssl/use-managed", requireSuperAdmin(), a.sslUseManaged)
+	// The other half of the switch: clearing a listener's setting so it stops
+	// serving TLS at all. Same gate, because it decides the panel's own identity.
+	g.POST("/ssl/unassign", requireSuperAdmin(), a.sslUnassign)
+	g.POST("/ssl/rollback", requireSuperAdmin(), a.sslRollback)
+	// Deleting a certificate takes private keys off disk and can strand a listener,
+	// so it sits on the same super-admin gate as everything else that mutates here.
+	g.POST("/ssl/delete-profile", requireSuperAdmin(), a.sslDeleteProfile)
+	g.POST("/ssl/adopt", requireSuperAdmin(), a.sslAdopt)
+	// Taking over what deploy.sh and vpn-ui.sh installed. Writes certificate
+	// material and can re-point a listener, so it takes the same gate as issuing.
+	g.POST("/ssl/sync", requireSuperAdmin(), a.sslSync)
+	g.POST("/ssl/auto-renew", requireSuperAdmin(), a.sslAutoRenew)
+	g.POST("/ssl/nickname", requireSuperAdmin(), a.sslNickname)
 }
 
 // serviceStatus returns the current systemd unit state for the panel.
@@ -133,6 +164,16 @@ func (a *SettingController) updateSetting(c *gin.Context) {
 	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 }
 
+// setLegacyInboundForm switches the panel between the old inbound dialog and the
+// current one, for everyone. Form-encoded like every other POST the panel makes
+// (assets/js/util/index.js stringifies each body), so the flag arrives as a
+// string and "true" is the only value that turns it on.
+func (a *SettingController) setLegacyInboundForm(c *gin.Context) {
+	enabled := c.PostForm("enabled") == "true"
+	err := a.settingService.SetLegacyInboundForm(enabled)
+	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
+}
+
 // updateUser updates the current user's username and password.
 func (a *SettingController) updateUser(c *gin.Context) {
 	form := &updateUserForm{}
@@ -163,44 +204,6 @@ func (a *SettingController) updateUser(c *gin.Context) {
 func (a *SettingController) restartPanel(c *gin.Context) {
 	err := a.panelService.RestartPanel(time.Second * 3)
 	jsonMsg(c, I18nWeb(c, "pages.settings.restartPanelSuccess"), err)
-}
-
-// subPreviewRequest carries the CURRENT (possibly unsaved) template choice, so the
-// operator can preview a format before saving it.
-type subPreviewRequest struct {
-	Template string `json:"template"`
-	Custom   string `json:"custom"`
-}
-
-// subPreview renders the subscription payload for the selected template against a
-// real account, so the operator sees exactly what a subscriber gets before saving.
-// The template/custom fields come from the form (they may be unsaved); everything
-// else is drawn from the currently saved settings.
-func (a *SettingController) subPreview(c *gin.Context) {
-	req := &subPreviewRequest{}
-	if err := c.ShouldBind(req); err != nil {
-		jsonMsg(c, I18nWeb(c, "pages.settings.subTemplate"), err)
-		return
-	}
-	template := req.Template
-	if template == "" {
-		template = "base64"
-	}
-	subId, found := sub.FirstSubId()
-	if !found {
-		jsonMsg(c, I18nWeb(c, "pages.settings.subTemplateNoAccounts"), errors.New(""))
-		return
-	}
-	content, err := sub.RenderTemplate(subId, c.Request.Host, template, req.Custom)
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "pages.settings.subTemplate"), err)
-		return
-	}
-	jsonObj(c, map[string]any{
-		"content":  content,
-		"subId":    subId,
-		"template": template,
-	}, nil)
 }
 
 // getDefaultXrayConfig retrieves the default Xray configuration.
@@ -258,34 +261,4 @@ func (a *SettingController) updateTwoFactor(c *gin.Context) {
 		return
 	}
 	jsonMsg(c, I18nWeb(c, "pages.settings.security.twoFactor"), nil)
-}
-
-// acmeIssue requests a Let's Encrypt certificate via ACME
-func (a *SettingController) acmeIssue(c *gin.Context) {
-	var req service.AcmeIssueRequest
-	if err := c.ShouldBind(&req); err != nil {
-		jsonMsg(c, "ACME", err)
-		return
-	}
-	result := service.GetAcmeService().IssueCert(req)
-	jsonObj(c, result, nil)
-}
-
-// acmeStatus returns the current certificate status
-func (a *SettingController) acmeStatus(c *gin.Context) {
-	result := service.GetAcmeService().GetCertStatus()
-	jsonObj(c, result, nil)
-}
-
-// acmeRenew renews the certificate for a given domain
-func (a *SettingController) acmeRenew(c *gin.Context) {
-	var req struct {
-		Domain string `json:"domain"`
-	}
-	if err := c.ShouldBind(&req); err != nil {
-		jsonMsg(c, "ACME", err)
-		return
-	}
-	result := service.GetAcmeService().RenewCert(req.Domain)
-	jsonObj(c, result, nil)
 }

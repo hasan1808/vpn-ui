@@ -4,21 +4,187 @@
     :label-col="{ md: {span:8} }"
     :wrapper-col="{ md: {span:14} }"
 >
+    <!-- Drawn when ANY account on this inbound carries a tag, because that is what
+         the backend's use_middle_proxy switch keys on (MtprotoService.anyAdtag). The
+         tag itself is set per account in the client form; the consequence it
+         announces is not per account, which is exactly why it is shown here. -->
     <a-alert
-        type="info"
-        show-icon
-        :style="{ marginBottom: '16px' }"
-        message="Settings live on each account"
-        description="Connection modes, FakeTLS domain, IP Limit, Ad Tag and External Proxy are set per client, so one inbound can serve accounts with different modes and links. Add or edit a client to configure them."
-    ></a-alert>
-
-    <a-alert
-        v-if="inbound.settings.clients && inbound.settings.clients.some(c => c.adtagEnable && c.adtag)"
+        v-if="inbound.settings.anyAdtag()"
         type="warning"
         show-icon
         :style="{ marginBottom: '16px' }"
-        message="An account on this inbound has an Ad Tag, so Xray routing is off for the whole inbound"
-        description="Ad tags are per account, but the middle-proxy path they require is a property of the proxy process, not of one account. While any account here carries a tag, every account on this inbound egresses directly from this server and your outbound routing rules do not apply to any of them. Telegram derives the middle-proxy session key from this server's own outgoing IP and port, so sending that traffic through Xray would change the port and break the handshake. Clear the Ad Tag on every account to route this inbound through Xray."
+        message='{{ i18n "pages.xray.mtproto.adtagRoutingOffTitle" }}'
+        description='{{ i18n "pages.xray.mtproto.adtagRoutingOffDesc" }}'
     ></a-alert>
+
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    {{ i18n "pages.xray.mtproto.modeClassicDesc" }}
+                </template>
+                {{ i18n "pages.xray.mtproto.modeClassic" }}
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <!--
+            Guarded rather than v-model: with every mode off, nothing can dial this
+            inbound, and the backend refuses to start the proxy on it rather than write
+            per-account mode entries that are empty (which its reader takes for
+            "unrestricted"). Refusing the last one here keeps that state unreachable.
+            See the sibling switches.
+        -->
+        <a-switch
+            :checked="inbound.settings.modeClassic"
+            @change="v => v || inbound.settings.modeSecure || inbound.settings.modeTls
+                ? inbound.settings.modeClassic = v
+                : $message.warning(MTPROTO_LAST_MODE_WARNING)"
+        ></a-switch>
+    </a-form-item>
+
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    {{ i18n "pages.xray.mtproto.modeSecureDesc" }}
+                </template>
+                {{ i18n "pages.xray.mtproto.modeSecure" }}
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            :checked="inbound.settings.modeSecure"
+            @change="v => v || inbound.settings.modeClassic || inbound.settings.modeTls
+                ? inbound.settings.modeSecure = v
+                : $message.warning(MTPROTO_LAST_MODE_WARNING)"
+        ></a-switch>
+    </a-form-item>
+
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    {{ i18n "pages.xray.mtproto.modeTlsDesc" }}
+                </template>
+                {{ i18n "pages.xray.mtproto.modeTls" }}
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            :checked="inbound.settings.modeTls"
+            @change="v => v || inbound.settings.modeClassic || inbound.settings.modeSecure
+                ? inbound.settings.modeTls = v
+                : $message.warning(MTPROTO_LAST_MODE_WARNING)"
+        ></a-switch>
+    </a-form-item>
+
+    <a-form-item v-if="inbound.settings.modeTls">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    {{ i18n "pages.xray.mtproto.tlsDomainDesc" }}
+                </template>
+                {{ i18n "pages.xray.mtproto.tlsDomain" }}
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input
+            v-model.trim="inbound.settings.tlsDomain"
+            placeholder="www.google.com"
+        ></a-input>
+    </a-form-item>
+
+</a-form>
+{{end}}
+{{define "form/mtproto/access"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    {{ i18n "pages.xray.mtproto.userLimitDesc" }}
+                </template>
+                {{ i18n "pages.xray.mtproto.userLimit" }}
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            :value="inbound.settings.userLimit"
+            @change="inbound.settings.userLimit = Math.max(0, Math.min(64, Math.floor($event || 0)))"
+            :min="0" :max="64" :step="1" :precision="0" style="width: 90px"
+        ></a-input-number>
+    </a-form-item>
+
+</a-form>
+{{end}}
+{{define "form/mtproto/reach"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
+    <!-- The inbound-wide default endpoint set. An account that names its own External
+         Proxy in the client form replaces this list for that account; everyone else's
+         links are built from it. Link generation only: telemt never sees any of it. -->
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Alternate Endpoint(s) (a relay/CDN host:port) written into every
+                    account's tg:// links instead of this server's address. An account
+                    with its own External Proxy set uses that instead of this. Leave off
+                    to use the panel host.
+                </template>
+                External Proxy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="mtprotoExternalProxy"></a-switch>
+        <a-button
+            icon="plus"
+            v-if="mtprotoExternalProxy"
+            type="primary"
+            :style="{ marginLeft: '10px' }"
+            size="small"
+            @click="inbound.settings.externalProxy.push({dest: '', port: inbound.port, remark: ''})"
+        ></a-button>
+    </a-form-item>
+    <a-input-group
+        :style="{ margin: '8px 0' }"
+        compact
+        v-for="(row, index) in inbound.settings.externalProxy"
+    >
+        <a-input
+            :style="{ width: '45%' }"
+            v-model.trim="row.dest"
+            placeholder='{{ i18n "host" }}'
+        ></a-input>
+        <a-tooltip title='{{ i18n "pages.inbounds.port" }}'>
+            <a-input-number
+                :style="{ width: '20%' }"
+                v-model.number="row.port"
+                min="1"
+                max="65535"
+            ></a-input-number>
+        </a-tooltip>
+        <a-input
+            :style="{ width: '30%', top: '0' }"
+            v-model.trim="row.remark"
+            placeholder='{{ i18n "remark" }}'
+        >
+            <template slot="addonAfter">
+                <a-button
+                    icon="minus"
+                    size="small"
+                    @click="inbound.settings.externalProxy.splice(index, 1)"
+                ></a-button>
+            </template>
+        </a-input>
+    </a-input-group>
+
 </a-form>
 {{end}}

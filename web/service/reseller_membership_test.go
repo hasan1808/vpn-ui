@@ -284,12 +284,17 @@ func TestCascadeRemovesTheAccountFromEveryInbound(t *testing.T) {
 	}
 }
 
-// The one membership a cascade may not remove is the last client on an admin's
-// inbound. The account survives there, so it is handed to the house rather than
-// counted as deleted, and the rest of its memberships still go.
-func TestCascadeKeepsAnAccountItCannotFullyRemove(t *testing.T) {
+// A membership the account holds ALONE on an admin's inbound goes like any other.
+//
+// This used to be the one exception: the panel refused to remove the last client of
+// an inbound, so the account was handed to the house and stayed live there, billed
+// to nobody, while the ledger row that priced it was deleted with the reseller. The
+// refusal was inherited behaviour with no invariant behind it (an inbound with no
+// clients is a legal state), and it left the cascade unable to finish its own job.
+// The inbound itself is untouched, which was the only thing that guard protected.
+func TestCascadeRemovesAnAccountFromTheInboundItHoldsAlone(t *testing.T) {
 	f := newMembershipFixture(t, model.ResellerProfile{AllowanceBytes: 100 * gb, SpentBytes: 10 * gb}, 10*gb)
-	// Make the away inbound hold the sold account alone, which may not be emptied.
+	// The away inbound holds the sold account alone.
 	solo := seedMembershipInbound(t, 43003, model.VMESS, []map[string]any{
 		{"id": "uuid-sold-one", "email": "sold-one", "enable": false, "totalGB": 10 * gb},
 	})
@@ -298,19 +303,62 @@ func TestCascadeKeepsAnAccountItCannotFullyRemove(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cascade delete: %v", err)
 	}
-	if res.Deleted != 0 || res.Kept != 1 {
-		t.Fatalf("an account that survives anywhere is kept, not deleted: %+v", res)
+	if res.Deleted != 1 || res.Kept != 0 {
+		t.Fatalf("an account removed from every inbound serving it is deleted, not kept: %+v", res)
 	}
-	if _, ok := quotaOn(t, solo.Id, "sold-one"); !ok {
-		t.Error("the inbound whose last client this was got emptied under the admin")
-	}
-	for _, in := range []*model.Inbound{f.home, f.away} {
+	for _, in := range []*model.Inbound{f.home, f.away, solo} {
 		if _, ok := quotaOn(t, in.Id, "sold-one"); ok {
-			t.Errorf("the memberships that COULD go should still have gone, inbound %d kept it", in.Id)
+			t.Errorf("inbound %d still serves the cascaded account: it is live and nobody is billed for it", in.Id)
 		}
+	}
+	// Emptied, not destroyed. The admin owns the inbound; the reseller owned only
+	// the account that was on it.
+	var stillThere model.Inbound
+	if err := database.GetDB().Where("id = ?", solo.Id).First(&stillThere).Error; err != nil {
+		t.Errorf("the admin's inbound was deleted along with its last client: %v", err)
 	}
 	if f.ledgerRow(t) != nil {
 		t.Error("the ledger row must go with the reseller: a charge against a deleted user can never be settled")
+	}
+}
+
+// The Deleted/Kept decision reads settings.clients and NOT the membership table.
+//
+// This is the trap in the obvious simplification. cascadeClients ends by asking
+// whether the account is still served anywhere, and the resolver that drove its
+// removal loop, servingInboundIds, unions account_inbounds and
+// client_traffics.inbound_id on top of the blobs. A membership OUTLIVES the settings
+// entry it described (nothing prunes it at delete time), so asking that resolver
+// here reports every cascaded account as a survivor: the ledger row is dropped
+// either way, so the whole cascade would silently report Kept and hand every account
+// to the house while claiming it could not remove them.
+func TestCascadeCountsBySettingsNotByStaleMemberships(t *testing.T) {
+	f := newMembershipFixture(t, model.ResellerProfile{AllowanceBytes: 100 * gb, SpentBytes: 10 * gb}, 10*gb)
+	db := database.GetDB()
+
+	// The accounts-layer state a delete leaves behind today: an account row and a
+	// membership for an inbound whose settings no longer mention it.
+	account := model.Account{Email: "sold-one", Enable: true}
+	if err := db.Create(&account).Error; err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+	for _, in := range []*model.Inbound{f.home, f.away} {
+		if err := db.Create(&model.AccountInbound{AccountId: account.Id, InboundId: in.Id}).Error; err != nil {
+			t.Fatalf("seed membership on %d: %v", in.Id, err)
+		}
+	}
+
+	res, err := f.rs.DeleteReseller(&model.User{IsSuperAdmin: true}, f.reseller.Id, DeleteModeCascade)
+	if err != nil {
+		t.Fatalf("cascade delete: %v", err)
+	}
+	if res.Deleted != 1 || res.Kept != 0 {
+		t.Fatalf("a membership row that outlived its settings entry was read as the account still being served: %+v", res)
+	}
+	for _, in := range []*model.Inbound{f.home, f.away} {
+		if _, ok := quotaOn(t, in.Id, "sold-one"); ok {
+			t.Errorf("inbound %d still serves the account", in.Id)
+		}
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 // VPN protocols as OUTBOUNDS: the panel dials out as a CLIENT of somebody else's VPN
@@ -34,6 +35,11 @@ import (
 // interface-binding facility, autoOutboundsInterface, installs a PROCESS-GLOBAL
 // dialer controller that would pin every outbound in the core to one device rather
 // than just this one, so it cannot express "this tag goes through that tunnel".
+//
+// The tun inbound does appear elsewhere in this feature, pointing the other way and
+// with that facility deliberately left off: vpnoutcarrier.go uses one as a CARRIER, a
+// device whose traffic leaves through a chosen outbound, which is the opposite
+// direction and asks nothing global of the core.
 
 // VpnOutboundKind names a client-side tunnel implementation. The value is stored, so
 // these strings are wire format: rename one and every saved outbound of that kind
@@ -67,6 +73,39 @@ type VpnOutboundConfig struct {
 	// panel would be a promise about the kernel that nothing checks, and a wrong one
 	// binds egress to some other interface that happens to exist.
 	Iface string `json:"iface"`
+
+	// Via is the tag of ANOTHER vpn tunnel that carries this one: this tunnel's own
+	// outer transport travels through that tunnel's netdev, so the server it dials sees
+	// the carrier's exit address and never this host's. Empty is the ordinary case, a
+	// tunnel dialled straight out of the host's WAN. See vpnoutvia.go for the mechanism.
+	//
+	// POPULATED FROM THE OUTBOUND ROW'S sockopt.dialerProxy. There is one chaining
+	// control in the panel and it is the Dialer Proxy select, on every outbound including
+	// a tunnel; the browser posts whatever it holds into this field. The stored name
+	// stays Via because that is what the routing side calls it, and because the key does
+	// not survive into the Xray config at all (vpnOutStreamSettings), where dialerProxy
+	// means "dial through that outbound instead" and would cancel the interface pin.
+	//
+	// omitempty is load-bearing rather than tidy. Every stored tunnel predates this
+	// field, and the whole list is re-marshalled and written back whenever anything in
+	// it changes; without omitempty that write would add `"via":""` to rows nobody
+	// touched, and the list is also what applyVpnOutboundsWith derives the Xray
+	// outbounds from, so an upgrade would rewrite and restart things it had no reason
+	// to.
+	Via string `json:"via,omitempty" form:"via"`
+
+	// CarriedOverProxy is true while this tunnel is being raised through a carrier that
+	// is an XRAY OUTBOUND rather than a netdev of its own (vpnoutcarrier.go). It is set
+	// by the framework immediately before Up and read by the two drivers that have to
+	// put something different on the wire for it: charon's kernel ESP is proto 50, and
+	// a proxy carrier moves only TCP and UDP, so IKEv2 and L2TP/IPsec force NAT-T
+	// encapsulation when this is set and leave it alone when it is not.
+	//
+	// json:"-" because it is a fact about the CARRIER, derived on every raise from the
+	// tunnel's Via and the outbound list. Persisting it would create a second copy of
+	// something already stored, free to disagree with it after an operator edits the
+	// outbound the tunnel rides on.
+	CarriedOverProxy bool `json:"-"`
 
 	Settings json.RawMessage `json:"settings" form:"settings"`
 }
@@ -198,11 +237,24 @@ func (s *VpnOutboundService) InitVpnOutbound() {
 
 	all := s.load()
 	moved := false
-	for i, cfg := range all {
+	// Carriers first. A tunnel carried by another is steered into that other tunnel's
+	// ROUTE TABLE, so raising it while its carrier is still down would find an empty
+	// table; the blackhole vpnOutBindEgress parks there is what makes that a dropped
+	// packet rather than a leak, but a tunnel that comes up and immediately black-holes
+	// itself is not what the operator asked for either. A cycle cannot be saved through
+	// the panel, so one here was hand-edited into the setting: its members are skipped
+	// rather than raised in whatever order the list happens to hold.
+	order, dropped := vpnOutViaOrder(all)
+	for _, tag := range dropped {
+		logger.Warning("vpn outbound: not raising", tag,
+			"because it is part of a loop of tunnels carrying each other")
+	}
+	for _, i := range order {
+		cfg := all[i]
 		if !cfg.Enable {
 			continue
 		}
-		iface, err := s.bringUp(cfg)
+		iface, err := s.bringUp(cfg, all)
 		if err != nil {
 			// Best effort, exactly as the inbound daemons are at boot: one
 			// unreachable peer must not stop the panel coming up, and the outbound
@@ -226,6 +278,11 @@ func (s *VpnOutboundService) InitVpnOutbound() {
 			logger.Warning("vpn outbound: could not record the interfaces the tunnels came up on:", err)
 		}
 	}
+	// Reconciled once at the end, over the whole list. Each raise installed its own
+	// pair of rules already; this is the repair pass, and it is the only thing that
+	// removes a steer rule left behind by a crash or pointing at a table number that a
+	// rebuilt device has since given up.
+	vpnOutApplyVia(all, vpnOutApplyCarriers(all, (&SshOutboundService{}).List()))
 }
 
 // VpnOutSecrets is an OPTIONAL interface naming the settings keys that must never
@@ -384,6 +441,39 @@ func (s *VpnOutboundService) Save(cfg VpnOutboundConfig) (VpnOutboundConfig, err
 		cfg.Settings = mergeKeptSettings(cfg.Settings, prev.Settings)
 	}
 
+	cfg.Via = strings.TrimSpace(cfg.Via)
+	// Refused BEFORE the driver validates and long before anything is raised. Every one
+	// of these is a configuration that cannot be expressed as routing rules, and the
+	// three of them fail in ways nobody would connect back to this field: a loop makes
+	// both tunnels dead, a Via naming an Xray outbound has no netdev to steer into, and
+	// a Via naming itself installs a rule sending a tunnel's handshake into its own
+	// table.
+	sshList := (&SshOutboundService{}).List()
+	carriers, _ := vpnOutCarrierPlan(all, sshList, vpnOutTemplateOutbounds())
+	if err := vpnOutViaCheck(all, vpnOutCarrierExtras(carriers), cfg); err != nil {
+		return cfg, err
+	}
+	// The per-kind gate, refused here as well as at the raise so an operator learns it
+	// from the form rather than from a tunnel that comes up and moves nothing.
+	if cfg.Via != "" {
+		for _, c := range carriers {
+			if c.Tag == cfg.Via {
+				if why := vpnOutCarrierRefusal(cfg, c); why != "" {
+					return cfg, errors.New(why)
+				}
+				break
+			}
+		}
+	}
+	// Turning a CARRIER off is the fourth refusal, and it is the one that is not about
+	// this tunnel at all: the tunnels riding on it would keep running with their steer
+	// rules swept, dialling their servers straight out of the host's WAN.
+	if !cfg.Enable {
+		if err := vpnOutViaInUse(all, cfg.Tag); err != nil {
+			return cfg, err
+		}
+	}
+
 	if err := drv.Validate(cfg); err != nil {
 		return cfg, err
 	}
@@ -408,14 +498,23 @@ func (s *VpnOutboundService) Save(cfg VpnOutboundConfig) (VpnOutboundConfig, err
 	}
 
 	if cfg.Enable {
-		iface, err := s.bringUp(cfg)
+		// The list AS IT WILL BE, so a carried tunnel finds the carrier's live device.
+		// Copied rather than appended in place: `out` is appended to again below, and
+		// two appends sharing one backing array is not a thing to leave to the reader.
+		pending := make([]VpnOutboundConfig, len(out), len(out)+1)
+		copy(pending, out)
+		iface, err := s.bringUp(cfg, append(pending, cfg))
 		if err != nil {
 			return cfg, err
 		}
 		cfg.Iface = iface
 	} else {
 		// Saved disabled: take it down and forget the interface, so the synthesized
-		// outbound is dropped rather than left bound to a device that is gone.
+		// outbound is dropped rather than left bound to a device that is gone. The
+		// carried tunnels' steer rules go first: vpnOutUnbindEgress destroys this
+		// tunnel's table, and a steer rule that outlives the table it points at is the
+		// measured leak - the lookup falls through to main and the carried tunnel
+		// egresses in the clear.
 		vpnOutUnbindEgress(cfg.Iface)
 		if err := drv.Down(cfg); err != nil {
 			logger.Warning("vpn outbound: could not stop", cfg.Tag, ":", err)
@@ -433,6 +532,10 @@ func (s *VpnOutboundService) Save(cfg VpnOutboundConfig) (VpnOutboundConfig, err
 		}
 		return cfg, err
 	}
+	// Over the whole list, because this save can have changed somebody else's answer:
+	// disabling a tunnel that carries two others has to remove their steer rules, and
+	// they are not in this call anywhere.
+	vpnOutApplyVia(out, vpnOutApplyCarriers(out, (&SshOutboundService{}).List()))
 	// The freedom outbound fronting this tunnel is derived from the stored list when
 	// the config is built, so the core has to be rebuilt for the change to reach it.
 	(&XrayService{}).SetToNeedRestart()
@@ -457,6 +560,12 @@ func (s *VpnOutboundService) Delete(tag string) error {
 	if victim == nil {
 		return nil
 	}
+	// Refused while anything is riding on it: the teardown below sweeps their steer
+	// rules with the table, and they would go on running with their outer transport
+	// leaving in the clear.
+	if err := vpnOutViaInUse(all, tag); err != nil {
+		return err
+	}
 	if err := s.persist(out); err != nil {
 		return err
 	}
@@ -466,6 +575,11 @@ func (s *VpnOutboundService) Delete(tag string) error {
 			logger.Warning("vpn outbound: could not stop", tag, "on delete:", err)
 		}
 	}
+	// After the teardown, over what is left. Deleting a CARRIER strands every steer
+	// rule pointing into its table, and vpnOutUnbindEgress has just taken the table's
+	// blackhole with it: without this pass the tunnels it carried would fall through to
+	// main and leave in the clear.
+	vpnOutApplyVia(out, vpnOutApplyCarriers(out, (&SshOutboundService{}).List()))
 	(&XrayService{}).SetToNeedRestart()
 	return nil
 }
@@ -489,8 +603,26 @@ func (s *VpnOutboundService) Status(tag string) (bool, string) {
 }
 
 // StopAll tears every tunnel down, for panel shutdown.
+//
+// Carried tunnels first, which is the reverse of the boot order. A carrier torn down
+// while something it carries is still running leaves that tunnel steered into a table
+// whose device has gone, and the fall-through is main: the tunnel keeps running and
+// keeps talking to its server, in the clear, for as long as the panel takes to reach it
+// in the list.
 func (s *VpnOutboundService) StopAll() {
-	for _, c := range s.load() {
+	all := s.load()
+	order, dropped := vpnOutViaOrder(all)
+	// A hand-edited loop is not a reason to leave a netdev up: its members are stopped
+	// after everything else, in whatever order they are stored.
+	for _, tag := range dropped {
+		for i, c := range all {
+			if c.Tag == tag {
+				order = append(order, i)
+			}
+		}
+	}
+	for n := len(order) - 1; n >= 0; n-- {
+		c := all[order[n]]
 		if drv, err := vpnOutDriverFor(c.Kind); err == nil {
 			vpnOutUnbindEgress(c.Iface)
 			if err := drv.Down(c); err != nil {
@@ -506,10 +638,46 @@ func (s *VpnOutboundService) StopAll() {
 // every byte leaves through the host's own default route instead. That failure is
 // invisible from the panel and looks exactly like a working outbound, so it is
 // caught here rather than shipped.
-func (s *VpnOutboundService) bringUp(cfg VpnOutboundConfig) (string, error) {
+// `all` is the tunnel list this raise belongs to, which is how a carried tunnel finds
+// the device its carrier came up on.
+func (s *VpnOutboundService) bringUp(cfg VpnOutboundConfig, all []VpnOutboundConfig) (string, error) {
 	drv, err := vpnOutDriverFor(cfg.Kind)
 	if err != nil {
 		return "", err
+	}
+	// BEFORE the client is started, not after. The steer rule needs this tunnel's
+	// SERVER address and its carrier's TABLE, and neither of those waits on a device
+	// that does not exist yet - while a WireGuard client sends its first handshake the
+	// instant its peer is configured, so a rule added afterwards arrives after the
+	// packet it was meant to carry has already left in the clear.
+	//
+	// Refusing here is also what makes a down carrier fail CLOSED. Raising the tunnel
+	// anyway would give the operator a tunnel that works, reports itself up, and dials
+	// its server straight out of the host's WAN - the exact thing they configured this
+	// field to prevent.
+	var carrier vpnOutCarrier
+	if cfg.Via != "" {
+		var facts vpnOutViaFacts
+		carrier, facts, err = vpnOutResolveCarrier(cfg.Via, all, (&SshOutboundService{}).List())
+		if err != nil {
+			return "", err
+		}
+		// The per-kind gate, and it only ever fires for a carrier that is an Xray
+		// outbound. Steering into a netdev is L4-agnostic, so a tunnel carrier takes
+		// GRE and ESP whole; a proxy carrier moves TCP and UDP and drops the rest,
+		// which for PPTP means the control channel would ride and the data channel
+		// would not. Half a tunnel is worse than a refusal: it authenticates, reports
+		// itself up, and moves nothing.
+		if why := vpnOutCarrierRefusal(cfg, carrier); why != "" {
+			return "", errors.New(why)
+		}
+		// Read by the IPsec drivers, which have to force NAT-T encapsulation to put
+		// their ESP inside UDP where a proxy carrier can see it. Set before Up because
+		// it changes the config the client is started with.
+		cfg.CarriedOverProxy = carrier.Bridged()
+		if err := vpnOutSteerVia(cfg, facts); err != nil {
+			return "", err
+		}
 	}
 	iface, err := drv.Up(cfg)
 	if err != nil {
@@ -527,6 +695,14 @@ func (s *VpnOutboundService) bringUp(cfg VpnOutboundConfig) (string, error) {
 		// back down rather than hand back a tunnel that cannot work.
 		_ = drv.Down(cfg)
 		return "", err
+	}
+	// Both devices exist now, so the double-encapsulation arithmetic can finally be
+	// done. A warning and not a refusal: an MTU that is too big by a few bytes gives a
+	// tunnel that pings and stalls on real traffic, which is worth saying out loud, but
+	// the exact overhead depends on the cipher that was negotiated and this panel is
+	// guessing at it.
+	if cfg.Via != "" && carrier.Iface != "" {
+		vpnOutViaMtuCheck(cfg, iface, carrier.Iface)
 	}
 	return iface, nil
 }
@@ -573,7 +749,13 @@ func vpnOutBindEgress(iface string) error {
 	// a rule left over from the previous incarnation points at a table that is now
 	// empty. Left alone they accumulate one per rebuild. Swept before the current one
 	// is added so the interface is only ever selected by one rule.
-	vpnOutSweepRules(iface, table)
+	//
+	// The steer rules pointing INTO this table are deliberately left alone here (table
+	// 0 below turns that half off): they belong to the tunnels this one carries, they
+	// are live, and vpnOutApplyVia runs right after every raise and owns them. Deleting
+	// one here to add it back a moment later would open exactly the window this whole
+	// scheme exists to close.
+	vpnOutSweepRules(iface, 0, table)
 
 	// The rule names the device rather than its index: the kernel stores FRA_OIFNAME
 	// and revalidates it as devices come and go, so a tunnel recreated with a
@@ -590,26 +772,86 @@ func vpnOutBindEgress(iface string) error {
 		return fmt.Errorf("cannot route traffic pinned to %s: %w", iface, err)
 	}
 
-	// A plain `default dev X` with no nexthop, which is what a point-to-point device
-	// wants. Every tunnel this framework raises is p2p or tun; a device that needed a
-	// gateway would need this widened rather than worked around in its driver.
-	//
+	// The blackhole first and the device route second: see vpnOutEgressRoutes for why
+	// that order is the fail-closed one.
+	for _, r := range vpnOutEgressRoutes(table, link.Attrs().Index) {
+		if err := vpnOutReplaceRoute(r); err != nil {
+			return fmt.Errorf("cannot install the egress routes for %s: %w", iface, err)
+		}
+	}
+	return nil
+}
+
+// vpnOutEgressRoutes is everything one tunnel's private table holds, in the order it
+// has to be installed. Pure, so what goes into a table is a decision that can be
+// checked without a kernel.
+//
+// TWO routes, and the second one is what makes carrying a tunnel inside another safe.
+//
+// The oif scheme is intrinsically fail-closed because its rule names the DEVICE: no
+// device, no match, no packet. A steer rule (vpnoutvia.go) names this TABLE instead,
+// and a table does not disappear with its device - the device route goes, the lookup
+// finds nothing, and the kernel falls through to main. Measured: with the carrier's
+// device deleted, 100% of the carried tunnel left in the clear out of the host's WAN
+// with nothing logged anywhere.
+//
+// A blackhole default at metric 1000 fixes it and is measurably inert while the tunnel
+// is up: the device route is metric 0 and wins every lookup. When the device goes, the
+// blackhole is what is left, and the carried device shows a rising TX errors count -
+// a visible symptom rather than a silent one.
+//
+// Returned for EVERY tunnel, not only the ones carrying something. It costs one route,
+// it makes the table self-consistent for the plain oif path too (a pinned socket whose
+// device vanished mid-connection gets ENETUNREACH instead of the host's WAN), and a
+// tunnel that becomes a carrier later is then already safe.
+//
+// BLACKHOLE FIRST is the order, not an accident of writing. If the second install fails
+// the caller gives up and takes the tunnel down, and the table is left holding whatever
+// the first one put there: a lone blackhole drops traffic, a lone device route works
+// until the device goes and then leaks.
+func vpnOutEgressRoutes(table, linkIndex int) []*netlink.Route {
 	// 0.0.0.0/0 is written OUT rather than left as a nil Dst meaning "everything".
 	// netlink refuses a route with no destination, no source and no gateway outright
 	// ("either Dst.IP, Src.IP or Gw must be set", route_linux.go), before it builds
 	// the message, so a nil Dst here never reached the kernel: it failed every raise
 	// of every protocol, and bringUp took the tunnel back down and reported the
 	// tunnel itself as unusable.
-	def := &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Table:     table,
-		Dst:       &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)},
-		Scope:     netlink.SCOPE_LINK,
+	anywhere := func() *net.IPNet {
+		return &net.IPNet{IP: net.IPv4zero, Mask: net.CIDRMask(0, 32)}
 	}
-	if err := netlink.RouteReplace(def); err != nil {
-		return fmt.Errorf("cannot install the egress route for %s: %w", iface, err)
+	return []*netlink.Route{
+		{
+			Table:    table,
+			Dst:      anywhere(),
+			Type:     unix.RTN_BLACKHOLE,
+			Priority: vpnOutBlackholeMetric,
+		},
+		// A plain `default dev X` with no nexthop, which is what a point-to-point device
+		// wants. Every tunnel this framework raises is p2p or tun; a device that needed a
+		// gateway would need this widened rather than worked around in its driver.
+		{
+			LinkIndex: linkIndex,
+			Table:     table,
+			Dst:       anywhere(),
+			Scope:     netlink.SCOPE_LINK,
+		},
 	}
-	return nil
+}
+
+// vpnOutReplaceRoute and vpnOutFlushTable are the two places this file writes routes.
+// Vars so the teardown ORDER, which is where the leak lives, can be observed in a test
+// without a kernel.
+var vpnOutReplaceRoute = func(r *netlink.Route) error { return netlink.RouteReplace(r) }
+
+var vpnOutFlushTable = func(table int) {
+	routes, err := netlink.RouteListFiltered(netlink.FAMILY_ALL,
+		&netlink.Route{Table: table}, netlink.RT_FILTER_TABLE)
+	if err != nil {
+		return
+	}
+	for i := range routes {
+		_ = netlink.RouteDel(&routes[i])
+	}
 }
 
 // vpnOutUnbindEgress removes what vpnOutBindEgress installed. Best effort and quiet
@@ -627,16 +869,17 @@ func vpnOutUnbindEgress(iface string) {
 	// Enumerated and matched rather than handed a template to RuleDel, because a
 	// template carries zero values for every field it does not set and what those
 	// match is not something to be guessing at during a teardown.
-	vpnOutSweepRules(iface, 0)
-	if link, err := netlink.LinkByName(iface); err == nil {
-		table := vpnOutRouteTableBase + link.Attrs().Index
-		routes, err := netlink.RouteListFiltered(netlink.FAMILY_ALL,
-			&netlink.Route{Table: table}, netlink.RT_FILTER_TABLE)
-		if err == nil {
-			for i := range routes {
-				_ = netlink.RouteDel(&routes[i])
-			}
-		}
+	//
+	// ORDER. The rules go first and the routes second, and within the rules the steers
+	// pointing into this table go before the blackhole that backstops them. Reversed,
+	// there is a window in which the table has been emptied and a carried tunnel is
+	// still being steered into it: the lookup falls through to main and every byte
+	// leaves in the clear. That window is the measured failure, and the whole reason
+	// this function computes the table BEFORE sweeping rather than after.
+	table := vpnOutTableOf(iface)
+	vpnOutSweepRules(iface, table, 0)
+	if table != 0 {
+		vpnOutFlushTable(table)
 	}
 }
 
@@ -654,23 +897,29 @@ func vpnOutEnsureRule(want *netlink.Rule) error {
 	return netlink.RuleAdd(want)
 }
 
-// vpnOutSweepRules deletes every rule selecting on this interface except the one for
-// keepTable. Pass keepTable 0 to remove all of them, which is what teardown wants.
+// vpnOutSweepRules deletes the rules belonging to one tunnel: every rule selecting on
+// this interface except the one for keepTable (pass keepTable 0 to remove all of them,
+// which is what teardown wants), AND every via rule steering into `table`.
+//
+// The second half is new and it is the teardown ordering fix. A steer rule points at a
+// TABLE, and this function's caller is about to delete that table's routes - including
+// the blackhole that is the only thing standing between a carried tunnel and the main
+// table. Sweeping the steers first is what keeps a teardown from turning into the
+// measured leak. Pass table 0 to skip it, which is what a rebind wants: those steers are
+// live, and the reconcile that follows a raise owns them.
 //
 // Deleting by enumeration is the point: the rules are found in the kernel's own list,
 // so each delete is issued against a rule that demonstrably exists with the fields it
 // actually has, rather than against a template whose unset fields match who knows what.
-func vpnOutSweepRules(iface string, keepTable int) {
-	rules, err := netlink.RuleList(netlink.FAMILY_V4)
+// The DECISION of which ones are stale is vpnOutStaleRuleIdx, kept pure so it can be
+// tested without a kernel.
+func vpnOutSweepRules(iface string, table, keepTable int) {
+	have, rules, err := vpnOutListRules()
 	if err != nil {
 		return
 	}
-	for i := range rules {
-		r := rules[i]
-		if r.OifName != iface || (keepTable != 0 && r.Table == keepTable) {
-			continue
-		}
-		if err := netlink.RuleDel(&r); err != nil {
+	for _, i := range vpnOutStaleRuleIdx(have, iface, table, keepTable) {
+		if err := vpnOutDelRule(rules[i]); err != nil {
 			logger.Warning("vpn outbound: could not remove a stale ip rule for", iface, ":", err)
 		}
 	}
@@ -808,7 +1057,7 @@ func applyVpnOutboundsWith(config *xray.Config, tunnels []VpnOutboundConfig) err
 		// would answer for the host's network, not the tunnel's. Forced over
 		// whatever the row said for that reason: it is not a preference.
 		ob["settings"] = map[string]any{"domainStrategy": "UseIP"}
-		ob["streamSettings"] = vpnOutStreamSettings(t.Tag, ob["streamSettings"], t.Iface)
+		ob["streamSettings"] = vpnOutStreamSettings(t.Tag, t.Via, ob["streamSettings"], t.Iface)
 		if via := vpnOutSendThrough(t.Tag, ob["sendThrough"], t.Iface); via != "" {
 			ob["sendThrough"] = via
 		} else {
@@ -849,21 +1098,29 @@ func applyVpnOutboundsWith(config *xray.Config, tunnels []VpnOutboundConfig) err
 // penetrate, trustedXForwardedFor) belongs to the operator and is left exactly as it
 // was.
 //
-// dialerProxy is the one exception, and it is removed rather than kept. It is not a
-// preference that sits alongside the pin, it CANCELS it: DialSystem returns
-// redirect() at transport/internet/dialer.go:269-278, before
+// dialerProxy is the one exception: it is CONSUMED, not discarded. On a tunnel row that
+// field is the operator's carrier choice - Save copies it into Via and vpnoutvia.go turns
+// it into the ip rules that send this tunnel's own outer transport through the named
+// tunnel's device. What must not survive is the KEY in the emitted config, because to
+// Xray it means the opposite thing: it does not sit alongside the pin, it CANCELS it.
+// DialSystem returns redirect() at transport/internet/dialer.go:269-278, before
 // effectiveSystemDialer.Dial, which is the only caller of applyOutboundSocketOptions
 // and therefore the only place the interface is bound. Verified by differential test:
 // an outbound pinned to a nonexistent device logs "failed to set Interface" once with
 // dialerProxy absent and not at all with it present, so the bind is never even
-// attempted. Keeping both would leave a tunnel outbound quietly egressing through
-// somebody else's tag while every screen in the panel still called it a VPN.
+// attempted. Emitted, it would send the tunnel's traffic out of the carrier's tag with
+// the tunnel skipped entirely, while every screen in the panel still called it a VPN.
+//
+// So this deletion is deliberate and permanent, not a leftover: the panel reads the
+// value, the core never sees it. `via` is passed in only to say which of those two
+// happened in the log, since a row whose dialerProxy does not match the stored carrier
+// is an edit that never reached the tunnel save.
 //
 // A streamSettings or sockopt that is absent, null, or not an object at all is
 // replaced rather than merged into. There is nothing to merge with, and passing a
 // hand-edited `"sockopt": "eth0"` through makes Xray refuse the WHOLE config, which
 // takes every other outbound down with it.
-func vpnOutStreamSettings(tag string, existing any, iface string) map[string]any {
+func vpnOutStreamSettings(tag, via string, existing any, iface string) map[string]any {
 	stream, _ := existing.(map[string]any)
 	if stream == nil {
 		stream = map[string]any{}
@@ -873,8 +1130,18 @@ func vpnOutStreamSettings(tag string, existing any, iface string) map[string]any
 		sockopt = map[string]any{}
 	}
 	if proxy, set := sockopt["dialerProxy"]; set && proxy != "" {
-		logger.Warning("vpn outbound:", tag, "has dialerProxy", proxy,
-			"set, which would bypass the tunnel entirely; ignoring it and keeping the interface pin")
+		if name, _ := proxy.(string); name != "" && name == strings.TrimSpace(via) {
+			logger.Info("vpn outbound:", tag, "is carried by", name+
+				", which is routing rules and not a dialer proxy, so the key is dropped here and the interface pin stands")
+		} else {
+			carrier := strings.TrimSpace(via)
+			if carrier == "" {
+				carrier = "nothing"
+			}
+			logger.Warning("vpn outbound:", tag, "names", proxy,
+				"as its dialer proxy but the stored tunnel is carried by", carrier+
+					"; the carry follows the stored value, so re-save the tunnel to change it")
+		}
 		delete(sockopt, "dialerProxy")
 	}
 	sockopt["interface"] = iface

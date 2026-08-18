@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -718,21 +717,9 @@ func (s *CoreService) mtprotoStatus() CoreStatus {
 	cs := CoreStatus{Name: "mtproto"}
 	inbounds, _ := s.mtprotoService.GetMtprotoInbounds()
 	cs.Inbounds = len(inbounds)
-	// Two distinct "not available" states. Available() answers whether the binary
-	// is embedded for this arch at all; daemonInstalled answers whether it is on
-	// disk. Only the first is permanent — an arch with no bundle genuinely cannot
-	// run telemt — while the second is just "has not been installed yet". The old
-	// single check (Available = DaemonPath != "") reported "telemt binary not
-	// bundled for this architecture" on every fresh amd64/arm64 host, making a
-	// perfectly installable core read as permanently unsupported.
 	if !s.mtprotoService.Available() {
 		cs.State = CoreNotInstalled
 		cs.Detail = "telemt binary not bundled for this architecture"
-		return cs
-	}
-	if !daemonInstalled("telemt") {
-		cs.State = CoreNotInstalled
-		cs.Detail = "telemt not installed"
 		return cs
 	}
 	cs.Version = daemonVersion("telemt")
@@ -865,6 +852,38 @@ func (s *CoreService) provisionedProtocolSet() map[string]bool {
 		}
 	}
 	return set
+}
+
+// coreInstallStateIsRecorded reports whether provisionedProtocolSet's answer came
+// from something the panel actually WROTE DOWN, or from the baseline guess.
+//
+// The distinction exists because IsProvisioned() is not only a stored flag. With
+// vpnProvisioned unset it falls back to a HEURISTIC:
+//
+//	procFileIsOne("/proc/sys/net/ipv4/ip_forward") && daemonInstalled("openvpn")
+//
+// and daemonInstalled is `commandExists(name) || backend.DaemonPath(name) != ""`,
+// i.e. a plain PATH lookup. So a box with a DISTRO openvpn and ip_forward=1 (any
+// host that has ever run Docker, libvirt or a container runtime, and every
+// router) reads as provisioned on a completely fresh panel database, and
+// provisionedProtocolSet then credits it with the whole frozen baseline: l2tp,
+// pptp, openvpn, openconnect.
+//
+// That is charitable and right for a pre-tracking upgrade, and exactly backwards
+// for the pre-flight conflict probe, which is suppressed for a core the panel
+// believes it installed. The presence of the very distro OpenVPN we would
+// collide with was what silenced the warning about colliding with it, and the
+// four cores it silenced are precisely the four whose shared config files needed
+// backup-before-overwrite. Callers that ask "should I warn the operator about
+// what is already on this host" must consult THIS, not IsProvisioned.
+//
+// Do not fold this back into provisionedProtocolSet as an "optimisation": the
+// baseline fallback is correct for that function's other consumers (status
+// cards, the inbound gate, uninstall's shared-requirement arithmetic), which
+// need the charitable answer.
+func (s *CoreService) coreInstallStateIsRecorded() bool {
+	var ss SettingService
+	return ss.HasRecordedProvisionedProtocols() || ss.GetVpnProvisioned()
 }
 
 // MissingProtocols returns installable cores this host is NOT set up for. Since
@@ -1113,7 +1132,7 @@ func (s *CoreService) Provision(cores []string) []ProvisionStep {
 //
 // Re-run Setup is what repairs an existing core: it passes the installed set as
 // the selection, which puts both axes back together.
-func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string) (rebootModules []string, rebootPkg string, failed bool) {
+func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string) (rebootModules []string, rebootPkg string) {
 	selected := cores
 	if len(selected) == 0 {
 		selected = installableCores()
@@ -1122,47 +1141,6 @@ func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string
 
 	requiredModules := requiredModulesFor(target)
 	optionalModules := optionalModulesFor(target)
-
-	// The flat daemon binaries the selection needs come from the bundle embedded
-	// in the binary, or — on builds without one — from the startup auto-download
-	// (backend.DownloadBundlesIfMissing pulls backend-<arch>.tgz from this repo's
-	// release). Neither present means the daemons can only come from host
-	// packages, and nothing here installs packages. Report that as a hard failure
-	// instead of silently running the rest of the steps, persisting the cores as
-	// "installed", and leaving the status cards contradicting the setup console —
-	// which is what a silent skip did.
-	requested := daemonsFor(target)
-	if !backend.Available() {
-		var missing []string
-		for _, d := range requested {
-			if !daemonInstalled(d) {
-				missing = append(missing, d)
-			}
-		}
-		if len(missing) > 0 {
-			failed = true
-			emit(ProvisionStep{Name: "extract bundled daemons", OK: false,
-				Msg: "no embedded daemon bundle and the auto-download from the GitHub release found nothing — host lacks: " +
-					strings.Join(missing, ", ") + " — cannot install " +
-					strings.Join(coresForDaemons(missing), ", ") +
-					". Rebuild with build/backend/build.sh " + runtime.GOARCH +
-					" (Docker/Alpine) so the daemons are embedded, or install the host packages yourself and re-run setup"})
-		}
-	}
-	// SSTP has no host fallback: accel-ppp exists in no distro repository, so a
-	// build without the accel-ppp bundle genuinely cannot serve it.
-	if needsFeature(selected, featAccel) && !backend.HasAccelBundle() {
-		failed = true
-		emit(ProvisionStep{Name: "extract accel-ppp (SSTP) bundle", OK: false,
-			Msg: "accel-ppp bundle not embedded in this build — SSTP cannot be installed (no host fallback)"})
-	}
-	// pppd backs L2TP and PPTP. The bundled tree is the primary source, but a host
-	// pppd is a valid fallback; neither present means those cores cannot run.
-	if needsFeature(selected, featPppd) && !backend.HasPppdBundle() && !commandExists("pppd") {
-		failed = true
-		emit(ProvisionStep{Name: "extract pppd bundle", OK: false,
-			Msg: "pppd bundle not embedded and no host pppd — L2TP/PPTP cannot run"})
-	}
 
 	for _, m := range requiredModules {
 		if moduleLoaded(m) {
@@ -1229,6 +1207,10 @@ func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string
 	const sysctlConf = "net.ipv4.ip_forward=1\n" +
 		"net.ipv4.conf.all.rp_filter=2\n" +
 		"net.ipv4.conf.default.rp_filter=2\n"
+	// Recorded before the write so uninstall knows to take it away again (per-core
+	// uninstall used to leave this drop-in behind forever, so a host kept loose
+	// rp_filter across every reboot long after the last VPN core was removed).
+	ownPrepareHostFile("/etc/sysctl.d/99-vpn-ui.conf", "")
 	err = os.WriteFile("/etc/sysctl.d/99-vpn-ui.conf", []byte(sysctlConf), 0644)
 	emit(ProvisionStep{Name: "persist /etc/sysctl.d/99-vpn-ui.conf", OK: err == nil, Msg: msgOrOK(err)})
 
@@ -1245,26 +1227,9 @@ func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string
 	// binary being present (daemonInstalled), so extracting the whole bundle would
 	// report every core installed however few the operator picked.
 	if backend.Available() {
-		files, exErr := backend.ExtractOnly(requested)
+		wanted := daemonsFor(target)
+		files, exErr := backend.ExtractOnly(wanted)
 		emit(ProvisionStep{Name: "extract bundled daemons", OK: exErr == nil, Msg: filesMsg(files, exErr)})
-		if exErr != nil {
-			failed = true
-		}
-		// A requested daemon that has no embedded file and is not on the host
-		// already is permanently uninstallable on this build. Name it, or the
-		// operator watches the console go green and the status card stay red.
-		var missing []string
-		for _, d := range requested {
-			if !backend.Bundled(d) && !daemonInstalled(d) {
-				missing = append(missing, d)
-			}
-		}
-		if len(missing) > 0 {
-			failed = true
-			emit(ProvisionStep{Name: "extract bundled daemons", OK: false,
-				Msg: "daemons not in this build's bundle: " + strings.Join(missing, ", ") +
-					" — cannot install " + strings.Join(coresForDaemons(missing), ", ")})
-		}
 
 		// pppd ships as a relocatable tree (it dlopens radius.so + OpenSSL
 		// providers, so it can't be one static binary). Extract it and, if the
@@ -1273,6 +1238,12 @@ func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string
 		if needsFeature(selected, featPppd) && backend.HasPppdBundle() {
 			pErr := backend.ExtractPppdBundle()
 			emit(ProvisionStep{Name: "extract pppd bundle", OK: pErr == nil, Msg: msgOrOK(pErr)})
+			// Recorded before each Link*: the backend already declines when the path
+			// exists (so a native pppd is never clobbered), and this writes that
+			// decision down so the uninstall report can say which of these outward
+			// links are ours and which are the host's own.
+			ownPrepareSymlink(backend.PppdSystem, backend.PppdBundled, "l2tp")
+			ownPrepareSymlink(backend.PppdPluginDir, backend.PppdBundleRoot+"/lib/pppd", "l2tp")
 			lErr := backend.LinkSystemPppd()
 			emit(ProvisionStep{Name: "link system pppd", OK: lErr == nil, Msg: msgOrOK(lErr)})
 			plErr := backend.LinkPluginDir()
@@ -1288,6 +1259,7 @@ func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string
 		if needsFeature(selected, featAccel) && backend.HasAccelBundle() {
 			aErr := backend.ExtractAccelBundle()
 			emit(ProvisionStep{Name: "extract accel-ppp (SSTP) bundle", OK: aErr == nil, Msg: msgOrOK(aErr)})
+			ownPrepareSymlink(backend.AccelModuleDir, backend.AccelBundleRoot+"/lib/accel-ppp", "sstp")
 			amErr := backend.LinkAccelModuleDir()
 			emit(ProvisionStep{Name: "link accel-ppp module dir", OK: amErr == nil, Msg: msgOrOK(amErr)})
 		}
@@ -1299,6 +1271,7 @@ func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string
 		if needsFeature(selected, featStrongswan) && backend.HasStrongswanBundle() {
 			swErr := backend.ExtractStrongswanBundle()
 			emit(ProvisionStep{Name: "extract strongswan (IKEv2) bundle", OK: swErr == nil, Msg: msgOrOK(swErr)})
+			ownPrepareSymlink(backend.StrongswanIpsecDir, backend.StrongswanBundleIpsecLib, "ikev2")
 			swlErr := backend.LinkStrongswanIpsecDir()
 			emit(ProvisionStep{Name: "link strongswan ipsec dir", OK: swlErr == nil, Msg: msgOrOK(swlErr)})
 		}
@@ -1306,6 +1279,7 @@ func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string
 		// pptpd execs pptpctrl from a fixed compiled-in path; point it at the
 		// extracted bundle so pptpd works from any install dir.
 		if needsFeature(selected, featPptpCtrl) {
+			ownPrepareSymlink(backend.PptpCtrlLink, backend.DaemonPath("pptpctrl"), "pptp")
 			clErr := backend.LinkPptpCtrl()
 			emit(ProvisionStep{Name: "link pptpctrl", OK: clErr == nil, Msg: msgOrOK(clErr)})
 		}
@@ -1382,7 +1356,7 @@ func (s *CoreService) runProvisionSteps(emit func(ProvisionStep), cores []string
 		}
 	}
 
-	return mods, pkg, failed
+	return mods, pkg
 }
 
 // provisionKernelModules makes the VPN PPP/L2TP kernel modules available when the
@@ -1501,33 +1475,12 @@ func (s *CoreService) StartProvision(cores []string) bool {
 
 	go func() {
 		var cs CoreService // CoreService is zero-value usable and stateless
-		mods, pkg, failed := cs.runProvisionSteps(func(st ProvisionStep) {
+		mods, pkg := cs.runProvisionSteps(func(st ProvisionStep) {
 			provisionRun.mu.Lock()
 			provisionRun.steps = append(provisionRun.steps, st)
 			provisionRun.mu.Unlock()
 		}, selected)
 		var ss SettingService
-		if failed {
-			// Nothing was actually installed. Do NOT mark the host provisioned and
-			// do NOT record the selection: recording it is what used to make the
-			// status cards read "not installed" right after the console claimed
-			// success (a bundle-less build reports green "extract: nothing to do").
-			// The red steps above name exactly what is missing; re-run setup after
-			// fixing it (rebuilding with the daemon bundle, letting the startup
-			// auto-download fetch backend-<arch>.tgz from the release, or installing
-			// host packages) and the recording happens then.
-			provisionRun.mu.Lock()
-			provisionRun.steps = append(provisionRun.steps, ProvisionStep{
-				Name: "setup incomplete", OK: false,
-				Msg: "some cores could not be installed — fix the errors above, then re-run setup"})
-			provisionRun.running = false
-			provisionRun.done = true
-			provisionRun.rebootRequired = false
-			provisionRun.rebootModules = nil
-			provisionRun.rebootPkg = ""
-			provisionRun.mu.Unlock()
-			return
-		}
 		if err := ss.SetVpnProvisioned(true); err != nil {
 			logger.Warning("failed to persist vpnProvisioned flag:", err)
 		}

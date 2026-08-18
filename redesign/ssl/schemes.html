@@ -1,0 +1,1686 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSL manager: five schemes</title>
+
+<style>
+/* ==========================================================================
+   Document layer. A drawing set: numbered sheets, a title block on each,
+   technical lettering for anything structural, prose for the argument.
+   ========================================================================== */
+
+:root{
+  --paper:#eceef1;
+  --sheet:#ffffff;
+  --sheet-2:#f5f7f9;
+  --ink:#131a23;
+  --ink-2:#4e5b6a;
+  --ink-3:#7b8796;
+  --rule:#d5dce3;
+  --rule-strong:#b9c3cd;
+  --accent:#00705e;
+  --accent-weak:rgba(0,112,94,.10);
+  --cut:#9e3b32;
+  --cut-weak:rgba(158,59,50,.09);
+  --well:#e3e7eb;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0d1117;
+    --sheet:#141a22;
+    --sheet-2:#1a212b;
+    --ink:rgba(255,255,255,.90);
+    --ink-2:rgba(255,255,255,.62);
+    --ink-3:rgba(255,255,255,.45);
+    --rule:#28313d;
+    --rule-strong:#3a4553;
+    --accent:#3fd2b0;
+    --accent-weak:rgba(63,210,176,.13);
+    --cut:#e08b82;
+    --cut-weak:rgba(224,139,130,.12);
+    --well:#0a0e13;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0d1117;
+  --sheet:#141a22;
+  --sheet-2:#1a212b;
+  --ink:rgba(255,255,255,.90);
+  --ink-2:rgba(255,255,255,.62);
+  --ink-3:rgba(255,255,255,.45);
+  --rule:#28313d;
+  --rule-strong:#3a4553;
+  --accent:#3fd2b0;
+  --accent-weak:rgba(63,210,176,.13);
+  --cut:#e08b82;
+  --cut-weak:rgba(224,139,130,.12);
+  --well:#0a0e13;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box;}
+
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+
+.mono{
+  font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+
+.wrap{
+  max-width:1040px;
+  margin:0 auto;
+  padding:0 20px 96px;
+}
+
+/* ---- masthead ---- */
+
+.masthead{
+  padding:56px 0 28px;
+  border-bottom:2px solid var(--ink);
+}
+.mast-eyebrow{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin:0 0 14px;
+}
+.masthead h1{
+  margin:0;
+  font-size:clamp(30px,5.2vw,50px);
+  line-height:1.03;
+  letter-spacing:-.028em;
+  font-weight:700;
+  text-wrap:balance;
+  max-width:16ch;
+}
+.mast-sub{
+  margin:16px 0 0;
+  max-width:62ch;
+  color:var(--ink-2);
+  font-size:16px;
+}
+.mast-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 26px;
+  margin-top:24px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11.5px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+}
+
+/* ---- sheet ---- */
+
+.sheet{
+  margin-top:64px;
+  scroll-margin-top:20px;
+}
+.titleblock{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:0 22px;
+  align-items:start;
+  padding-bottom:18px;
+  border-bottom:1px solid var(--rule-strong);
+}
+.tb-num{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:clamp(34px,6vw,54px);
+  line-height:.86;
+  font-weight:600;
+  color:var(--accent);
+  letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;
+}
+.tb-body h2{
+  margin:0;
+  font-size:clamp(21px,3.2vw,28px);
+  letter-spacing:-.018em;
+  line-height:1.14;
+  font-weight:700;
+  text-wrap:balance;
+}
+.tb-thesis{
+  margin:8px 0 0;
+  color:var(--ink-2);
+  max-width:60ch;
+  font-size:15.5px;
+}
+.tb-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:12px;
+}
+.tag{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;
+  letter-spacing:.09em;
+  text-transform:uppercase;
+  padding:3px 8px;
+  border:1px solid var(--rule-strong);
+  border-radius:2px;
+  color:var(--ink-2);
+  white-space:nowrap;
+}
+.tag-pick{
+  border-color:var(--accent);
+  color:var(--accent);
+  background:var(--accent-weak);
+}
+
+/* ---- the drawing well ---- */
+
+.well{
+  margin-top:22px;
+  background:var(--well);
+  border:1px solid var(--rule);
+  border-radius:3px;
+  padding:22px;
+  overflow-x:auto;
+}
+.well-cap{
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+  margin-top:9px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11px;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+}
+
+/* ---- flow strip ---- */
+
+.flow{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px 10px;
+  margin-top:22px;
+  padding:13px 15px;
+  background:var(--sheet);
+  border:1px solid var(--rule);
+  border-left:3px solid var(--accent);
+  border-radius:2px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11.5px;
+}
+.flow-l{
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+  margin-inline-end:4px;
+}
+.flow b{color:var(--ink);font-weight:600;}
+.flow i{color:var(--ink-3);font-style:normal;}
+
+/* ---- keeps / drops ---- */
+
+.spec{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:0;
+  margin-top:22px;
+  border:1px solid var(--rule);
+  border-radius:3px;
+  overflow:hidden;
+  background:var(--sheet);
+}
+.spec-col{padding:17px 19px;}
+.spec-col + .spec-col{border-inline-start:1px solid var(--rule);}
+.spec-h{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+  margin:0 0 11px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+.spec-h b{font-weight:600;color:var(--ink-2);}
+.spec ul{margin:0;padding:0;list-style:none;}
+.spec li{
+  position:relative;
+  padding-inline-start:15px;
+  margin-bottom:6px;
+  font-size:13.8px;
+  color:var(--ink-2);
+  line-height:1.45;
+}
+.spec li::before{
+  content:"";
+  position:absolute;
+  inset-inline-start:0;
+  top:.68em;
+  width:8px;
+  height:1px;
+  background:var(--rule-strong);
+}
+.col-drop .spec-h{color:var(--cut);}
+.col-drop .spec-h b{color:var(--cut);}
+.col-drop li::before{background:var(--cut);opacity:.6;}
+
+/* ---- verdict ---- */
+
+.verdict{
+  margin-top:18px;
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:14px;
+  align-items:start;
+}
+.verdict-l{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+  padding-top:3px;
+  white-space:nowrap;
+}
+.verdict p{margin:0 0 8px;max-width:66ch;color:var(--ink-2);font-size:14.5px;}
+.verdict p:last-child{margin-bottom:0;}
+.verdict strong{color:var(--ink);font-weight:600;}
+.risk{color:var(--cut);}
+
+/* ---- prose blocks ---- */
+
+.prose{max-width:66ch;}
+.prose p{margin:0 0 14px;color:var(--ink-2);}
+.prose strong{color:var(--ink);font-weight:600;}
+
+.inv{
+  margin-top:22px;
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:0;
+  border:1px solid var(--rule);
+  border-radius:3px;
+  overflow:hidden;
+  background:var(--sheet);
+}
+.inv-item{
+  padding:9px 13px;
+  border-inline-end:1px solid var(--rule);
+  border-bottom:1px solid var(--rule);
+  font-size:13px;
+  color:var(--ink-2);
+  display:flex;
+  gap:9px;
+  align-items:baseline;
+}
+.inv-n{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;
+  color:var(--ink-3);
+  font-variant-numeric:tabular-nums;
+  min-width:18px;
+}
+.inv-item.gone{color:var(--cut);text-decoration:line-through;text-decoration-color:var(--cut-weak);text-decoration-thickness:2px;}
+
+.probs{
+  margin-top:26px;
+  display:grid;
+  gap:1px;
+  background:var(--rule);
+  border:1px solid var(--rule);
+  border-radius:3px;
+  overflow:hidden;
+}
+.prob{background:var(--sheet);padding:16px 19px;}
+.prob h4{
+  margin:0 0 5px;
+  font-size:15px;
+  letter-spacing:-.008em;
+}
+.prob p{margin:0;color:var(--ink-2);font-size:14px;max-width:72ch;}
+
+/* ---- matrix ---- */
+
+.matrixwrap{margin-top:22px;overflow-x:auto;border:1px solid var(--rule);border-radius:3px;background:var(--sheet);}
+table.matrix{border-collapse:collapse;width:100%;min-width:760px;font-size:13.4px;}
+table.matrix th,table.matrix td{
+  text-align:start;
+  padding:11px 14px;
+  border-bottom:1px solid var(--rule);
+  vertical-align:top;
+}
+table.matrix thead th{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;
+  letter-spacing:.11em;
+  text-transform:uppercase;
+  color:var(--ink-3);
+  font-weight:500;
+  background:var(--sheet-2);
+  white-space:nowrap;
+}
+table.matrix tbody th{
+  font-weight:600;
+  color:var(--ink);
+  white-space:nowrap;
+}
+table.matrix tbody th span{
+  display:block;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;
+  color:var(--accent);
+  letter-spacing:.08em;
+  font-weight:500;
+}
+table.matrix td{color:var(--ink-2);}
+table.matrix tr:last-child th,table.matrix tr:last-child td{border-bottom:none;}
+.mk{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;}
+.mk-hi{color:var(--accent);font-weight:600;}
+.mk-lo{color:var(--cut);}
+
+.reco{
+  margin-top:34px;
+  padding:24px 26px;
+  border:2px solid var(--accent);
+  border-radius:3px;
+  background:var(--accent-weak);
+}
+.reco-l{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--accent);
+  margin:0 0 10px;
+}
+.reco h3{margin:0 0 10px;font-size:20px;letter-spacing:-.014em;}
+.reco p{margin:0 0 10px;color:var(--ink-2);max-width:68ch;font-size:14.6px;}
+.reco p:last-child{margin-bottom:0;}
+.reco strong{color:var(--ink);}
+
+/* ==========================================================================
+   Panel layer. These are drawings OF THE PANEL, so they carry the panel's
+   own tokens (web/assets/css/tokens.css, dark theme) in both document
+   themes. A screenshot does not follow your OS setting.
+   ========================================================================== */
+
+.pv{
+  --p-bg:#0a1222;
+  --p-surface:#151f31;
+  --p-surface2:#1c2740;
+  --p-border:#2c3950;
+  --p-border-strong:#3c4b68;
+  --p-text:rgba(255,255,255,.88);
+  --p-text2:rgba(255,255,255,.60);
+  --p-text3:rgba(255,255,255,.48);
+  --p-accent:#1bbf9f;
+  --p-on-accent:#071a16;
+  --p-accent-weak:rgba(27,191,159,.14);
+  --p-ok:#4fd08d;
+  --p-ok-weak:rgba(79,208,141,.13);
+  --p-warn:#e0a94a;
+  --p-warn-weak:rgba(224,169,74,.14);
+  --p-error:#f2726a;
+  --p-error-weak:rgba(242,114,106,.13);
+  --p-info:#6fa8f5;
+  --p-info-weak:rgba(111,168,245,.13);
+  --p-off:#8593a8;
+  --p-off-weak:rgba(133,147,168,.15);
+
+  background:var(--p-bg);
+  color:var(--p-text);
+  border-radius:10px;
+  padding:24px;
+  min-width:720px;
+  font-size:14px;
+  line-height:1.5;
+  position:relative;
+}
+.pv-head{
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  margin-bottom:18px;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--p-border);
+}
+.pv-head h3{margin:0;font-size:16px;font-weight:600;color:var(--p-text);letter-spacing:-.01em;}
+.pv-head span{font-size:12.5px;color:var(--p-text3);}
+
+.pv-card{
+  background:var(--p-surface);
+  border:1px solid var(--p-border);
+  border-radius:10px;
+  padding:16px;
+}
+.pv-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.pv-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.pv-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+
+.pv-slot-top{display:flex;align-items:center;gap:8px;margin-bottom:2px;}
+.pv-slot-label{
+  font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--p-text3);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+.pv-dot{width:8px;height:8px;border-radius:50%;flex:none;}
+.dot-ok{background:var(--p-ok);}
+.dot-warn{background:var(--p-warn);}
+.dot-err{background:var(--p-error);}
+.dot-off{background:var(--p-off);}
+
+.pv-name{font-size:17px;font-weight:600;letter-spacing:-.01em;margin:6px 0 2px;color:var(--p-text);}
+.pv-name-off{color:var(--p-text2);font-weight:500;}
+.pv-line{font-size:13px;color:var(--p-text2);}
+.pv-line-2{font-size:12.5px;color:var(--p-text3);margin-top:2px;}
+.pv-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;}
+
+.pv-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  border:1px solid var(--p-border-strong);
+  background:transparent;color:var(--p-text);
+  border-radius:6px;padding:5px 12px;font-size:13px;line-height:1.4;
+  font-family:inherit;cursor:pointer;white-space:nowrap;
+}
+.pv-btn-pri{background:var(--p-accent);border-color:var(--p-accent);color:var(--p-on-accent);font-weight:600;}
+.pv-btn-sm{padding:3px 9px;font-size:12px;border-radius:5px;}
+.pv-btn-lg{padding:8px 18px;font-size:14px;font-weight:600;}
+.pv-btn-danger{border-color:rgba(242,114,106,.5);color:var(--p-error);}
+.pv-btn-ghost{border-color:transparent;color:var(--p-text3);}
+.pv-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+
+.pv-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:11px;padding:2px 8px;border-radius:999px;
+  background:var(--p-off-weak);color:var(--p-text2);
+  white-space:nowrap;
+}
+.chip-ok{background:var(--p-ok-weak);color:var(--p-ok);}
+.chip-warn{background:var(--p-warn-weak);color:var(--p-warn);}
+.chip-err{background:var(--p-error-weak);color:var(--p-error);}
+.chip-info{background:var(--p-info-weak);color:var(--p-info);}
+.chip-acc{background:var(--p-accent-weak);color:var(--p-accent);}
+.pv-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+
+.pv-meter{height:3px;border-radius:2px;background:var(--p-surface2);overflow:hidden;margin-top:12px;}
+.pv-meter i{display:block;height:100%;border-radius:2px;}
+
+.pv-sub{
+  margin-top:20px;padding-top:16px;border-top:1px solid var(--p-border);
+}
+.pv-sub-h{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:12.5px;color:var(--p-text2);margin-bottom:10px;
+}
+.pv-row{
+  display:grid;align-items:center;gap:12px;
+  padding:9px 12px;border-radius:7px;
+  font-size:13px;
+}
+.pv-row + .pv-row{margin-top:4px;}
+.pv-row-alt{background:var(--p-surface);}
+.pv-row-head{
+  font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--p-text3);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  padding-bottom:6px;border-bottom:1px solid var(--p-border);border-radius:0;
+}
+.pv-tnum{font-variant-numeric:tabular-nums;}
+
+/* wizard */
+.pv-steps{display:flex;align-items:center;gap:0;margin-bottom:22px;}
+.pv-step{
+  display:flex;align-items:center;gap:9px;
+  background:none;border:none;padding:0 16px 0 0;
+  color:var(--p-text3);font-size:13.5px;font-family:inherit;cursor:pointer;
+}
+.pv-step-n{
+  width:24px;height:24px;border-radius:50%;flex:none;
+  display:grid;place-items:center;font-size:12px;font-weight:600;
+  border:1px solid var(--p-border-strong);
+}
+.pv-step[aria-selected="true"]{color:var(--p-text);}
+.pv-step[aria-selected="true"] .pv-step-n{background:var(--p-accent);border-color:var(--p-accent);color:var(--p-on-accent);}
+.pv-step.done .pv-step-n{border-color:var(--p-accent);color:var(--p-accent);}
+.pv-step.done{color:var(--p-text2);}
+.pv-steprule{flex:1;height:1px;background:var(--p-border);min-width:20px;margin-inline-end:16px;}
+
+.pv-q{font-size:17px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em;}
+.pv-qs{font-size:13px;color:var(--p-text2);margin:0 0 16px;max-width:60ch;}
+
+.pv-input{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  background:var(--p-surface);border:1px solid var(--p-border-strong);
+  border-radius:8px;padding:8px 10px;min-height:40px;
+}
+.pv-token{
+  display:inline-flex;align-items:center;gap:7px;
+  background:var(--p-accent-weak);color:var(--p-accent);
+  border-radius:5px;padding:3px 8px;font-size:13px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+.pv-token b{cursor:pointer;font-weight:400;opacity:.7;}
+.pv-caret{color:var(--p-text3);font-size:13px;}
+.pv-caret::after{content:"";display:inline-block;width:1px;height:14px;background:var(--p-accent);margin-inline-start:1px;vertical-align:-2px;animation:blink 1.1s steps(1) infinite;}
+@keyframes blink{50%{opacity:0;}}
+@media (prefers-reduced-motion:reduce){.pv-caret::after{animation:none;}}
+
+.pv-verdict{
+  display:flex;gap:10px;align-items:flex-start;
+  background:var(--p-ok-weak);border:1px solid rgba(79,208,141,.28);
+  border-radius:8px;padding:12px 14px;margin:14px 0;
+}
+.pv-verdict-ico{color:var(--p-ok);font-size:14px;line-height:1.3;}
+.pv-verdict p{margin:0;font-size:13px;color:var(--p-text2);}
+.pv-verdict b{color:var(--p-text);font-weight:600;}
+
+.pv-pick{
+  display:flex;gap:11px;align-items:flex-start;
+  border:1px solid var(--p-border);border-radius:8px;padding:12px 14px;
+  background:var(--p-surface);
+}
+.pv-pick + .pv-pick{margin-top:8px;}
+.pv-pick-on{border-color:var(--p-accent);background:var(--p-accent-weak);}
+.pv-radio{width:16px;height:16px;border-radius:50%;border:1px solid var(--p-border-strong);flex:none;margin-top:2px;}
+.pv-pick-on .pv-radio{border-color:var(--p-accent);border-width:5px;}
+.pv-pick-t{font-size:13.5px;font-weight:600;}
+.pv-pick-d{font-size:12.5px;color:var(--p-text3);margin-top:1px;}
+
+.pv-check{width:16px;height:16px;border-radius:4px;border:1px solid var(--p-border-strong);flex:none;margin-top:2px;display:grid;place-items:center;font-size:11px;color:var(--p-on-accent);}
+.pv-pick-on .pv-check{background:var(--p-accent);border-color:var(--p-accent);}
+
+.pv-foot{display:flex;justify-content:space-between;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid var(--p-border);}
+
+/* console */
+.pv-term{
+  background:#070d18;border:1px solid var(--p-border);border-radius:8px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;
+  overflow:hidden;margin-top:16px;
+}
+.pv-term-bar{
+  display:flex;justify-content:space-between;
+  padding:7px 12px;border-bottom:1px solid var(--p-border);
+  color:var(--p-text3);font-size:11px;
+}
+.pv-term-body{padding:10px 12px;display:grid;gap:3px;}
+.pv-term-body div{display:flex;gap:9px;}
+.pv-term-body i{font-style:normal;flex:none;width:12px;}
+.t-ok{color:var(--p-ok);}
+.t-run{color:var(--p-accent);}
+.t-idle{color:var(--p-text3);}
+
+/* drawer */
+.pv-stage{position:relative;overflow:hidden;border-radius:10px;}
+.pv-scrim{position:absolute;inset:0;background:rgba(3,8,16,.55);border-radius:10px;}
+.pv-drawer{
+  position:absolute;inset-block:0;inset-inline-end:0;width:min(400px,64%);
+  background:var(--p-surface);border-inline-start:1px solid var(--p-border-strong);
+  padding:20px;overflow:auto;
+  display:flex;flex-direction:column;gap:14px;
+}
+.pv-drawer h4{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em;}
+.pv-kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:12.5px;}
+.pv-kv dt{color:var(--p-text3);}
+.pv-kv dd{margin:0;color:var(--p-text2);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+
+/* toggle */
+.pv-tog{
+  width:34px;height:19px;border-radius:999px;background:var(--p-surface2);
+  border:1px solid var(--p-border-strong);position:relative;flex:none;
+}
+.pv-tog::after{content:"";position:absolute;top:2px;inset-inline-start:2px;width:13px;height:13px;border-radius:50%;background:var(--p-off);}
+.pv-tog-on{background:var(--p-accent);border-color:var(--p-accent);}
+.pv-tog-on::after{inset-inline-start:auto;inset-inline-end:2px;background:var(--p-on-accent);}
+
+/* autopilot */
+.pv-hero{padding:34px 20px 30px;text-align:center;}
+.pv-hero h3{margin:0 0 8px;font-size:21px;font-weight:600;letter-spacing:-.015em;}
+.pv-hero p{margin:0 auto;max-width:46ch;font-size:13.5px;color:var(--p-text2);}
+.pv-heroform{display:flex;gap:10px;justify-content:center;margin:22px auto 0;max-width:520px;}
+.pv-heroform .pv-input{flex:1;}
+.pv-link{color:var(--p-accent);font-size:12.5px;text-decoration:none;border-bottom:1px solid rgba(27,191,159,.35);cursor:pointer;}
+
+/* add tile */
+.pv-add{
+  border:1px dashed var(--p-border-strong);background:transparent;
+  display:grid;place-content:center;text-align:center;gap:4px;
+  color:var(--p-text3);min-height:132px;border-radius:10px;padding:16px;
+}
+.pv-add b{color:var(--p-text2);font-weight:600;font-size:13.5px;display:block;}
+.pv-add span{font-size:12px;}
+
+.pv-selected{outline:2px solid var(--p-accent);outline-offset:-2px;}
+
+/* mockup callout numbers */
+.cal{
+  position:absolute;
+  width:19px;height:19px;border-radius:50%;
+  background:var(--p-accent);color:var(--p-on-accent);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11px;font-weight:700;
+  display:grid;place-items:center;
+  box-shadow:0 0 0 3px var(--p-bg);
+}
+.callouts{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:6px 22px;
+  font-size:12.5px;
+  color:var(--ink-2);
+}
+.callouts div{display:flex;gap:8px;align-items:baseline;}
+.callouts b{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;color:var(--accent);flex:none;
+  width:15px;height:15px;border-radius:50%;border:1px solid var(--accent);
+  display:grid;place-items:center;line-height:1;
+}
+
+button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+@media (max-width:720px){
+  .spec{grid-template-columns:1fr;}
+  .spec-col + .spec-col{border-inline-start:none;border-top:1px solid var(--rule);}
+  .titleblock{grid-template-columns:1fr;gap:10px;}
+  .verdict{grid-template-columns:1fr;gap:6px;}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="mast-eyebrow">vpn-ui / settings / ssl &nbsp;·&nbsp; scheme set, 9 aug 2026</p>
+  <h1>Five ways to rebuild the SSL manager</h1>
+  <p class="mast-sub">
+    The certificate machinery underneath is sound: an immutable version store, a stable
+    active path, a live reloader that swaps a certificate without dropping a connection,
+    a rate ledger, an adoption path for whatever deploy.sh left behind. None of that is in
+    question here. What is in question is the page in front of it, which currently asks the
+    operator thirty-three questions to answer one.
+  </p>
+  <div class="mast-meta">
+    <span>Sheet 00 &nbsp;as built</span>
+    <span>Sheets 01 to 05 &nbsp;schemes</span>
+    <span>Sheet 06 &nbsp;comparison</span>
+    <span>No code written yet</span>
+  </div>
+</header>
+
+<!-- ================================================================= 00 -->
+<section class="sheet" id="s00">
+  <div class="titleblock">
+    <div class="tb-num">00</div>
+    <div class="tb-body">
+      <h2>What is on the page today</h2>
+      <p class="tb-thesis">
+        Thirty-three separate controls, alerts and panels, of which about six are on the
+        path to a working certificate. Struck-through items are ones every scheme below
+        removes from the page, whatever else it does.
+      </p>
+    </div>
+  </div>
+
+  <div class="inv">
+    <div class="inv-item"><span class="inv-n">01</span>Certificate cards grid</div>
+    <div class="inv-item"><span class="inv-n">02</span>Unmanaged certificate cards</div>
+    <div class="inv-item gone"><span class="inv-n">03</span>Add-profile tile and name field</div>
+    <div class="inv-item"><span class="inv-n">04</span>Legacy renewal warning and Stop</div>
+    <div class="inv-item"><span class="inv-n">05</span>Selected certificate hero</div>
+    <div class="inv-item"><span class="inv-n">06</span>Assign to panel row</div>
+    <div class="inv-item"><span class="inv-n">07</span>Assign to subscriptions row</div>
+    <div class="inv-item gone"><span class="inv-n">08</span>Re-apply button</div>
+    <div class="inv-item"><span class="inv-n">09</span>Renew button</div>
+    <div class="inv-item"><span class="inv-n">10</span>Delete certificate button</div>
+    <div class="inv-item gone"><span class="inv-n">11</span>Chain warning alert</div>
+    <div class="inv-item gone"><span class="inv-n">12</span>Budget blocked alert, 4 lines</div>
+    <div class="inv-item gone"><span class="inv-n">13</span>Budget nearly blocked alert</div>
+    <div class="inv-item gone"><span class="inv-n">14</span>Disruptive consent checkbox</div>
+    <div class="inv-item gone"><span class="inv-n">15</span>Operation running alert</div>
+    <div class="inv-item"><span class="inv-n">16</span>Live console</div>
+    <div class="inv-item"><span class="inv-n">17</span>Domain list field</div>
+    <div class="inv-item gone"><span class="inv-n">18</span>Mixed names alert</div>
+    <div class="inv-item gone"><span class="inv-n">19</span>Validation choice, four options</div>
+    <div class="inv-item gone"><span class="inv-n">20</span>Webroot path field</div>
+    <div class="inv-item"><span class="inv-n">21</span>Cloudflare token field</div>
+    <div class="inv-item gone"><span class="inv-n">22</span>Contact email field</div>
+    <div class="inv-item gone"><span class="inv-n">23</span>Staging switch</div>
+    <div class="inv-item gone"><span class="inv-n">24</span>Listen on IPv6 switch</div>
+    <div class="inv-item gone"><span class="inv-n">25</span>Preflight button</div>
+    <div class="inv-item"><span class="inv-n">26</span>Issue button and confirm</div>
+    <div class="inv-item gone"><span class="inv-n">27</span>Certificate field list, 7 rows</div>
+    <div class="inv-item gone"><span class="inv-n">28</span>Store paths</div>
+    <div class="inv-item gone"><span class="inv-n">29</span>Rate ledger panel</div>
+    <div class="inv-item gone"><span class="inv-n">30</span>Consumers table</div>
+    <div class="inv-item gone"><span class="inv-n">31</span>Attempt history table</div>
+    <div class="inv-item gone"><span class="inv-n">32</span>Rollback table</div>
+    <div class="inv-item gone"><span class="inv-n">33</span>Refresh button</div>
+  </div>
+
+  <div class="probs">
+    <div class="prob">
+      <h4>Two words for one thing, and neither is the thing anyone wants</h4>
+      <p>
+        The page says profile and certificate for the same object, and asks you to name it
+        before you have one. The operator did not come here to own certificates. They came
+        to make the panel stop showing a browser warning.
+      </p>
+    </div>
+    <div class="prob">
+      <h4>Four validation choices for a question the server can answer itself</h4>
+      <p>
+        Whether port 80 is free, whether the name resolves here, and whether what you typed
+        is an IP address are all things this box can find out in well under a second. Asking
+        the operator to pick HTTP, webroot, DNS or IP is asking them to do the probe by hand.
+      </p>
+    </div>
+    <div class="prob">
+      <h4>Re-apply and Renew look identical and neither says what will happen</h4>
+      <p>
+        One contacts a CA and one does not. One can be rate limited and one cannot. One may
+        bounce a service and one will not. The page shows two grey buttons a centimetre apart.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= 01 -->
+<section class="sheet" id="s01">
+  <div class="titleblock">
+    <div class="tb-num">01</div>
+    <div class="tb-body">
+      <h2>Two slots</h2>
+      <p class="tb-thesis">
+        Stop listing certificates. List the two things that need one. The panel gets a card
+        and the subscription server gets a card, each showing its own hostname, its own lock
+        state and one button. Certificates become an implementation detail of a slot.
+      </p>
+      <div class="tb-tags">
+        <span class="tag">Purpose first</span>
+        <span class="tag">Zero new endpoints</span>
+        <span class="tag">2 sheets of code</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="well">
+    <div class="pv">
+      <div class="pv-head"><h3>SSL</h3><span>Two things on this server are reached over HTTPS.</span></div>
+
+      <div class="pv-grid2">
+        <div class="pv-card" style="position:relative;">
+          <div class="cal" style="top:-8px;inset-inline-start:-8px;">1</div>
+          <div class="pv-slot-top">
+            <span class="pv-dot dot-ok"></span>
+            <span class="pv-slot-label">Panel</span>
+          </div>
+          <div class="pv-name">panel.example.com</div>
+          <div class="pv-line">Secured by Let&rsquo;s Encrypt.</div>
+          <div class="pv-line-2">Renews itself on 12 Oct. 74 days left.</div>
+          <div class="pv-meter"><i style="width:82%;background:var(--p-ok);"></i></div>
+          <div class="pv-btns">
+            <button class="pv-btn pv-btn-sm" type="button">Renew now</button>
+            <button class="pv-btn pv-btn-sm" type="button">Use another certificate</button>
+          </div>
+        </div>
+
+        <div class="pv-card" style="position:relative;">
+          <div class="cal" style="top:-8px;inset-inline-start:-8px;">2</div>
+          <div class="pv-slot-top">
+            <span class="pv-dot dot-off"></span>
+            <span class="pv-slot-label">Subscriptions</span>
+          </div>
+          <div class="pv-name pv-name-off">Not secured</div>
+          <div class="pv-line">Customers opening a subscription link see a warning.</div>
+          <div class="pv-line-2 pv-mono">https://91.107.188.54:2097</div>
+          <div class="pv-meter"><i style="width:100%;background:var(--p-off);"></i></div>
+          <div class="pv-btns">
+            <button class="pv-btn pv-btn-pri pv-btn-sm" type="button">Secure this</button>
+            <button class="pv-btn pv-btn-sm" type="button">Use the panel certificate</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pv-sub" style="position:relative;">
+        <div class="cal" style="top:8px;inset-inline-start:-10px;">3</div>
+        <div class="pv-sub-h">
+          <span>Certificates on this server</span>
+          <span class="pv-mono" style="color:var(--p-text3);">3</span>
+        </div>
+
+        <div class="pv-row pv-row-head" style="grid-template-columns:2fr 1.2fr .8fr 1fr auto;">
+          <span>Name</span><span>Issuer</span><span>Expires</span><span>Used by</span><span></span>
+        </div>
+        <div class="pv-row pv-row-alt" style="grid-template-columns:2fr 1.2fr .8fr 1fr auto;">
+          <span class="pv-mono">panel.example.com</span>
+          <span style="color:var(--p-text2);">Let&rsquo;s Encrypt</span>
+          <span class="pv-tnum" style="color:var(--p-ok);">74d</span>
+          <span><span class="pv-chip chip-acc">panel</span></span>
+          <button class="pv-btn pv-btn-ghost pv-btn-sm" type="button">&hellip;</button>
+        </div>
+        <div class="pv-row pv-row-alt" style="grid-template-columns:2fr 1.2fr .8fr 1fr auto;">
+          <span class="pv-mono">old.example.com</span>
+          <span style="color:var(--p-text2);">Let&rsquo;s Encrypt</span>
+          <span class="pv-tnum" style="color:var(--p-warn);">12d</span>
+          <span style="color:var(--p-text3);">nothing</span>
+          <button class="pv-btn pv-btn-ghost pv-btn-sm" type="button">&hellip;</button>
+        </div>
+        <div class="pv-row pv-row-alt" style="grid-template-columns:2fr 1.2fr .8fr 1fr auto;">
+          <span class="pv-mono">91.107.188.54</span>
+          <span style="color:var(--p-text2);">self-signed</span>
+          <span class="pv-tnum" style="color:var(--p-text3);">&mdash;</span>
+          <span><span class="pv-chip">from deploy.sh</span></span>
+          <button class="pv-btn pv-btn-sm" type="button">Take over</button>
+        </div>
+      </div>
+    </div>
+    <div class="well-cap">
+      <span>Scheme 01 &nbsp;default view, one slot secured</span>
+      <span>Panel dark theme, real tokens</span>
+    </div>
+  </div>
+
+  <div class="callouts">
+    <div><b>1</b><span>A slot, not a certificate. Its title is the role, its body is the hostname.</span></div>
+    <div><b>2</b><span>An empty slot states the consequence, then offers the one act that fixes it.</span></div>
+    <div><b>3</b><span>The inventory survives, demoted to a list, and is where adoption happens.</span></div>
+  </div>
+
+  <div class="flow">
+    <span class="flow-l">Getting one</span>
+    <b>Secure this</b><i>&rarr;</i><b>type the hostname</b><i>&rarr;</i><b>Go</b><i>&rarr;</i>
+    <i>~40s of progress</i><i>&rarr;</i><b>slot turns green</b>
+  </div>
+
+  <div class="spec">
+    <div class="spec-col">
+      <p class="spec-h"><span>Keeps</span><b>7</b></p>
+      <ul>
+        <li>Both listeners visible at once, which the current hero cannot do</li>
+        <li>Adoption of whatever deploy.sh installed</li>
+        <li>The live console during a run</li>
+        <li>Renew, per slot, with the CA cost stated</li>
+        <li>Multiple certificates, in the list below</li>
+        <li>Delete, behind the row menu</li>
+        <li>Cloudflare token, asked for only if the probe needs it</li>
+      </ul>
+    </div>
+    <div class="spec-col col-drop">
+      <p class="spec-h"><span>Drops</span><b>19</b></p>
+      <ul>
+        <li>The word profile, and naming a certificate before it exists</li>
+        <li>The four-way validation choice, replaced by a probe</li>
+        <li>Re-apply, folded into Renew and into assignment</li>
+        <li>Staging, IPv6 listen, webroot path, contact email</li>
+        <li>Preflight as a button; it runs automatically</li>
+        <li>Every table in Details, and Details itself</li>
+        <li>The budget alerts, reduced to a line in the confirm</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <div class="verdict-l">Verdict</div>
+    <div>
+      <p>
+        <strong>The largest drop in vocabulary of the five.</strong> An operator never learns
+        what a profile is, because there are none. The mental model is the same one they
+        already hold: the panel needs HTTPS, the subscription server needs HTTPS.
+      </p>
+      <p class="risk">
+        Risk: a certificate an inbound serves belongs to no slot, so it lives only in the
+        list at the bottom and the two cards say nothing about it. That is honest but it
+        makes the third consumer a second-class citizen.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= 02 -->
+<section class="sheet" id="s02">
+  <div class="titleblock">
+    <div class="tb-num">02</div>
+    <div class="tb-body">
+      <h2>Three questions</h2>
+      <p class="tb-thesis">
+        Getting a certificate becomes a short guided sequence with exactly three screens:
+        what to cover, how we prove it, where it goes. The middle screen is already answered
+        when you arrive at it, because the server probed while you were typing.
+      </p>
+      <div class="tb-tags">
+        <span class="tag">Guided</span>
+        <span class="tag">1 endpoint extended</span>
+        <span class="tag">3 sheets of code</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="well">
+    <div class="pv" id="wiz">
+      <div class="pv-head"><h3>Get a certificate</h3><span>Three questions, about a minute.</span></div>
+
+      <div class="pv-steps" role="tablist" aria-label="Steps">
+        <button class="pv-step" type="button" role="tab" data-step="1" aria-selected="true">
+          <span class="pv-step-n">1</span>Address
+        </button>
+        <span class="pv-steprule"></span>
+        <button class="pv-step" type="button" role="tab" data-step="2" aria-selected="false">
+          <span class="pv-step-n">2</span>Proof
+        </button>
+        <span class="pv-steprule"></span>
+        <button class="pv-step" type="button" role="tab" data-step="3" aria-selected="false">
+          <span class="pv-step-n">3</span>Where it goes
+        </button>
+      </div>
+
+      <div class="wiz-body" data-body="1">
+        <p class="pv-q">Which addresses will people use to reach this server?</p>
+        <p class="pv-qs">Everything you list ends up inside one certificate. Add the panel
+          hostname and the subscription hostname if they differ.</p>
+        <div class="pv-input">
+          <span class="pv-token">panel.example.com <b>&times;</b></span>
+          <span class="pv-token">sub.example.com <b>&times;</b></span>
+          <span class="pv-caret">type another and press enter</span>
+        </div>
+        <div class="pv-foot">
+          <span></span>
+          <button class="pv-btn pv-btn-pri pv-btn-lg" type="button" data-go="2">Continue</button>
+        </div>
+      </div>
+
+      <div class="wiz-body" data-body="2" hidden>
+        <p class="pv-q">How we prove the names are yours</p>
+        <p class="pv-qs">We checked this server while you were typing.</p>
+
+        <div class="pv-verdict">
+          <span class="pv-verdict-ico">&#10003;</span>
+          <p>
+            Both names resolve to <b>91.107.188.54</b>, which is this server, and
+            <b>port 80 is free</b>. We can answer the challenge ourselves.
+          </p>
+        </div>
+
+        <div class="pv-pick pv-pick-on">
+          <span class="pv-radio"></span>
+          <span>
+            <span class="pv-pick-t">Let this server answer the check</span>
+            <span class="pv-pick-d">Chosen for you. Port 80 is borrowed for about ten seconds.</span>
+          </span>
+        </div>
+        <div class="pv-pick">
+          <span class="pv-radio"></span>
+          <span>
+            <span class="pv-pick-t">Prove it through Cloudflare DNS instead</span>
+            <span class="pv-pick-d">Needs an API token. Use this if port 80 is blocked upstream.</span>
+          </span>
+        </div>
+
+        <div class="pv-foot">
+          <button class="pv-btn" type="button" data-go="1">Back</button>
+          <button class="pv-btn pv-btn-pri pv-btn-lg" type="button" data-go="3">Continue</button>
+        </div>
+      </div>
+
+      <div class="wiz-body" data-body="3" hidden>
+        <p class="pv-q">Where the certificate goes</p>
+        <p class="pv-qs">Both listeners pick it up without restarting. Live connections stay up.</p>
+
+        <div class="pv-pick pv-pick-on">
+          <span class="pv-check">&#10003;</span>
+          <span>
+            <span class="pv-pick-t">Panel</span>
+            <span class="pv-pick-d pv-mono">https://panel.example.com:2083</span>
+          </span>
+        </div>
+        <div class="pv-pick pv-pick-on">
+          <span class="pv-check">&#10003;</span>
+          <span>
+            <span class="pv-pick-t">Subscriptions</span>
+            <span class="pv-pick-d pv-mono">https://sub.example.com:2097</span>
+          </span>
+        </div>
+        <div class="pv-pick">
+          <span class="pv-check"></span>
+          <span>
+            <span class="pv-pick-t">VLESS inbound on 443</span>
+            <span class="pv-pick-d" style="color:var(--p-warn);">Reloading this one drops its live connections.</span>
+          </span>
+        </div>
+
+        <div class="pv-foot">
+          <button class="pv-btn" type="button" data-go="2">Back</button>
+          <button class="pv-btn pv-btn-pri pv-btn-lg" type="button" data-go="4">Get the certificate</button>
+        </div>
+      </div>
+
+      <div class="wiz-body" data-body="4" hidden>
+        <p class="pv-q">Getting the certificate</p>
+        <p class="pv-qs">You can leave this page. It carries on server side.</p>
+        <div class="pv-term">
+          <div class="pv-term-bar"><span>vpn-ui &middot; issue</span><span>4/6</span></div>
+          <div class="pv-term-body">
+            <div class="t-ok"><i>&#10003;</i><span>names resolve here</span></div>
+            <div class="t-ok"><i>&#10003;</i><span>port 80 free</span></div>
+            <div class="t-ok"><i>&#10003;</i><span>account registered</span></div>
+            <div class="t-ok"><i>&#10003;</i><span>challenge answered</span></div>
+            <div class="t-run"><i>&#8635;</i><span>issuing</span></div>
+            <div class="t-idle"><i>&middot;</i><span>hand to panel and subscriptions</span></div>
+          </div>
+        </div>
+        <div class="pv-foot">
+          <button class="pv-btn" type="button" data-go="1">Start over</button>
+          <span></span>
+        </div>
+      </div>
+    </div>
+    <div class="well-cap">
+      <span>Scheme 02 &nbsp;click the numbered steps</span>
+      <span>Interactive mockup</span>
+    </div>
+  </div>
+
+  <div class="flow">
+    <span class="flow-l">Getting one</span>
+    <b>Add certificate</b><i>&rarr;</i><b>names</b><i>&rarr;</i><b>confirm the probe</b><i>&rarr;</i>
+    <b>tick the listeners</b><i>&rarr;</i><i>~40s</i><i>&rarr;</i><b>done</b>
+  </div>
+
+  <div class="spec">
+    <div class="spec-col">
+      <p class="spec-h"><span>Keeps</span><b>8</b></p>
+      <ul>
+        <li>Every validation method the backend supports, ranked instead of listed</li>
+        <li>Preflight, promoted to the centre of step two as a plain sentence</li>
+        <li>Assignment as part of getting, not a separate act afterwards</li>
+        <li>The disruptive consent, on the one row it applies to</li>
+        <li>Inbounds as assignable targets, which no other scheme surfaces</li>
+        <li>The live console</li>
+        <li>Cloudflare token, revealed only on that branch</li>
+        <li>Multiple names in one certificate</li>
+      </ul>
+    </div>
+    <div class="spec-col col-drop">
+      <p class="spec-h"><span>Drops</span><b>17</b></p>
+      <ul>
+        <li>The always-open form, replaced by a flow you enter deliberately</li>
+        <li>Profiles and profile naming, the name comes from the first domain</li>
+        <li>Staging, IPv6 listen, webroot path, contact email</li>
+        <li>Re-apply, the wizard rerun does the same thing more clearly</li>
+        <li>Every alert in the stack, folded into step two</li>
+        <li>Details, and all four tables inside it</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <div class="verdict-l">Verdict</div>
+    <div>
+      <p>
+        <strong>The best first-run experience, and the only scheme that keeps inbounds in
+        the picture.</strong> Step two is the whole argument: it turns the four-way choice
+        into a finding with an override, which is what the operator actually wanted.
+      </p>
+      <p class="risk">
+        Risk: a wizard is a poor home for the ninety percent of visits that are not a first
+        run. It needs a second surface for management, so this is really scheme 02 plus
+        one of 01, 03 or 04 underneath it.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= 03 -->
+<section class="sheet" id="s03">
+  <div class="titleblock">
+    <div class="tb-num">03</div>
+    <div class="tb-body">
+      <h2>Wall and drawer</h2>
+      <p class="tb-thesis">
+        The page is nothing but cards. Everything about one certificate, and everything about
+        creating one, happens in a slide-over on the right. One detail surface, two modes, and
+        the page behind it never grows.
+      </p>
+      <div class="tb-tags">
+        <span class="tag">Closest to today</span>
+        <span class="tag">Front end only</span>
+        <span class="tag">1.5 sheets of code</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="well">
+    <div class="pv pv-stage">
+      <div class="pv-head"><h3>SSL</h3><span>3 certificates</span></div>
+      <div class="pv-grid4">
+        <div class="pv-card pv-selected">
+          <div class="pv-slot-top"><span class="pv-dot dot-ok"></span><span class="pv-slot-label">74 days</span></div>
+          <div class="pv-name" style="font-size:14.5px;">panel.example.com</div>
+          <div class="pv-line-2">Let&rsquo;s Encrypt</div>
+          <div class="pv-chips"><span class="pv-chip chip-acc">panel</span></div>
+          <div class="pv-meter"><i style="width:82%;background:var(--p-ok);"></i></div>
+        </div>
+        <div class="pv-card">
+          <div class="pv-slot-top"><span class="pv-dot dot-warn"></span><span class="pv-slot-label">12 days</span></div>
+          <div class="pv-name" style="font-size:14.5px;">sub.example.com</div>
+          <div class="pv-line-2">Let&rsquo;s Encrypt</div>
+          <div class="pv-chips"><span class="pv-chip chip-info">subscriptions</span></div>
+          <div class="pv-meter"><i style="width:13%;background:var(--p-warn);"></i></div>
+        </div>
+        <div class="pv-card">
+          <div class="pv-slot-top"><span class="pv-dot dot-off"></span><span class="pv-slot-label">unmanaged</span></div>
+          <div class="pv-name" style="font-size:14.5px;">91.107.188.54</div>
+          <div class="pv-line-2">self-signed, from deploy.sh</div>
+          <div class="pv-chips"><span class="pv-chip chip-warn">take over</span></div>
+          <div class="pv-meter"><i style="width:100%;background:var(--p-off);"></i></div>
+        </div>
+        <div class="pv-add">
+          <b>+ New certificate</b>
+          <span>Opens the same panel</span>
+        </div>
+      </div>
+
+      <div class="pv-sub">
+        <div class="pv-sub-h"><span>Nothing else lives on this page.</span></div>
+      </div>
+
+      <div class="pv-scrim"></div>
+      <aside class="pv-drawer">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+          <div>
+            <h4>panel.example.com</h4>
+            <div class="pv-line-2">Let&rsquo;s Encrypt R13 &middot; ECDSA P-256</div>
+          </div>
+          <button class="pv-btn pv-btn-ghost pv-btn-sm" type="button">&times;</button>
+        </div>
+
+        <div class="pv-chips" style="margin-top:0;">
+          <span class="pv-chip chip-ok">valid, 74 days</span>
+          <span class="pv-chip">renews 12 Oct</span>
+        </div>
+
+        <div>
+          <div class="pv-slot-label" style="margin-bottom:8px;">Serving</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;">
+            <span>Panel</span><span class="pv-tog pv-tog-on"></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid var(--p-border);">
+            <span>Subscriptions</span><span class="pv-tog"></span>
+          </div>
+        </div>
+
+        <dl class="pv-kv">
+          <dt>Covers</dt><dd>panel.example.com</dd>
+          <dt>Valid to</dt><dd>12 Oct 2026</dd>
+          <dt>Chain</dt><dd>leaf + 1 intermediate</dd>
+          <dt>Path</dt><dd>&hellip;/cert/active/fullchain.pem</dd>
+        </dl>
+
+        <div class="pv-btns" style="margin-top:auto;">
+          <button class="pv-btn pv-btn-pri" type="button">Renew now</button>
+          <button class="pv-btn" type="button">Previous version</button>
+          <button class="pv-btn pv-btn-danger" type="button">Delete</button>
+        </div>
+      </aside>
+    </div>
+    <div class="well-cap">
+      <span>Scheme 03 &nbsp;card selected, drawer open</span>
+      <span>Panel dark theme, real tokens</span>
+    </div>
+  </div>
+
+  <div class="flow">
+    <span class="flow-l">Getting one</span>
+    <b>+ New certificate</b><i>&rarr;</i><b>drawer, names + Go</b><i>&rarr;</i><i>~40s in the drawer</i>
+    <i>&rarr;</i><b>card appears</b><i>&rarr;</i><b>flip the Serving toggles</b>
+  </div>
+
+  <div class="spec">
+    <div class="spec-col">
+      <p class="spec-h"><span>Keeps</span><b>9</b></p>
+      <ul>
+        <li>The card grid you already shipped, unchanged in structure</li>
+        <li>Rollback, as one Previous version button</li>
+        <li>The certificate field list, cut to four rows</li>
+        <li>Assignment, as two toggles you can flip in either direction</li>
+        <li>Adoption, as a card that says take over</li>
+        <li>Delete, with its in-use refusal</li>
+        <li>Renew per certificate</li>
+        <li>The live console, inside the drawer</li>
+        <li>Store path, as one copyable line</li>
+      </ul>
+    </div>
+    <div class="spec-col col-drop">
+      <p class="spec-h"><span>Drops</span><b>16</b></p>
+      <ul>
+        <li>The hero, entirely; the card is the hero</li>
+        <li>The always-open form and the Details accordion</li>
+        <li>The whole alert stack, moved into card state and drawer copy</li>
+        <li>Four-way validation, replaced by the probe</li>
+        <li>Staging, IPv6 listen, webroot, email, preflight button</li>
+        <li>Consumers and history tables</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <div class="verdict-l">Verdict</div>
+    <div>
+      <p>
+        <strong>Cheapest to build and lowest risk.</strong> It reuses the cards, the status
+        payload and every endpoint as they are. The only real work is moving the hero, the
+        form and Details into one drawer and deleting the rest.
+      </p>
+      <p class="risk">
+        Risk: it simplifies the page without simplifying the model. The operator still thinks
+        in certificates and still has to work out which listener needs which one.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= 04 -->
+<section class="sheet" id="s04">
+  <div class="titleblock">
+    <div class="tb-num">04</div>
+    <div class="tb-body">
+      <h2>One table</h2>
+      <p class="tb-thesis">
+        A certificate is a row. Name, issuer, life left, and a toggle for each listener that
+        commits on click. Creating one is the last row of the same table. Nothing expands
+        unless you ask.
+      </p>
+      <div class="tb-tags">
+        <span class="tag">Density</span>
+        <span class="tag">Front end only</span>
+        <span class="tag">1 sheet of code</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="well">
+    <div class="pv">
+      <div class="pv-head"><h3>SSL</h3><span>3 certificates, 2 listeners covered</span></div>
+
+      <div class="pv-row pv-row-head" style="grid-template-columns:2.2fr 1.2fr 1.4fr .7fr .7fr auto;">
+        <span>Name</span><span>Issuer</span><span>Life left</span>
+        <span style="text-align:center;">Panel</span><span style="text-align:center;">Subs</span><span></span>
+      </div>
+
+      <div class="pv-row pv-row-alt" style="grid-template-columns:2.2fr 1.2fr 1.4fr .7fr .7fr auto;">
+        <span><span class="pv-dot dot-ok" style="display:inline-block;margin-inline-end:8px;"></span><span class="pv-mono">panel.example.com</span></span>
+        <span style="color:var(--p-text2);">Let&rsquo;s Encrypt</span>
+        <span>
+          <span class="pv-tnum" style="color:var(--p-ok);">74 days</span>
+          <span class="pv-meter" style="margin-top:5px;"><i style="width:82%;background:var(--p-ok);"></i></span>
+        </span>
+        <span style="display:grid;place-items:center;"><span class="pv-tog pv-tog-on"></span></span>
+        <span style="display:grid;place-items:center;"><span class="pv-tog"></span></span>
+        <button class="pv-btn pv-btn-ghost pv-btn-sm" type="button">&hellip;</button>
+      </div>
+
+      <div class="pv-row pv-row-alt" style="grid-template-columns:2.2fr 1.2fr 1.4fr .7fr .7fr auto;">
+        <span><span class="pv-dot dot-warn" style="display:inline-block;margin-inline-end:8px;"></span><span class="pv-mono">sub.example.com</span></span>
+        <span style="color:var(--p-text2);">Let&rsquo;s Encrypt</span>
+        <span>
+          <span class="pv-tnum" style="color:var(--p-warn);">12 days</span>
+          <span class="pv-meter" style="margin-top:5px;"><i style="width:13%;background:var(--p-warn);"></i></span>
+        </span>
+        <span style="display:grid;place-items:center;"><span class="pv-tog"></span></span>
+        <span style="display:grid;place-items:center;"><span class="pv-tog pv-tog-on"></span></span>
+        <button class="pv-btn pv-btn-ghost pv-btn-sm" type="button">&hellip;</button>
+      </div>
+
+      <div class="pv-row pv-row-alt" style="grid-template-columns:2.2fr 1.2fr 1.4fr .7fr .7fr auto;">
+        <span><span class="pv-dot dot-off" style="display:inline-block;margin-inline-end:8px;"></span><span class="pv-mono">91.107.188.54</span></span>
+        <span style="color:var(--p-text2);">self-signed</span>
+        <span><span class="pv-chip chip-warn">not managed here</span></span>
+        <span style="display:grid;place-items:center;"><span class="pv-tog"></span></span>
+        <span style="display:grid;place-items:center;"><span class="pv-tog"></span></span>
+        <button class="pv-btn pv-btn-sm" type="button">Take over</button>
+      </div>
+
+      <div class="pv-row" style="grid-template-columns:1fr auto;margin-top:14px;padding:0;">
+        <div class="pv-input">
+          <span class="pv-caret">hostname or IP address</span>
+        </div>
+        <button class="pv-btn pv-btn-pri pv-btn-lg" type="button">Get a certificate</button>
+      </div>
+      <div class="pv-line-2" style="padding:8px 2px 0;">
+        We work out how to prove it and tell you before contacting the CA.
+      </div>
+    </div>
+    <div class="well-cap">
+      <span>Scheme 04 &nbsp;the whole page</span>
+      <span>Panel dark theme, real tokens</span>
+    </div>
+  </div>
+
+  <div class="flow">
+    <span class="flow-l">Getting one</span>
+    <b>type in the last row</b><i>&rarr;</i><b>Get a certificate</b><i>&rarr;</i>
+    <b>one confirm naming the method</b><i>&rarr;</i><i>~40s</i><i>&rarr;</i><b>new row</b>
+    <i>&rarr;</i><b>flick a toggle</b>
+  </div>
+
+  <div class="spec">
+    <div class="spec-col">
+      <p class="spec-h"><span>Keeps</span><b>6</b></p>
+      <ul>
+        <li>Every certificate visible at once, however many there are</li>
+        <li>Assignment as a two-way toggle, the only scheme where unassigning is obvious</li>
+        <li>Adoption inline, in the row it concerns</li>
+        <li>Renew, rollback and delete behind the row menu</li>
+        <li>The live console, as a strip under the table</li>
+        <li>Creation on the same surface as management</li>
+      </ul>
+    </div>
+    <div class="spec-col col-drop">
+      <p class="spec-h"><span>Drops</span><b>20</b></p>
+      <ul>
+        <li>Cards, the hero and the form, all three</li>
+        <li>Details and its four tables</li>
+        <li>The alert stack; state lives in the row</li>
+        <li>Four-way validation, staging, IPv6, webroot, email, preflight</li>
+        <li>Profiles as a named thing</li>
+        <li>Any explanation of what a certificate is for</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <div class="verdict-l">Verdict</div>
+    <div>
+      <p>
+        <strong>The most information per pixel, and the best answer if operators routinely
+        hold four or more certificates.</strong> The two toggle columns make the current
+        assignment readable in one horizontal glance, which no card layout manages.
+      </p>
+      <p class="risk">
+        Risk: it is worst exactly where it matters most, on a fresh install. A table with no
+        rows and one input teaches nothing, and this page is seen for the first time by
+        someone who has never got a certificate before.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= 05 -->
+<section class="sheet" id="s05">
+  <div class="titleblock">
+    <div class="tb-num">05</div>
+    <div class="tb-body">
+      <h2>One box</h2>
+      <p class="tb-thesis">
+        One question, one field, one button. The server probes, picks the method, gets the
+        certificate, hands it to both listeners and schedules the renewal. What you get back
+        is a sentence. Everything else is behind a single text link.
+      </p>
+      <div class="tb-tags">
+        <span class="tag">Most radical</span>
+        <span class="tag">1 new endpoint</span>
+        <span class="tag">2.5 sheets of code</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="well">
+    <div class="pv" id="auto">
+      <div class="pv-hero">
+        <h3>Which address will people use to reach this server?</h3>
+        <p>Type it and we do the rest: prove it is yours, get the certificate, hand it to the
+          panel and the subscription server, and renew it before it runs out.</p>
+        <div class="pv-heroform">
+          <span class="pv-input"><span class="pv-caret">panel.example.com</span></span>
+          <button class="pv-btn pv-btn-pri pv-btn-lg" type="button">Secure it</button>
+        </div>
+        <div style="margin-top:14px;">
+          <span class="pv-link" id="advlink" role="button" tabindex="0">Set it up manually instead</span>
+        </div>
+      </div>
+
+      <div id="advbox" hidden style="border-top:1px solid var(--p-border);padding-top:18px;margin-top:4px;">
+        <div class="pv-grid3">
+          <div class="pv-card">
+            <div class="pv-slot-label">Proof</div>
+            <div class="pv-line" style="margin-top:6px;">Force Cloudflare DNS</div>
+            <div class="pv-line-2">Paste an API token</div>
+          </div>
+          <div class="pv-card">
+            <div class="pv-slot-label">Files</div>
+            <div class="pv-line" style="margin-top:6px;">Point at your own pair</div>
+            <div class="pv-line-2">A certificate you already have</div>
+          </div>
+          <div class="pv-card">
+            <div class="pv-slot-label">Test mode</div>
+            <div class="pv-line" style="margin-top:6px;">Use the staging CA</div>
+            <div class="pv-line-2">Nothing will trust the result</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pv-sub">
+        <div class="pv-sub-h"><span>On this server</span></div>
+
+        <div class="pv-row pv-row-alt" style="grid-template-columns:auto 1fr auto;">
+          <span class="pv-dot dot-ok"></span>
+          <span>
+            <b class="pv-mono" style="font-size:13.5px;">panel.example.com</b>
+            <span class="pv-line-2">Secured, panel and subscriptions. Renews itself, 74 days left.</span>
+          </span>
+          <button class="pv-btn pv-btn-ghost pv-btn-sm" type="button">&hellip;</button>
+        </div>
+
+        <div class="pv-row pv-row-alt" style="grid-template-columns:auto 1fr auto;">
+          <span class="pv-dot dot-warn"></span>
+          <span>
+            <b class="pv-mono" style="font-size:13.5px;">91.107.188.54</b>
+            <span class="pv-line-2">Self-signed, installed by deploy.sh. Browsers will warn.</span>
+          </span>
+          <button class="pv-btn pv-btn-sm" type="button">Replace it</button>
+        </div>
+      </div>
+    </div>
+    <div class="well-cap">
+      <span>Scheme 05 &nbsp;click the manual link</span>
+      <span>Interactive mockup</span>
+    </div>
+  </div>
+
+  <div class="flow">
+    <span class="flow-l">Getting one</span>
+    <b>type the hostname</b><i>&rarr;</i><b>Secure it</b><i>&rarr;</i><i>~40s, one progress line</i>
+    <i>&rarr;</i><b>a sentence saying it is done</b>
+  </div>
+
+  <div class="spec">
+    <div class="spec-col">
+      <p class="spec-h"><span>Keeps</span><b>4</b></p>
+      <ul>
+        <li>The whole backend, reached through one orchestration call</li>
+        <li>Adoption, as Replace it on a self-signed row</li>
+        <li>The manual escape hatch, complete, one click away</li>
+        <li>Progress, reduced to a single line with a spinner</li>
+      </ul>
+    </div>
+    <div class="spec-col col-drop">
+      <p class="spec-h"><span>Drops</span><b>24</b></p>
+      <ul>
+        <li>Choosing anything at all in the happy path</li>
+        <li>Assignment as a decision; both listeners get it</li>
+        <li>Multiple names per certificate on the main path</li>
+        <li>Cards, hero, form, tables, alerts, console</li>
+        <li>Everything in Details</li>
+        <li>Every switch, including the ones in Advanced today</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <div class="verdict-l">Verdict</div>
+    <div>
+      <p>
+        <strong>The best page if it works, and the worst if it does not.</strong> One box is
+        the correct interface for a task with one correct outcome, and this task usually has
+        one.
+      </p>
+      <p class="risk">
+        Risk: it puts every judgement on the server. The failure copy has to be excellent,
+        because a person who was never asked a question has no idea which answer was wrong.
+        It also needs a new endpoint that probes, chooses, issues and assigns as one unit,
+        which is the most backend work of the five.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= 06 -->
+<section class="sheet" id="s06">
+  <div class="titleblock">
+    <div class="tb-num">06</div>
+    <div class="tb-body">
+      <h2>Side by side</h2>
+      <p class="tb-thesis">
+        Controls counted from sheet 00. Build cost is front-end template work unless a new
+        endpoint is named. Every scheme reuses the store, the ledger, the reloader and the
+        acme driver without changes.
+      </p>
+    </div>
+  </div>
+
+  <div class="matrixwrap">
+    <table class="matrix">
+      <thead>
+        <tr>
+          <th scope="col">Scheme</th>
+          <th scope="col">Controls left</th>
+          <th scope="col">First run</th>
+          <th scope="col">Day to day</th>
+          <th scope="col">Many certificates</th>
+          <th scope="col">Backend work</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Two slots<span>Sheet 01</span></th>
+          <td class="mk">14</td>
+          <td class="mk mk-hi">strong</td>
+          <td class="mk mk-hi">strong</td>
+          <td class="mk">adequate</td>
+          <td>None. Status already reports both listeners.</td>
+        </tr>
+        <tr>
+          <th scope="row">Three questions<span>Sheet 02</span></th>
+          <td class="mk">16</td>
+          <td class="mk mk-hi">strongest</td>
+          <td class="mk mk-lo">weak on its own</td>
+          <td class="mk">adequate</td>
+          <td>Preflight returns a suggested method.</td>
+        </tr>
+        <tr>
+          <th scope="row">Wall and drawer<span>Sheet 03</span></th>
+          <td class="mk">17</td>
+          <td class="mk">adequate</td>
+          <td class="mk mk-hi">strong</td>
+          <td class="mk mk-hi">strong</td>
+          <td>None.</td>
+        </tr>
+        <tr>
+          <th scope="row">One table<span>Sheet 04</span></th>
+          <td class="mk">13</td>
+          <td class="mk mk-lo">weak</td>
+          <td class="mk mk-hi">strong</td>
+          <td class="mk mk-hi">strongest</td>
+          <td>None.</td>
+        </tr>
+        <tr>
+          <th scope="row">One box<span>Sheet 05</span></th>
+          <td class="mk mk-hi">9</td>
+          <td class="mk mk-hi">strongest</td>
+          <td class="mk">adequate</td>
+          <td class="mk mk-lo">weak</td>
+          <td>New endpoint: probe, choose, issue, assign as one run.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="reco">
+    <p class="reco-l">Recommendation</p>
+    <h3>Build 01 as the page, and 02 as what its buttons open</h3>
+    <p>
+      They are not competitors. Scheme 01 is a good answer to <strong>where am I</strong> and
+      a thin answer to <strong>how do I get one</strong>. Scheme 02 is the reverse. Two slots
+      as the resting state, the three questions as the flow that both <em>Secure this</em> and
+      <em>New certificate</em> open, and the certificate list from 01 at the foot of the page
+      for adoption and for the multi-certificate case.
+    </p>
+    <p>
+      That combination lands at roughly <strong>15 controls, down from 33</strong>, needs one
+      new field on the existing preflight response and no new endpoints, and keeps the one
+      thing scheme 01 alone would lose: inbounds as a place a certificate can go.
+    </p>
+    <p>
+      If the priority is shipping this week instead, <strong>scheme 03</strong> is the honest
+      choice. It is front end only, reuses the cards already merged on this branch, and can be
+      done in one pass without touching Go at all.
+    </p>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var wiz = document.getElementById('wiz');
+  if (wiz) {
+    var show = function (n) {
+      wiz.querySelectorAll('.wiz-body').forEach(function (b) {
+        b.hidden = b.getAttribute('data-body') !== String(n);
+      });
+      wiz.querySelectorAll('.pv-step').forEach(function (s) {
+        var i = Number(s.getAttribute('data-step'));
+        s.setAttribute('aria-selected', String(i === n));
+        s.classList.toggle('done', i < n);
+      });
+    };
+    wiz.addEventListener('click', function (e) {
+      var step = e.target.closest('.pv-step');
+      if (step) { show(Number(step.getAttribute('data-step'))); return; }
+      var go = e.target.closest('[data-go]');
+      if (go) { show(Number(go.getAttribute('data-go'))); }
+    });
+  }
+
+  var link = document.getElementById('advlink');
+  var box = document.getElementById('advbox');
+  if (link && box) {
+    var toggle = function () {
+      box.hidden = !box.hidden;
+      link.textContent = box.hidden ? 'Set it up manually instead' : 'Hide the manual options';
+    };
+    link.addEventListener('click', toggle);
+    link.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  }
+})();
+</script>
+</body>
+</html>

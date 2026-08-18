@@ -151,6 +151,34 @@ func (d *l2tpOutDriver) parse(cfg VpnOutboundConfig) (*l2tpOutSettings, error) {
 	return s, nil
 }
 
+// ServerHost names the LNS, so this tunnel can be carried inside another. One address
+// covers both halves of the protocol: the L2TP UDP and, when IPsec is on, the IKE and
+// ESP that wrap it all go to the same peer.
+func (d *l2tpOutDriver) ServerHost(cfg VpnOutboundConfig) (string, error) {
+	s, err := d.parse(cfg)
+	if err != nil {
+		return "", err
+	}
+	return s.Server, nil
+}
+
+// CarriableOverProxy answers yes for both shapes this driver has.
+//
+// Plain L2TP, with no pre-shared key, is already nothing but UDP: the control channel and
+// the data channel are the same UDP flow to port 1701, and PPP lives inside it. There is
+// no raw IP protocol anywhere on that path, so a TCP/UDP-only carrier takes it whole.
+//
+// With a pre-shared key the tunnel gains an IKEv1 transport SA whose ESP is IP protocol 50
+// and would be dropped by a bridged carrier. writeSwanctlConn forces UDP encapsulation for
+// exactly that case, so the answer stays yes, and ipsecUp then CONFIRMS the peer agreed
+// before this tunnel is allowed to come up. That readback is not belt and braces here: in
+// IKEv1 a peer that sends no NAT-T vendor ID leaves charon with nothing to fake, the SA
+// installs as raw ESP with the config still saying `encap = yes`, and every reading short
+// of the negotiated state calls it healthy.
+func (d *l2tpOutDriver) CarriableOverProxy(cfg VpnOutboundConfig) (bool, string) {
+	return true, ""
+}
+
 // Validate refuses a tunnel that cannot possibly come up, while the modal is still open.
 func (d *l2tpOutDriver) Validate(cfg VpnOutboundConfig) error {
 	s, err := d.parse(cfg)
@@ -212,7 +240,13 @@ func (d *l2tpOutDriver) Up(cfg VpnOutboundConfig) (string, error) {
 	// config, not by the tunnel merely being up. Returning early on a live-but-stale
 	// tunnel is the subtle version of this bug: the operator changes the password, the
 	// save reports success, and the daemon keeps running with the old one.
-	if procMgr.IsRunning(l2tpOutProcName(name)) && l2tpOutStoredFingerprint(name) == l2tpOutFingerprint(s) {
+	//
+	// cfg.CarriedOverProxy is part of that fingerprint even though it changes nothing in
+	// the xl2tpd config it is stored in, because it changes the IPsec leg written below
+	// (`encap = yes`). It is json:"-", so hashing Settings alone cannot see it, and a
+	// tunnel that has just been put behind an Xray outbound would look unchanged and keep
+	// its raw-ESP SA, which that carrier drops.
+	if procMgr.IsRunning(l2tpOutProcName(name)) && l2tpOutStoredFingerprint(name) == l2tpOutFingerprint(s, cfg.CarriedOverProxy) {
 		// The live device, not the one we asked for. pppd's rename is best effort (it
 		// logs and carries on with pppN if SIOCSIFNAME fails), and insisting on the name
 		// we wanted would redial a perfectly healthy tunnel on every reconcile.
@@ -241,7 +275,7 @@ func (d *l2tpOutDriver) Up(cfg VpnOutboundConfig) (string, error) {
 	port := l2tpOutLocalPort(name)
 
 	if s.IpsecPsk != "" {
-		if err := d.ipsecUp(name, peer, port, s.IpsecPsk); err != nil {
+		if err := d.ipsecUp(name, peer, port, s.IpsecPsk, cfg.CarriedOverProxy); err != nil {
 			d.ipsecDown(name)
 			return "", err
 		}
@@ -255,7 +289,7 @@ func (d *l2tpOutDriver) Up(cfg VpnOutboundConfig) (string, error) {
 		d.ipsecDown(name)
 		return "", err
 	}
-	if err := d.writeXl2tpdConf(name, peer, port, s); err != nil {
+	if err := d.writeXl2tpdConf(name, peer, port, s, cfg.CarriedOverProxy); err != nil {
 		d.ipsecDown(name)
 		return "", err
 	}
@@ -324,7 +358,11 @@ func (d *l2tpOutDriver) Status(cfg VpnOutboundConfig) (bool, string) {
 	// The IPsec leg can fail on its own (a rekey the peer refuses), and when it does the
 	// ppp device stays up while every packet is dropped, so it has to be reported.
 	if s, err := d.parse(cfg); err == nil && s.IpsecPsk != "" {
-		if !l2tpOutIpsecEstablished(l2tpOutConnName(name)) {
+		// The encapsulation is deliberately NOT judged here. Status is served from the
+		// stored list, where CarriedOverProxy is always false (it is json:"-", derived per
+		// raise), so a check on it would read as a guard and do nothing. ipsecUp is where
+		// the flag is real, and it refuses rather than reports.
+		if est, _ := l2tpOutIpsecState(l2tpOutConnName(name)); !est {
 			return false, detail + ", IPsec down"
 		}
 		detail += ", IPsec up"
@@ -391,7 +429,9 @@ func l2tpOutLinkName(name string) string { return "l2tp-out-" + name }
 
 // l2tpOutConnName is this tunnel's connection name in the SHARED charon. The prefix
 // keeps it clear of the server side's namespaces: ikev2.go removes conf.d/ikev2-*.conf
-// wholesale on every regenerate, l2tp.go owns exactly l2tp.conf and gre.go owns gre-*.
+// wholesale on every regenerate, l2tp.go owns l2tp.conf AND l2tp-*.conf (one per inbound
+// when each has its own listen address) and gre.go owns gre-*. "vpnout-l2tp-" is outside
+// all of those globs, which is the point of it.
 func l2tpOutConnName(name string) string { return "vpnout-l2tp-" + name }
 
 func l2tpOutConnFile(name string) string {
@@ -460,7 +500,7 @@ func (d *l2tpOutDriver) writePppOptions(name, iface string, s *l2tpOutSettings) 
 	}
 
 	var b strings.Builder
-	b.WriteString("# Auto-generated by pro-ui (L2TP client outbound) - do not edit\n")
+	b.WriteString("# Auto-generated by vpn-ui (L2TP client outbound) - do not edit\n")
 	// We are the client: the LNS does not authenticate itself to us.
 	b.WriteString("noauth\n")
 	// EAP is refused in every mode: pppd's EAP is an SRP/TLS implementation that no LNS
@@ -510,12 +550,15 @@ func (d *l2tpOutDriver) writePppOptions(name, iface string, s *l2tpOutSettings) 
 
 // writeXl2tpdConf writes this tunnel's private xl2tpd config: a `[lac ...]` section,
 // which is the client half of the daemon the server side already runs.
-func (d *l2tpOutDriver) writeXl2tpdConf(name string, peer net.IP, port int, s *l2tpOutSettings) error {
+func (d *l2tpOutDriver) writeXl2tpdConf(name string, peer net.IP, port int, s *l2tpOutSettings, carried bool) error {
 	var b strings.Builder
-	b.WriteString("; Auto-generated by pro-ui (L2TP client outbound) - do not edit\n")
+	b.WriteString("; Auto-generated by vpn-ui (L2TP client outbound) - do not edit\n")
 	// The fingerprint of the settings this file was generated from, so a later Up can
 	// tell "already running" from "already running with what the operator just typed".
-	b.WriteString(l2tpOutFingerprintMark + l2tpOutFingerprint(s) + "\n")
+	// It covers the carrier as well, which is why this file is rewritten when only the
+	// carrier changed: nothing in the L2TP half of the tunnel depends on that, but the
+	// early return in Up is keyed here and the IPsec half does depend on it.
+	b.WriteString(l2tpOutFingerprintMark + l2tpOutFingerprint(s, carried) + "\n")
 	b.WriteString("[global]\n")
 	b.WriteString(fmt.Sprintf("port = %d\n", port))
 	b.WriteString("access control = no\n\n")
@@ -554,12 +597,18 @@ const l2tpOutFingerprintMark = "; vpn-ui-settings = "
 // l2tpOutFingerprint hashes the operator's settings. Deliberately NOT including the
 // resolved LNS address: a peer behind round-robin DNS would otherwise hand back a
 // different answer on most reconciles and redial a perfectly healthy tunnel each time.
-func l2tpOutFingerprint(s *l2tpOutSettings) string {
+//
+// `carried` is VpnOutboundConfig.CarriedOverProxy, mixed in by hand because it is json:"-"
+// and marshalling the settings cannot reach it. It has to be here even though it changes
+// nothing in the xl2tpd config this fingerprint is stored in: it is what turns UDP
+// encapsulation on in the IPsec leg, and a flip that does not move the hash leaves the old
+// raw-ESP SA loaded under a tunnel the panel now believes is carried.
+func l2tpOutFingerprint(s *l2tpOutSettings, carried bool) string {
 	b, err := json.Marshal(s)
 	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("%08x", l2tpOutHash(string(b)))
+	return fmt.Sprintf("%08x", l2tpOutHash(fmt.Sprintf("%s|carried=%t", b, carried)))
 }
 
 // l2tpOutStoredFingerprint reads back the fingerprint of the running config, or "".
@@ -803,7 +852,7 @@ func l2tpOutIfaceAddr(iface string) string {
 //   - /etc/strongswan.conf is written only when it does not exist yet. On a box that
 //     already serves IKEv2 or L2TP/IPsec inbounds it belongs to them, and rewriting it
 //     under a running charon buys nothing.
-func (d *l2tpOutDriver) ipsecUp(name string, peer net.IP, port int, psk string) error {
+func (d *l2tpOutDriver) ipsecUp(name string, peer net.IP, port int, psk string, carried bool) error {
 	if !backend.HasStrongswanBundle() {
 		return errors.New("L2TP/IPsec needs the bundled strongSwan, which is not available for this architecture; clear the pre-shared key to dial plain L2TP")
 	}
@@ -815,7 +864,7 @@ func (d *l2tpOutDriver) ipsecUp(name string, peer net.IP, port int, psk string) 
 		}
 	}
 	_ = os.MkdirAll(swanctlConfDir, 0755)
-	if err := d.writeSwanctlConn(name, peer, port, psk); err != nil {
+	if err := d.writeSwanctlConn(name, peer, port, psk, carried); err != nil {
 		return err
 	}
 	if err := ensureCharonRunning(); err != nil {
@@ -828,7 +877,22 @@ func (d *l2tpOutDriver) ipsecUp(name string, peer net.IP, port int, psk string) 
 	conn := l2tpOutConnName(name)
 	deadline := time.Now().Add(l2tpOutIpsecTimeout)
 	for {
-		if l2tpOutIpsecEstablished(conn) {
+		if est, encap := l2tpOutIpsecState(conn); est {
+			// `encap = yes` is what we asked for; this is what the peer agreed to, and in
+			// IKEv1 the two come apart in silence. charon only fakes the NAT-D payloads
+			// when the peer offered a NAT-T vendor ID; a peer that offers none leaves
+			// nothing to fake, and the SA installs as raw ESP (IP protocol 50) with the
+			// config still saying encap. Nothing else notices: the listing says
+			// ESTABLISHED and INSTALLED, this function would return nil, xl2tpd would dial,
+			// pppd would authenticate INSIDE the L2TP flow that does ride the carrier, and
+			// Up would hand back a healthy-looking ppp device that moves no payload at all.
+			if carried && !encap {
+				return fmt.Errorf("the IPsec SA to %s established without UDP encapsulation, so its ESP is raw IP protocol 50: "+
+					"the peer does not negotiate NAT traversal, and an Xray outbound carries TCP and UDP only. "+
+					"Carry this tunnel with another VPN tunnel, or with a freedom outbound pinned to an interface, "+
+					"which steer packets into a device and take ESP whole; or clear the pre-shared key to dial plain L2TP, "+
+					"which is UDP throughout", peer)
+			}
 			return nil
 		}
 		if time.Now().After(deadline) {
@@ -862,13 +926,24 @@ func (d *l2tpOutDriver) ipsecDown(name string) {
 }
 
 // writeSwanctlConn writes the IKEv1 transport connection protecting this client's L2TP.
-func (d *l2tpOutDriver) writeSwanctlConn(name string, peer net.IP, port int, psk string) error {
+func (d *l2tpOutDriver) writeSwanctlConn(name string, peer net.IP, port int, psk string, carried bool) error {
+	return os.WriteFile(l2tpOutConnFile(name),
+		[]byte(l2tpOutBuildSwanctlConn(name, peer, port, psk, carried)), 0600)
+}
+
+// l2tpOutBuildSwanctlConn renders that connection.
+//
+// Split from the write so the rendered text can be pinned by a test with no filesystem, no
+// charon and no kernel, which is the same split the L2TP inbound already has in
+// buildL2tpSwanctlConn. `carried` is VpnOutboundConfig.CarriedOverProxy and decides one
+// line, `encap = yes`.
+func l2tpOutBuildSwanctlConn(name string, peer net.IP, port int, psk string, carried bool) string {
 	esc := strings.ReplaceAll(psk, `\`, `\\`)
 	esc = strings.ReplaceAll(esc, `"`, `\"`)
 	conn := l2tpOutConnName(name)
 
 	var b strings.Builder
-	b.WriteString("# Auto-generated by pro-ui (L2TP client outbound, IKEv1 transport on the shared charon) - do not edit\n")
+	b.WriteString("# Auto-generated by vpn-ui (L2TP client outbound, IKEv1 transport on the shared charon) - do not edit\n")
 	b.WriteString("connections {\n")
 	b.WriteString(fmt.Sprintf("    %s {\n", conn))
 	// IKEv1: L2TP/IPsec is an IKEv1 protocol everywhere it is deployed, and the shared
@@ -881,6 +956,27 @@ func (d *l2tpOutDriver) writeSwanctlConn(name string, peer net.IP, port int, psk
 	b.WriteString("        reauth_time = 0s\n")
 	b.WriteString("        dpd_delay = 30s\n")
 	b.WriteString("        fragmentation = yes\n")
+	// UDP encapsulation, forced, and ONLY when an Xray outbound is carrying this tunnel.
+	//
+	// L2TP itself is UDP and rides any carrier. This leg is not: an IKEv1 transport SA
+	// protects that UDP with ESP, IP protocol 50, and a carrier tun dispatches TCP and UDP
+	// only (measured on the bundled core 26.4.17: raw IP protocols are not dispatched at
+	// all). Uncarried the ESP is fine, carried it vanishes, and the visible symptom is a
+	// tunnel that establishes and moves nothing.
+	//
+	// `encap = yes` makes charon fake the NAT-D payloads so the SA is installed as
+	// UDP-encapsulated ESP on port 4500. Supported by the bundle: the string is a
+	// connection-level parse rule in the bundled libstrongswan-vici.so, beside aggressive,
+	// mobike and fragmentation, and the bundled libcharon 5.9.14 carries the runtime path
+	// "faking NAT situation to enforce UDP encapsulation". IKEv1 will not fake it against
+	// a peer that sent no NAT-T vendor ID, which is why ipsecUp reads the negotiated state
+	// back instead of trusting this line.
+	//
+	// Conditional, because an uncarried tunnel would pay 8 bytes of UDP header on every
+	// packet and lose the ability to tell a real NAT from a forced one, for nothing.
+	if carried {
+		b.WriteString("        encap = yes\n")
+	}
 	// A wide list because we are the initiator and the far end is whatever the operator
 	// happens to be renting: consumer boxes and older enterprise gear answer a narrow
 	// modern proposal with NO_PROPOSAL_CHOSEN.
@@ -926,23 +1022,32 @@ func (d *l2tpOutDriver) writeSwanctlConn(name string, peer net.IP, port int, psk
 	b.WriteString("    }\n")
 	b.WriteString("}\n")
 
-	return os.WriteFile(l2tpOutConnFile(name), []byte(b.String()), 0600)
+	return b.String()
 }
 
-// l2tpOutIpsecEstablished reports whether the named connection has a live IKE SA with an
-// installed child. Both halves matter: an ESTABLISHED IKE SA whose child was never
+// l2tpOutIpsecState reports whether the named connection has a live IKE SA with an
+// installed child, and whether that child's ESP travels inside UDP.
+//
+// Both halves of the first answer matter: an ESTABLISHED IKE SA whose child was never
 // installed protects nothing, and that is exactly the state a traffic-selector mismatch
 // with the peer leaves behind.
+//
+// The encapsulation comes out of the SAME listing rather than a second swanctl run,
+// because the two would be separate snapshots of a state charon changes on its own (a
+// rekey re-installs the child), and because this is polled inside an HTTP handler where a
+// second process launch per iteration is pure cost.
+//
 // --noblock, always: `swanctl --list-sas` otherwise WAITS on any IKE_SA that is checked
 // out, and on this shared charon that includes an inbound IKEv2 client sitting
 // mid-authentication against the panel's own RADIUS server. ikev2.go documents the same
 // hazard from the other direction. This call runs inside the panel's save handler, so a
 // blocking listing would stall an HTTP request behind an unrelated client's login.
-func l2tpOutIpsecEstablished(conn string) bool {
+func l2tpOutIpsecState(conn string) (bool, bool) {
 	out, err := exec.Command(swanctlBin(), "--list-sas", "--noblock", "--ike", conn).CombinedOutput()
 	if err != nil {
-		return false
+		return false, false
 	}
 	s := string(out)
-	return strings.Contains(s, "ESTABLISHED") && strings.Contains(s, "INSTALLED")
+	return strings.Contains(s, "ESTABLISHED") && strings.Contains(s, "INSTALLED"),
+		ipsecOutEncapInstalled(s)
 }

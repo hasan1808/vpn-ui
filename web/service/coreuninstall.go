@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -149,15 +150,11 @@ func (s *CoreService) StartCoreUninstall(names []string, inbounds string) (bool,
 	if err := s.CanUninstallCores(names, inbounds); err != nil {
 		return false, err
 	}
-	// Delete BEFORE the daemons go, so the normal delete path still has a live
-	// backend to tear each inbound's own state down with.
-	if inbounds == InboundsDelete {
-		if n, err := s.deleteCoreInbounds(names); err != nil {
-			return false, err
-		} else if n > 0 {
-			logger.Info("core uninstall: deleted", n, "inbound(s) belonging to", names)
-		}
-	}
+	// EVERY refusal has to come before the first destructive act. Deleting the
+	// inbounds used to happen up here, above these two checks, so a request that
+	// arrived during a setup run (or alongside another uninstall) was refused AFTER
+	// the inbounds were already gone: nothing was uninstalled and the operator's
+	// inbounds were destroyed anyway.
 	provisionRun.mu.Lock()
 	provisioning := provisionRun.running
 	provisionRun.mu.Unlock()
@@ -170,7 +167,26 @@ func (s *CoreService) StartCoreUninstall(names []string, inbounds string) (bool,
 		coreUninstallRun.mu.Unlock()
 		return false, fmt.Errorf("an uninstall is already running")
 	}
+	// Claim the run before deleting anything, so a second request cannot slip in
+	// between the deletion and the flag being set.
 	selected := validCoreNames(names)
+	coreUninstallRun.running = true
+	coreUninstallRun.mu.Unlock()
+
+	// Delete BEFORE the daemons go, so the normal delete path still has a live
+	// backend to tear each inbound's own state down with.
+	if inbounds == InboundsDelete {
+		if n, err := s.deleteCoreInbounds(names); err != nil {
+			coreUninstallRun.mu.Lock()
+			coreUninstallRun.running = false
+			coreUninstallRun.mu.Unlock()
+			return false, err
+		} else if n > 0 {
+			logger.Info("core uninstall: deleted", n, "inbound(s) belonging to", names)
+		}
+	}
+
+	coreUninstallRun.mu.Lock()
 	coreUninstallRun.running = true
 	coreUninstallRun.done = false
 	coreUninstallRun.steps = nil
@@ -227,6 +243,11 @@ func (s *CoreService) runCoreUninstall(selected []string, emit func(ProvisionSte
 			remaining = append(remaining, n)
 		}
 	}
+	// Everything deliberately left in place, from any step, with the reason. The
+	// manifest-driven steps below add to it as well as the shared-feature step, so
+	// an operator can see in one list both "IPsec stayed because L2TP needs it" and
+	// "your /etc/ocserv stayed because it was here before vpn-ui was".
+	var kept []string
 
 	// 1. Stop the daemons first, so nothing is executing from a path about to be
 	//    unlinked and no supervisor restarts it mid-teardown.
@@ -252,28 +273,92 @@ func (s *CoreService) runCoreUninstall(selected []string, emit func(ProvisionSte
 	}
 
 	// 2. The cores' own config files and per-inbound directories.
+	//
+	//    The catalog names the paths; the OWNERSHIP MANIFEST decides what may happen
+	//    to each one. That split is the fix for the worst thing this function did:
+	//    /etc/ocserv was removed wholesale, so uninstalling OpenConnect on a host
+	//    with a distro ocserv deleted that ocserv's ocserv.conf, its certificates and
+	//    its ocpasswd; /etc/openvpn/server, the distro's own server-config directory
+	//    on Debian/Ubuntu/Fedora, went the same way even though the panel only ever
+	//    mkdir's it and writes nothing inside. Both are now kept unless the manifest
+	//    says we created them, and a shared file we overwrote is restored from its
+	//    backup rather than deleted. See ownReleasePath.
+	handled := map[string]bool{}
 	for _, n := range selected {
 		spec := coreSpecFor(n)
 		if spec == nil {
 			continue
 		}
 		var removed []string
-		for _, p := range spec.paths {
-			if removeIfPresent(p) {
-				removed = append(removed, p)
+		release := func(p string) {
+			if handled[p] {
+				return // a path two cores both list is released once, by the first
+			}
+			handled[p] = true
+			gone, left := ownReleasePath(p, selected)
+			if gone != "" {
+				removed = append(removed, gone)
+			}
+			if left != "" {
+				kept = append(kept, left)
 			}
 		}
+		// Globs first: the per-inbound directories are OURS even when the root that
+		// holds them is the distro's, so clearing them is what lets a shared root be
+		// pruned (when we created it) or left tidy (when we did not).
 		for _, g := range spec.globs {
 			matches, _ := filepath.Glob(g)
 			for _, m := range matches {
-				if removeIfPresent(m) {
-					removed = append(removed, m)
-				}
+				release(m)
 			}
 		}
+		for _, p := range spec.paths {
+			release(p)
+		}
+		// The operator's config-editor overrides go with the files they applied to.
+		// Keeping them would re-apply an edit written against THIS install's inbound
+		// ids to whatever inbound reuses an id after a reinstall, silently.
+		ClearCoreConfigOverrides(n)
 		emit(ProvisionStep{Name: "remove " + coreDisplayName(n) + " config", OK: true,
 			Msg: pathsMsg(removed)})
 	}
+
+	// 2b. The host files the removed cores OVERWROTE rather than created.
+	//
+	//     These are not in the catalog because they are not ours to own:
+	//     /etc/ipsec.conf and /etc/ipsec.secrets belong to a host libreswan (whose
+	//     PSKs we replaced), /etc/swanctl/swanctl.conf we truncated to a single
+	//     `include` line, /etc/strongswan.conf we rewrote outright. Uninstall used to
+	//     leave our render behind (or delete the file), so the operator's own IPsec
+	//     never worked again. Each one was copied to /etc/vpn-ui/backups/ before the
+	//     first overwrite; this puts the copy back.
+	var restored []string
+	for _, p := range sharedHostFilePaths() {
+		core := coreForHostPath(p)
+		if handled[p] || core == "" || !removing[core] {
+			continue
+		}
+		handled[p] = true
+		gone, left := ownReleasePath(p, selected)
+		if gone != "" {
+			restored = append(restored, gone)
+		}
+		if left != "" {
+			kept = append(kept, left)
+		}
+	}
+	if len(restored) > 0 {
+		emit(ProvisionStep{Name: "restore shared host config", OK: true, Msg: pathsMsg(restored)})
+	}
+
+	// 2c. Reversible host state that is not a file: the systemd units we disabled to
+	//     take a daemon over, and the NIC offload GRE's FOU mode turned off. Both
+	//     were one-way changes with nothing recorded, so a host that had its own
+	//     xl2tpd or ocserv running before vpn-ui never got it back.
+	if line := restoreDisabledUnits(selected, emit); line != "" {
+		kept = append(kept, line)
+	}
+	restoreEthtoolState(selected, emit)
 
 	// 3. Bundled daemon binaries, minus anything a surviving core still runs
 	//    (pptpctrl belongs to PPTP alone, but the principle is the same).
@@ -295,7 +380,6 @@ func (s *CoreService) runCoreUninstall(selected []string, emit func(ProvisionSte
 
 	// 4. Shared features. Each is undone only when NO surviving core claims it.
 	//    This is the ipsec case the whole design exists for.
-	var kept []string
 	for _, feat := range []string{featPppd, featPptpCtrl, featAccel, featStrongswan, featKernelMods, featAmneziawg} {
 		if !needsFeature(selected, feat) {
 			continue
@@ -317,6 +401,19 @@ func (s *CoreService) runCoreUninstall(selected []string, emit func(ProvisionSte
 	if len(remaining) == 0 {
 		emit(ProvisionStep{Name: "persist /etc/modules-load.d/vpn-ui.conf", OK: true,
 			Msg: removedMsg(removeIfPresent("/etc/modules-load.d/vpn-ui.conf"))})
+
+		// 5b. The last core is gone, so the host-wide data-plane settings have nobody
+		//     left to serve. Neither of these was ever undone by a per-core uninstall,
+		//     so a host kept a vpn-ui sysctl drop-in and loose rp_filter forever after
+		//     the last protocol was removed.
+		if gone, left := ownReleasePath("/etc/sysctl.d/99-vpn-ui.conf", selected); gone != "" {
+			emit(ProvisionStep{Name: "remove /etc/sysctl.d/99-vpn-ui.conf", OK: true, Msg: gone})
+		} else if left != "" {
+			kept = append(kept, left)
+		}
+		if restored := restoreHostSysctls(); len(restored) > 0 {
+			emit(ProvisionStep{Name: "restore host sysctls", OK: true, Msg: strings.Join(restored, ", ")})
+		}
 	} else {
 		mods := requiredModulesFor(remaining)
 		for _, m := range optionalModulesFor(remaining) {
@@ -358,6 +455,72 @@ func (s *CoreService) runCoreUninstall(selected []string, emit func(ProvisionSte
 	// Nftables/routing are shared by the whole data plane and stay put; the
 	// removed cores simply stop having inbounds in them.
 	return kept
+}
+
+// restoreDisabledUnits hands back the systemd units provisioning disabled so the
+// panel could run those daemons itself.
+//
+// migrateFromSystemd runs `systemctl disable --now` on openvpn-server@*, xl2tpd,
+// pptpd and ipsec, and nothing distinguished the units WE generated from the
+// distro's own. On a host that was already running its own xl2tpd, installing any
+// core stopped it for good: uninstalling vpn-ui afterwards did not bring it back
+// because nothing had recorded that it was ever running. Each disable is now
+// recorded with the unit's enabled/active state; this replays it.
+//
+// Returns a single summary line for the "kept" report, or "".
+func restoreDisabledUnits(selected []string, emit func(ProvisionStep)) string {
+	if !commandExists("systemctl") {
+		return ""
+	}
+	var restored []string
+	for _, unit := range ownIDsOfKind(ownUnit) {
+		_, snap, ok := ownReleaseEntry(ownUnit, unit, selected)
+		if !ok || len(snap.Cores) > 0 {
+			continue // unrecorded, or a surviving core still needs it out of the way
+		}
+		if snap.WasEnabled == nil {
+			continue
+		}
+		if *snap.WasEnabled {
+			_ = exec.Command("systemctl", "enable", unit).Run()
+		}
+		if snap.WasActive != nil && *snap.WasActive {
+			_ = exec.Command("systemctl", "start", unit).Run()
+		}
+		if *snap.WasEnabled || (snap.WasActive != nil && *snap.WasActive) {
+			restored = append(restored, unit)
+		}
+		ownRemoveEntry(ownUnit, unit)
+	}
+	if len(restored) == 0 {
+		return ""
+	}
+	_ = exec.Command("systemctl", "daemon-reload").Run()
+	emit(ProvisionStep{Name: "restore host services", OK: true, Msg: strings.Join(restored, ", ")})
+	return "re-enabled the host's own " + strings.Join(restored, ", ")
+}
+
+// restoreEthtoolState puts back the NIC offload settings a core turned off. Today
+// that is GRE's FOU mode disabling GRO on the WAN interface, which was documented
+// as deliberately permanent and left the host's NIC changed forever, including
+// after the core that needed it was removed.
+func restoreEthtoolState(selected []string, emit func(ProvisionStep)) {
+	for _, id := range ownIDsOfKind(ownEthtool) {
+		_, snap, ok := ownReleaseEntry(ownEthtool, id, selected)
+		if !ok || len(snap.Cores) > 0 || snap.Prev == "" {
+			continue
+		}
+		iface, setting, found := strings.Cut(id, "/")
+		if !found || setting != "gro" {
+			continue
+		}
+		err := restoreGro(iface, snap.Prev)
+		emit(ProvisionStep{Name: "restore GRO on " + iface, OK: err == nil, Warn: err != nil,
+			Msg: msgOrOK(err)})
+		if err == nil {
+			ownRemoveEntry(ownEthtool, id)
+		}
+	}
 }
 
 // sharedDaemonKeeper returns the first remaining core that runs the SAME daemon
@@ -471,7 +634,10 @@ func removeFeature(feat string) ProvisionStep {
 
 	case featAccel:
 		var removed []string
-		if unlinkAny(backend.AccelModuleDir) {
+		// unlinkIfPointsAt, not unlinkAny: /usr/lib/accel-ppp can be a symlink the
+		// operator or their distro made to their own accel-ppp module tree, and
+		// unlinkAny removed any symlink at all that it found there.
+		if unlinkIfPointsAt(backend.AccelModuleDir, backend.AccelBundleRoot+"/lib/accel-ppp") {
 			removed = append(removed, backend.AccelModuleDir)
 		}
 		if removeIfPresent(backend.AccelBundleRoot) {
@@ -483,14 +649,21 @@ func removeFeature(feat string) ProvisionStep {
 		// Reached only when neither L2TP nor IKEv2 is installed any more, so the
 		// shared charon has no user left.
 		var removed []string
-		if unlinkAny(backend.StrongswanIpsecDir) {
+		// Same fix as accel-ppp above: only OUR link to the bundle is removed, never
+		// whatever else may be symlinked at /usr/lib/ipsec on a host with its own
+		// strongSwan.
+		if unlinkIfPointsAt(backend.StrongswanIpsecDir, backend.StrongswanBundleIpsecLib) {
 			removed = append(removed, backend.StrongswanIpsecDir)
 		}
 		if removeIfPresent(backend.StrongswanBundleRoot) {
 			removed = append(removed, backend.StrongswanBundleRoot)
 		}
-		if removeIfPresent("/etc/strongswan.conf") {
-			removed = append(removed, "/etc/strongswan.conf")
+		// /etc/strongswan.conf is a HOST file: charon.go rewrites it wholesale, so on
+		// a box with its own strongSwan we replaced their configuration. Released
+		// through the manifest, which restores their copy from /etc/vpn-ui/backups/
+		// instead of deleting the file.
+		if gone, _ := ownReleasePath("/etc/strongswan.conf", []string{"ikev2", "l2tp"}); gone != "" {
+			removed = append(removed, gone)
 		}
 		// charon's control socket. Removed HERE rather than from the ikev2 catalog
 		// entry precisely because charon is shared: this branch only runs once
@@ -590,9 +763,14 @@ func unlinkIfPointsAt(link, wantTarget string) bool {
 	return os.Remove(link) == nil
 }
 
-// unlinkAny removes a path only when it is a symlink. The linked-in directories
-// (/usr/lib/ipsec, /usr/lib/accel-ppp) may exist as a real distro directory on a
-// host that also has its own strongSwan or accel-ppp, and that is not ours.
+// unlinkAny removes a path only when it is a symlink.
+//
+// ONLY SAFE FOR A PATH INSIDE OUR OWN TREE, which today means PptpCtrlLink under
+// /usr/libexec/vpn-ui. It used to be applied to /usr/lib/ipsec and
+// /usr/lib/accel-ppp as well, where a symlink can just as easily be the
+// operator's own (to their strongSwan or accel-ppp module tree) and removing it
+// broke their installation; those two now go through unlinkIfPointsAt, which
+// checks the target.
 func unlinkAny(link string) bool {
 	st, err := os.Lstat(link)
 	if err != nil || st.Mode()&os.ModeSymlink == 0 {

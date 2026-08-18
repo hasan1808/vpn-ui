@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/hasan1808/pro-ui/database/model"
-	"github.com/hasan1808/pro-ui/logger"
 	"github.com/hasan1808/pro-ui/web/global"
 	"github.com/hasan1808/pro-ui/web/service"
 	"github.com/hasan1808/pro-ui/web/session"
@@ -85,6 +83,9 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.GET("/getNewVlessEnc", a.getNewVlessEnc)
 	g.GET("/distroStatus", a.distroStatus)
 	g.GET("/geofileStatus", a.geofileStatus)
+	// The in-flight geofile download, so an overview that was reopened mid-transfer
+	// can re-attach instead of looking idle. Read-only, like geofileStatus beside it.
+	g.GET("/geofileProgress", a.geofileProgress)
 	g.GET("/checkUpdate", a.checkUpdate)
 	g.GET("/updateProgress", a.updateProgress)
 	// Reports (once) that the panel came back from a self-update. Gated to match
@@ -92,10 +93,6 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	// dashboard first would otherwise consume the notice meant for whoever ran the
 	// update.
 	g.GET("/updateResult", requireOverviewManage(), a.updateResult)
-	// The Manage tile's connectivity widget: does this box have working
-	// Internet? Read-only echo/TCP probes to well-known services, gated with
-	// the tile it feeds (see the delegation note above).
-	g.GET("/ping", requireOverviewManage(), a.pingInternet)
 
 	// Renaming the server relabels the panel for every admin. Offered only from the
 	// overview, so it answers to the bit that says this overview may act. Reading it
@@ -119,8 +116,6 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.POST("/fetchPanelBinary", requireOverviewManage(), a.fetchPanelBinary)
 	g.POST("/applyPanelBinary", requireOverviewManage(), a.applyPanelBinary)
 	g.POST("/discardPanelBinary", requireOverviewManage(), a.discardPanelBinary)
-	g.POST("/reinstallPanel", requireOverviewManage(), a.reinstallPanel)
-	g.POST("/reboot", requireOverviewManage(), a.rebootServer)
 	g.POST("/restartXrayService", requirePerm(model.PermXraySettings), a.restartXrayService)
 	g.POST("/installXray/:version", requirePerm(model.PermXraySettings), a.installXray)
 	// Geofile updates are reached only from the overview's geofiles dialog, so they
@@ -130,28 +125,19 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	// consulted, and where the Xray permission is the right question.
 	g.POST("/updateGeofile", requireOverviewManage(), a.updateGeofile)
 	g.POST("/updateGeofile/:fileName", requireOverviewManage(), a.updateGeofile)
+	// Whether the panel refreshes the geo data on its own. Same dialog, same bit.
+	g.POST("/geofileAutoUpdate", requireOverviewManage(), a.setGeofileAutoUpdate)
 	// Panel and Xray logs name other admins' inbounds, clients and IPs.
 	g.POST("/logs/:count", requireOverviewManage(), a.getLogs)
 	g.POST("/xraylogs/:count", requireOverviewManage(), a.getXrayLogs)
 	g.POST("/importDB", requireOverviewManage(), a.importDB)
 	g.POST("/importForeignDB", requireOverviewManage(), a.importForeignDB)
-	g.POST("/backupList", requireOverviewManage(), a.getBackupList)
-	g.POST("/createBackup", requireOverviewManage(), a.createBackup)
-	g.POST("/restoreBackup", requireOverviewManage(), a.restoreBackup)
 	g.POST("/getNewEchCert", a.getNewEchCert)
 }
 
 // refreshStatus updates the cached server status and collects CPU history.
 func (a *ServerController) refreshStatus() {
 	a.lastStatus = a.serverService.GetStatus(a.lastStatus)
-	// Apply a manually pinned public IPv4, if the operator set one. The auto-detected
-	// IP can be wrong on staging/NAted hosts, which then leaks a sample address as
-	// the server's public IP in the dashboard and client configs.
-	if pub, err := a.settingService.GetPublicIP(); err == nil && pub != "" {
-		if a.lastStatus != nil {
-			a.lastStatus.PublicIP.IPv4 = pub
-		}
-	}
 	// collect cpu history when status is fresh
 	if a.lastStatus != nil {
 		a.serverService.AppendCpuSample(time.Now(), a.lastStatus.Cpu)
@@ -389,39 +375,6 @@ func (a *ServerController) updatePanel(c *gin.Context) {
 	jsonObj(c, nil, nil)
 }
 
-// reinstallPanel re-downloads the current version binary and reinstalls it.
-// Useful when the operator suspects a corrupt binary or wants a clean slate
-// without changing versions.
-func (a *ServerController) reinstallPanel(c *gin.Context) {
-	err := a.serverService.ReinstallPanel()
-	if errors.Is(err, service.ErrPanelUpdateCancelled) {
-		jsonObj(c, gin.H{"cancelled": true}, nil)
-		return
-	}
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "pages.index.panelReinstall"), err)
-		return
-	}
-	jsonObj(c, nil, nil)
-}
-
-// rebootServer restarts the host machine after a short delay. The HTTP response
-// is delivered before the machine goes down.
-func (a *ServerController) rebootServer(c *gin.Context) {
-	logger.Info("server: reboot requested from dashboard")
-	go func() {
-		time.Sleep(1500 * time.Millisecond)
-		if err := exec.Command("systemctl", "reboot").Run(); err == nil {
-			return
-		}
-		if err := exec.Command("reboot").Run(); err == nil {
-			return
-		}
-		_ = exec.Command("shutdown", "-r", "now").Run()
-	}()
-	jsonMsg(c, I18nWeb(c, "pages.index.rebooting"), nil)
-}
-
 // uploadPanelBinary receives a binary the operator picked in the browser, stages it
 // beside the running one and answers with the versions, so the confirmation names
 // what the server actually read rather than what the file was called.
@@ -538,12 +491,6 @@ func (a *ServerController) updateResult(c *gin.Context) {
 	jsonObj(c, a.serverService.TakePanelUpdateResult(), nil)
 }
 
-// pingInternet answers the Manage tile's connectivity widget: whether the
-// server can reach Google, Cloudflare and YouTube. See PingInternet.
-func (a *ServerController) pingInternet(c *gin.Context) {
-	jsonObj(c, a.serverService.PingInternet(c.Request.Context()), nil)
-}
-
 // installXray installs or updates Xray to the specified version.
 func (a *ServerController) installXray(c *gin.Context) {
 	version := c.Param("version")
@@ -572,6 +519,22 @@ func (a *ServerController) updateGeofile(c *gin.Context) {
 
 	err := a.serverService.UpdateGeofile(fileName)
 	jsonMsg(c, I18nWeb(c, "pages.index.geofileUpdatePopover"), err)
+}
+
+// geofileProgress reports the in-flight (or last finished) geofile update.
+//
+// updateGeofile blocks, but Gin does not kill a handler when the browser leaves,
+// so navigating away abandons the response while the transfer carries on. This is
+// how the overview finds that transfer again when it comes back.
+func (a *ServerController) geofileProgress(c *gin.Context) {
+	jsonObj(c, a.serverService.GeofileRunState(), nil)
+}
+
+// setGeofileAutoUpdate turns the periodic geo data refresh on or off.
+func (a *ServerController) setGeofileAutoUpdate(c *gin.Context) {
+	enabled := c.PostForm("enabled") == "true"
+	err := a.settingService.SetGeofileAutoUpdate(enabled)
+	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 }
 
 // stopXrayService stops the Xray service.
@@ -673,6 +636,10 @@ func (a *ServerController) getConfigJson(c *gin.Context) {
 }
 
 // getDb downloads the database file.
+//
+// The name is decided here and not in the browser: the overview reaches this with a
+// plain navigation rather than an XHR, so Content-Disposition is the only place a
+// filename can come from, and the picker's choices have to travel as query params.
 func (a *ServerController) getDb(c *gin.Context) {
 	db, err := a.serverService.GetDb()
 	if err != nil {
@@ -680,7 +647,9 @@ func (a *ServerController) getDb(c *gin.Context) {
 		return
 	}
 
-	filename := fmt.Sprintf("vpn-ui_%s.db", time.Now().Format("20060102-150405"))
+	// Still gated below: the builder sanitizes every component it assembles, but this
+	// endpoint's guarantee is the gate, not the caller's good manners.
+	filename := a.serverService.BuildBackupFilename(backupNameOptions(c), browserHost(c))
 
 	if !isValidFilename(filename) {
 		c.AbortWithError(http.StatusBadRequest, fmt.Errorf("invalid filename"))
@@ -693,6 +662,34 @@ func (a *ServerController) getDb(c *gin.Context) {
 
 	// Write the file contents to the response
 	c.Writer.Write(db)
+}
+
+// backupNameOptions reads the filename picker's four checkboxes off the query
+// string.
+//
+// A request carrying NONE of them is not "the operator unticked everything", it is
+// an old bookmark, a script, or someone hitting /getDb directly, and those keep the
+// dated name this endpoint has always produced. The picker posts all four every
+// time, unticked ones included as false, so an all-false request is unambiguous and
+// does yield the bare vpn-ui.db it asked for.
+func backupNameOptions(c *gin.Context) service.BackupNameOptions {
+	picked := false
+	flag := func(name string) bool {
+		value, present := c.GetQuery(name)
+		picked = picked || present
+		return value == "true"
+	}
+
+	opts := service.BackupNameOptions{
+		Date:      flag("date"),
+		Time:      flag("time"),
+		PanelName: flag("panelName"),
+		Domain:    flag("domain"),
+	}
+	if !picked {
+		return service.BackupNameOptions{Date: true, Time: true}
+	}
+	return opts
 }
 
 func isValidFilename(filename string) bool {
@@ -740,37 +737,6 @@ func (a *ServerController) importForeignDB(c *gin.Context) {
 		return
 	}
 	jsonObj(c, report, nil)
-}
-
-// getBackupList returns the database backups stored on the panel itself.
-func (a *ServerController) getBackupList(c *gin.Context) {
-	backups, err := a.serverService.ListLocalBackups()
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "pages.index.getBackupListError"), err)
-		return
-	}
-	jsonObj(c, backups, nil)
-}
-
-// createBackup saves a copy of the current database into the panel's backup
-// folder so it can be restored from the panel later without a local copy.
-func (a *ServerController) createBackup(c *gin.Context) {
-	backup, err := a.serverService.CreateLocalBackup()
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "pages.index.createBackupError"), err)
-		return
-	}
-	jsonObj(c, backup, nil)
-}
-
-// restoreBackup restores a named on-panel backup over the current database.
-func (a *ServerController) restoreBackup(c *gin.Context) {
-	fileName := c.PostForm("fileName")
-	if err := a.serverService.RestoreLocalBackup(fileName); err != nil {
-		jsonMsg(c, I18nWeb(c, "pages.index.importDatabaseError"), err)
-		return
-	}
-	jsonObj(c, I18nWeb(c, "pages.index.importDatabaseSuccess"), nil)
 }
 
 // getNewX25519Cert generates a new X25519 certificate.

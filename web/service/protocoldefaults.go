@@ -79,7 +79,20 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("ipsecEnable", true),
 			// RandomUtil.randomSeq(16) in the constructor. fromJson() passes an absent
 			// psk straight through as undefined instead, so only a NEW inbound gets one.
-			gen("ipsecPsk", func() any { return random.Seq(16) }),
+			//
+			// INHERITED, not minted, when an enabled l2tp inbound already has a key. A
+			// fresh random key for a second inbound is not a risk of being rejected, it
+			// is a certainty: CheckSharedDaemonConflicts refuses two different keys on
+			// one IKE listen address, and a new inbound listens on all of them. The
+			// operator was left hand-copying the first inbound's key out of the other
+			// form. Minting only happens for the first l2tp inbound, or when the
+			// existing ones have IPsec off. See sharedL2tpIpsecPsk.
+			gen("ipsecPsk", func() any {
+				if psk := sharedL2tpIpsecPsk(); psk != "" {
+					return psk
+				}
+				return random.Seq(16)
+			}),
 			def("allowRaw", false),
 			def("clientToClient", false),
 			def("crossInbound", false),
@@ -87,7 +100,7 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("dns1", "8.8.8.8"),
 			def("dns2", "8.8.4.4"),
 			def("mtu", 1400),
-			def("userLimit", 1),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 			def("clients", noClients()),
 			def("externalProxy", emptyList()),
@@ -102,7 +115,7 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("dns1", "8.8.8.8"),
 			def("dns2", "8.8.4.4"),
 			def("mtu", 1400),
-			def("userLimit", 1),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 			def("clients", noClients()),
 			def("externalProxy", emptyList()),
@@ -125,6 +138,12 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("serverCertFile", ""),
 			def("serverKeyFile", ""),
 			def("tlsCryptFile", ""),
+			// On by default: it is what every existing inbound does, and the
+			// self-signed generator mints the key anyway. Turning it off is the
+			// opt-out for an operator who does not want tls-crypt at all.
+			def("tlsCryptEnable", true),
+			// The .ovpn profile name (setenv FRIENDLY_NAME). Empty = emit nothing.
+			def("friendlyName", ""),
 			def("dns1", "8.8.8.8"),
 			def("dns2", "8.8.4.4"),
 			def("mtu", 1500),
@@ -155,7 +174,7 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("clientToClient", false),
 			def("crossInbound", false),
 			def("ipRanges", emptyList()),
-			def("userLimit", 1),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 		}
 
@@ -176,18 +195,27 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("clientToClient", false),
 			def("crossInbound", false),
 			def("ipRanges", emptyList()),
-			def("userLimit", 1),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 		}
 
 	case model.SSTP:
-		// Inbound.SstpSettings. Field for field identical to OcservSettings; kept
-		// spelled out rather than shared so a future divergence in either one cannot
-		// silently rewrite the other's stored JSON.
+		// Inbound.SstpSettings. Field for field identical to OcservSettings apart from the
+		// MTU below; kept spelled out rather than shared so a future divergence in either
+		// one cannot silently rewrite the other's stored JSON.
 		return []settingDefault{
 			def("dns1", "8.8.8.8"),
 			def("dns2", "8.8.4.4"),
-			def("mtu", 1420),
+			// 1400, and NOT OpenConnect's 1420. SSTP is PPP inside a 4-byte SSTP header
+			// inside TLS inside TCP, so a 1500 byte path pays 20 (IP) + 20 (TCP) + 5 (TLS
+			// record) + 16 (IV) + 32 (MAC) + 4 (SSTP) + 4 (PPP) and lands just under 1400.
+			// OpenConnect's 1420 is a DTLS/UDP number and does not transfer.
+			//
+			// This also un-deadens two pieces of the codebase that already assumed 1400:
+			// sstp.go's own writer falls back to 1400 when no MTU is set, and
+			// vpnout_sstp.go picks 1400 with the comment "the value the panel's own SSTP
+			// server uses" -- which was false while the form posted 1420 on every save.
+			def("mtu", 1400),
 			def("tlsUseFile", false),
 			def("certificateFile", ""),
 			def("keyFile", ""),
@@ -199,7 +227,7 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("clientToClient", false),
 			def("crossInbound", false),
 			def("ipRanges", emptyList()),
-			def("userLimit", 1),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 		}
 
@@ -208,7 +236,12 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 		return []settingDefault{
 			def("dns1", "8.8.8.8"),
 			def("dns2", "8.8.4.4"),
-			def("mtu", 1420),
+			// ikev2DefaultMtu. 1400 because a real-world IKEv2 client is behind a NAT and
+			// therefore carrying ESP inside UDP, which costs 73-100 bytes on a 1500 byte
+			// path; the 1420 this used to say is the WireGuard figure and does not
+			// transfer. The value is enforced as a TCP MSS clamp, not written into a
+			// daemon config -- see ikev2Settings.Mtu for why that is the only option.
+			def("mtu", ikev2DefaultMtu),
 			def("authMode", "eap-mschapv2"),
 			def("psk", ""),
 			// Empty means "use the panel-access host / detected server IP", which is
@@ -227,7 +260,7 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("clientToClient", false),
 			def("crossInbound", false),
 			def("ipRanges", emptyList()),
-			def("userLimit", 1),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 		}
 
@@ -248,7 +281,7 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("clientToClient", false),
 			def("crossInbound", false),
 			def("ipRanges", emptyList()),
-			def("userLimit", 1),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 			def("externalProxy", emptyList()),
 		}
@@ -277,7 +310,7 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("clientToClient", false),
 			def("crossInbound", false),
 			def("ipRanges", emptyList()),
-			def("userLimit", 1),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 			def("externalProxy", emptyList()),
 		}
@@ -302,27 +335,42 @@ func protocolSettingDefaults(protocol model.Protocol) []settingDefault {
 			def("clientToClient", false),
 			def("crossInbound", false),
 			def("ipRanges", emptyList()),
-			def("userLimit", 1),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 		}
 
 	case model.MTPROTO:
-		// Inbound.MtprotoSettings. The inbound owns nothing but its port: modes, the
-		// FakeTLS domain, the device cap, the ad tag and the external proxy list are all
-		// PER-ACCOUNT, because the proxy keys them off the authenticated secret rather
-		// than the socket. So there is exactly one inbound-level key.
+		// Inbound.MtprotoSettings. The proxy's policy is the INBOUND's: telemt applies
+		// the FakeTLS domain process-wide, and its mode map has to be spelled out per
+		// account or a missing entry reads as "no restriction". The secret, the link
+		// endpoints and the ad tag stay per-account, so none of them is seeded here.
+		//
+		// All three modes on and userLimit 10 (ten devices per account) are the values
+		// Inbound.MtprotoSettings' constructor uses, so an inbound created through the
+		// API matches one created in the form. 0 stays settable and does NOT mean
+		// unlimited: effectiveUserLimit reads it as the bounded 16-device block, which is
+		// why it is not the default any more.
 		return []settingDefault{
+			def("modeClassic", true),
+			def("modeSecure", true),
+			def("modeTls", true),
+			def("tlsDomain", "www.google.com"),
+			def("userLimit", 10),
 			def("clients", noClients()),
+			// The inbound-wide link endpoints, overridden per account by the client's
+			// own externalProxy.
+			def("externalProxy", emptyList()),
 		}
 
 	case model.SSH:
-		// Inbound.SshSettings. userLimit 0 = no limit, which is what the constructor
-		// (and therefore the Add form) uses. fromJson resolves an ABSENT value to 1
-		// instead, matching effectiveSshK(nil) for inbounds stored before the field
-		// existed; a caller who omits the key here is creating a NEW inbound, so the
-		// constructor's 0 is the right reading.
+		// Inbound.SshSettings. userLimit 10 = ten concurrent devices, which is what the
+		// constructor (and therefore the Add form) uses. fromJson resolves an ABSENT
+		// value to 1 instead, matching effectiveSshK(nil) for inbounds stored before the
+		// field existed; a caller who omits the key here is creating a NEW inbound, so
+		// the constructor's 10 is the right reading. 0 is still settable and SSH is the
+		// one protocol where it really does mean no cap at all.
 		return []settingDefault{
-			def("userLimit", 0),
+			def("userLimit", 10),
 			def("userLimitStrategy", "accept"),
 			def("externalProxy", emptyList()),
 			def("clients", noClients()),
@@ -483,6 +531,14 @@ func NormalizeInboundSettings(inbound *model.Inbound) error {
 	if inbound == nil {
 		return nil
 	}
+	// MTProto only, and BEFORE the defaults on purpose: a body written against the old
+	// field names carries its connection modes, FakeTLS domain and device cap on its
+	// CLIENTS, and filling the inbound-level defaults over that would both lose them and
+	// make the blob look already-migrated to the startup lift. See
+	// liftMtprotoSettingsBlob. A no-op for every other protocol and for a body already
+	// in the current shape, which is every body the panel's own form sends.
+	inbound.Settings = liftMtprotoSettingsBlob(inbound.Protocol, inbound.Settings)
+
 	filled, err := FillSettingsDefaults(inbound.Protocol, inbound.Settings)
 	if err != nil {
 		return err

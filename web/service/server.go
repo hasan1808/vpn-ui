@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	gonet "net"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -58,6 +56,11 @@ type Status struct {
 	CpuCores    int       `json:"cpuCores"`
 	LogicalPro  int       `json:"logicalPro"`
 	CpuSpeedMhz float64   `json:"cpuSpeedMhz"`
+	// CpuSpeedCurMhz is the clock RIGHT NOW, averaged over the online cores, and
+	// moves on every poll. CpuSpeedMhz above is the rated speed and does not: the
+	// two are both wanted, by different readouts (the spec tile states what the
+	// chip is, the vitals row states what it is doing). 0 means unknown.
+	CpuSpeedCurMhz float64 `json:"cpuSpeedCurMhz"`
 	CpuModel    string    `json:"cpuModel"`
 	OsName      string    `json:"osName"`
 	OsVersion   string    `json:"osVersion"`
@@ -130,12 +133,6 @@ type Status struct {
 	PublicIP struct {
 		IPv4 string `json:"ipv4"`
 		IPv6 string `json:"ipv6"`
-		// LocalIP4 lists every public IPv4 address assigned to the machine's
-		// up, non-loopback interfaces. The dashboard renders these as
-		// "IPv4 +n" rows so a server with several bound public addresses
-		// shows them all, not just the public exit IP in IPv4 above. Private
-		// LAN/Docker/APIPA/CGNAT addresses are excluded on purpose.
-		LocalIP4 []string `json:"localIp4"`
 	} `json:"publicIP"`
 	AppStats struct {
 		Threads uint32 `json:"threads"`
@@ -415,6 +412,11 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		status.CpuSpeedMhz = s.cachedCpuSpeedMhz
 	}
 	status.CpuModel = s.cachedCpuModel
+	// Read fresh every poll, and deliberately NOT cached: the whole point of it is
+	// that it moves. The rated speed goes in because a host with no readable clock
+	// (every virtual machine) is measured instead, and a measurement of how fast the
+	// vCPU is actually going has to be scaled by something to be stated in MHz.
+	status.CpuSpeedCurMhz = liveCpuMhz(status.CpuSpeedMhz)
 
 	// Uptime
 	// This process's own uptime, alongside the host's below.
@@ -607,13 +609,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		logger.Warning("get udp connections failed:", err)
 	}
 
-	// 1) Collect public IPs from local interfaces (NICs). If the server has a
-	// public IP directly on an interface, use that as the primary address — it's
-	// authoritative and doesn't depend on external services.
-	localPubIPs := localIPv4Addresses()
-
-	// 2) IP fetching with caching (external services) — only used if no local
-	// public IP is present.
+	// IP fetching with caching
 	showIp4ServiceLists := publicIPv4Services
 	showIp6ServiceLists := []string{
 		"https://api6.ipify.org",
@@ -645,14 +641,8 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 		s.noIPv6 = true
 	}
 
-	// Prefer a public IP from the local NIC; fall back to external detection.
-	if len(localPubIPs) > 0 {
-		status.PublicIP.IPv4 = localPubIPs[0]
-	} else {
-		status.PublicIP.IPv4 = s.cachedIPv4
-	}
+	status.PublicIP.IPv4 = s.cachedIPv4
 	status.PublicIP.IPv6 = s.cachedIPv6
-	status.PublicIP.LocalIP4 = localPubIPs
 
 	// Xray status
 	if s.xrayService.IsXrayRunning() {
@@ -719,59 +709,6 @@ func (s *ServerService) selectableInterfaces() map[string]bool {
 		}
 	}
 	return selectable
-}
-
-// localIPv4Addresses returns every IPv4 address on an up, non-loopback
-// interface, deduplicated and sorted. This covers the secondary addresses a
-// hosting provider binds next to the main one, which the public-IP probe can
-// never report; the dashboard shows them as the "IPv4 +n" rows.
-func localIPv4Addresses() []string {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		logger.Warning("get network interfaces failed:", err)
-		return nil
-	}
-	seen := make(map[string]bool)
-	var out []string
-	for _, iface := range ifaces {
-		isUp, isLoopback := false, false
-		for _, flag := range iface.Flags {
-			switch flag {
-			case "up":
-				isUp = true
-			case "loopback":
-				isLoopback = true
-			}
-		}
-		if !isUp || isLoopback {
-			continue
-		}
-		for _, a := range iface.Addrs {
-			addr, _, err := gonet.ParseCIDR(a.Addr)
-			if err != nil {
-				addr = gonet.ParseIP(a.Addr)
-			}
-			ip4 := addr.To4()
-			if ip4 == nil {
-				continue
-			}
-			// Only surface public addresses. The dashboard's "IPv4 +n" rows
-			// exist to reveal extra public addresses a host binds, never the
-			// LAN, Docker bridge, APIPA or CGNAT addresses that sit on the
-			// same machine (e.g. 10.x, 172.16/12, 192.168.x, 169.254.x,
-			// 100.64/10). Those should stay internal.
-			if ip4.IsPrivate() {
-				continue
-			}
-			s := ip4.String()
-			if !seen[s] {
-				seen[s] = true
-				out = append(out, s)
-			}
-		}
-	}
-	sort.Strings(out)
-	return out
 }
 
 func (s *ServerService) AppendCpuSample(t time.Time, v float64) {
@@ -902,11 +839,9 @@ func (s *ServerService) GetXrayVersions() ([]string, error) {
 	const (
 		XrayURL    = "https://api.github.com/repos/XTLS/Xray-core/releases"
 		bufferSize = 8192
-		maxBody    = 10 << 20 // 10 MiB limit for releases listing
 	)
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(XrayURL)
+	resp, err := http.Get(XrayURL)
 	if err != nil {
 		return nil, err
 	}
@@ -926,7 +861,7 @@ func (s *ServerService) GetXrayVersions() ([]string, error) {
 
 	buffer := bytes.NewBuffer(make([]byte, bufferSize))
 	buffer.Reset()
-	if _, err := buffer.ReadFrom(io.LimitReader(resp.Body, maxBody)); err != nil {
+	if _, err := buffer.ReadFrom(resp.Body); err != nil {
 		return nil, err
 	}
 
@@ -1005,18 +940,11 @@ func (s *ServerService) downloadXRay(version string) (string, error) {
 
 	fileName := fmt.Sprintf("Xray-%s-%s.zip", osName, arch)
 	url := fmt.Sprintf("https://github.com/XTLS/Xray-core/releases/download/%s/%s", version, fileName)
-
-	const maxDownload = 200 << 20 // 200 MiB limit for Xray binary
-	client := &http.Client{Timeout: 5 * time.Minute}
-	resp, err := client.Get(url)
+	resp, err := http.Get(url)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
-	}
 
 	os.Remove(fileName)
 	file, err := os.Create(fileName)
@@ -1025,9 +953,8 @@ func (s *ServerService) downloadXRay(version string) (string, error) {
 	}
 	defer file.Close()
 
-	_, err = io.Copy(file, io.LimitReader(resp.Body, maxDownload))
+	_, err = io.Copy(file, resp.Body)
 	if err != nil {
-		os.Remove(fileName)
 		return "", err
 	}
 
@@ -1241,106 +1168,126 @@ func (s *ServerService) GetDb() ([]byte, error) {
 	return fileContents, nil
 }
 
-// LocalBackupInfo describes one database backup stored on the panel.
-type LocalBackupInfo struct {
-	FileName string `json:"fileName"`
-	Size     int64  `json:"size"`
-	Created  int64  `json:"created"` // unix seconds
+// BackupNameOptions selects which components a backup filename carries. A struct
+// rather than positional bools because the two callers disagree on the set: the
+// download picker never offers Version, and the pre-update snapshot never wants
+// Domain.
+type BackupNameOptions struct {
+	Date      bool // 20060102
+	Time      bool // 150405
+	PanelName bool // the serverName setting, with the overview's own fallbacks
+	Domain    bool // the webDomain setting, or the host the browser reached us on
+	Version   bool // the version of the running panel
 }
 
-// GetBackupFolder ensures the local backup folder exists and returns its path.
-func (s *ServerService) GetBackupFolder() (string, error) {
-	dir := config.GetBackupFolderPath()
-	if err := os.MkdirAll(dir, 0750); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
+const (
+	// backupNameStem is what a backup is called before any component is added, and
+	// is the whole answer when the operator ticks nothing.
+	backupNameStem = "vpn-ui"
+	// backupNameComponentMax caps a free-text component. serverName and webDomain
+	// are operator-typed and unbounded, while most filesystems stop at 255 bytes
+	// for the whole name.
+	backupNameComponentMax = 32
+)
 
-// CreateLocalBackup checkpoints the live DB and copies it into the backup folder
-// with a timestamped name, returning the created backup. The panel keeps on
-// working while the copy is made; this is the on-panel twin of the browser
-// download (getDb), so an operator can restore a known-good state later without
-// having a copy on their own machine.
-func (s *ServerService) CreateLocalBackup() (*LocalBackupInfo, error) {
-	if err := database.Checkpoint(); err != nil {
-		return nil, err
-	}
-	dir, err := s.GetBackupFolder()
-	if err != nil {
-		return nil, err
-	}
-	name := fmt.Sprintf("vpn-ui_%s.db", time.Now().Format("20060102_150405"))
-	dst := filepath.Join(dir, name)
-	src, err := os.Open(config.GetDBPath())
-	if err != nil {
-		return nil, err
-	}
-	defer src.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := io.Copy(out, src); err != nil {
-		out.Close()
-		os.Remove(dst)
-		return nil, err
-	}
-	if err := out.Close(); err != nil {
-		os.Remove(dst)
-		return nil, err
-	}
-	st, err := os.Stat(dst)
-	if err != nil {
-		return nil, err
-	}
-	return &LocalBackupInfo{FileName: name, Size: st.Size(), Created: st.ModTime().Unix()}, nil
-}
+// backupNameDisallowed matches everything the download's filename gate rejects
+// (see isValidFilename in web/controller/server.go).
+var backupNameDisallowed = regexp.MustCompile(`[^a-zA-Z0-9_\-.]+`)
 
-// ListLocalBackups returns the database backups stored on the panel, newest first.
-func (s *ServerService) ListLocalBackups() ([]LocalBackupInfo, error) {
-	dir, err := s.GetBackupFolder()
-	if err != nil {
-		return nil, err
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	var out []LocalBackupInfo
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".db") {
-			continue
+// BuildBackupFilename assembles the name a .db backup is offered under: the stem
+// plus the requested components joined by "_", in a fixed order so two backups of
+// the same panel sort next to each other. Everything false gives a bare
+// "vpn-ui.db", which is the point of the picker's all-unticked case.
+//
+// host is the browser's Host header and is only ever a last resort, for the panel
+// name and the domain alike. Callers with no request behind them (the pre-update
+// snapshot) pass "".
+func (s *ServerService) BuildBackupFilename(opts BackupNameOptions, host string) string {
+	now := time.Now()
+
+	var parts []string
+	add := func(value string) {
+		// A component that sanitizes to nothing is DROPPED, not kept as an empty
+		// slot: a server labelled entirely in Persian must not name its backup
+		// "vpn-ui__20260804.db".
+		if value = sanitizeBackupNamePart(value); value != "" {
+			parts = append(parts, value)
 		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		out = append(out, LocalBackupInfo{FileName: e.Name(), Size: info.Size(), Created: info.ModTime().Unix()})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Created > out[j].Created })
-	return out, nil
+
+	if opts.Version {
+		add(config.GetVersion())
+	}
+	if opts.PanelName {
+		add(s.backupPanelName(host))
+	}
+	if opts.Domain {
+		add(s.backupDomain(host))
+	}
+	if opts.Date {
+		add(now.Format("20060102"))
+	}
+	if opts.Time {
+		add(now.Format("150405"))
+	}
+
+	name := backupNameStem
+	if len(parts) > 0 {
+		name += "_" + strings.Join(parts, "_")
+	}
+	return name + ".db"
 }
 
-// RestoreLocalBackup restores the named on-panel backup over the current
-// database. It reuses ImportDB wholesale, so the backup is validated, migrated
-// to the current schema, and Xray is restarted exactly as an uploaded file would
-// be. The name is strictly validated to stop path traversal.
-func (s *ServerService) RestoreLocalBackup(fileName string) error {
-	if fileName == "" || strings.Contains(fileName, "/") || strings.Contains(fileName, "\\") ||
-		strings.Contains(fileName, "..") {
-		return common.NewErrorf("Invalid backup name: %q", fileName)
+// BackupNameParts returns the sanitized panel-name and domain components, for the
+// picker's live preview. The browser can work out the date and time for itself but
+// not these two, and recomputing them here keeps one implementation of the
+// fallback chains: the server remains the authority on the name it actually sends.
+func (s *ServerService) BackupNameParts(host string) (string, string) {
+	return sanitizeBackupNamePart(s.backupPanelName(host)), sanitizeBackupNamePart(s.backupDomain(host))
+}
+
+// backupPanelName resolves what "panel name" means here: the operator's own label,
+// falling back exactly the way the overview's identity tile does (serverName, else
+// the machine's hostname, else the host the browser reached us on).
+//
+// config.GetName() is deliberately not consulted. It is a compile-time literal
+// that still reads "x-ui" and names the upstream project, not this install.
+func (s *ServerService) backupPanelName(host string) string {
+	var settingService SettingService
+	if name, err := settingService.GetServerName(); err == nil && name != "" {
+		return name
 	}
-	dir, err := s.GetBackupFolder()
-	if err != nil {
-		return err
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		return hostname
 	}
-	src, err := os.Open(filepath.Join(dir, fileName))
-	if err != nil {
-		return common.NewErrorf("Backup not found: %v", err)
+	return extractHostname(host)
+}
+
+// backupDomain resolves the domain component: the webDomain setting, or else the
+// host the browser reached the panel on. That fallback is not invented here, it is
+// the one an unset subDomain already takes in GetDefaultSettings.
+func (s *ServerService) backupDomain(host string) string {
+	var settingService SettingService
+	if domain, err := settingService.GetWebDomain(); err == nil && domain != "" {
+		return domain
 	}
-	defer src.Close()
-	return s.ImportDB(src)
+	return extractHostname(host)
+}
+
+// sanitizeBackupNamePart reduces one component to the characters a filename may
+// carry here. Runs of anything else collapse to nothing rather than to a filler,
+// so "My Panel" becomes "MyPanel": an underscore is the SEPARATOR, and injecting
+// one would read as an extra component.
+//
+// Dots are stripped from both ends because a component made only of them is a path
+// fragment, and the pre-update snapshot joins this name onto a directory. What
+// survives is ASCII, so the length cap can cut on a byte boundary safely.
+func sanitizeBackupNamePart(part string) string {
+	part = strings.Trim(backupNameDisallowed.ReplaceAllString(part, ""), ".")
+	if len(part) > backupNameComponentMax {
+		part = strings.TrimRight(part[:backupNameComponentMax], ".")
+	}
+	return part
 }
 
 func (s *ServerService) ImportDB(file multipart.File) error {
@@ -1405,16 +1352,6 @@ func (s *ServerService) ImportDB(file multipart.File) error {
 		return common.NewErrorf("Invalid or corrupt db file: %v", err)
 	}
 
-	// Snapshot the settings that must survive the swap, from the live DB, while it
-	// is still the current one. Restoring a backup (even another panel's) must not
-	// move this panel's own reachability/identity: its port, path, listen address,
-	// TLS certs, session secret and session lifetime describe the running install,
-	// and importing a backup's copies would change the cookie secret / base path /
-	// secure flag under a logged-in session and silently log everyone out. This is
-	// the same preservation ImportForeignDB applies; for a like-for-like restore of
-	// this panel's own backup it writes the same values back and is a no-op.
-	preserved := s.snapshotPreservedSettings()
-
 	// Stop Xray (ignore error but log)
 	if errStop := s.StopXrayService(); errStop != nil {
 		logger.Warningf("Failed to stop Xray before DB import: %v", errStop)
@@ -1471,11 +1408,6 @@ func (s *ServerService) ImportDB(file multipart.File) error {
 		return common.NewErrorf("Error migrating db: %v", err)
 	}
 
-	// Put this panel's reachability/identity settings back over the backup's.
-	if err = s.restorePreservedSettings(preserved); err != nil {
-		return common.NewErrorf("Imported DB but failed to preserve panel settings: %v", err)
-	}
-
 	s.inboundService.MigrateDB()
 
 	// Regenerate L2TP/PPTP on-disk configs from the imported DB and restart services
@@ -1501,6 +1433,11 @@ func (s *ServerService) IsValidGeofileName(filename string) bool {
 // download itself lives in downloadGeofile (geofile.go), which EnsureGeofiles
 // also uses. That one must not restart Xray, since it runs from inside the
 // restart path.
+//
+// It still BLOCKS, so the HTTP contract is unchanged for API callers. What is new
+// is that it publishes its progress into geofileRun on the way through, which is
+// what lets the overview pick a transfer back up after the operator navigated
+// away and came back - the request is abandoned, the download is not.
 func (s *ServerService) UpdateGeofile(fileName string) error {
 	// Strict allowlist check to avoid writing uncontrolled files
 	if fileName != "" {
@@ -1509,19 +1446,31 @@ func (s *ServerService) UpdateGeofile(fileName string) error {
 		}
 	}
 
-	var errorMessages []string
-
+	// builtinGeofileOrder rather than ranging the map, so the names the overview is
+	// told to expect arrive in the order they will actually be fetched.
+	var queue []string
 	if fileName == "" {
-		// Download all geofiles
-		for _, entry := range builtinGeofiles {
-			if err := downloadGeofile(entry, geofileManualMaxTime); err != nil {
-				errorMessages = append(errorMessages, fmt.Sprintf("Error downloading Geofile '%s': %v", entry.FileName, err))
-			}
-		}
+		queue = append(queue, builtinGeofileOrder...)
 	} else {
-		if err := downloadGeofile(builtinGeofiles[fileName], geofileManualMaxTime); err != nil {
-			errorMessages = append(errorMessages, fmt.Sprintf("Error downloading Geofile '%s': %v", fileName, err))
+		queue = []string{fileName}
+	}
+	tracked := geofileRunBegin(queue)
+
+	var errorMessages []string
+	for _, name := range queue {
+		if tracked {
+			geofileRunCurrent(name)
 		}
+		if err := downloadGeofile(builtinGeofiles[name], geofileManualMaxTime); err != nil {
+			errorMessages = append(errorMessages, fmt.Sprintf("Error downloading Geofile '%s': %v", name, err))
+			continue
+		}
+		if tracked {
+			geofileRunFetched(name)
+		}
+	}
+	if tracked {
+		geofileRunCurrent("")
 	}
 
 	err := s.RestartXrayService()
@@ -1530,9 +1479,16 @@ func (s *ServerService) UpdateGeofile(fileName string) error {
 	}
 
 	if len(errorMessages) > 0 {
-		return common.NewErrorf("%s", strings.Join(errorMessages, "\r\n"))
+		joined := strings.Join(errorMessages, "\r\n")
+		if tracked {
+			geofileRunEnd(true, joined)
+		}
+		return common.NewErrorf("%s", joined)
 	}
 
+	if tracked {
+		geofileRunEnd(false, "")
+	}
 	return nil
 }
 

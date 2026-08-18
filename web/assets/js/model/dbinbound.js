@@ -228,6 +228,12 @@ class DBInbound {
                 // SSH relay is account-based: many username/password accounts per
                 // inbound (the in-binary SSH server authenticates each login).
                 return true;
+            case Protocols.WIREGUARD:
+                // Xray-native WireGuard is account-based here even though the core's
+                // own config is a flat peer list: the panel stores accounts (email
+                // identity, one keypair per device) and translates them into peers on
+                // the way to Xray. See web/service/wgxray.go.
+                return true;
             case Protocols.SHADOWSOCKS:
                 return this.toInbound().isSSMultiUser;
             default:

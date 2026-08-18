@@ -1,4 +1,5 @@
-{{define "form/pptp"}}
+{{define "form/pptp"}}{{end}}
+{{define "form/pptp/network"}}
 <a-form
     :colon="false"
     :label-col="{ md: {span:8} }"
@@ -55,11 +56,19 @@
             :max="1500"
         ></a-input-number>
     </a-form-item>
+</a-form>
+{{end}}
+{{define "form/pptp/access"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
     <a-form-item>
         <template slot="label">
             <a-tooltip>
                 <template slot="title">
-                    Simultaneous devices per account (each gets its own IP). 1 = one IP per account (default, best capacity). Higher values reserve that many consecutive IPs per account, so fewer accounts fit the pool; 0 reserves a 16-IP block. Max 64.
+                    Simultaneous devices per account (each gets its own IP). 10 = ten consecutive IPs per account (default). Lower it to fit more accounts in the pool, raise it for accounts that run more devices; 0 reserves a 16-IP block, which is still a cap and not unlimited. Max 64.
                 </template>
                 User Limit
                 <a-icon type="question-circle"></a-icon>
@@ -118,6 +127,14 @@
             :disabled="!inbound.settings.clientToClient"
         ></a-switch>
     </a-form-item>
+</a-form>
+{{end}}
+{{define "form/pptp/reach"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
     <a-form-item>
         <template slot="label">
             <a-tooltip>

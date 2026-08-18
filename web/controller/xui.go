@@ -1,14 +1,13 @@
 package controller
 
 import (
-	"net/http"
-
 	"github.com/hasan1808/pro-ui/database/model"
+	"github.com/hasan1808/pro-ui/web/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-// XUIController is the main controller for the vpn-ui panel, managing sub-controllers.
+// XUIController is the main controller for the PRO-UI panel, managing sub-controllers.
 type XUIController struct {
 	BaseController
 
@@ -37,11 +36,6 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	// blindly back to this route, which is what used to make gating it impossible.
 	g.GET("/", requireOverviewAccess(), a.index)
 	g.GET("/inbounds", requirePerm(model.PermAccessInbounds), a.inbounds)
-	// A protocol-scoped view of the same page, reached from the protocol tabs:
-	// /inbounds/:proto keeps the same permission and renders the same template
-	// with the scope preset. Unknown slugs are redirected to the unfiltered
-	// page rather than rendered as a filter that matches nothing.
-	g.GET("/inbounds/:proto", requirePerm(model.PermAccessInbounds), a.inbounds)
 	// The account-centric view of the same data the Inbounds page shows, so it
 	// takes the same claim.
 	g.GET("/clients", requirePerm(model.PermAccessInbounds), a.clients)
@@ -70,23 +64,38 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 // so that one function answers "may this caller open the overview" for the route,
 // the landing resolver and the nav entry alike.
 func (a *XUIController) index(c *gin.Context) {
-	html(c, "index.html", "pages.index.title", nil)
+	// The two backup-filename components the browser cannot work out for itself,
+	// already sanitized, so the picker's preview shows the name /getDb will really
+	// send. Resolved here rather than reimplemented in JS so there is one copy of the
+	// fallback chains; the cost is that renaming the panel in this same session shows
+	// in the preview only after a reload, while the download itself is always current.
+	var serverService service.ServerService
+	panelName, domain := serverService.BackupNameParts(browserHost(c))
+
+	// The donate dialog on the PRO-UI tile. Rendered server-side rather than
+	// fetched: the list is static, so a round trip would only add a spinner.
+	html(c, "index.html", "pages.index.title", gin.H{
+		"donate":            donateAddresses,
+		"backup_panel_name": panelName,
+		"backup_domain":     domain,
+	})
 }
 
-// inbounds renders the inbounds management page. When the URL carries the
-// /inbounds/:proto segment, the page is scoped to that protocol: the template
-// receives it as .Protocol and the protocol tabs highlight the matching tab.
-// The slug is validated before the template runs — model.IsInboundProtocol
-// holds the accepted set, kept in step with the frontend's Protocols list in
-// web/assets/js/model/inbound.js — so a stray slug is redirected to the
-// unfiltered page instead of silently showing an empty filter.
+// inbounds renders the inbounds management page.
+//
+// It carries which inbound dialog to serve, because the two forms are different
+// templates and Go picks between them while writing the page (see
+// modals/inbound_modal.html). A read failure serves the current form: the panel's
+// default, and the wrong thing to fail closed on.
 func (a *XUIController) inbounds(c *gin.Context) {
-	proto := c.Param("proto")
-	if proto != "" && !model.IsInboundProtocol(proto) {
-		c.Redirect(http.StatusTemporaryRedirect, c.GetString("base_path")+"panel/inbounds")
-		return
+	var settingService service.SettingService
+	legacyForm, err := settingService.GetLegacyInboundForm()
+	if err != nil {
+		legacyForm = false
 	}
-	html(c, "inbounds.html", "pages.inbounds.title", gin.H{"Protocol": proto})
+	html(c, "inbounds.html", "pages.inbounds.title", gin.H{
+		"legacyInboundForm": legacyForm,
+	})
 }
 
 // clients renders the account-centric Clients page.

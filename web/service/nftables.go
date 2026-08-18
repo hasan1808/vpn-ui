@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
-	"github.com/hasan1808/pro-ui/database/model"
+"github.com/hasan1808/pro-ui/database/model"
 	"github.com/hasan1808/pro-ui/logger"
 	"github.com/hasan1808/pro-ui/xray"
+	"github.com/vishvananda/netlink"
 )
 
 const nftConfigFile = "/etc/vpn-ui/vpn.nft"
@@ -28,6 +31,36 @@ const vpnAddrSpace = "10.0.0.0/12"
 
 // NftService manages nftables rules for L2TP, PPTP, and OpenVPN traffic accounting, TPROXY, and NAT.
 type NftService struct{}
+
+// readSysctl reads one sysctl's current value, or "" when it cannot be read (a
+// key this kernel does not have). Used to capture what a setting was before we
+// change it, so uninstall can put it back.
+func readSysctl(key string) string {
+	out, err := exec.Command("sysctl", "-n", key).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// restoreHostSysctls puts back the host-wide sysctls the data plane relaxed.
+// Called from the core uninstall once no core is left to need them.
+func restoreHostSysctls() []string {
+	var done []string
+	for _, key := range ownIDsOfKind(ownSysctl) {
+		prev, found := ownPrevOf(ownSysctl, key)
+		if !found || prev == "" {
+			continue
+		}
+		if err := exec.Command("sysctl", "-w", key+"="+prev).Run(); err != nil {
+			logger.Warning("could not restore sysctl", key, "to", prev, err)
+			continue
+		}
+		ownRemoveEntry(ownSysctl, key)
+		done = append(done, key+"="+prev)
+	}
+	return done
+}
 
 // firewalldRunning reports whether firewalld is installed and active.
 func firewalldRunning() bool {
@@ -57,7 +90,18 @@ func firewalldRunning() bool {
 func ensureVpnHostNetworking() {
 	// rp_filter → loose. `all` is the effective-max override; set `default` too so
 	// PPP/tun interfaces created later inherit loose rather than strict.
+	//
+	// This is a HOST-WIDE change to a hardening setting the operator may have chosen
+	// deliberately, and nothing used to record it or put it back, so a box that had
+	// strict reverse-path filtering before vpn-ui stayed loose forever after, even
+	// once every core had been uninstalled. The value is captured on first sight and
+	// restored when the last core goes (see restoreHostSysctls).
 	for _, key := range []string{"net.ipv4.conf.all.rp_filter", "net.ipv4.conf.default.rp_filter"} {
+		if _, found := ownStateOf(ownSysctl, key); !found {
+			if prev := readSysctl(key); prev != "" && prev != "2" {
+				ownClaimPrev(ownSysctl, key, "", prev, "relaxed so policy-routed TPROXY packets are not dropped")
+			}
+		}
 		_ = exec.Command("sysctl", "-w", key+"=2").Run()
 	}
 
@@ -77,6 +121,301 @@ func ensureVpnHostNetworking() {
 	}
 	_ = exec.Command("firewall-cmd", "--permanent", "--zone=trusted", "--add-source="+vpnAddrSpace).Run()
 	logger.Infof("firewalld: trusted VPN space %s so the TPROXY data plane reaches Xray", vpnAddrSpace)
+}
+
+// ---------------------------------------------------------------------------
+// The shared fwmark policy route.
+// ---------------------------------------------------------------------------
+
+// Every VPN protocol's TPROXY data plane needs the same two pieces of policy
+// routing: one rule sending fwmark-1 packets at a private table, and a local
+// default route in that table so the kernel delivers them to the dokodemo socket
+// instead of forwarding them out of the WAN.
+const (
+	vpnPolicyMark  = 1
+	vpnPolicyTable = 100
+)
+
+// vpnPolicyRuleTableTokens is where the old guard went wrong, and it is worth
+// being precise about why, because the failure was silent and unbounded.
+//
+// Nine SetupRouting functions each carried their own copy of
+//
+//	if !strings.Contains(ipRuleShow(), "fwmark 0x1 lookup 100") { add it }
+//
+// The table number in that needle is not what `ip rule show` prints. iproute2
+// renders the table through /etc/iproute2/rt_tables, so on a host that names
+// table 100 the line reads `fwmark 0x1 lookup wanpolicy` and the substring can
+// never match. Every SetupRouting call then added another identical rule: nine
+// per panel start, nine more per protocol reconcile, forever. The host this was
+// found on had 195 copies.
+//
+// So the token comparison is done against the real name set: the number itself,
+// plus every alias iproute2 would print for it. Returns a set rather than a
+// string so a host with several aliases for the same id is handled too.
+func vpnPolicyRuleTableTokens() map[string]bool {
+	tokens := map[string]bool{strconv.Itoa(vpnPolicyTable): true}
+	paths, _ := filepath.Glob("/etc/iproute2/rt_tables.d/*.conf")
+	for _, path := range append([]string{"/etc/iproute2/rt_tables"}, paths...) {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if i := strings.IndexByte(line, '#'); i >= 0 {
+				line = line[:i]
+			}
+			fields := strings.Fields(line)
+			if len(fields) == 2 && fields[0] == strconv.Itoa(vpnPolicyTable) {
+				tokens[fields[1]] = true
+			}
+		}
+	}
+	return tokens
+}
+
+// isVpnPolicyNetlinkRule reports whether r is EXACTLY the rule this helper owns:
+// `from all fwmark 0x1 lookup 100`, with no other selector of any kind.
+//
+// An allowlist of the whole shape, not a check of the two fields we care about,
+// because this predicate gates a DELETE. Every additional selector a rule could
+// carry is required to be at its unset value, so an operator's
+// `from 10.9.9.9 fwmark 1 lookup 100` or `fwmark 1/0xff lookup 100` is somebody
+// else's rule and is left alone. It also cannot match the per-tunnel
+// `oif <iface> lookup <30000+ifindex>` rules vpnOutBindEgress installs, twice
+// over: those carry an OifName and their table is not 100.
+//
+// Naming cannot confuse this one. A table name is an iproute2 display
+// convention; the kernel only ever stores the integer, so r.Table is 100 on a
+// host that names it and on a host that does not.
+//
+// The mask is compared against a FULL mask rather than against nil, and that
+// distinction is not cosmetic: it was measured wrong first. `ip rule add fwmark
+// 1` sends no FRA_FWMASK, but the kernel fills mark_mask in for any non-zero
+// mark and dumps it back, so RuleList reports 0xffffffff on the rule we
+// installed ourselves and Mask is never nil on a marked rule. Requiring nil
+// there matched nothing at all, which would have left the duplicates in place
+// AND added one more on every call — the original bug, deeper.
+func isVpnPolicyNetlinkRule(r netlink.Rule) bool {
+	return r.Table == vpnPolicyTable &&
+		r.Mark == vpnPolicyMark &&
+		(r.Mask == nil || *r.Mask == 0xffffffff) &&
+		r.Src == nil && r.Dst == nil &&
+		r.IifName == "" && r.OifName == "" &&
+		!r.Invert &&
+		r.SuppressPrefixlen < 0 && r.SuppressIfgroup < 0 &&
+		r.Goto < 0 && r.Flow < 0 &&
+		r.Tos == 0 && r.TunID == 0 && r.IPProto == 0 &&
+		r.Dport == nil && r.Sport == nil && r.UIDRange == nil
+}
+
+// vpnPolicyCollapsePlan decides what to do about the policy rules found on the
+// host, given their priorities in kernel order. Returns the index of the one to
+// keep, the indices to delete, and whether one has to be added because there are
+// none.
+//
+// N identical rules are exactly equivalent to one, which is what makes the
+// collapse behaviour-preserving rather than a judgement call: a packet matching
+// any of them matches the first, and if that first lookup misses (an empty table
+// 100 makes the kernel fall through to the next rule) every copy behind it
+// misses in the same table for the same reason.
+//
+// The KEPT one is the lowest priority — the first the kernel evaluates, and
+// therefore the one that is deciding the host's forwarding today. Keeping that
+// exact rule rather than an arbitrary copy means the surviving rule sits in the
+// same place in the ordering relative to whatever else the operator has
+// installed, so nothing about the live routing decision moves.
+func vpnPolicyCollapsePlan(prefs []int) (keep int, drop []int, add bool) {
+	if len(prefs) == 0 {
+		return -1, nil, true
+	}
+	keep = 0
+	for i, pref := range prefs {
+		if pref < prefs[keep] {
+			keep = i
+		}
+	}
+	for i := range prefs {
+		if i != keep {
+			drop = append(drop, i)
+		}
+	}
+	return keep, drop, false
+}
+
+// vpnPolicyRulePrefsFromOutput counts the policy rules in `ip -j rule show` or
+// plain `ip rule show` output, returning their priorities.
+//
+// The degraded path, used only when the kernel cannot be enumerated over
+// netlink. It can answer "is one already there" and so stop another duplicate
+// being added, but it deliberately does not drive deletion: see
+// collapseVpnPolicyRules for why a rule has to be deleted by its enumerated
+// self and never by a text-matched template.
+//
+// Both formats are read because `ip -j` only exists from iproute2 4.13 and the
+// oldest supported targets predate it. Unrecognised shapes are treated as NOT
+// ours, which fails toward adding a rule: a spurious duplicate is the bug we
+// already had, whereas failing toward "it must already be there" would leave a
+// host with no policy rule at all and no data plane.
+func vpnPolicyRulePrefsFromOutput(out []byte, tokens map[string]bool) []int {
+	trimmed := strings.TrimSpace(string(out))
+	if strings.HasPrefix(trimmed, "[") {
+		return vpnPolicyRulePrefsFromJSON([]byte(trimmed), tokens)
+	}
+	var prefs []int
+	for _, line := range strings.Split(trimmed, "\n") {
+		if pref, ok := vpnPolicyRuleTextMatch(line, tokens); ok {
+			prefs = append(prefs, pref)
+		}
+	}
+	return prefs
+}
+
+// vpnPolicyRuleTextMatch matches one line of `ip rule show`. The whole token
+// stream has to be `from all fwmark <mark> lookup <table>` and nothing else, for
+// the same allowlist reason as isVpnPolicyNetlinkRule.
+func vpnPolicyRuleTextMatch(line string, tokens map[string]bool) (int, bool) {
+	colon := strings.IndexByte(line, ':')
+	if colon < 0 {
+		return 0, false
+	}
+	pref, err := strconv.Atoi(strings.TrimSpace(line[:colon]))
+	if err != nil {
+		return 0, false
+	}
+	fields := strings.Fields(line[colon+1:])
+	// `lookup` is what every iproute2 in the wild prints; `table` is accepted as
+	// a synonym so a future rename does not silently reopen this bug.
+	if len(fields) != 6 || fields[0] != "from" || fields[1] != "all" ||
+		fields[2] != "fwmark" || (fields[4] != "lookup" && fields[4] != "table") {
+		return 0, false
+	}
+	// Base 0 so both the modern "0x1" and a bare "1" parse. A "0x1/0xff" carries
+	// a mask, fails to parse, and is correctly rejected as not ours.
+	mark, err := strconv.ParseUint(fields[3], 0, 32)
+	if err != nil || mark != vpnPolicyMark || !tokens[fields[5]] {
+		return 0, false
+	}
+	return pref, true
+}
+
+// vpnPolicyRulePrefsFromJSON reads `ip -j rule show`.
+//
+// Decoded to a bare map rather than a struct so the KEY SET can be checked: a
+// selector this code has never heard of still shows up as an unexpected key and
+// disqualifies the rule, where a struct would silently drop it and call somebody
+// else's rule ours.
+func vpnPolicyRulePrefsFromJSON(out []byte, tokens map[string]bool) []int {
+	var entries []map[string]any
+	if err := json.Unmarshal(out, &entries); err != nil {
+		return nil
+	}
+	var prefs []int
+	for _, entry := range entries {
+		ok := true
+		for key := range entry {
+			// `protocol` is provenance (kernel/boot/static), not a selector.
+			switch key {
+			case "priority", "src", "fwmark", "table", "protocol":
+			default:
+				ok = false
+			}
+		}
+		mark, err := strconv.ParseUint(fmt.Sprint(entry["fwmark"]), 0, 32)
+		table, _ := entry["table"].(string)
+		src, _ := entry["src"].(string)
+		pref, isNum := entry["priority"].(float64)
+		if !ok || err != nil || mark != vpnPolicyMark || !tokens[table] ||
+			(src != "all" && src != "") || !isNum {
+			continue
+		}
+		prefs = append(prefs, int(pref))
+	}
+	return prefs
+}
+
+// ensureVpnPolicyRoute installs the shared `fwmark 1 lookup 100` policy rule and
+// the local default route in that table, collapsing any pile of duplicate rules
+// an older build left behind. Every protocol's SetupRouting calls this instead of
+// carrying its own copy; nine copies of the guard is why one wrong substring
+// became nine leaks per reconcile.
+//
+// run is the caller's runCmd, so the add is still logged against the protocol
+// that asked for it.
+func ensureVpnPolicyRoute(run func(name string, args ...string) error) {
+	if !collapseVpnPolicyRules(false) {
+		run("ip", "rule", "add", "fwmark", strconv.Itoa(vpnPolicyMark), "lookup", strconv.Itoa(vpnPolicyTable))
+	}
+	run("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", strconv.Itoa(vpnPolicyTable))
+}
+
+// collapseVpnPolicyRules reduces the host to at most one policy rule and reports
+// whether one is left. Pass removeAll to leave none, which is what the whole-host
+// uninstall wants.
+//
+// Deletion goes over netlink, against the rule struct read back from the kernel,
+// and NOT by shelling out to `ip rule del fwmark 1 lookup 100`. That command is
+// not the precise instrument it looks like. The kernel's rule_find treats every
+// selector ABSENT from a delete request as a wildcard, so measured against a
+// throwaway namespace holding one rule of each shape, a single
+// `ip rule del pref P from all fwmark 1 lookup 100` deleted
+// `from 10.9.9.9 fwmark 0x1 lookup 100`, `oif eth0 fwmark 0x1 lookup 100`,
+// `iif eth0 fwmark 0x1 lookup 100` and `to 10.8.8.8 fwmark 0x1 lookup 100`
+// alike: the src, oif, iif and dst on the existing rules were simply ignored,
+// even with `from all` spelled out. netlink.RuleDel on an enumerated rule sends
+// every field back, including the ones that make it distinct, so it can only
+// match the rule that was actually looked at. Same reasoning, and the same
+// mechanism, as vpnOutSweepRules.
+func collapseVpnPolicyRules(removeAll bool) bool {
+	rules, err := netlink.RuleList(netlink.FAMILY_V4)
+	if err != nil {
+		// No exact enumeration means no safe deletion. Fall back to reading
+		// `ip rule show` well enough to avoid adding yet another duplicate.
+		return len(vpnPolicyRulePrefsFromOutput(vpnPolicyRuleShow(), vpnPolicyRuleTableTokens())) > 0
+	}
+	var mine []netlink.Rule
+	for _, r := range rules {
+		if isVpnPolicyNetlinkRule(r) {
+			mine = append(mine, r)
+		}
+	}
+	keep, drop, _ := vpnPolicyCollapsePlan(vpnPolicyRulePrefs(mine))
+	if removeAll {
+		keep, drop = -1, nil
+		for i := range mine {
+			drop = append(drop, i)
+		}
+	}
+	for _, i := range drop {
+		if err := netlink.RuleDel(&mine[i]); err != nil {
+			logger.Warning("could not remove a duplicate fwmark policy rule at priority",
+				mine[i].Priority, ":", err)
+		}
+	}
+	if n := len(drop); n > 0 && !removeAll {
+		logger.Infof("collapsed %d duplicate 'fwmark %d lookup %d' rules left by an earlier release, keeping the one at priority %d",
+			n, vpnPolicyMark, vpnPolicyTable, mine[keep].Priority)
+	}
+	return keep >= 0
+}
+
+// vpnPolicyRulePrefs lifts the priorities out for the pure planner.
+func vpnPolicyRulePrefs(rules []netlink.Rule) []int {
+	prefs := make([]int, 0, len(rules))
+	for _, r := range rules {
+		prefs = append(prefs, r.Priority)
+	}
+	return prefs
+}
+
+// vpnPolicyRuleShow reads the rule table as text, preferring JSON.
+func vpnPolicyRuleShow() []byte {
+	if out, err := exec.Command("ip", "-j", "rule", "show").Output(); err == nil &&
+		strings.HasPrefix(strings.TrimSpace(string(out)), "[") {
+		return out
+	}
+	out, _ := exec.Command("ip", "rule", "show").Output()
+	return out
 }
 
 // writeClientToClientRules emits the inter-client (client-to-client) rules for a
@@ -497,6 +836,25 @@ func (s *NftService) ApplyNftRules() error {
 		}
 		port := ikev2.GetTproxyPort(inbound)
 		srcs := ikev2CIDRs(inbound, settings)
+		// Clamp TCP MSS in both directions to the inbound's MTU. This is what makes the
+		// IKEv2 MTU setting mean anything at all: IKEv2 has no way to push an MTU to a
+		// client, and charon runs here with install_routes = no, so there is no route
+		// metric to carry one either (see ikev2Settings.Mtu). Rewriting the MSS option on
+		// the SYN is the one lever left, and it is the same one the GRE inbound pulls.
+		//
+		// A literal on both rules, where GRE's reply direction can use `rt mtu`: GRE has a
+		// netdev whose MTU the route resolves to, and IKEv2 does not -- it is policy-based
+		// IPsec on the WAN device, so `rt mtu` here would resolve to the WAN's 1500 and
+		// clamp nothing.
+		mss := settings.clampMss()
+		for _, src := range srcs {
+			b.WriteString(fmt.Sprintf(
+				"add rule ip vpn postrouting ip daddr %s tcp flags syn tcp option maxseg size gt %d tcp option maxseg size set %d counter comment \"ikev2-mss-clamp\"\n",
+				src, mss, mss))
+			b.WriteString(fmt.Sprintf(
+				"add rule ip vpn postrouting ip saddr %s tcp flags syn tcp option maxseg size gt %d tcp option maxseg size set %d counter comment \"ikev2-mss-clamp-out\"\n",
+				src, mss, mss))
+		}
 		writeClientToClientRules(&b, srcs, settings.ClientToClient)
 		for _, src := range srcs {
 			b.WriteString(fmt.Sprintf("add rule ip vpn prerouting ip saddr %s meta mark != 0xff ip protocol tcp tproxy to :%d meta mark set mark or 0x1 accept\n", src, port))
@@ -958,15 +1316,23 @@ func (s *NftService) CollectAndResetTraffic(byProto map[string]map[string]string
 		return nil
 	}
 
-	// Accumulate traffic per (protocol, email), matching the pre-map per-protocol record shape
-	// (AddTraffic later sums by email regardless).
-	type acctKey struct{ protocol, email string }
-	// inboundId is the inbound the tunnel address belongs to: the SOURCE of
-	// these bytes, used to pick which multiplier bills them. Zero means unknown.
-	type trafficPair struct {
-		up, down  int64
+// Accumulate traffic per (protocol, inbound, email). AddTraffic sums by email
+	// regardless, so the account total is the same however this is bucketed; the
+	// inbound is in the key so the per-inbound breakdown is not.
+	//
+	// It used to be (protocol, email) with the inbound as a FIELD, first writer wins.
+	// openvpn, openconnect and sstp may legitimately serve one account from two
+	// inbounds at two addresses, and that shape quietly filed both addresses' bytes
+	// under whichever inbound the iteration happened to reach first - a coin flip on
+	// map order, re-tossed every tick.
+	type acctKey struct {
+		protocol, email string
+		// inboundId is the inbound the tunnel address belongs to: the SOURCE of these
+		// bytes. Zero means unknown, which bills at the account's own rate and is left
+		// out of the breakdown rather than attributed to a guess.
 		inboundId int
 	}
+	type trafficPair struct{ up, down int64 }
 	traffic := make(map[acctKey]*trafficPair)
 
 	for _, raw := range result.Nftables {
@@ -999,13 +1365,11 @@ func (s *NftService) CollectAndResetTraffic(byProto map[string]map[string]string
 			continue
 		}
 
-		pair := traffic[acctKey{protocol, email}]
+		key := acctKey{protocol: protocol, email: email, inboundId: byProtoInbound[protocol][ip]}
+		pair := traffic[key]
 		if pair == nil {
 			pair = &trafficPair{}
-			traffic[acctKey{protocol, email}] = pair
-		}
-		if pair.inboundId == 0 {
-			pair.inboundId = byProtoInbound[protocol][ip]
+			traffic[key] = pair
 		}
 		if direction == "up" {
 			pair.up += c.Bytes
@@ -1017,7 +1381,7 @@ func (s *NftService) CollectAndResetTraffic(byProto map[string]map[string]string
 	var out []*xray.ClientTraffic
 	for key, pair := range traffic {
 		if pair.up > 0 || pair.down > 0 {
-			out = append(out, &xray.ClientTraffic{Email: key.email, InboundId: pair.inboundId, Up: pair.up, Down: pair.down})
+out = append(out, &xray.ClientTraffic{Email: key.email, InboundId: key.inboundId, Up: pair.up, Down: pair.down})
 		}
 	}
 	if len(out) > 0 {

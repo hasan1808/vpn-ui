@@ -91,8 +91,18 @@ const ocHeartbeatGrace = 150 * time.Second
 type radiusSession struct {
 	email    string
 	ip       string
-	protocol string    // "l2tp", "pptp", "openvpn", or "openconnect"
-	started  time.Time // session start; used to pick the oldest device to evict
+	protocol string // "l2tp", "pptp", "openvpn", or "openconnect"
+	// inboundId is which inbound of that protocol is serving this session, and is
+	// what lets the tick attribute its bytes to one membership instead of to the
+	// account as a whole. 0 means it could not be told, which is billed to the
+	// account and left out of the per-inbound breakdown rather than guessed at.
+	//
+	// openvpn, openconnect and sstp name it in their NAS-Identifier
+	// ("<proto>-<inboundId>"). l2tp, pptp and ikev2 share one daemon and send a bare
+	// protocol name, so theirs is resolved from the tunnel address against each
+	// inbound's own pool (sessionInboundByIP).
+	inboundId int
+	started   time.Time // session start; used to pick the oldest device to evict
 	// heard is the last time the DAEMON itself confirmed the tunnel is up (an
 	// OpenConnect Interim-Update). Zero for the protocols whose accounting the panel
 	// does not use as a heartbeat, so a zero value must never read as "long ago".
@@ -382,7 +392,12 @@ func (s *RadiusService) handleAcct(w radius.ResponseWriter, r *radius.Request) {
 	// Always acknowledge
 	defer w.Write(r.Response(radius.CodeAccountingResponse))
 
-	protocol, _, err := parseNASIdentifier(nasID)
+	// The inbound id is kept, not discarded. It is the only thing that lets this
+	// session's bytes be attributed to ONE membership instead of to the account as a
+	// whole, and openvpn, openconnect and sstp all put it right here in the
+	// NAS-Identifier. It is 0 for l2tp, pptp and ikev2, which send a bare protocol
+	// name; theirs is resolved from the tunnel address below.
+	protocol, nasInboundId, err := parseNASIdentifier(nasID)
 	if err != nil {
 		logger.Debugf("RADIUS: acct ignored — invalid NAS-Identifier %q", nasID)
 		return
@@ -398,7 +413,7 @@ func (s *RadiusService) handleAcct(w radius.ResponseWriter, r *radius.Request) {
 	// authenticate, so they are handled rather than discarded. The deferred
 	// Accounting-Response above still ACKs every packet so ocserv does not retry.
 	if protocol == "openconnect" {
-		s.handleOcservAcct(statusType, sessionID, username, framedIP)
+		s.handleOcservAcct(statusType, sessionID, username, framedIP, nasInboundId)
 		return
 	}
 
@@ -422,12 +437,20 @@ func (s *RadiusService) handleAcct(w radius.ResponseWriter, r *radius.Request) {
 			return
 		}
 
+		// Resolved off the lock: it reads the inbounds of one protocol, and the three
+		// that need it (l2tp, pptp, ikev2) have a handful each.
+		inboundId := nasInboundId
+		if inboundId == 0 {
+			inboundId = s.sessionInboundByIP(protocol, ip)
+		}
+
 		s.mu.Lock()
 		s.sessions[sessionID] = &radiusSession{
-			email:    email,
-			ip:       ip,
-			protocol: protocol,
-			started:  time.Now(),
+			email:     email,
+			ip:        ip,
+			protocol:  protocol,
+			inboundId: inboundId,
+			started:   time.Now(),
 		}
 		delete(s.pending, ip) // confirmed: the session now holds this block IP
 		s.mu.Unlock()
@@ -479,7 +502,7 @@ func (s *RadiusService) handleAcct(w radius.ResponseWriter, r *radius.Request) {
 			// disconnect (or a rapid reconnect) silently drops that traffic, which
 			// under-counts usage and under-enforces limits.
 			up, down := s.nftService.ReadAndResetClientCounters(sess.protocol, sess.ip)
-			foldClientTraffic(sess.email, sess.protocol, up, down)
+			foldClientTraffic(sess.email, sess.protocol, sess.inboundId, up, down)
 			// Remove nft accounting counters
 			if err := s.nftService.RemoveClientAccounting(sess.protocol, sess.ip); err != nil {
 				logger.Warning("RADIUS: failed to remove nft accounting:", err)
@@ -507,11 +530,16 @@ func (s *RadiusService) handleAcct(w radius.ResponseWriter, r *radius.Request) {
 			if ip != "<nil>" && ip != "" {
 				email := s.lookupEmail(protocol, username)
 				if email != "" {
+					inboundId := nasInboundId
+					if inboundId == 0 {
+						inboundId = s.sessionInboundByIP(protocol, ip)
+					}
 					s.sessions[sessionID] = &radiusSession{
-						email:    email,
-						ip:       ip,
-						protocol: protocol,
-						started:  time.Now(),
+						email:     email,
+						ip:        ip,
+						protocol:  protocol,
+						inboundId: inboundId,
+						started:   time.Now(),
 					}
 					s.mu.Unlock()
 					s.nftService.AddClientAccounting(protocol, ip)
@@ -536,7 +564,11 @@ func (s *RadiusService) handleAcct(w radius.ResponseWriter, r *radius.Request) {
 //     is gone, which both refuses the account's own redial and delays the counters.
 //
 // A start (no Framed-IP yet) is ignored, as is any packet the panel cannot key.
-func (s *RadiusService) handleOcservAcct(statusType rfc2866.AcctStatusType, sessionID, username string, framedIP net.IP) {
+//
+// inboundId comes from ocserv's own NAS-Identifier ("openconnect-<id>", set in
+// openconnect.go), so an adopted session is attributed to the right inbound instead
+// of joining the account's unattributed pool.
+func (s *RadiusService) handleOcservAcct(statusType rfc2866.AcctStatusType, sessionID, username string, framedIP net.IP, inboundId int) {
 	ip := framedIP.String()
 	if ip == "" || ip == "<nil>" {
 		logger.Debugf("RADIUS: oc acct without Framed-IP ignored user=%s status=%v", username, statusType)
@@ -564,7 +596,7 @@ func (s *RadiusService) handleOcservAcct(statusType rfc2866.AcctStatusType, sess
 		}
 		s.mu.Lock()
 		if _, exists := s.sessions[sid]; !exists {
-			s.sessions[sid] = &radiusSession{email: email, ip: ip, protocol: "openconnect", started: now, heard: now, acctID: sessionID}
+			s.sessions[sid] = &radiusSession{email: email, ip: ip, protocol: "openconnect", inboundId: inboundId, started: now, heard: now, acctID: sessionID}
 		}
 		s.mu.Unlock()
 		if err := s.nftService.AddClientAccounting("openconnect", ip); err != nil {
@@ -607,7 +639,7 @@ func (s *RadiusService) handleOcservAcct(statusType rfc2866.AcctStatusType, sess
 		// Fold the bytes counted since the last collection before deleting the counters,
 		// exactly as the l2tp/pptp Acct-Stop path does.
 		up, down := s.nftService.ReadAndResetClientCounters("openconnect", ip)
-		foldClientTraffic(sess.email, sess.protocol, up, down)
+		foldClientTraffic(sess.email, sess.protocol, sess.inboundId, up, down)
 		if err := s.nftService.RemoveClientAccounting("openconnect", ip); err != nil {
 			logger.Warning("RADIUS: failed to remove openconnect nft accounting:", err)
 		}
@@ -629,6 +661,27 @@ func (s *RadiusService) GetSessions(protocol string) map[string]string {
 	return result
 }
 
+// GetSessionInbounds is GetSessions' companion: IP→the inbound serving that tunnel,
+// for the same protocol. It is what lets the collector stamp each record with the
+// SOURCE of its bytes.
+//
+// A parallel map rather than a wider GetSessions, because the session map is what
+// every caller of that one wants and none of them should have to unpack a struct to
+// get it. Addresses whose inbound could not be told are simply absent, which the
+// collector reads as "unknown" and bills to the account without attributing it.
+func (s *RadiusService) GetSessionInbounds(protocol string) map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := make(map[string]int)
+	for _, sess := range s.sessions {
+		if sess.protocol == protocol && sess.inboundId != 0 {
+			result[sess.ip] = sess.inboundId
+		}
+	}
+	return result
+}
+
 // RadiusService is the rbridge.Sink: the rbridge Sweeper writes reconciled sessions and reads the
 // disabled-account set through it, so ownership of the session store stays here in RADIUS.
 var _ rbridge.Sink = (*RadiusService)(nil)
@@ -640,12 +693,19 @@ var _ rbridge.Sink = (*RadiusService)(nil)
 func localSessionKey(protocol, ip string) string { return "cp:" + protocol + ":" + ip }
 
 // ReconcileLocalSessions replaces the tracked rbridge-managed sessions for one protocol with
-// `desired` (tunnel IP -> account email). Newly seen IPs gain an nft accounting counter; vanished
-// IPs are folded into client_traffics and their counter removed (mirrors Acct-Stop). Called each
-// tick by the rbridge Sweeper. It only touches this protocol's "cp:<proto>:"-keyed sessions, so it
-// never disturbs RADIUS-tracked sessions (e.g. ikev2 eap-mschapv2, keyed by Acct-Session-Id).
-func (s *RadiusService) ReconcileLocalSessions(protocol string, desired map[string]string) {
-	type kv struct{ email, ip string }
+// `desired` (tunnel IP -> account + serving inbound). Newly seen IPs gain an nft accounting
+// counter; vanished IPs are folded into client_traffics and their counter removed (mirrors
+// Acct-Stop). Called each tick by the rbridge Sweeper. It only touches this protocol's
+// "cp:<proto>:"-keyed sessions, so it never disturbs RADIUS-tracked sessions (e.g. ikev2
+// eap-mschapv2, keyed by Acct-Session-Id).
+func (s *RadiusService) ReconcileLocalSessions(protocol string, desired map[string]rbridge.Reconciled) {
+	// The inbound id travels with a departing session because it is needed AFTER the
+	// session has been deleted from the map, to attribute its final bytes.
+	type kv struct {
+		email     string
+		ip        string
+		inboundId int
+	}
 	var gone []kv
 	var added []string
 	prefix := "cp:" + protocol + ":"
@@ -659,19 +719,23 @@ func (s *RadiusService) ReconcileLocalSessions(protocol string, desired map[stri
 			continue
 		}
 		if _, ok := desired[sess.ip]; !ok {
-			gone = append(gone, kv{sess.email, sess.ip})
+			gone = append(gone, kv{sess.email, sess.ip, sess.inboundId})
 			delete(s.sessions, sid)
 		}
 	}
-	for ip, email := range desired {
+	for ip, want := range desired {
 		sid := localSessionKey(protocol, ip)
 		if existing, ok := s.sessions[sid]; ok {
-			if email != "" {
-				existing.email = email
+			if want.Email != "" {
+				existing.email = want.Email
 			}
+			// Refreshed rather than left alone: a wg-c device that moved to another
+			// inbound keeps its address, and a stale id here would bill its traffic to
+			// the inbound it left.
+			existing.inboundId = want.InboundID
 			continue
 		}
-		s.sessions[sid] = &radiusSession{email: email, ip: ip, protocol: protocol, started: time.Now()}
+		s.sessions[sid] = &radiusSession{email: want.Email, ip: ip, protocol: protocol, inboundId: want.InboundID, started: time.Now()}
 		added = append(added, ip)
 	}
 	s.mu.Unlock()
@@ -680,7 +744,7 @@ func (s *RadiusService) ReconcileLocalSessions(protocol string, desired map[stri
 	// as the Acct-Stop path.
 	for _, g := range gone {
 		up, down := s.nftService.ReadAndResetClientCounters(protocol, g.ip)
-		foldClientTraffic(g.email, protocol, up, down)
+		foldClientTraffic(g.email, protocol, g.inboundId, up, down)
 		_ = s.nftService.RemoveClientAccounting(protocol, g.ip)
 	}
 	for _, ip := range added {
@@ -962,7 +1026,7 @@ func (s *RadiusService) CleanStaleSessions() {
 		// otherwise every session that ends without one (which is every OpenConnect
 		// session that did not report a stop) silently drops its last window of traffic.
 		up, down := s.nftService.ReadAndResetClientCounters(sess.protocol, sess.ip)
-		foldClientTraffic(sess.email, sess.protocol, up, down)
+		foldClientTraffic(sess.email, sess.protocol, sess.inboundId, up, down)
 		s.nftService.RemoveClientAccounting(sess.protocol, sess.ip)
 		logger.Infof("RADIUS: cleaned stale session=%s email=%s ip=%s", sid, sess.email, sess.ip)
 		s.mu.Lock()
@@ -1115,6 +1179,87 @@ func (s *RadiusService) findClientInbound(protocol, username string) (*model.Inb
 	return nil, fmt.Errorf("client %s not found in any %s inbound", username, protocol)
 }
 
+// sessionInboundByIP resolves a tunnel address to the inbound whose address pool it
+// was handed out of. Returns 0 when nothing owns it.
+//
+// This is how l2tp, pptp and ikev2 sessions learn their inbound. All three share one
+// daemon and send a bare protocol name as their NAS-Identifier, which
+// parseNASIdentifier resolves to 0, while openvpn, openconnect and sstp name theirs
+// outright ("<proto>-<inboundId>") and never come here.
+//
+// Deliberately NOT findClientInbound or lookupEmail. Both answer "the first inbound
+// of this protocol holding a client with that name", by ascending id, which is a
+// first-match-wins guess of exactly the kind that produced the bug this attribution
+// exists to fix: it would file every membership's bytes under the lowest-id inbound
+// and look entirely plausible doing it. The address is a fact - the panel allocated
+// it from one specific inbound's pool in getClientIP - so it is matched instead.
+func (s *RadiusService) sessionInboundByIP(protocol, ip string) int {
+	if ip == "" || ip == "<nil>" {
+		return 0
+	}
+	addr := net.ParseIP(ip)
+	if addr == nil {
+		return 0
+	}
+	db := database.GetDB()
+	if db == nil {
+		return 0
+	}
+	var inbounds []*model.Inbound
+	// Ascending, so a pool an operator has configured to overlap another resolves
+	// the same way every tick rather than flapping between two inbounds.
+	if err := db.Where("protocol = ?", protocol).Order("id ASC").Find(&inbounds).Error; err != nil {
+		logger.Debug("RADIUS: cannot resolve the session inbound for ", protocol, ": ", err)
+		return 0
+	}
+	for _, inbound := range inbounds {
+		for _, subnet := range vpnSubnetsForInbound(protocol, inbound) {
+			if subnetHoldsIP(subnet, addr) {
+				return inbound.Id
+			}
+		}
+	}
+	return 0
+}
+
+// vpnSubnetsForInbound is the per-protocol GetSubnetsForInbound, chosen by name.
+// Only the three that need address-based resolution are listed; everything else
+// carries its inbound id in the NAS-Identifier.
+func vpnSubnetsForInbound(protocol string, inbound *model.Inbound) []string {
+	switch protocol {
+	case "l2tp":
+		return (&L2tpService{}).GetSubnetsForInbound(inbound)
+	case "pptp":
+		return (&PptpService{}).GetSubnetsForInbound(inbound)
+	case "ikev2":
+		return (&Ikev2Service{}).GetSubnetsForInbound(inbound)
+	}
+	return nil
+}
+
+// subnetHoldsIP reports whether a subnet in either of the two shapes these services
+// return covers addr: a CIDR ("10.6.8.0/24", from ikev2) or a bare /24 prefix
+// ("10.0.7", from l2tp and pptp).
+func subnetHoldsIP(subnet string, addr net.IP) bool {
+	if subnet == "" {
+		return false
+	}
+	if strings.Contains(subnet, "/") {
+		_, network, err := net.ParseCIDR(subnet)
+		if err != nil {
+			return false
+		}
+		return network.Contains(addr)
+	}
+	// A three-octet prefix. Compared octet by octet rather than with a string
+	// prefix, which would match 10.0.1 against 10.0.10.x.
+	v4 := addr.To4()
+	if v4 == nil {
+		return false
+	}
+	return fmt.Sprintf("%d.%d.%d", v4[0], v4[1], v4[2]) == subnet
+}
+
 // getClientIP computes the deterministic IP for a VPN client. Returns (nil,false)
 // if the client is not found or the range is exhausted, and (nil,true) when the
 // account is at its User Limit and the strategy is "reject" — the caller must then
@@ -1139,6 +1284,10 @@ func (s *RadiusService) getClientIP(protocol string, inboundId int, username, st
 		ID    string `json:"id"`
 		Email string `json:"email"`
 		Slot  *int   `json:"slot"` // address-pool slot; nil = fall back to list index
+		// This account's own device cap. nil = inherit the inbound's K, and it can only
+		// LOWER it: see resolveUserLimitOverride for why raising it would silently put
+		// two customers on one tunnel address.
+		UserLimitOverride *int `json:"userLimitOverride"`
 	}
 	type settingsJSON struct {
 		IpRanges          []string      `json:"ipRanges"`
@@ -1196,6 +1345,20 @@ func (s *RadiusService) getClientIP(protocol string, inboundId int, username, st
 			}
 		} else {
 			blockIPs = vpnAccountDeviceIPs(pppSubnetsOrDefault(ranges, protocol, inbound.Id), accountSlot, k)
+		}
+		// The account's own cap, applied by TRIMMING the block the inbound's K just
+		// laid out - never by asking for a differently sized one. The addresses are a
+		// fixed grid on a stride of K (vpnAccountBlock), so the block's START and its
+		// STRIDE stay the inbound's whatever this account is capped at; only how many
+		// of its own addresses it may hold at once changes. The ones it gives up sit
+		// idle rather than moving to a neighbour, which is what keeps this safe.
+		//
+		// Kept out of the k<=1 branch on purpose: a one-IP block is already the
+		// smallest there is and an override can only lower.
+		if userLimitOverrideApplies(&inbound) {
+			if kAcct := resolveUserLimitOverride(k, settings.Clients[clientIndex].UserLimitOverride); kAcct < len(blockIPs) {
+				blockIPs = blockIPs[:kAcct]
+			}
 		}
 		if len(blockIPs) == 0 {
 			return nil, false
@@ -1264,7 +1427,7 @@ func (s *RadiusService) allocateBlockIP(inboundId, accountSlot int, blockIPs []s
 			}
 			return
 		}
-		s.sessions[ocSessionKey(ip)] = &radiusSession{email: email, ip: ip, protocol: protocol, started: now}
+		s.sessions[ocSessionKey(ip)] = &radiusSession{email: email, ip: ip, protocol: protocol, inboundId: inboundId, started: now}
 	}
 
 	// assign claims ip for this station: it wins the slot, so drop any OTHER station's
@@ -1417,7 +1580,7 @@ func (s *RadiusService) allocateBlockIP(inboundId, accountSlot int, blockIPs []s
 			// ReadAndResetClientCounters zeroes the counter, so the readmit starts from 0.
 			if victim != nil && victim.email != "" {
 				up, down := s.nftService.ReadAndResetClientCounters(protocol, victimIP)
-				foldClientTraffic(victim.email, victim.protocol, up, down)
+				foldClientTraffic(victim.email, victim.protocol, victim.inboundId, up, down)
 			}
 			s.nftService.RemoveClientAccounting(protocol, victimIP)
 			// Force the old device's link down. L2TP/PPTP delete the ppp interface;
@@ -1760,7 +1923,7 @@ func GenerateRadiusClientConfig(protocol string, secret string) error {
 
 	// Per-protocol config (shared by all inbounds of that protocol).
 	seqFile := fmt.Sprintf("/var/run/radius-%s.seq", protocol)
-	config := fmt.Sprintf(`# Auto-generated by pro-ui RADIUS — do not edit
+	config := fmt.Sprintf(`# Auto-generated by vpn-ui RADIUS — do not edit
 authserver	127.0.0.1:1812
 acctserver	127.0.0.1:1813
 servers		%s/servers
@@ -1805,7 +1968,7 @@ func cleanupLegacyPerInboundFiles(optionsPrefix, protocol string) {
 // This avoids depending on /etc/radcli/dictionary which uses $INCLUDE syntax
 // that pppd's statically linked radiusclient parser cannot parse.
 func generateRadiusDictionary(dir string) error {
-	dict := `# Auto-generated by pro-ui — RADIUS dictionary for pppd
+	dict := `# Auto-generated by vpn-ui — RADIUS dictionary for pppd
 # Standard RADIUS attributes (RFC 2865)
 ATTRIBUTE	User-Name		1	string
 ATTRIBUTE	User-Password		2	string

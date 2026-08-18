@@ -43,15 +43,28 @@ type Adapter interface {
 	Evict(Live) error
 }
 
+// Reconciled is one survivor handed to the Sink: whose tunnel it is and which inbound
+// serves it.
+//
+// The inbound is carried rather than resolved on the far side because only the adapter
+// knows it for certain. Every one of them already does (Live.InboundID is required),
+// and the alternatives downstream are all first-match-by-lowest-id guesses that put one
+// inbound's bytes on another's row.
+type Reconciled struct {
+	Email     string
+	InboundID int
+}
+
 // Sink is the framework's write side into the existing data plane, implemented by the
 // RADIUS service (session registry) together with the nft service (per-IP accounting).
 // Ownership of the session store stays in RADIUS; the framework only writes through here.
 type Sink interface {
 	// ReconcileLocalSessions replaces the tracked sessions for one protocol with desired
-	// (tunnel IP -> account email): newly seen IPs gain an nft accounting counter, vanished
-	// IPs are folded into client_traffics and their counter removed (mirrors Acct-Stop), and
-	// the in-memory session map is updated so this tick's traffic collection bills them.
-	ReconcileLocalSessions(protocol string, desired map[string]string)
+	// (tunnel IP -> account + inbound): newly seen IPs gain an nft accounting counter,
+	// vanished IPs are folded into client_traffics and their counter removed (mirrors
+	// Acct-Stop), and the in-memory session map is updated so this tick's traffic
+	// collection bills them and attributes them to the right inbound.
+	ReconcileLocalSessions(protocol string, desired map[string]Reconciled)
 	// DisabledEmails returns the set of accounts currently disabled: a quota/expiry hit, or
 	// disabled in settings (client_traffics.enable = false).
 	DisabledEmails() map[string]bool
@@ -83,7 +96,7 @@ func (sw *Sweeper) Tick() {
 		if err != nil {
 			continue
 		}
-		desired := make(map[string]string, len(live))
+		desired := make(map[string]Reconciled, len(live))
 		for key, group := range groupByAccount(live) {
 			// 1. Disabled (in settings) or over-quota account: evict every tunnel, bill
 			// nothing further.
@@ -103,7 +116,7 @@ func (sw *Sweeper) Tick() {
 			}
 			// 3. Survivors -> session registry + accounting.
 			for _, s := range survivors {
-				desired[s.IP] = s.Email
+				desired[s.IP] = Reconciled{Email: s.Email, InboundID: s.InboundID}
 			}
 		}
 		sw.sink.ReconcileLocalSessions(a.Protocol(), desired)

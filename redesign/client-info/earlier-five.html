@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account Info and More Information: five designs</title>
+
+<style>
+/* ==========================================================================
+   Paper. The document these are drawn on.
+   ========================================================================== */
+:root{
+  --paper:#eceef1; --sheet:#ffffff; --sheet-2:#f5f7f9;
+  --ink:#131a23; --ink-2:#4e5b6a; --ink-3:#7b8796;
+  --rule:#d5dce3; --rule-strong:#b9c3cd;
+  --accent:#00705e; --accent-weak:rgba(0,112,94,.10);
+  --cut:#9e3b32; --cut-weak:rgba(158,59,50,.09);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --paper:#0d1117; --sheet:#141a22; --sheet-2:#1a212b;
+  --ink:rgba(255,255,255,.90); --ink-2:rgba(255,255,255,.62); --ink-3:rgba(255,255,255,.45);
+  --rule:#28313d; --rule-strong:#3a4553;
+  --accent:#3fd2b0; --accent-weak:rgba(63,210,176,.13);
+  --cut:#e08b82; --cut-weak:rgba(224,139,130,.12);
+  color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --paper:#0d1117; --sheet:#141a22; --sheet-2:#1a212b;
+  --ink:rgba(255,255,255,.90); --ink-2:rgba(255,255,255,.62); --ink-3:rgba(255,255,255,.45);
+  --rule:#28313d; --rule-strong:#3a4553;
+  --accent:#3fd2b0; --accent-weak:rgba(63,210,176,.13);
+  --cut:#e08b82; --cut-weak:rgba(224,139,130,.12);
+  color-scheme:dark;
+}
+*{box-sizing:border-box;}
+body{ margin:0; background:var(--paper); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,Arial,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+.mono{ font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; }
+.wrap{ max-width:1080px; margin:0 auto; padding:0 20px 96px; }
+
+.masthead{ padding:56px 0 28px; border-bottom:2px solid var(--rule-strong); }
+.masthead h1{ font-size:30px; line-height:1.15; margin:0 0 10px; letter-spacing:-.015em; font-weight:650; }
+.masthead p{ margin:0; color:var(--ink-2); max-width:66ch; }
+.mast-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:24px; flex-wrap:wrap; }
+.themebtn{ flex:none; display:inline-flex; align-items:center; gap:7px; font:inherit; font-size:12.5px;
+  font-weight:600; padding:7px 13px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--rule-strong); background:var(--sheet); color:var(--ink-2); }
+.themebtn:hover{ border-color:var(--accent); color:var(--accent); }
+.stamp{ display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--ink-3); margin-bottom:14px; }
+
+.sheet{ margin-top:54px; }
+.sheet-title{ display:flex; align-items:baseline; gap:14px; border-bottom:1px solid var(--rule-strong);
+  padding-bottom:9px; margin-bottom:20px; }
+.sheet-no{ font-family:ui-monospace,Menlo,monospace; font-size:12px; font-weight:700;
+  letter-spacing:.1em; color:var(--ink-3); padding-top:3px; flex:none; }
+.sheet-title h2{ font-size:21px; margin:0; font-weight:640; letter-spacing:-.01em; }
+.sheet-title .thesis{ font-size:13px; color:var(--ink-3); margin-inline-start:auto; text-align:end; flex:1 1 220px; }
+.sheet p{ color:var(--ink-2); max-width:76ch; }
+.sheet p strong{ color:var(--ink); font-weight:620; }
+.sheet ul{ color:var(--ink-2); max-width:76ch; padding-inline-start:20px; }
+.sheet li{ margin-bottom:5px; }
+.sheet li strong{ color:var(--ink); font-weight:620; }
+.lede{ font-size:16px; color:var(--ink) !important; }
+.mi{ border-inline-start:3px solid var(--accent); background:var(--accent-weak); padding:11px 14px;
+  border-radius:0 8px 8px 0; margin:16px 0; font-size:13.5px; color:var(--ink-2); max-width:76ch; }
+.mi b{ color:var(--ink); }
+.callout{ border-inline-start:3px solid var(--cut); background:var(--cut-weak); padding:13px 16px;
+  border-radius:0 8px 8px 0; margin:20px 0; font-size:14px; color:var(--ink-2); max-width:76ch; }
+.callout strong{ color:var(--ink); }
+.hint{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; font-size:12px; color:var(--ink-3); margin:20px 0 9px; }
+.hint b{ color:var(--ink-2); font-weight:600; }
+.hint .dot{ width:3px; height:3px; border-radius:50%; background:var(--rule-strong); flex:none; }
+.tbl{ width:100%; border-collapse:collapse; margin-top:18px; font-size:13.5px; }
+.tbl th,.tbl td{ border:1px solid var(--rule); padding:9px 11px; text-align:start; vertical-align:top; }
+.tbl th{ background:var(--sheet-2); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); font-weight:700; }
+.tbl td{ background:var(--sheet); color:var(--ink-2); }
+.tbl td:first-child{ color:var(--ink); font-weight:620; white-space:nowrap; }
+.tbl tr.pick td{ background:var(--accent-weak); }
+/* The costs/breaks pairs are two equal columns of prose, not a label and a
+   value, so they opt out of the nowrap-first-cell rule above. */
+.tbl.cb{ table-layout:fixed; }
+.tbl.cb td{ width:50%; white-space:normal; color:var(--ink-2); font-weight:400; }
+.tbl.cb td:first-child{ white-space:normal; color:var(--ink-2); font-weight:400; }
+.tbl-scroll{ overflow-x:auto; }
+.foot{ margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-3); }
+
+/* ==========================================================================
+   Panel palette. tokens.css values. Shared by all five, because the panel has
+   ONE colour system: a single accent, four status hues, neutral ink.
+   Protocols are deliberately NOT colour-coded; see sheet 00.
+   ========================================================================== */
+.frame{
+  --bg:#f4f6f8; --surface:#ffffff; --surface-2:#eef2f4;
+  --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --brand:#008771; --brand-strong:#00806b; --brand-weak:#e2f2ee; --on-brand:#fff;
+  --ok:#1c7a45; --ok-weak:rgba(28,122,69,.10);
+  --info:#1f6fd0; --info-weak:rgba(31,111,208,.10);
+  --warn:#8a6008; --warn-weak:rgba(138,96,8,.12);
+  --err:#b3261e; --err-weak:rgba(179,38,30,.10);
+  position:relative; border:1px solid var(--rule-strong); border-radius:12px; overflow:hidden;
+  background:var(--bg); color:var(--text); font-size:13px;
+  box-shadow:0 1px 2px rgba(0,0,0,.05), 0 12px 30px -18px rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .frame{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --brand:#1bbf9f; --brand-strong:#1bbf9f; --brand-weak:rgba(27,191,159,.14); --on-brand:#071a16;
+  --ok:#4fd08d; --ok-weak:rgba(79,208,141,.13); --info:#6fa8f5; --info-weak:rgba(111,168,245,.13);
+  --warn:#e0a94a; --warn-weak:rgba(224,169,74,.14); --err:#f2837a; --err-weak:rgba(242,131,122,.13); } }
+:root[data-theme="dark"] .frame{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --brand:#1bbf9f; --brand-strong:#1bbf9f; --brand-weak:rgba(27,191,159,.14); --on-brand:#071a16;
+  --ok:#4fd08d; --ok-weak:rgba(79,208,141,.13); --info:#6fa8f5; --info-weak:rgba(111,168,245,.13);
+  --warn:#e0a94a; --warn-weak:rgba(224,169,74,.14); --err:#f2837a; --err-weak:rgba(242,131,122,.13);
+}
+.stage{ padding:18px; min-height:500px; }
+.mini{ font:inherit; font-size:10.5px; font-weight:600; padding:4px 9px; border-radius:6px; cursor:pointer;
+  border:1px solid var(--border-strong); background:var(--surface); color:var(--text-2); }
+.mini:hover{ border-color:var(--brand); color:var(--brand); }
+.mini.p{ background:var(--brand-strong); border-color:var(--brand-strong); color:var(--on-brand); }
+.btnrow{ display:flex; gap:6px; flex-wrap:wrap; }
+.qrpat{ background-color:#fff;
+  background-image:repeating-linear-gradient(90deg,#0b1a17 0 5px,transparent 5px 10px),
+                   repeating-linear-gradient(0deg,#0b1a17 0 5px,transparent 5px 10px);
+  background-size:10px 10px; background-position:2px 2px; }
+
+/* ---------- 01 WALLET ------------------------------------------------- */
+.wal{ display:flex; gap:16px; align-items:flex-start; }
+/* Cards overlap by 38px so every card's top 66px stays readable. z-index rises
+   with index and NEVER with selection: lifting the selected card above its
+   neighbour would bury that neighbour's title, which is the one thing the
+   stack exists to show. Selection reads as the offset and the accent border. */
+.wal-stack{ flex:0 0 300px; width:300px; position:relative; height:442px; }
+.wcard{
+  position:absolute; inset-inline:0; height:104px; border-radius:12px; cursor:pointer;
+  background:var(--surface); border:1px solid var(--border-strong);
+  box-shadow:0 8px 18px -12px rgba(0,0,0,.5);
+  padding:12px 14px; transition:transform .22s cubic-bezier(.2,.7,.3,1), box-shadow .22s;
+  overflow:hidden;
+}
+.wcard:hover{ transform:translateX(6px); }
+.wcard.is-sel{ border-color:var(--brand); box-shadow:0 12px 26px -12px rgba(0,0,0,.55); transform:translateX(12px); }
+/* Clears the texture mark parked at the right of the same band. */
+.wcard .wc-top{ display:flex; align-items:baseline; gap:8px; padding-inline-end:40px; }
+.wcard .wc-nm{ font-weight:660; font-size:13px; letter-spacing:-.01em; }
+.wcard .wc-pr{ font-size:10.5px; color:var(--text-3); font-weight:600; }
+.wcard .wc-use{ margin-inline-start:auto; font-size:10.5px; color:var(--text-3); }
+/* Both of these live in the top 66px, the band the next card does not cover.
+   Anything below that is only visible on the last card in the stack. */
+.wcard .wc-kind{ position:absolute; inset-block-start:36px; inset-inline-start:14px;
+  font-size:10px; letter-spacing:.1em; text-transform:uppercase; font-weight:700; color:var(--text-3); }
+/* the four artifact shapes, told apart by TEXTURE not colour */
+.wcard .wc-mark{ position:absolute; inset-block-start:26px; inset-inline-end:12px; width:32px; height:32px; border-radius:6px; }
+.wc-mark.k-uri{ border:1px solid var(--border); } .wc-mark.k-uri::after{ content:""; position:absolute; inset:5px; border-radius:3px; }
+.wc-mark.k-conf{ border:1px solid var(--border); background:
+  repeating-linear-gradient(0deg,var(--border) 0 1px,transparent 1px 7px); }
+.wc-mark.k-creds{ border:1px solid var(--border); background:
+  repeating-linear-gradient(0deg,transparent 0 12px,var(--border) 12px 13px); }
+.wc-mark.k-none{ border:1px dashed var(--border-strong); background:
+  repeating-linear-gradient(45deg,transparent 0 5px,var(--border) 5px 6px); }
+
+.wal-face{ flex:1 1 auto; min-width:0; }
+.face{
+  background:var(--surface); border:1px solid var(--border-strong); border-radius:14px;
+  min-height:430px; padding:18px; position:relative; overflow:hidden;
+}
+.face-head{ display:flex; align-items:flex-start; gap:12px; margin-bottom:14px; }
+.face-head .t{ font-size:17px; font-weight:660; letter-spacing:-.015em; }
+.face-head .s{ font-size:11.5px; color:var(--text-3); }
+.flipbtn{ margin-inline-start:auto; }
+.face-art{ display:flex; gap:16px; align-items:flex-start; }
+.bigqr{ width:150px; height:150px; border-radius:10px; border:1px solid var(--border); flex:none; }
+.uri{ font-family:ui-monospace,Menlo,monospace; font-size:11px; background:var(--bg);
+  border:1px solid var(--border); border-radius:7px; padding:9px 10px; color:var(--text-2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.kv{ display:flex; gap:12px; padding:6px 0; border-top:1px solid var(--border); font-size:12.5px; align-items:baseline; }
+.kv:first-of-type{ border-top:none; }
+.kv .k{ flex:0 0 130px; color:var(--text-3); }
+.kv .v{ flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.backnote{ font-size:11.5px; color:var(--text-3); font-style:italic; margin-bottom:10px; }
+
+/* ---------- 02 TERMINAL ---------------------------------------------- */
+.term{
+  background:#0b1016; border:1px solid #223041; border-radius:11px; overflow:hidden;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; line-height:1.65;
+  color:#c6d4e1;
+}
+:root[data-theme="light"] .term, :root:not([data-theme="dark"]) .term{ }
+.term-bar{ display:flex; align-items:center; gap:8px; padding:8px 12px; background:#111823;
+  border-bottom:1px solid #223041; color:#7d8fa3; font-size:11px; }
+.term-dot{ width:9px; height:9px; border-radius:50%; background:#33415a; }
+.term-body{ padding:13px 14px; max-height:452px; overflow:auto; }
+.term-body .pr{ color:#3fd2b0; }
+.term-body .dim{ color:#61748a; }
+.term-body .hl{ color:#e8f0f7; }
+.term-body .ok{ color:#5cd6a0; }
+.term-body .wr{ color:#e0b263; }
+.term-body .er{ color:#ef8b82; }
+.term-rule{ color:#243244; }
+.term-body pre{ margin:0; font:inherit; white-space:pre-wrap; overflow-wrap:anywhere; }
+.term-cmds{ display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }
+.tcmd{ font:inherit; font-size:11px; padding:3px 9px; border-radius:5px; cursor:pointer;
+  border:1px solid #2a3a4e; background:#131c27; color:#8fa3b8; }
+.tcmd:hover{ border-color:#3fd2b0; color:#3fd2b0; }
+.tcmd.on{ border-color:#3fd2b0; color:#0b1016; background:#3fd2b0; }
+
+/* ---------- 03 VITALS ------------------------------------------------- */
+.vit{ display:grid; grid-template-columns:246px 1fr; gap:16px; align-items:start; }
+@media (max-width:820px){ .vit{ grid-template-columns:1fr; } }
+.gauges{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px; }
+.ring{ display:block; margin:0 auto 6px; }
+.ring-lbl{ text-align:center; font-size:11px; color:var(--text-3); letter-spacing:.08em; text-transform:uppercase; font-weight:700; }
+.ring-val{ text-align:center; font-size:22px; font-weight:680; letter-spacing:-.02em; margin-top:-4px; }
+.ring-sub{ text-align:center; font-size:11.5px; color:var(--text-3); margin-bottom:12px; }
+.vsplit{ border-top:1px solid var(--border); margin:12px 0; }
+.vrow{ display:flex; align-items:baseline; gap:8px; font-size:12px; padding:3px 0; }
+.vrow .k{ color:var(--text-3); } .vrow .v{ margin-inline-start:auto; font-weight:600; }
+
+.hstrip{ background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.hhead{ display:flex; align-items:center; gap:9px; padding:11px 14px; border-bottom:1px solid var(--border); }
+.hhead h5{ margin:0; font-size:13px; font-weight:650; }
+.hrow{ display:flex; align-items:center; gap:11px; padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer; }
+.hrow:last-child{ border-bottom:none; }
+.hrow:hover{ background:var(--surface-2); }
+.led{ width:9px; height:9px; border-radius:50%; flex:none; }
+.led.ok{ background:var(--ok); box-shadow:0 0 0 3px var(--ok-weak); }
+.led.warn{ background:var(--warn); box-shadow:0 0 0 3px var(--warn-weak); }
+.led.err{ background:var(--err); box-shadow:0 0 0 3px var(--err-weak); }
+.led.idle{ background:var(--text-3); opacity:.5; }
+.hrow .nm{ font-weight:620; font-size:12.5px; flex:0 0 132px; }
+.hrow .pr{ font-size:10.5px; color:var(--text-3); flex:0 0 74px; }
+.hbar{ flex:1 1 auto; height:6px; border-radius:999px; background:var(--surface-2); overflow:hidden; min-width:60px; }
+.hbar i{ display:block; height:100%; background:var(--brand-strong); }
+.verdict{ font-size:11px; font-weight:640; flex:0 0 116px; text-align:end; }
+.verdict.ok{ color:var(--ok); } .verdict.warn{ color:var(--warn); }
+.verdict.err{ color:var(--err); } .verdict.idle{ color:var(--text-3); }
+.hdetail{ padding:12px 14px 14px; background:var(--bg); border-bottom:1px solid var(--border); }
+
+/* ---------- 04 COMPOSER ---------------------------------------------- */
+.comp{ display:grid; grid-template-columns:290px 1fr; gap:16px; align-items:start; }
+@media (max-width:820px){ .comp{ grid-template-columns:1fr; } }
+.picker{ background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.picker h5{ margin:0; padding:11px 13px; font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); font-weight:700; border-bottom:1px solid var(--border); }
+.pick-row{ display:flex; align-items:center; gap:9px; padding:9px 13px; border-bottom:1px solid var(--border); cursor:pointer; font-size:12.5px; }
+.pick-row:last-of-type{ border-bottom:none; }
+.pick-row.dis{ opacity:.5; cursor:not-allowed; }
+.box{ width:15px; height:15px; border-radius:4px; border:1.5px solid var(--border-strong); flex:none; position:relative; }
+.box.on{ background:var(--brand-strong); border-color:var(--brand-strong); }
+.box.on::after{ content:""; position:absolute; inset-inline-start:4px; inset-block-start:1px; width:5px; height:9px;
+  border:solid var(--on-brand); border-width:0 2px 2px 0; transform:rotate(42deg); }
+.pick-row .nm{ font-weight:600; } .pick-row .pr{ color:var(--text-3); font-size:10.5px; margin-inline-start:auto; }
+.opts{ padding:11px 13px; border-top:1px solid var(--border); background:var(--bg); }
+.opt{ display:flex; align-items:center; gap:8px; font-size:12px; padding:4px 0; cursor:pointer; }
+.seg{ display:flex; border:1px solid var(--border-strong); border-radius:8px; overflow:hidden; margin-bottom:10px; }
+.seg button{ flex:1 1 0; font:inherit; font-size:11.5px; font-weight:650; padding:7px 8px; cursor:pointer;
+  border:none; background:var(--surface); color:var(--text-2); }
+.seg button.on{ background:var(--brand-weak); color:var(--brand); }
+
+.preview{ background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.pv-bar{ display:flex; align-items:center; gap:8px; padding:10px 13px; border-bottom:1px solid var(--border); background:var(--bg); }
+.pv-bar .t{ font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--text-3); font-weight:700; }
+.pv-body{ padding:14px; max-height:392px; overflow:auto; font-size:12.5px; }
+.msg{ background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:13px 14px; }
+.msg h6{ margin:0 0 8px; font-size:13px; font-weight:660; }
+.msg .blk{ margin:11px 0; padding-block-start:11px; border-top:1px dashed var(--border); }
+.msg .blk:first-of-type{ border-top:none; padding-block-start:0; }
+.msg .bt{ font-weight:640; font-size:12.5px; margin-bottom:4px; }
+.msg .mono{ font-size:11px; color:var(--text-2); overflow-wrap:anywhere; }
+.qsheet{ display:grid; grid-template-columns:repeat(3,1fr); gap:11px; }
+.qsheet .qcell{ text-align:center; }
+.qsheet .qcell .q{ width:100%; aspect-ratio:1; border-radius:8px; border:1px solid var(--border); }
+.qsheet .qcell .l{ font-size:10.5px; color:var(--text-3); margin-top:5px; }
+
+/* ---------- 05 TIMELINE ----------------------------------------------- */
+.tl{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px; }
+.axis{ position:relative; height:56px; margin:8px 0 4px; }
+.axis-line{ position:absolute; inset-inline:0; inset-block-start:26px; height:2px; background:var(--border); }
+.axis-fill{ position:absolute; inset-block-start:26px; height:2px; background:var(--brand-strong); inset-inline-start:0; }
+.tick{ position:absolute; transform:translateX(-50%); text-align:center; inset-block-start:0; }
+.tick .d{ width:9px; height:9px; border-radius:50%; background:var(--surface); border:2px solid var(--brand);
+  margin:22px auto 0; position:relative; z-index:1; }
+.tick .lb{ font-size:10px; color:var(--text-3); white-space:nowrap; }
+.tick .dt{ font-size:10px; color:var(--text-2); font-weight:640; white-space:nowrap; margin-top:2px; }
+.tick.now .d{ background:var(--brand); box-shadow:0 0 0 4px var(--brand-weak); }
+.tick.end .d{ border-color:var(--warn); }
+.spark{ display:block; width:100%; height:52px; margin:14px 0 6px; }
+.lanes{ margin-top:14px; border-top:1px solid var(--border); padding-top:12px; }
+.lane{ display:flex; align-items:center; gap:10px; padding:7px 0; cursor:pointer; }
+.lane:hover .lane-track{ background:var(--surface-2); }
+.lane .nm{ flex:0 0 140px; font-size:12px; font-weight:620; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lane-track{ flex:1 1 auto; height:16px; border-radius:5px; background:var(--bg); position:relative; overflow:hidden; }
+.lane-span{ position:absolute; inset-block:3px; border-radius:3px; background:var(--brand-weak); border:1px solid var(--brand); }
+.lane-span.idle{ background:var(--surface-2); border-color:var(--border-strong); }
+.lane-last{ position:absolute; inset-block:0; width:2px; background:var(--warn); }
+.lane .mt{ flex:0 0 96px; font-size:10.5px; color:var(--text-3); text-align:end; }
+.tlpop{ margin-top:12px; background:var(--bg); border:1px solid var(--border-strong); border-radius:10px; padding:13px; }
+
+.pill{ font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:999px;
+  background:var(--surface-2); color:var(--text-2); white-space:nowrap; }
+.pill.ok{ background:var(--ok-weak); color:var(--ok); }
+.pill.warn{ background:var(--warn-weak); color:var(--warn); }
+.pill.err{ background:var(--err-weak); color:var(--err); }
+.pill.brand{ background:var(--brand-weak); color:var(--brand); }
+.none{ font-size:12px; color:var(--text-3); font-style:italic; }
+.slab{ font-size:10px; letter-spacing:.11em; text-transform:uppercase; font-weight:700; color:var(--text-3);
+  margin:14px 0 8px; display:flex; align-items:center; gap:8px; }
+.slab::after{ content:""; flex:1 1 auto; border-top:1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="mast-row">
+      <div>
+        <div class="stamp">vpn-ui / clients / second attempt</div>
+        <h1>Five designs, not five containers</h1>
+        <p>
+          The first set was one design in five wrappers. These five differ in what the view <em>is</em>:
+          a wallet you leaf through, a manifest you paste, a status board, a thing you compose and send, and
+          a history you read. Each one also answers "then what is More Information" in its own way.
+        </p>
+      </div>
+      <button class="themebtn" id="theme">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+        <span id="theme-label">Theme</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================== 00 ============================== -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">00</span><h2>The account these are drawn over</h2>
+      <span class="thesis">One customer, six inbounds, four kinds of credential</span></div>
+
+    <p class="lede">
+      Same fixture in all five, chosen so nothing is flattered: <span class="mono">k7m2x9qp4</span>, 47.2 of
+      120 GB used, 21 days left, on six inbounds that between them cover every artifact shape the panel can
+      produce. Two of the six are quietly broken, which is the point.
+    </p>
+
+    <div class="tbl-scroll"><table class="tbl">
+      <thead><tr><th>Inbound</th><th>Protocol</th><th>What the customer gets</th><th>State</th></tr></thead>
+      <tbody>
+        <tr><td>DE-Frankfurt-01</td><td>VLESS Reality</td><td>A share URI, scannable</td><td>31.4 GB, online now</td></tr>
+        <tr><td>DE-Frankfurt-WG</td><td>WireGuard</td><td>Two server-minted <span class="mono">.conf</span> files, one per device</td><td>12.8 GB</td></tr>
+        <tr><td>NL-Ams-L2TP</td><td>L2TP/IPsec</td><td>Server, username, password. No file, no link</td><td>2.9 GB</td></tr>
+        <tr><td>NL-Ams-IKEv2</td><td>IKEv2 (PSK)</td><td>PSK. Username and password are withheld: on PSK they authenticate nothing</td><td><strong>0 B, never connected</strong></td></tr>
+        <tr><td>TG-Relay</td><td>MTProto</td><td>One <span class="mono">tg://</span> link per enabled mode. Server, port and secret live inside each</td><td>118 MB</td></tr>
+        <tr><td>Router-GRE</td><td>GRE</td><td><strong>Nothing portable.</strong> The peer is a router; its Mikrotik and Linux recipes stay in the GRE modal</td><td><strong>0 B, disabled here</strong></td></tr>
+      </tbody>
+    </table></div>
+
+    <p style="margin-top:22px;">Four facts from the code that every design below has to survive:</p>
+    <ul>
+      <li><strong>More Information already shows a lot.</strong> Today's modal carries transport, email, id,
+        status, usage, created, updated, last online, comment, the IP-limit log, Remained/Total/Expire, the
+        Telegram id, the subscription and JSON links, and the share links. The gap is not missing fields, it
+        is that all of it is <em>one membership at a time</em>: this account needs six visits to see itself.</li>
+      <li><strong>The subscription URL does not cover everything.</strong> GRE gets no subscription entry at
+        all, and the credential VPNs appear only as a fabricated <span class="mono">trojan://</span>
+        connection card that carries the endpoint and quota but cannot be dialled.</li>
+      <li><strong>Some artifacts are fetched, not computed.</strong> WireGuard, AmneziaWG, SSH and GRE come
+        from the backend per membership, and IKEv2 fetches its Remote ID separately.</li>
+      <li><strong>Protocols are not colour-coded, on purpose.</strong> The panel has one accent and four
+        status hues, and protocol tags are deliberately neutral. So none of these five tells protocols apart
+        by colour; where they need to be distinguished it is by texture, position or wording.</li>
+    </ul>
+
+    <div class="callout">
+      <strong>What was wrong with the first five.</strong> They all rendered the same thing: an identity
+      header, a four-stat strip, a subscription block, then a stack of per-membership cards. Only the
+      container changed. A container is not a design, and picking between five of them is not a decision
+      worth making.
+    </div>
+  </section>
+
+  <!-- ============================== 01 ============================== -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">01</span><h2>Wallet</h2>
+      <span class="thesis">Credentials are objects you leaf through</span></div>
+    <p class="lede">
+      Six memberships, six cards in a stack. You leaf down them and the one you pick comes forward at full
+      size with its artifact as the hero: a QR at 150px, or the two <span class="mono">.conf</span> files, or
+      the credential block. The stack stays visible so you never lose the sense of how much the customer has.
+    </p>
+    <p>
+      Cards are told apart by <strong>texture, not colour</strong>: a link card is smooth, a config card is
+      ruled like a document, a credentials card is lined like a form, and a card with nothing to give is
+      hatched and obviously empty. That reads at a glance without spending a hue the panel has reserved for
+      status.
+    </p>
+    <div class="mi"><b>More Information is the back of the card.</b> Flip it and the same card shows the
+      technical readout: transport, security, fingerprint, SNI, flow, uuid. Same object, other side. No
+      second window and no second button to explain.</div>
+    <div class="hint"><b>Try:</b> leaf through the stack <span class="dot"></span> then Flip on any card</div>
+    <div class="frame"><div class="stage" id="s1"></div></div>
+    <div class="tbl-scroll"><table class="tbl cb"><thead><tr><th>Costs</th><th>Breaks</th></tr></thead><tbody><tr>
+      <td>Front-end. One card component with a front and a back, plus four artifact renderers.</td>
+      <td>An account on twelve inbounds is a stack you scroll. The flip is an animation to get right, and a card back is one more place a field can hide.</td>
+    </tr></tbody></table></div>
+  </section>
+
+  <!-- ============================== 02 ============================== -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">02</span><h2>Manifest</h2>
+      <span class="thesis">The whole account as text you can paste</span></div>
+    <p class="lede">
+      No cards, no tiles. One monospace readout of the entire account, the way the panel's own terminal
+      already talks. Everything is selectable, the whole thing fits one screen, and it is already the right
+      shape to drop into a ticket or a chat.
+    </p>
+    <p>
+      This is the operator's answer, and it is the only design here that is <strong>faster than the table it
+      was opened from</strong>. It also composes: <span class="mono">links</span>,
+      <span class="mono">conf</span> and <span class="mono">tech</span> filter the same readout rather than
+      opening anything, so there is one surface and no navigation at all.
+    </p>
+    <div class="mi"><b>More Information is a filter, not a modal.</b> The <span class="mono">tech</span> verb
+      prints the per-membership technical block inline, in place, in the same readout. The button on the row
+      opens this view with that verb already applied.</div>
+    <div class="hint"><b>Try:</b> the verbs along the bottom <span class="dot"></span> each one rewrites the readout</div>
+    <div class="frame"><div class="stage" id="s2"></div></div>
+    <div class="tbl-scroll"><table class="tbl cb"><thead><tr><th>Costs</th><th>Breaks</th></tr></thead><tbody><tr>
+      <td>Cheapest of the five. One text renderer, and <span class="mono">terminal.css</span> already exists in the panel.</td>
+      <td>Unsendable to a customer, and hostile to anyone who does not already know the vocabulary. QR codes have nowhere natural to live. Long links wrap badly.</td>
+    </tr></tbody></table></div>
+  </section>
+
+  <!-- ============================== 03 ============================== -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">03</span><h2>Vitals</h2>
+      <span class="thesis">Answers "what is wrong with this account" first</span></div>
+    <p class="lede">
+      Artifacts are not the first question. When you open an account it is usually because someone says it
+      does not work, so this opens on a diagnosis: runway and quota as rings, then one line per membership
+      with a status light and a verdict in words.
+    </p>
+    <p>
+      The fixture proves the point. IKEv2 has moved <strong>0 B since it was created</strong>, which almost
+      always means the client never completed a handshake, and GRE is switched off <em>on that inbound</em>
+      while the account itself is enabled. Both are invisible in every other design here; this one says them
+      out loud before you have clicked anything.
+    </p>
+    <div class="mi"><b>More Information is the row opening in place.</b> Click a membership and it expands
+      under its own line with the technical readout and its artifact, without covering the diagnosis that
+      made you click it.</div>
+    <div class="hint"><b>Try:</b> the two rows with warnings <span class="dot"></span> then any healthy one</div>
+    <div class="frame"><div class="stage" id="s3"></div></div>
+    <div class="tbl-scroll"><table class="tbl cb"><thead><tr><th>Costs</th><th>Breaks</th></tr></thead><tbody><tr>
+      <td>Front-end, plus the verdict rules: never-connected, disabled-here, depleted, expiring, no-artifact. Every input already exists on the row.</td>
+      <td>A wrong verdict is worse than none, and "never connected" has innocent explanations. Handing links to a customer becomes the second job, behind a tab.</td>
+    </tr></tbody></table></div>
+  </section>
+
+  <!-- ============================== 04 ============================== -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">04</span><h2>Composer</h2>
+      <span class="thesis">You opened this to give somebody something</span></div>
+    <p class="lede">
+      Most of the time the reason to open an account is to send the customer their access. So this is not a
+      viewer, it is a builder: tick which memberships to include, choose who it is for, and watch the message
+      assemble itself on the right. Then copy it, download it, or switch to a QR sheet.
+    </p>
+    <p>
+      It makes explicit what Export TXT does blindly today. <strong>Customer</strong> strips quota, expiry
+      and anything internal and writes install-ready instructions; <strong>Operator</strong> keeps
+      everything. GRE is offered but cannot be ticked, because there is nothing to put in a message, and the
+      view says so rather than silently dropping it.
+    </p>
+    <div class="mi"><b>More Information is the inspector.</b> A row's magnifier opens the technical readout
+      beside the picker. It is deliberately not part of the composed output, which is the whole point of
+      separating them.</div>
+    <div class="hint"><b>Try:</b> untick memberships <span class="dot"></span> switch Customer / Operator <span class="dot"></span> then QR sheet</div>
+    <div class="frame"><div class="stage" id="s4"></div></div>
+    <div class="tbl-scroll"><table class="tbl cb"><thead><tr><th>Costs</th><th>Breaks</th></tr></thead><tbody><tr>
+      <td>Front-end, plus a second renderer for the customer voice and its wording in 13 locales.</td>
+      <td>The most opinionated design here: it assumes the errand. Someone who just wanted to look at an account has to read a form first. Two output voices is two things to keep true.</td>
+    </tr></tbody></table></div>
+  </section>
+
+  <!-- ============================== 05 ============================== -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">05</span><h2>History</h2>
+      <span class="thesis">Support questions are almost always about time</span></div>
+    <p class="lede">
+      "It stopped working on Tuesday." No other design here can answer that. This one is a time axis:
+      created, first connection, traffic as it accrued, last seen, and the expiry it is running at. Under it,
+      one lane per membership showing when each was added and when it was last used.
+    </p>
+    <p>
+      Read against the fixture it tells a story the others cannot. IKEv2 was added three weeks ago and its
+      lane is <strong>empty for its whole length</strong>. GRE stops dead where it was switched off. The
+      VLESS lane runs to today. That is a diagnosis you get by looking, not by reasoning.
+    </p>
+    <div class="mi"><b>More Information is a lane, opened.</b> Click any lane and its detail appears below
+      the axis: the technical readout, its artifact, and its own first-and-last-seen, without leaving the
+      timeline that gave it context.</div>
+    <div class="hint"><b>Try:</b> click a lane <span class="dot"></span> compare the IKEv2 and GRE lanes with the VLESS one</div>
+    <div class="frame"><div class="stage" id="s5"></div></div>
+    <div class="tbl-scroll"><table class="tbl cb"><thead><tr><th>Costs</th><th>Breaks</th></tr></thead><tbody><tr>
+      <td><strong>The only one needing backend work.</strong> Per-membership first-seen and a traffic series do not exist; the panel stores counters and a last-online, not history.</td>
+      <td>Without that history the axis is three points and a guess. Handing over links is an afterthought here, and a customer never needs this view at all.</td>
+    </tr></tbody></table></div>
+  </section>
+
+  <!-- ============================== 06 ============================== -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">06</span><h2>Choosing</h2>
+      <span class="thesis">They answer different questions, so pick by question</span></div>
+    <div class="tbl-scroll"><table class="tbl">
+      <thead><tr><th>Design</th><th>Answers</th><th>More Information becomes</th><th>Needs backend</th><th>Good for</th></tr></thead>
+      <tbody>
+        <tr><td>01 Wallet</td><td>"What does this customer have?"</td><td>The back of a card</td><td>No</td><td>Handing things over, visually</td></tr>
+        <tr class="pick"><td>02 Manifest</td><td>"Show me everything, now"</td><td>A verb that filters</td><td>No</td><td>Operators, tickets, speed</td></tr>
+        <tr class="pick"><td>03 Vitals</td><td>"Why is it not working?"</td><td>A row opening in place</td><td>No</td><td>Support, triage</td></tr>
+        <tr><td>04 Composer</td><td>"Send them their access"</td><td>An inspector beside the form</td><td>No</td><td>Onboarding, resellers</td></tr>
+        <tr><td>05 History</td><td>"When did it break?"</td><td>A lane, opened</td><td><strong>Yes</strong></td><td>Hard support cases</td></tr>
+      </tbody>
+    </table></div>
+
+    <p style="margin-top:24px;">
+      <strong>If one has to ship: 03 Vitals, with 02's readout underneath it.</strong> Vitals is the only one
+      that opens by answering the question that actually makes someone open an account, and it earns its keep
+      on the fixture by catching two real faults that every other design renders invisibly. Manifest is the
+      cheapest thing in this document and loses nothing by being the body of the Vitals detail, so the pair
+      costs barely more than either alone.
+    </p>
+    <p>
+      <strong>If two can ship: add 04 Composer as the export path.</strong> It replaces Export TXT and Export
+      PDF rather than sitting beside them, so it removes a blind action instead of adding a view. Wallet and
+      History are the two I would not build first: Wallet is the most attractive and the least useful, and
+      History is the only one that cannot be built at all without storing per-membership history the panel
+      does not currently keep.
+    </p>
+
+    <div class="callout">
+      <strong>Still undecided, and it is a real decision.</strong> Whether Account Info may show quota,
+      expiry and traffic when it is being used to hand something to a customer. 04 makes it a toggle. 01 and
+      05 would leak it. 03 is built entirely out of it. Whatever ships needs an answer.
+    </div>
+  </section>
+
+  <p class="foot">
+    Mockups. Account, memberships and credentials invented. Behaviour read from
+    <span class="mono">web/assets/js/util/export.js</span>,
+    <span class="mono">web/assets/js/model/inbound.js</span>,
+    <span class="mono">web/assets/js/model/dbinbound.js</span> (<span class="mono">hasLink</span>),
+    <span class="mono">web/html/modals/inbound_info_modal.html</span> and
+    <span class="mono">web/html/component/clientActionIcons.html</span>.
+  </p>
+</div>
+
+<script>
+/* ============================ fixture ============================ */
+const ACC={ email:'k7m2x9qp4', used:47.2, total:120, days:21, created:'2026-06-12' };
+
+const M=[
+ { id:'m1', nm:'DE-Frankfurt-01', pr:'VLESS', kind:'uri', used:'31.4 GB', pct:66,
+   led:'ok', verdict:'healthy',
+   uri:'vless://a3f19c7e-6b48-4d2a-9f05-8c71e2b0d4a6@de1.example-node.net:11645?type=tcp&security=reality&pbk=Zx1Qn8dKt7Ry4Uw2Fm6Bp0Hs3Lc9&fp=chrome&sni=www.cloudflare.com&sid=6ba85179&flow=xtls-rprx-vision#k7m2x9qp4',
+   tech:[['Address','de1.example-node.net'],['Port','11645'],['Network','tcp'],['Security','reality'],
+         ['SNI','www.cloudflare.com'],['Fingerprint','chrome'],['Flow','xtls-rprx-vision'],
+         ['Short ID','6ba85179'],['UUID','a3f19c7e-6b48-4d2a-9f05-8c71e2b0d4a6']],
+   added:0, lastPct:100, span:[0,100] },
+
+ { id:'m2', nm:'DE-Frankfurt-WG', pr:'WireGuard', kind:'conf', used:'12.8 GB', pct:27,
+   led:'ok', verdict:'healthy',
+   devices:['phone','laptop'],
+   conf:'[Interface]\nPrivateKey = 8Jq2...redacted\nAddress = 10.12.4.7/32\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = Rk9v...redacted\nEndpoint = de1.example-node.net:51820\nAllowedIPs = 0.0.0.0/0',
+   tech:[['Endpoint','de1.example-node.net:51820'],['Address','10.12.4.7/32'],['DNS','1.1.1.1'],
+         ['Allowed IPs','0.0.0.0/0'],['Devices','2 (phone, laptop)'],['Keys','server-minted, per device']],
+   added:8, lastPct:94, span:[8,94] },
+
+ { id:'m3', nm:'NL-Ams-L2TP', pr:'L2TP/IPsec', kind:'creds', used:'2.9 GB', pct:6,
+   led:'ok', verdict:'healthy',
+   creds:[['Server','nl1.example-node.net'],['Username','k7m2x9qp4'],['Password','Tq7-vR2mLp9x']],
+   tech:[['Server','nl1.example-node.net'],['Username','k7m2x9qp4'],['Password','Tq7-vR2mLp9x'],
+         ['IPsec PSK','shared, inbound-wide'],['MTU','1400']],
+   added:22, lastPct:88, span:[22,88] },
+
+ { id:'m4', nm:'NL-Ams-IKEv2', pr:'IKEv2 (PSK)', kind:'creds', used:'0 B', pct:0,
+   led:'warn', verdict:'never connected',
+   creds:[['Server','nl1.example-node.net'],['Remote ID','vpn.example.com'],['PSK','9dK2mQ7vXr4Tb1Ns']],
+   tech:[['Server','nl1.example-node.net'],['Remote ID','vpn.example.com'],['Auth','PSK'],
+         ['PSK','9dK2mQ7vXr4Tb1Ns'],['Username','withheld: the PSK is the credential'],
+         ['Proposal','aes256-sha256-modp2048']],
+   note:'0 bytes since it was created three weeks ago. Almost always a client that never completed a handshake.',
+   added:66, lastPct:66, span:[66,66] },
+
+ { id:'m5', nm:'TG-Relay', pr:'MTProto', kind:'uri', used:'118 MB', pct:1,
+   led:'ok', verdict:'healthy', modes:true,
+   links:[['Classic','tg://proxy?server=tg.example-node.net&port=443&secret=dd7f3a9c2e5b18d04a'],
+          ['DD (Secure)','tg://proxy?server=tg.example-node.net&port=443&secret=dd8e1b4c7a2f95d603'],
+          ['FakeTLS (EE)','tg://proxy?server=tg.example-node.net&port=443&secret=ee5c9d2a7b4e18f0367']],
+   tech:[['Relay','tg.example-node.net:443'],['Modes','classic, secure, faketls'],
+         ['FakeTLS domain','www.cloudflare.com'],['Note','server, port and secret live inside each link']],
+   added:30, lastPct:76, span:[30,76] },
+
+ { id:'m6', nm:'Router-GRE', pr:'GRE', kind:'none', used:'0 B', pct:0,
+   led:'err', verdict:'disabled here',
+   tech:[['Local','10.200.0.1/30'],['Remote','10.200.0.2/30'],['Peer','203.0.113.44'],
+         ['MSS clamp','1360'],['Note','no key, no password, no client app']],
+   note:'Switched off on this inbound while the account itself is enabled. Nothing portable to hand over either way.',
+   added:14, lastPct:52, span:[14,52], idle:true },
+];
+const KIND={uri:'Link',conf:'Config file',creds:'Credentials',none:'Nothing to give'};
+
+/* ============================ 01 Wallet ============================ */
+(function(){
+  const el=document.getElementById('s1');
+  let sel='m1', back=false;
+  function art(m){
+    if(m.kind==='uri'&&m.modes) return m.links.map(([lb,l])=>`
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;">
+        <div class="bigqr qrpat" style="width:74px;height:74px;"></div>
+        <div style="flex:1 1 auto;min-width:0;">
+          <div style="font-size:11px;color:var(--text-3);font-weight:640;margin-bottom:4px;">${lb}</div>
+          <div class="uri">${l}</div></div></div>`).join('')
+      +`<div class="none">One link per mode the inbound accepts.</div>`;
+    if(m.kind==='uri') return `<div class="face-art">
+        <div class="bigqr qrpat"></div>
+        <div style="flex:1 1 auto;min-width:0;">
+          <div class="uri">${m.uri}</div>
+          <div class="btnrow" style="margin-top:9px;"><button class="mini p">Copy link</button><button class="mini">Enlarge</button></div>
+        </div></div>`;
+    if(m.kind==='conf') return m.devices.map(d=>`
+      <div class="face-art" style="margin-bottom:12px;">
+        <div class="bigqr qrpat" style="width:96px;height:96px;"></div>
+        <div style="flex:1 1 auto;min-width:0;">
+          <div style="font-weight:640;font-size:12.5px;margin-bottom:5px;">${d}.conf</div>
+          <div class="uri" style="white-space:pre;line-height:1.5;max-height:78px;overflow:auto;">${m.conf}</div>
+          <div class="btnrow" style="margin-top:8px;"><button class="mini p">Download</button><button class="mini">Copy</button></div>
+        </div></div>`).join('')+`<div class="none">The QR is the file itself, not a link.</div>`;
+    if(m.kind==='creds') return m.creds.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v mono">${v}</span></div>`).join('')
+      +`<div class="btnrow" style="margin-top:10px;"><button class="mini p">Copy all</button></div>`
+      +(m.note?`<div class="none" style="margin-top:9px;">${m.note}</div>`:'');
+    return `<div style="text-align:center;padding:34px 12px;">
+      <div class="bigqr" style="margin:0 auto 14px;border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 7px,var(--border) 7px 8px);"></div>
+      <div class="none">Nothing portable. GRE's peer is a router: its Mikrotik and Linux recipes live in the GRE Setup modal.</div></div>`;
+  }
+  function draw(){
+    const m=M.find(x=>x.id===sel);
+    el.innerHTML=`<div class="wal">
+      <div class="wal-stack">
+        ${M.map((x,i)=>`<div class="wcard ${x.id===sel?'is-sel':''}" data-c="${x.id}" style="top:${i*66}px;z-index:${i}">
+          <div class="wc-top"><span class="wc-nm">${x.nm}</span><span class="wc-pr">${x.pr}</span><span class="wc-use">${x.used}</span></div>
+          <div class="wc-kind">${KIND[x.kind]}</div>
+          <div class="wc-mark k-${x.kind} qrpat" style="${x.kind==='uri'?'':'background-image:none;background-color:transparent;'}"></div>
+        </div>`).join('')}
+      </div>
+      <div class="wal-face"><div class="face">
+        <div class="face-head">
+          <div><div class="t">${m.nm}</div><div class="s">${m.pr} &middot; ${m.used} used &middot; ${KIND[m.kind]}</div></div>
+          <button class="mini flipbtn" data-f>${back?'&#8630; Front':'&#8631; Flip'}</button>
+        </div>
+        ${back
+          ? `<div class="backnote">The back of the card. This is what "More Information" used to be.</div>${m.tech.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v mono">${v}</span></div>`).join('')}`
+          : art(m)}
+      </div></div>
+    </div>`;
+    el.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{sel=b.dataset.c;back=false;draw();});
+    el.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{back=!back;draw();});
+  }
+  draw();
+})();
+
+/* ============================ 02 Manifest ============================ */
+(function(){
+  const el=document.getElementById('s2');
+  let verb='all';
+  const pad=(s,n)=>String(s)+' '.repeat(Math.max(0,n-String(s).length));
+  function body(){
+    const L=[];
+    L.push(`<span class="pr">$</span> <span class="hl">vpn-ui account show ${ACC.email}${verb==='all'?'':' --'+verb}</span>`);
+    L.push('');
+    if(verb==='all'||verb==='tech'){
+      L.push(`<span class="dim">account</span>   <span class="hl">${ACC.email}</span>   <span class="ok">enabled</span> <span class="ok">online</span>`);
+      L.push(`<span class="dim">traffic</span>   ${ACC.used} / ${ACC.total} GB   <span class="dim">[${'#'.repeat(13)}${'.'.repeat(20)}]</span> 39%`);
+      L.push(`<span class="dim">expires</span>   in ${ACC.days} days   <span class="dim">created ${ACC.created}</span>`);
+      L.push(`<span class="dim">sub</span>       https://de1.example-node.net:2097/sub/7f3a9c2e5b18d04a`);
+      L.push(`<span class="dim">          <span class="wr">5 of 6 inbounds: GRE has no subscription entry</span></span>`);
+      L.push('');
+    }
+    L.push(`<span class="term-rule">${'-'.repeat(74)}</span>`);
+    M.forEach(m=>{
+      const flag = m.led==='ok'?'<span class="ok">ok  </span>':(m.led==='warn'?'<span class="wr">warn</span>':'<span class="er">off </span>');
+      L.push(`${flag} <span class="hl">${pad(m.nm,17)}</span><span class="dim">${pad(m.pr,14)}</span>${pad(m.used,9)}<span class="dim">${KIND[m.kind]}</span>`);
+      if(m.note) L.push(`     <span class="wr">${m.note}</span>`);
+      if(verb==='all'||verb==='links'){
+        if(m.kind==='uri'&&m.modes) m.links.forEach(([lb,l])=>L.push(`     <span class="dim">${lb}</span> ${l}`));
+        else if(m.kind==='uri') L.push(`     ${m.uri}`);
+      }
+      if(verb==='all'||verb==='conf'){
+        if(m.kind==='conf') m.devices.forEach(d=>L.push(`     <span class="dim">${d}.conf</span>  <span class="dim">(server-minted, fetch on demand)</span>`));
+        if(m.kind==='creds') m.creds.forEach(([k,v])=>L.push(`     <span class="dim">${pad(k,11)}</span>${v}`));
+        if(m.kind==='none') L.push(`     <span class="dim">nothing portable; see GRE Setup</span>`);
+      }
+      if(verb==='tech'){
+        m.tech.forEach(([k,v])=>L.push(`     <span class="dim">${pad(k,15)}</span>${v}`));
+      }
+      L.push('');
+    });
+    L.push(`<span class="term-rule">${'-'.repeat(74)}</span>`);
+    L.push(`<span class="dim">6 memberships, 4 credential kinds, 2 needing attention</span>`);
+    return L.join('\n');
+  }
+  function draw(){
+    el.innerHTML=`<div class="term">
+      <div class="term-bar"><span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span>
+        <span style="margin-inline-start:6px;">account ${ACC.email}</span>
+        <span style="margin-inline-start:auto;">select all &middot; copy</span></div>
+      <div class="term-body"><pre>${body()}</pre>
+        <div class="term-cmds">
+          ${['all','links','conf','tech'].map(v=>`<button class="tcmd ${verb===v?'on':''}" data-v="${v}">${v}</button>`).join('')}
+          <span style="color:#4b5c70;font-size:11px;align-self:center;margin-inline-start:6px;">verbs filter the same readout, nothing opens</span>
+        </div>
+      </div></div>`;
+    el.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{verb=b.dataset.v;draw();});
+  }
+  draw();
+})();
+
+/* ============================ 03 Vitals ============================ */
+(function(){
+  const el=document.getElementById('s3');
+  let open=null;
+  const ring=(pct,label,val,sub,hue)=>{
+    const r=32,c=2*Math.PI*r,off=c*(1-pct/100);
+    return `<svg class="ring" width="86" height="86" viewBox="0 0 86 86">
+      <circle cx="43" cy="43" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="9"/>
+      <circle cx="43" cy="43" r="${r}" fill="none" stroke="var(--${hue})" stroke-width="9"
+        stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${off}"
+        transform="rotate(-90 43 43)"/></svg>
+      <div class="ring-val">${val}</div><div class="ring-lbl">${label}</div><div class="ring-sub">${sub}</div>`;
+  };
+  function detail(m){
+    return `<div class="hdetail">
+      ${m.note?`<div class="pill ${m.led==='err'?'err':'warn'}" style="margin-bottom:10px;display:inline-block;">${m.note}</div>`:''}
+      <div class="slab">Technical</div>
+      ${m.tech.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v mono">${v}</span></div>`).join('')}
+      <div class="slab">${KIND[m.kind]}</div>
+      ${m.kind==='uri'&&!m.modes?`<div class="uri">${m.uri}</div>`:''}
+      ${m.kind==='uri'&&m.modes?m.links.map(([lb,l])=>`<div style="margin-bottom:6px;"><span class="pill">${lb}</span> <span class="mono" style="font-size:11px;">${l.slice(0,58)}...</span></div>`).join(''):''}
+      ${m.kind==='conf'?`<div class="none">Two server-minted .conf files, fetched on demand.</div>`:''}
+      ${m.kind==='creds'?m.creds.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v mono">${v}</span></div>`).join(''):''}
+      ${m.kind==='none'?`<div class="none">Nothing portable to hand over.</div>`:''}
+    </div>`;
+  }
+  function draw(){
+    const bad=M.filter(m=>m.led!=='ok').length;
+    el.innerHTML=`<div class="vit">
+      <div class="gauges">
+        ${ring(ACC.days/30*100,'runway',ACC.days+'d','of a 30 day cycle','warn')}
+        <div class="vsplit"></div>
+        ${ring(ACC.used/ACC.total*100,'quota',Math.round(ACC.used/ACC.total*100)+'%',ACC.used+' of '+ACC.total+' GB','brand')}
+        <div class="vsplit"></div>
+        <div class="vrow"><span class="k">Account</span><span class="v" style="color:var(--ok)">enabled</span></div>
+        <div class="vrow"><span class="k">Seen</span><span class="v">now</span></div>
+        <div class="vrow"><span class="k">Created</span><span class="v">${ACC.created}</span></div>
+      </div>
+      <div class="hstrip">
+        <div class="hhead"><h5>Six memberships</h5>
+          ${bad?`<span class="pill warn">${bad} need attention</span>`:''}
+          <span style="margin-inline-start:auto;"><button class="mini">Links &amp; configs</button></span></div>
+        ${M.map(m=>`
+          <div class="hrow" data-r="${m.id}">
+            <span class="led ${m.led}"></span>
+            <span class="nm">${m.nm}</span>
+            <span class="pr">${m.pr}</span>
+            <span class="hbar"><i style="width:${m.pct}%"></i></span>
+            <span style="font-size:11px;color:var(--text-3);flex:0 0 58px;text-align:end;">${m.used}</span>
+            <span class="verdict ${m.led==='ok'?'ok':(m.led==='warn'?'warn':'err')}">${m.verdict}</span>
+          </div>
+          ${open===m.id?detail(m):''}`).join('')}
+      </div>
+    </div>`;
+    el.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{open=(open===b.dataset.r)?null:b.dataset.r;draw();});
+  }
+  draw();
+})();
+
+/* ============================ 04 Composer ============================ */
+(function(){
+  const el=document.getElementById('s4');
+  let picked={m1:true,m2:true,m3:true,m4:false,m5:true,m6:false};
+  let who='customer', mode='msg', opts={qr:true, quota:false};
+  function draw(){
+    const inc=M.filter(m=>picked[m.id]&&m.kind!=='none');
+    el.innerHTML=`<div class="comp">
+      <div>
+        <div class="seg">
+          <button class="${who==='customer'?'on':''}" data-w="customer">Customer</button>
+          <button class="${who==='operator'?'on':''}" data-w="operator">Operator</button>
+        </div>
+        <div class="picker">
+          <h5>Include</h5>
+          ${M.map(m=>`
+            <div class="pick-row ${m.kind==='none'?'dis':''}" ${m.kind==='none'?'':`data-p="${m.id}"`}>
+              <span class="box ${picked[m.id]&&m.kind!=='none'?'on':''}"></span>
+              <span class="nm">${m.nm}</span>
+              <span class="pr">${m.kind==='none'?'nothing to send':m.pr}</span>
+            </div>`).join('')}
+          <div class="opts">
+            <label class="opt" data-o="qr"><span class="box ${opts.qr?'on':''}"></span> Include QR codes</label>
+            <label class="opt" data-o="quota"><span class="box ${opts.quota?'on':''}"></span> Include quota and expiry</label>
+          </div>
+        </div>
+        <div class="btnrow" style="margin-top:11px;">
+          <button class="mini p">Copy</button><button class="mini">Download .txt</button><button class="mini">PDF</button>
+        </div>
+        <div class="none" style="margin-top:9px;">Replaces the blind Export TXT / Export PDF.</div>
+      </div>
+
+      <div class="preview">
+        <div class="pv-bar">
+          <span class="t">Preview</span>
+          <span class="pill">${who}</span>
+          <span style="margin-inline-start:auto;display:flex;gap:6px;">
+            <button class="mini ${mode==='msg'?'p':''}" data-m="msg">Message</button>
+            <button class="mini ${mode==='qr'?'p':''}" data-m="qr">QR sheet</button>
+          </span>
+        </div>
+        <div class="pv-body">
+          ${mode==='qr'?`
+            <div class="qsheet">
+              ${inc.map(m=>`<div class="qcell"><div class="q qrpat"></div><div class="l">${m.nm}</div></div>`).join('')}
+            </div>
+            <div class="none" style="margin-top:12px;">${inc.length} codes. Credential VPNs have no scannable payload, so they print as text below the sheet.</div>
+          `:`
+            <div class="msg">
+              <h6>${who==='customer'?'Your VPN access':'Account '+ACC.email}</h6>
+              ${who==='operator'||opts.quota?`<div class="mono" style="margin-bottom:6px;">${ACC.used} / ${ACC.total} GB used &middot; ${ACC.days} days left</div>`:''}
+              <div class="blk"><div class="bt">Subscription (one link, most apps)</div>
+                <div class="mono">https://de1.example-node.net:2097/sub/7f3a9c2e5b18d04a</div></div>
+              ${inc.map(m=>`
+                <div class="blk">
+                  <div class="bt">${m.nm} <span class="pill">${m.pr}</span></div>
+                  ${m.kind==='uri'&&!m.modes?`<div class="mono">${m.uri.slice(0,96)}...</div>`:''}
+                  ${m.kind==='uri'&&m.modes?m.links.map(([lb,l])=>`<div class="mono">${lb}: ${l.slice(0,52)}...</div>`).join(''):''}
+                  ${m.kind==='conf'?`<div class="mono">phone.conf, laptop.conf attached</div>`:''}
+                  ${m.kind==='creds'?m.creds.map(([k,v])=>`<div class="mono">${k}: ${v}</div>`).join(''):''}
+                  ${opts.qr&&m.kind!=='creds'?`<div class="none" style="margin-top:4px;">+ QR</div>`:''}
+                </div>`).join('')}
+              ${who==='customer'?`<div class="blk"><div class="none">Install one app, paste the subscription link, and every server above appears.</div></div>`:''}
+            </div>
+          `}
+        </div>
+      </div>
+    </div>`;
+    el.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{const k=b.dataset.p;picked={...picked,[k]:!picked[k]};draw();});
+    el.querySelectorAll('[data-w]').forEach(b=>b.onclick=()=>{who=b.dataset.w;draw();});
+    el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{mode=b.dataset.m;draw();});
+    el.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{const k=b.dataset.o;opts={...opts,[k]:!opts[k]};draw();});
+  }
+  draw();
+})();
+
+/* ============================ 05 History ============================ */
+(function(){
+  const el=document.getElementById('s5');
+  let open=null;
+  const TICKS=[['created','12 Jun',0],['first connect','13 Jun',9],['last seen','today',88],['expires','21 Sep',100]];
+  function spark(){
+    const pts=[0,3,7,11,10,16,21,26,24,31,35,34,40,44,47];
+    const w=560,h=52,mx=Math.max(...pts);
+    const d=pts.map((p,i)=>`${(i/(pts.length-1))*w},${h-(p/mx)*(h-6)-3}`).join(' ');
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <polyline points="${d}" fill="none" stroke="var(--brand)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <polyline points="0,${h} ${d} ${w},${h}" fill="var(--brand-weak)" stroke="none"/></svg>`;
+  }
+  function draw(){
+    const m=open?M.find(x=>x.id===open):null;
+    el.innerHTML=`<div class="tl">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px;">
+        <div style="font-size:15px;font-weight:660;">${ACC.email}</div>
+        <span class="pill ok">online</span>
+        <span style="margin-inline-start:auto;font-size:11.5px;color:var(--text-3);">${ACC.used} of ${ACC.total} GB &middot; ${ACC.days} days left</span>
+      </div>
+      <div class="axis">
+        <div class="axis-line"></div><div class="axis-fill" style="width:88%"></div>
+        ${TICKS.map(([lb,dt,x],i)=>`<div class="tick ${i===2?'now':''} ${i===3?'end':''}" style="left:${x}%">
+          <div class="lb">${lb}</div><div class="dt">${dt}</div><div class="d"></div></div>`).join('')}
+      </div>
+      ${spark()}
+      <div class="none" style="text-align:center;">traffic accrued since creation</div>
+
+      <div class="lanes">
+        <div class="slab">Per membership</div>
+        ${M.map(x=>`
+          <div class="lane" data-l="${x.id}">
+            <span class="nm">${x.nm}</span>
+            <span class="lane-track">
+              <span class="lane-span ${x.idle||x.span[0]===x.span[1]?'idle':''}"
+                style="inset-inline-start:${x.span[0]}%;width:${Math.max(1.5,x.span[1]-x.span[0])}%"></span>
+              ${x.span[1]<88?`<span class="lane-last" style="inset-inline-start:${x.span[1]}%"></span>`:''}
+            </span>
+            <span class="mt">${x.span[0]===x.span[1]?'never used':x.used}</span>
+          </div>`).join('')}
+        <div class="none" style="margin-top:8px;">
+          IKEv2 is a lane with no length: added, never used. GRE stops where it was switched off.
+        </div>
+      </div>
+
+      ${m?`<div class="tlpop">
+        <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:9px;">
+          <b style="font-size:13px;">${m.nm}</b><span class="pill">${m.pr}</span>
+          <span style="margin-inline-start:auto;font-size:11px;color:var(--text-3);">${KIND[m.kind]}</span></div>
+        ${m.note?`<div class="pill warn" style="margin-bottom:9px;display:inline-block;">${m.note}</div>`:''}
+        ${m.tech.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v mono">${v}</span></div>`).join('')}
+        ${m.kind==='uri'&&!m.modes?`<div class="uri" style="margin-top:9px;">${m.uri}</div>`:''}
+      </div>`:''}
+    </div>`;
+    el.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{open=(open===b.dataset.l)?null:b.dataset.l;draw();});
+  }
+  draw();
+})();
+
+/* ---------- theme ---------- */
+(function(){
+  const b=document.getElementById('theme'), l=document.getElementById('theme-label');
+  const o=['system','light','dark'], n={system:'Theme: system',light:'Theme: light',dark:'Theme: dark'};
+  let i=0;
+  b.onclick=()=>{ i=(i+1)%o.length; const t=o[i];
+    if(t==='system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme',t);
+    l.textContent=n[t]; };
+  l.textContent=n.system;
+})();
+</script>
+</body>
+</html>

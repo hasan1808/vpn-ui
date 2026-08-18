@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -186,6 +187,20 @@ func (s *L2tpService) GenerateAllConfigs() error {
 // to its own inbound's pool. A single shared PPP options file carries a
 // protocol-level nas_identifier (see GeneratePPPOptions).
 func (s *L2tpService) GenerateXl2tpdConfig(inbounds []*model.Inbound) error {
+	// xl2tpd.conf is the DISTRO's file on a host that already ran xl2tpd, and we
+	// replace it wholesale. Recorded (and copied to /etc/vpn-ui/backups/ on the first
+	// overwrite) so uninstall gives the operator theirs back instead of leaving our
+	// render behind. See ownership.go. It belongs on the WRITE, not in the builder:
+	// the builder also feeds the config editor's read-only preview.
+	ownPrepareHostFile("/etc/xl2tpd/xl2tpd.conf", "l2tp")
+	return s.writeFile("/etc/xl2tpd/xl2tpd.conf",
+		applyCoreConfigOverride("l2tp", 0, "xl2tpd.conf", s.buildXl2tpdConfig(inbounds)))
+}
+
+// buildXl2tpdConfig renders the body. Split from the write so the config editor can show
+// the operator the GENERATED text they are diverging from, which reading the file back
+// cannot do: what is on disk already has their override merged into it.
+func (s *L2tpService) buildXl2tpdConfig(inbounds []*model.Inbound) string {
 	var b strings.Builder
 	b.WriteString("[global]\n")
 	b.WriteString("port = 1701\n\n")
@@ -229,7 +244,7 @@ func (s *L2tpService) GenerateXl2tpdConfig(inbounds []*model.Inbound) error {
 	b.WriteString("length bit = yes\n")
 	b.WriteString("flow bit = yes\n\n")
 
-	return s.writeFile("/etc/xl2tpd/xl2tpd.conf", b.String())
+	return b.String()
 }
 
 // GeneratePPPOptions writes the single shared PPP options file
@@ -238,9 +253,21 @@ func (s *L2tpService) GenerateXl2tpdConfig(inbounds []*model.Inbound) error {
 // server maps each account to its inbound by username. DNS/MTU are taken from the
 // representative (first) inbound — all L2TP inbounds share these link options.
 func (s *L2tpService) GeneratePPPOptions(inbound *model.Inbound) error {
-	settings, err := s.parseSettings(inbound)
+	body, err := s.buildPPPOptions(inbound)
 	if err != nil {
 		return err
+	}
+	// Same as xl2tpd.conf: a host file we overwrite, backed up on first sight.
+	ownPrepareHostFile("/etc/ppp/options.xl2tpd", "l2tp")
+	return s.writeFile("/etc/ppp/options.xl2tpd",
+		applyCoreConfigOverride("l2tp", 0, "options.xl2tpd", body))
+}
+
+// buildPPPOptions renders the body; see buildXl2tpdConfig for why it is split out.
+func (s *L2tpService) buildPPPOptions(inbound *model.Inbound) (string, error) {
+	settings, err := s.parseSettings(inbound)
+	if err != nil {
+		return "", err
 	}
 
 	mtu := settings.Mtu
@@ -268,21 +295,7 @@ func (s *L2tpService) GeneratePPPOptions(inbound *model.Inbound) error {
 	// The VPN data path (nftables TPROXY -> Xray) is IPv4-only; without this,
 	// a dual-stack client could negotiate IPv6 and leak IPv6 traffic and DNS
 	// straight out the host's default route, bypassing Xray entirely.
-	//
-	// SettingService.enableVpnIpv6 lifts the ban once the IPv6 data path lands
-	// (later phases); off is the default and keeps this line exactly as before.
-	var settingService SettingService
-	enableVpnIpv6, _ := settingService.GetEnableVpnIpv6()
-	if !enableVpnIpv6 {
-		b.WriteString("noipv6\n")
-	} else {
-		// Phase 2: negotiate IPv6CP so the ppp link carries IPv6 (link-local at
-		// first). The server still has no IPv6 forwarding or policy route, so any
-		// IPv6 arriving on the link is dropped there — confined, nothing leaks.
-		b.WriteString("+ipv6\n")
-		b.WriteString("ipv6cp-accept-local\n")
-		b.WriteString("ipv6cp-accept-remote\n")
-	}
+	b.WriteString("noipv6\n")
 	b.WriteString(fmt.Sprintf("ms-dns %s\n", dns1))
 	b.WriteString(fmt.Sprintf("ms-dns %s\n", dns2))
 	b.WriteString("proxyarp\n")
@@ -295,7 +308,7 @@ func (s *L2tpService) GeneratePPPOptions(inbound *model.Inbound) error {
 	b.WriteString("plugin radius.so\n")
 	b.WriteString("radius-config-file /etc/ppp/radius/l2tp.conf\n")
 
-	return s.writeFile("/etc/ppp/options.xl2tpd", b.String())
+	return b.String(), nil
 }
 
 // getDisabledEmails returns a set of client emails that are disabled in the
@@ -313,114 +326,271 @@ func (s *L2tpService) getDisabledEmails() map[string]bool {
 	return disabled
 }
 
-// GenerateIPsecConfig writes /etc/ipsec.conf and /etc/ipsec.secrets for L2TP/IPsec.
-// Uses Libreswan format which provides better compatibility across Windows, iOS, and Linux.
-func (s *L2tpService) GenerateIPsecConfig(inbounds []*model.Inbound) error {
-	hasIpsec := false
-	var psks []string
+// PER-INBOUND IPsec PRE-SHARED KEYS.
+//
+// Both IPsec backends below can serve one key per inbound, but only under a condition the
+// protocol imposes and no configuration setting can lift.
+//
+// L2TP/IPsec is IKEv1 Main Mode with a pre-shared key. SKEYID = prf(PSK, Ni|Nr) is
+// computed at messages 3/4, and the initiator's ID payload does not arrive until message
+// 5 — already encrypted under keys derived from the very key the responder is trying to
+// choose. The responder therefore has to pick the key knowing nothing but the IP address
+// pair, and the peer is a road warrior whose address is unknown. So the ONLY thing that
+// can select between two of our keys is OUR OWN address: the one the packet arrived on.
+//
+// Hence: distinct, concrete listen addresses, or one shared key. There is no strongSwan
+// or libreswan option that changes this. (GRE gets away with per-tunnel keys because its
+// connections are `version = 0` and negotiate IKEv2 in practice, where the identity is
+// available in time to select the secret.)
+//
+// WHAT A PER-INBOUND KEY DOES AND DOES NOT SEPARATE. It authenticates the IPsec layer per
+// listen address, and that is all. Everything above it is still protocol-wide: one xl2tpd
+// with one [global] on port 1701, one /etc/ppp/options.xl2tpd, and a RADIUS lookup that
+// resolves an account by username across every enabled l2tp inbound. A client that holds
+// inbound B's key but authenticates as an inbound-A account still lands in inbound A's IP
+// pool with inbound A's routing. The key is a door, not a partition.
 
+// l2tpIpsecPeer is one L2TP inbound that terminates IKE: its key, and the address it
+// answers on ("" when it answers on all of them).
+type l2tpIpsecPeer struct {
+	inbound *model.Inbound
+	psk     string
+	listen  string
+}
+
+// l2tpIpsecPeers returns the inbounds that want IPsec and have a key to do it with, in
+// the order they were given.
+//
+// requireEnable is not a detail to tidy away: the swanctl generator has always skipped
+// disabled inbounds and the libreswan one has always ignored the flag, and both of those
+// choices are load-bearing for the panel-wide output they produce today.
+func (s *L2tpService) l2tpIpsecPeers(inbounds []*model.Inbound, requireEnable bool) []l2tpIpsecPeer {
+	var out []l2tpIpsecPeer
 	for _, inbound := range inbounds {
-		settings, err := s.parseSettings(inbound)
-		if err != nil {
+		if requireEnable && !inbound.Enable {
 			continue
 		}
-		if settings.IpsecEnable && settings.IpsecPsk != "" {
-			hasIpsec = true
-			psks = append(psks, settings.IpsecPsk)
+		settings, err := s.parseSettings(inbound)
+		if err != nil || !settings.IpsecEnable || settings.IpsecPsk == "" {
+			continue
 		}
+		out = append(out, l2tpIpsecPeer{
+			inbound: inbound,
+			psk:     settings.IpsecPsk,
+			listen:  strings.TrimSpace(inbound.Listen),
+		})
 	}
+	return out
+}
 
-	if !hasIpsec {
+// l2tpPerListenPeers returns the peers when each can own its key, and nil when they
+// cannot — which is the default and stays the default.
+//
+// Every condition here is a reason the addresses could not tell two keys apart:
+//
+//   - fewer than two peers: there is nothing to tell apart, and emitting the per-inbound
+//     shape for a lone inbound would rewrite a file on every existing install for no gain.
+//   - a wildcard listen: that inbound answers on every address, including the others'.
+//   - a listen that is not an IP literal: a hostname becomes an FQDN identity in IKEv1,
+//     which never matches the address-derived identity the key lookup uses.
+//   - two peers on the same address: the ambiguity this whole mechanism exists to avoid.
+func l2tpPerListenPeers(peers []l2tpIpsecPeer) []l2tpIpsecPeer {
+	if len(peers) < 2 {
+		return nil
+	}
+	seen := make(map[string]bool, len(peers))
+	for _, peer := range peers {
+		if listenIsWildcard(peer.listen) || net.ParseIP(peer.listen) == nil || seen[peer.listen] {
+			return nil
+		}
+		seen[peer.listen] = true
+	}
+	return peers
+}
+
+// GenerateIPsecConfig writes /etc/ipsec.conf and /etc/ipsec.secrets for L2TP/IPsec.
+// Uses Libreswan format which provides better compatibility across Windows, iOS, and Linux.
+//
+// One `conn l2tp-psk` on %defaultroute with a wildcard secret, or one `conn l2tp-psk-<id>`
+// per inbound pinned to its own left= address with an address-scoped secret. See the
+// per-inbound PSK note above for when the second shape is possible.
+func (s *L2tpService) GenerateIPsecConfig(inbounds []*model.Inbound) error {
+	// The panel-wide fallback reads every inbound, enabled or not, which is what this
+	// generator has always done; the per-inbound shape only ever serves enabled ones.
+	all := s.l2tpIpsecPeers(inbounds, false)
+	perListen := l2tpPerListenPeers(s.l2tpIpsecPeers(inbounds, true))
+
+	if len(all) == 0 {
 		return nil
 	}
 
-	// Libreswan's L2TP/IPsec keywords are NOT portable across major versions, and
-	// getting them wrong is fatal in different ways on different distros — which is
-	// why "stuck on stopped" only showed up on some of them. Detect the installed
-	// version once and emit version-appropriate keywords (validated on 3.32, 4.3,
-	// 4.14 and 5.2):
-	//
-	//   ikev1-policy: `config setup` keyword added in 4.2. From 5.0 (and Debian/
-	//   RHEL back-patches) IKEv1 is dropped by default, so 4.2+ REQUIRES
-	//   ikev1-policy=accept or the L2TP conn fails to load ("global ikev1-policy
-	//   does not allow IKEv1 connections"). But on <4.2 the keyword is UNKNOWN, and
-	//   an unknown `config setup` keyword makes pluto reject the WHOLE config — the
-	//   service then won't start and neither a restart nor a reboot fixes it. So
-	//   emit it only on 4.2+ (pre-4.2 accepts IKEv1 by default anyway).
-	//
-	//   keyexchange: the explicit value `ikev1` only exists in 5.x; 3.x and 4.x
-	//   reject it ("invalid value"). `keyexchange=ike` + `ikev2=no` selects IKEv1
-	//   and parses on every version, so it's the portable form for <5.0.
-	lsMajor, lsMinor, lsOK := libreswanVersion()
-	ikev1PolicySupported := lsOK && (lsMajor > 4 || (lsMajor == 4 && lsMinor >= 2))
-	keyexchangeV1 := lsOK && lsMajor >= 5
-
-	var b strings.Builder
-	b.WriteString("# Auto-generated by pro-ui L2TP service — do not edit\n")
-	b.WriteString("config setup\n")
-	b.WriteString("    uniqueids=no\n")
-	b.WriteString("    logfile=/var/log/pluto.log\n")
-	if ikev1PolicySupported {
-		b.WriteString("    ikev1-policy=accept\n")
+	// The host libreswan's own two files. ipsec.secrets is the painful one: it holds
+	// every PSK the operator configured, and we replace it with a single line, so
+	// before this recorded a backup an install silently destroyed their IPsec
+	// credentials with no way back. See ownership.go.
+	ownPrepareHostFile("/etc/ipsec.conf", "l2tp")
+	if err := s.writeFile("/etc/ipsec.conf",
+		buildIpsecConf(detectLibreswanFeatures(), ipsecConnsFor(all, perListen))); err != nil {
+		return err
 	}
-	b.WriteString("\n")
-	b.WriteString("conn l2tp-psk\n")
-	b.WriteString("    auto=add\n")
+
+	// Write /etc/ipsec.secrets (mode 0600 for PSK confidentiality)
+	ownPrepareHostFile("/etc/ipsec.secrets", "l2tp")
+	if err := s.writeFileMode("/etc/ipsec.secrets", buildIpsecSecrets(all, perListen), 0600); err != nil {
+		return err
+	}
+
+	// Clean up old StrongSwan swanctl config if present, per-inbound files included:
+	// pluto is serving these connections now, and a leftover charon conn would answer
+	// on the same addresses with a key of its own.
+	os.Remove("/etc/swanctl/conf.d/l2tp.conf")
+	l2tpPruneSwanctlConns(nil)
+
+	return nil
+}
+
+// ipsecConn is one `conn` stanza: its name and the local address it terminates on.
+type ipsecConn struct {
+	name string
+	left string
+}
+
+// ipsecConnsFor maps the peers onto the connections to write: the panel-wide one on
+// %defaultroute, or one per inbound pinned to its own address.
+func ipsecConnsFor(all, perListen []l2tpIpsecPeer) []ipsecConn {
+	if len(perListen) == 0 {
+		return []ipsecConn{{name: ipsecConnName, left: "%defaultroute"}}
+	}
+	out := make([]ipsecConn, 0, len(perListen))
+	for _, peer := range perListen {
+		out = append(out, ipsecConn{name: fmt.Sprintf("%s-%d", ipsecConnName, peer.inbound.Id), left: peer.listen})
+	}
+	return out
+}
+
+// buildIpsecSecrets renders /etc/ipsec.secrets.
+//
+// The panel-wide form is the bare wildcard `: PSK "..."`, which libreswan offers to every
+// exchange. The per-inbound form names the pair the key belongs to — our address and any
+// peer — which is the finest scoping IKEv1 Main Mode allows, since our address is the only
+// thing known when the key is chosen.
+func buildIpsecSecrets(all, perListen []l2tpIpsecPeer) string {
+	escape := func(psk string) string {
+		esc := strings.ReplaceAll(psk, `\`, `\\`)
+		return strings.ReplaceAll(esc, `"`, `\"`)
+	}
+	if len(perListen) == 0 {
+		if len(all) == 0 {
+			return ""
+		}
+		return fmt.Sprintf(": PSK \"%s\"\n", escape(all[0].psk))
+	}
+	var b strings.Builder
+	for _, peer := range perListen {
+		b.WriteString(fmt.Sprintf("%s %%any : PSK \"%s\"\n", peer.listen, escape(peer.psk)))
+	}
+	return b.String()
+}
+
+// libreswanFeatures is what the INSTALLED libreswan understands. Detected once and passed
+// in rather than probed inside the renderer, so the rendered text is a pure function of
+// the inbounds plus this struct (and so a test can pin the bytes without a libreswan).
+type libreswanFeatures struct {
+	ikev1Policy   bool
+	keyexchangeV1 bool
+	modp1024      bool
+	// leftupdown is the absolute updown command for the bundled pluto, "" for a host
+	// libreswan that finds `ipsec` on its PATH.
+	leftupdown string
+}
+
+// detectLibreswanFeatures probes the installed libreswan.
+//
+// Libreswan's L2TP/IPsec keywords are NOT portable across major versions, and getting
+// them wrong is fatal in different ways on different distros — which is why "stuck on
+// stopped" only showed up on some of them. Emit version-appropriate keywords (validated
+// on 3.32, 4.3, 4.14 and 5.2):
+//
+//	ikev1-policy: `config setup` keyword added in 4.2. From 5.0 (and Debian/
+//	RHEL back-patches) IKEv1 is dropped by default, so 4.2+ REQUIRES
+//	ikev1-policy=accept or the L2TP conn fails to load ("global ikev1-policy
+//	does not allow IKEv1 connections"). But on <4.2 the keyword is UNKNOWN, and
+//	an unknown `config setup` keyword makes pluto reject the WHOLE config — the
+//	service then won't start and neither a restart nor a reboot fixes it. So
+//	emit it only on 4.2+ (pre-4.2 accepts IKEv1 by default anyway).
+//
+//	keyexchange: the explicit value `ikev1` only exists in 5.x; 3.x and 4.x
+//	reject it ("invalid value"). `keyexchange=ike` + `ikev2=no` selects IKEv1
+//	and parses on every version, so it's the portable form for <5.0.
+func detectLibreswanFeatures() libreswanFeatures {
+	lsMajor, lsMinor, lsOK := libreswanVersion()
+	feat := libreswanFeatures{
+		ikev1Policy:   lsOK && (lsMajor > 4 || (lsMajor == 4 && lsMinor >= 2)),
+		keyexchangeV1: lsOK && lsMajor >= 5,
+		modp1024:      ipsecSupportsModp1024(),
+	}
 	// The bundled pluto can't find `ipsec` on its PATH, so the default
 	// `leftupdown=ipsec _updown` fails and the IPsec SA never installs (breaking
 	// real L2TP/IPsec, esp. a 2nd concurrent client). Point it at the absolute
 	// bundle path. Host libreswan has `ipsec` on PATH, so it keeps the default.
 	if usingBundledIpsec() {
-		b.WriteString(fmt.Sprintf("    leftupdown=%q\n", bundledIpsecUpdown()))
+		feat.leftupdown = bundledIpsecUpdown()
 	}
-	b.WriteString("    leftprotoport=17/1701\n")
-	b.WriteString("    rightprotoport=17/%any\n")
-	b.WriteString("    type=transport\n")
-	b.WriteString("    authby=secret\n")
-	b.WriteString("    pfs=no\n")
-	b.WriteString("    rekey=no\n")
-	b.WriteString("    dpddelay=40\n")
-	b.WriteString("    dpdtimeout=130\n")
-	if keyexchangeV1 {
-		b.WriteString("    keyexchange=ikev1\n")
-	} else {
-		b.WriteString("    keyexchange=ike\n")
-		b.WriteString("    ikev2=no\n")
-	}
-	// IKE (phase 1) proposals — widest client compatibility. modp2048/modp1536
-	// and the ECP groups (dh19/dh20) are in every Libreswan; modp1024 (DH2) is
-	// only present in an ALL_ALGS=true build. Libreswan rejects the WHOLE
-	// connection if the proposal names a group it doesn't support, so modp1024
-	// is appended only when the installed Libreswan actually has it — otherwise
-	// stock/distro Libreswan (which vpn-ui setup installs) fails to load the conn.
-	ike := "aes256-sha2;modp2048,aes128-sha2;modp2048,aes256-sha1;modp2048,aes128-sha1;modp2048,3des-sha1;modp2048," +
-		"aes256-sha2;modp1536,aes128-sha2;modp1536,aes256-sha1;modp1536,aes128-sha1;modp1536,3des-sha1;modp1536,3des-md5;modp1536," +
-		"aes256-sha2;dh20,aes256-sha2;dh19,aes128-sha2;dh19"
-	if ipsecSupportsModp1024() {
-		ike += ",aes256-sha2;modp1024,aes128-sha2;modp1024,aes256-sha1;modp1024,aes128-sha1;modp1024,3des-sha1;modp1024,3des-md5;modp1024"
-	}
-	b.WriteString("    ike=" + ike + "\n")
-	// ESP (Phase 2) proposals: SHA2 + SHA1 + MD5 for widest compatibility
-	b.WriteString("    phase2alg=aes256-sha2,aes128-sha2,aes256-sha1,aes128-sha1,3des-sha1,aes256-md5,aes128-md5,3des-md5\n")
-	b.WriteString("    left=%defaultroute\n")
-	b.WriteString("    right=%any\n")
+	return feat
+}
 
-	if err := s.writeFile("/etc/ipsec.conf", b.String()); err != nil {
-		return err
+// buildIpsecConf renders /etc/ipsec.conf: one `config setup` block and one stanza per
+// connection. A single conn on %defaultroute is the panel-wide shape and must stay byte
+// for byte what it has always been.
+func buildIpsecConf(feat libreswanFeatures, conns []ipsecConn) string {
+	var b strings.Builder
+	b.WriteString("# Auto-generated by vpn-ui L2TP service — do not edit\n")
+	b.WriteString("config setup\n")
+	b.WriteString("    uniqueids=no\n")
+	b.WriteString("    logfile=/var/log/pluto.log\n")
+	if feat.ikev1Policy {
+		b.WriteString("    ikev1-policy=accept\n")
 	}
-
-	// Write /etc/ipsec.secrets (mode 0600 for PSK confidentiality)
-	escapedPsk := strings.ReplaceAll(psks[0], `\`, `\\`)
-	escapedPsk = strings.ReplaceAll(escapedPsk, `"`, `\"`)
-	secrets := fmt.Sprintf(": PSK \"%s\"\n", escapedPsk)
-	if err := s.writeFileMode("/etc/ipsec.secrets", secrets, 0600); err != nil {
-		return err
+	for _, conn := range conns {
+		b.WriteString("\n")
+		b.WriteString("conn " + conn.name + "\n")
+		b.WriteString("    auto=add\n")
+		if feat.leftupdown != "" {
+			b.WriteString(fmt.Sprintf("    leftupdown=%q\n", feat.leftupdown))
+		}
+		b.WriteString("    leftprotoport=17/1701\n")
+		b.WriteString("    rightprotoport=17/%any\n")
+		b.WriteString("    type=transport\n")
+		b.WriteString("    authby=secret\n")
+		b.WriteString("    pfs=no\n")
+		b.WriteString("    rekey=no\n")
+		b.WriteString("    dpddelay=40\n")
+		b.WriteString("    dpdtimeout=130\n")
+		if feat.keyexchangeV1 {
+			b.WriteString("    keyexchange=ikev1\n")
+		} else {
+			b.WriteString("    keyexchange=ike\n")
+			b.WriteString("    ikev2=no\n")
+		}
+		// IKE (phase 1) proposals — widest client compatibility. modp2048/modp1536
+		// and the ECP groups (dh19/dh20) are in every Libreswan; modp1024 (DH2) is
+		// only present in an ALL_ALGS=true build. Libreswan rejects the WHOLE
+		// connection if the proposal names a group it doesn't support, so modp1024
+		// is appended only when the installed Libreswan actually has it — otherwise
+		// stock/distro Libreswan (which vpn-ui setup installs) fails to load the conn.
+		ike := "aes256-sha2;modp2048,aes128-sha2;modp2048,aes256-sha1;modp2048,aes128-sha1;modp2048,3des-sha1;modp2048," +
+			"aes256-sha2;modp1536,aes128-sha2;modp1536,aes256-sha1;modp1536,aes128-sha1;modp1536,3des-sha1;modp1536,3des-md5;modp1536," +
+			"aes256-sha2;dh20,aes256-sha2;dh19,aes128-sha2;dh19"
+		if feat.modp1024 {
+			ike += ",aes256-sha2;modp1024,aes128-sha2;modp1024,aes256-sha1;modp1024,aes128-sha1;modp1024,3des-sha1;modp1024,3des-md5;modp1024"
+		}
+		b.WriteString("    ike=" + ike + "\n")
+		// ESP (Phase 2) proposals: SHA2 + SHA1 + MD5 for widest compatibility
+		b.WriteString("    phase2alg=aes256-sha2,aes128-sha2,aes256-sha1,aes128-sha1,3des-sha1,aes256-md5,aes128-md5,3des-md5\n")
+		b.WriteString("    left=" + conn.left + "\n")
+		b.WriteString("    right=%any\n")
 	}
-
-	// Clean up old StrongSwan swanctl config if present
-	os.Remove("/etc/swanctl/conf.d/l2tp.conf")
-
-	return nil
+	return b.String()
 }
 
 // ipsecSupportsModp1024 reports whether the installed Libreswan supports the
@@ -451,46 +621,127 @@ func (s *L2tpService) SetupAllTproxy() error {
 	s.runCmd("modprobe", "af_key")
 	s.runCmd("modprobe", "nf_tproxy_ipv4")
 
-	// Set up ip rule and route table (check if already exists to avoid duplicates)
-	output, _ := exec.Command("ip", "rule", "show").Output()
-	if !strings.Contains(string(output), "fwmark 0x1 lookup 100") {
-		s.runCmd("ip", "rule", "add", "fwmark", "1", "lookup", "100")
-	}
-	s.runCmd("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", "100")
+	// Set up the shared ip rule and route table (idempotent, and it collapses the
+	// duplicates the old per-protocol guard piled up).
+	ensureVpnPolicyRoute(s.runCmd)
 
 	return s.nftService.ApplyNftRules()
 }
 
-// writeL2tpSwanctlConn writes /etc/swanctl/conf.d/l2tp.conf: one IKEv1 transport-mode
-// PSK connection protecting UDP 1701, loaded into the SHARED charon (which also serves
-// IKEv2). Removes the file when no enabled inbound needs IPsec. A SINGLE global PSK is
-// used: IKEv1 Main Mode selects the PSK by source IP before the peer identity is known,
-// so an id-scoped secret can't match a dynamic road warrior (mirrors libreswan's
-// `: PSK "..."`). MODP1024 is listed for Win7's DH-group-2-only built-in client.
+// writeL2tpSwanctlConn writes the L2TP IKEv1 transport-mode PSK connection(s) into the
+// SHARED charon's conf.d (charon also serves IKEv2 and GRE from there), and removes what
+// is no longer wanted. Two shapes, chosen by l2tpPerListenPeers:
+//
+//   - the panel-wide l2tp.conf, one `l2tp-psk` connection with an owner-less secret. The
+//     default, and byte for byte what the panel has always written.
+//   - one l2tp-<id>.conf per inbound, each pinned to that inbound's own listen address,
+//     when every IPsec-serving inbound has a distinct concrete one.
+//
+// MODP1024 is listed for Win7's DH-group-2-only built-in client.
 func (s *L2tpService) writeL2tpSwanctlConn(inbounds []*model.Inbound) error {
-	psk := ""
-	for _, ib := range inbounds {
-		if !ib.Enable {
-			continue
-		}
-		if settings, err := s.parseSettings(ib); err == nil && settings.IpsecEnable && settings.IpsecPsk != "" {
-			psk = settings.IpsecPsk
-			break
-		}
-	}
 	confPath := swanctlConfDir + "/l2tp.conf"
-	if psk == "" {
+
+	if peers := l2tpPerListenPeers(s.l2tpIpsecPeers(inbounds, true)); len(peers) > 0 {
+		_ = os.MkdirAll(swanctlConfDir, 0755)
+		wanted := map[string]bool{}
+		for _, peer := range peers {
+			file := fmt.Sprintf("l2tp-%d.conf", peer.inbound.Id)
+			path := swanctlConfDir + "/" + file
+			body := applyCoreConfigOverride("l2tp", peer.inbound.Id, file, s.buildL2tpSwanctlConnFor(peer))
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				return err
+			}
+			wanted[path] = true
+		}
+		// The panel-wide connection would be a SECOND responder on the same addresses
+		// with an owner-less key, which is exactly the ambiguity these files remove.
+		_ = os.Remove(confPath)
+		l2tpPruneSwanctlConns(wanted)
+		return nil
+	}
+
+	// Back to (or still on) the panel-wide connection: drop any per-inbound files a
+	// previous distinct-listen configuration left behind, or charon would keep serving
+	// their keys alongside this one.
+	l2tpPruneSwanctlConns(nil)
+
+	body := s.buildL2tpSwanctlConn(inbounds)
+	// An empty body means no enabled inbound wants IPsec. The file is REMOVED rather
+	// than emptied, and no override is applied to it: charon includes conf.d/*.conf, so
+	// leaving a stub behind would keep a dead connection loaded.
+	if body == "" {
 		_ = os.Remove(confPath)
 		return nil
 	}
+	_ = os.MkdirAll(swanctlConfDir, 0755)
+	return os.WriteFile(confPath,
+		[]byte(applyCoreConfigOverride("l2tp", 0, "l2tp.conf", body)), 0600)
+}
+
+// l2tpPruneSwanctlConns deletes every per-inbound l2tp connection file that is not in
+// wanted, so a deleted inbound (or a switch back to the panel-wide connection) stops
+// being served. Mirrors GRE's glob cleanup; `l2tp-*.conf` cannot catch another
+// protocol's file, which is why each one is prefixed with its protocol.
+func l2tpPruneSwanctlConns(wanted map[string]bool) {
+	matches, err := filepath.Glob(swanctlConfDir + "/l2tp-*.conf")
+	if err != nil {
+		return
+	}
+	for _, m := range matches {
+		if !wanted[m] {
+			_ = os.Remove(m)
+		}
+	}
+}
+
+// buildL2tpSwanctlConn renders the panel-wide body, or "" when no enabled inbound needs
+// IPsec. See buildXl2tpdConfig for why the render is split from the write.
+func (s *L2tpService) buildL2tpSwanctlConn(inbounds []*model.Inbound) string {
+	peers := s.l2tpIpsecPeers(inbounds, true)
+	if len(peers) == 0 {
+		return ""
+	}
+	// One owner-less secret for everyone. The first enabled inbound's key wins, which is
+	// safe precisely because the save-time check refuses to store a second, different one
+	// for the same listen address.
+	return l2tpSwanctlConn("l2tp-psk", "ike-l2tp", peers[0].psk, "")
+}
+
+// buildL2tpSwanctlConnFor renders ONE inbound's body: the same connection pinned to the
+// address that inbound answers on, with a secret scoped to it.
+func (s *L2tpService) buildL2tpSwanctlConnFor(peer l2tpIpsecPeer) string {
+	return l2tpSwanctlConn(
+		fmt.Sprintf("l2tp-%d", peer.inbound.Id),
+		fmt.Sprintf("ike-l2tp-%d", peer.inbound.Id),
+		peer.psk, peer.listen)
+}
+
+// l2tpSwanctlConn renders one IKEv1 transport-mode PSK connection.
+//
+// localAddr == "" is the panel-wide form: no local_addrs (charon answers on every
+// address) and an owner-less secret (charon offers the key to every peer). It must stay
+// byte for byte what the panel wrote before per-inbound keys existed, because every
+// existing install regenerates this file on the next restart.
+//
+// A localAddr pins the connection to one address and scopes the secret to it. In IKEv1
+// Main Mode the identities ARE the IP addresses at the point the key is looked up — the
+// ID payload does not arrive until message 5, encrypted under keys already derived from
+// the key being looked up — so id_local is the owner that matches, and it is the only
+// owner that can distinguish two of these connections. id_any = %any is the other half of
+// the pair strongSwan requires: a secret that names owners must match BOTH ends, so
+// without it this key would never be selected at all (see greipsec.go, which learned that
+// the hard way).
+func l2tpSwanctlConn(connName, secretName, psk, localAddr string) string {
 	esc := strings.ReplaceAll(psk, `\`, `\\`)
 	esc = strings.ReplaceAll(esc, `"`, `\"`)
 
-	_ = os.MkdirAll(swanctlConfDir, 0755)
 	var b strings.Builder
-	b.WriteString("# Auto-generated by pro-ui L2TP service (IKEv1 transport on shared charon) - do not edit\n")
+	b.WriteString("# Auto-generated by vpn-ui L2TP service (IKEv1 transport on shared charon) - do not edit\n")
 	b.WriteString("connections {\n")
-	b.WriteString("    l2tp-psk {\n")
+	b.WriteString(fmt.Sprintf("    %s {\n", connName))
+	if localAddr != "" {
+		b.WriteString(fmt.Sprintf("        local_addrs = %s\n", localAddr))
+	}
 	b.WriteString("        version = 1\n")
 	b.WriteString("        aggressive = no\n")
 	b.WriteString("        mobike = no\n")
@@ -518,11 +769,15 @@ func (s *L2tpService) writeL2tpSwanctlConn(inbounds []*model.Inbound) error {
 	b.WriteString("    }\n")
 	b.WriteString("}\n")
 	b.WriteString("secrets {\n")
-	b.WriteString("    ike-l2tp {\n")
+	b.WriteString(fmt.Sprintf("    %s {\n", secretName))
+	if localAddr != "" {
+		b.WriteString(fmt.Sprintf("        id_local = %s\n", localAddr))
+		b.WriteString("        id_any = %any\n")
+	}
 	b.WriteString(fmt.Sprintf("        secret = \"%s\"\n", esc))
 	b.WriteString("    }\n")
 	b.WriteString("}\n")
-	return os.WriteFile(confPath, []byte(b.String()), 0600)
+	return b.String()
 }
 
 // RestartServices (re)launches xl2tpd as a panel-managed child process and, when any

@@ -1,0 +1,107 @@
+{{/*
+  The ssh inbound form as it stood before the rail redesign (b2e71a68), kept
+  whole for the old dialog. The live form/protocol/ssh.html is the same body
+  cut into network/security/access/reach sections for the rail; this is the one
+  the operator sees when Old inbound modify UI is on. Adding a field to one and not
+  the other is caught by TestLegacyInboundFormsCarryEveryField.
+*/}}
+{{define "form/legacy/ssh"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Max simultaneous client IPs per account on this inbound. 10 is the
+                    default, up to 64; 0 = no limit. Named for what it counts: devices
+                    sharing one IP behind NAT count as one, so this caps addresses, not
+                    devices.
+                </template>
+                IP Limit
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            :value="inbound.settings.userLimit"
+            @change="inbound.settings.userLimit = Math.max(0, Math.min(64, Math.floor($event || 0)))"
+            :min="0" :max="64" :step="1" :precision="0" style="width: 90px"
+        ></a-input-number>
+    </a-form-item>
+
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    When an account is already at its IP limit and a new client IP
+                    connects: reject the new one, or accept it and disconnect that
+                    account's oldest IP (all of its sessions).
+                </template>
+                IP Limit Strategy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-radio-group v-model="inbound.settings.userLimitStrategy" button-style="solid">
+            <a-radio-button value="accept">Accept</a-radio-button>
+            <a-radio-button value="reject">Reject</a-radio-button>
+        </a-radio-group>
+    </a-form-item>
+
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Alternate Endpoint(s) (a relay/CDN host:port) written into the
+                    generated client config instead of this server's address. Leave
+                    off to use the panel host.
+                </template>
+                External Proxy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="wgcExternalProxy"></a-switch>
+        <a-button
+            icon="plus"
+            v-if="wgcExternalProxy"
+            type="primary"
+            :style="{ marginLeft: '10px' }"
+            size="small"
+            @click="inbound.settings.externalProxy.push({dest: '', port: inbound.port, remark: ''})"
+        ></a-button>
+    </a-form-item>
+    <a-input-group
+        :style="{ margin: '8px 0' }"
+        compact
+        v-for="(row, index) in inbound.settings.externalProxy"
+    >
+        <a-input
+            :style="{ width: '45%' }"
+            v-model.trim="row.dest"
+            placeholder='{{ i18n "host" }}'
+        ></a-input>
+        <a-tooltip title='{{ i18n "pages.inbounds.port" }}'>
+            <a-input-number
+                :style="{ width: '20%' }"
+                v-model.number="row.port"
+                min="1"
+                max="65535"
+            ></a-input-number>
+        </a-tooltip>
+        <a-input
+            :style="{ width: '30%', top: '0' }"
+            v-model.trim="row.remark"
+            placeholder='{{ i18n "remark" }}'
+        >
+            <template slot="addonAfter">
+                <a-button
+                    icon="minus"
+                    size="small"
+                    @click="inbound.settings.externalProxy.splice(index, 1)"
+                ></a-button>
+            </template>
+        </a-input>
+    </a-input-group>
+</a-form>
+{{end}}

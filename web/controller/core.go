@@ -40,6 +40,14 @@ func (a *CoreController) initRouter(g *gin.RouterGroup) {
 	g.POST("/restart-all", a.restartAll)
 	g.POST("/stop/:core", a.stop)
 	g.GET("/logs/:core", a.logs)
+	g.GET("/config/:core", a.coreConfig)
+	// Editing a generated config is escalation-class in the same way uninstall and
+	// reboot above are, and for a sharper reason than either: an OpenVPN or accel-ppp
+	// config can name a script for a root daemon to execute, so write access here is
+	// equivalent to running arbitrary code as root on the host. Reading stays on the
+	// Core Settings bit, since the same operator can already read the same text
+	// through the logs endpoint.
+	g.POST("/config/:core", requireSuperAdmin(), a.saveCoreConfig)
 }
 
 // status returns the status of all cores plus the host/kernel system status and
@@ -182,4 +190,67 @@ func (a *CoreController) stop(c *gin.Context) {
 // logs returns the recent captured output for a core's process(es).
 func (a *CoreController) logs(c *gin.Context) {
 	jsonObj(c, a.coreService.CoreLogs(c.Param("core")), nil)
+}
+
+// coreConfig lists the config files a core writes, each with the text as it stands right
+// now (the generated body with any operator override merged in) and the override itself.
+//
+// An empty list is a real answer rather than a failure: wg-c, AmneziaWG and the GRE
+// tunnel are programmed through kernel netlink, SSH and RADIUS run inside the panel, and
+// a core with no inbound has nothing to generate a config for yet. The client says so
+// instead of opening an editor over nothing.
+func (a *CoreController) coreConfig(c *gin.Context) {
+	core := c.Param("core")
+	jsonObj(c, gin.H{
+		"core":    core,
+		"targets": a.coreService.CoreConfigTargets(core),
+	}, nil)
+}
+
+// coreConfigForm is one save. The file is addressed by inbound + file NAME, never by
+// path: the service matches both against a catalog it builds itself, so this endpoint
+// cannot be steered into writing somewhere it does not already write.
+//
+// Bound with `form:` tags because every POST from this panel is form-urlencoded (axios
+// runs bodies through Qs.stringify), not JSON.
+type coreConfigForm struct {
+	InboundId int    `form:"inboundId"`
+	File      string `form:"file"`
+	Mode      string `form:"mode"`
+	Text      string `form:"text"`
+}
+
+// saveCoreConfig stores an override for one of a core's config files, regenerates the
+// core so it lands on disk, restarts the daemons, and reports whether the core came back.
+//
+// The health check is the point of the endpoint. None of xl2tpd, pptpd, openvpn or
+// accel-pppd can dry-run a config, so a bad edit would otherwise surface only as a daemon
+// exiting into procmgr's 5-second restart loop, with the reason in a log the operator has
+// no reason to open. When the core does not come back the override is reverted and the
+// daemon's own output rides along, so the response says what happened rather than
+// reporting a green save over a dead core.
+func (a *CoreController) saveCoreConfig(c *gin.Context) {
+	var form coreConfigForm
+	if err := c.ShouldBind(&form); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.core.toasts.configSaved"), err)
+		return
+	}
+	// The panel's own editor always names the mode, and always says `replace`: it shows
+	// the whole file. A caller that omits it is an API caller, and gets the conservative
+	// one, which leaves the generator's output in place.
+	if form.Mode == "" {
+		form.Mode = service.CoreConfigModeAppend
+	}
+	core := c.Param("core")
+	health, err := a.coreService.SaveCoreConfigOverride(core, form.InboundId, form.File, form.Mode, form.Text)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.core.toasts.configSaved"), err)
+		return
+	}
+	jsonMsgObj(c, I18nWeb(c, "pages.core.toasts.configSaved"), gin.H{
+		"health": health,
+		// The refreshed list, so the editor re-renders against what the generator
+		// actually produced rather than against what it had before the save.
+		"targets": a.coreService.CoreConfigTargets(core),
+	}, nil)
 }

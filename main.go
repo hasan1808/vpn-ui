@@ -209,6 +209,25 @@ func runWebServer() {
 	// client model. Never blocks startup.
 	accountMigrations := &service.AccountService{}
 	accountMigrations.MigrationAccounts()
+	// Seed the per-inbound usage breakdown from the usage that already exists, which
+	// needs the memberships above to be there. Also on every start and for the same
+	// reason: MigrateDB is reached only by the `migrate` subcommand and the DB-import
+	// path, so a panel that is simply upgraded would never run it. One shot, guarded
+	// by a setting, and never blocking startup - the breakdown is a display figure
+	// and every enforcement path still reads client_traffics.
+	accountMigrations.MigrationMembershipUsage()
+	// Clear the records a failed delete left behind on every install that predates
+	// the delete fixes: memberships of inbounds that are gone, accounts serving
+	// nothing, and traffic rows no settings entry claims. Each of those holds an
+	// email against a re-create, which is what operators report as the panel
+	// refusing a "Duplicate email" for a customer they deleted. Ordered AFTER the
+	// backfill above, so the memberships it is judging are the complete set.
+	//
+	// Same reason as the three above for being here and not in MigrateDB, one shot,
+	// guarded by its own setting, and never blocking startup. It deletes only records
+	// nothing can reach, and REPORTS rather than touches the entries that resolve to
+	// one account identity, which are live customers.
+	inboundMigrations.MigrationCleanupOrphans()
 	// Same reason again: hand the admins who predate the overview permission the bit
 	// that now gates the page they could always open, so an upgrade does not quietly
 	// take the panel's home page away from every non-super admin. One shot, guarded by
@@ -221,6 +240,30 @@ func runWebServer() {
 	// deployments that did not run the full build backend step to produce embedded
 	// binaries.
 	backend.DownloadBundlesIfMissing()
+
+	// Give every Xray-native wireguard inbound its device keypair, its clients array
+	// and one tunnel address per client device. Idempotent and cheap (it touches
+	// nothing that is already right), so it runs on every start rather than behind a
+	// flag: an inbound created before this release has no clients array at all, and
+	// until it has one the Clients page cannot offer it as somewhere to put an
+	// account. See web/service/wgxray.go.
+	service.ReconcileAllWireguardXrayKeys()
+
+	// Take over the certificate deploy.sh or the vpn-ui.sh menu installed, so the
+	// panel manages and renews it instead of leaving it to acme.sh's own cron.
+	//
+	// HERE, AND NOT IN web.go, for one reason that decides it: the TLS reloader is
+	// built once from webCertFile when the server starts, and watches THAT path for
+	// the life of the process (network/cert_reloader.go:69-83). Adopting after the
+	// listener exists rewrites the setting without moving the listener, so the panel
+	// would keep serving the legacy path while the panel's own renewals went into
+	// the store copy, and the two would drift apart until the next restart. Running
+	// before server.Start() means this boot already serves the managed path.
+	//
+	// Idempotent, so it is safe on every start: adoption skips any certificate whose
+	// issuer and serial a profile already holds.
+	var sslSync service.SSLService
+	sslSync.SyncLegacyCertificates()
 
 	// Extract the pinned Xray core + base geo files baked into the panel. The
 	// core is overwritten on every start so the bundled (patched) fork is always
@@ -395,17 +438,48 @@ func installSystemd() {
 // edits are left in place and flagged for the operator. Invoked by
 // `vpn-ui --uninstall`; `--yes`/`--force` skips the confirmation prompt. Must run
 // as root. Best-effort: a single failed step is recorded, not fatal.
-func runUninstall(assumeYes bool) {
+//
+// coresAnswer pre-answers "remove the installed VPN cores too?": service.InboundsKeep
+// ("keep") or service.InboundsDelete ("delete"), empty when unset. Unset asks,
+// except under assumeYes.
+func runUninstall(assumeYes bool, coresAnswer string) {
 	// The teardown calls services that log through the logger package (unlike
 	// SaveService), so initialise it first to avoid a nil-logger panic.
 	initLogger()
-	// The DB is only needed to read the configured systemd service name; if it's
-	// already gone we still tear down the rest of the host with defaults.
+	// The DB is only needed to read the configured systemd service name and the
+	// installed-core list; if it's already gone we still tear down the rest of the
+	// host with defaults.
+	dbOK := true
 	if err := database.InitDB(config.GetDBPath()); err != nil {
+		dbOK = false
 		fmt.Fprintln(os.Stderr, "warning: database unavailable, using defaults:", err)
 	}
 
 	exePath, _ := os.Executable()
+
+	// The cores actually installed here, so the question below can name what is at
+	// stake. Only when the DB opened: CoreCatalog reads the settings table and the
+	// per-core inbound counts, and a nil *gorm.DB nil-derefs rather than erroring.
+	var installedCores []string
+	if dbOK {
+		var cs service.CoreService // zero-value usable and stateless
+		for _, c := range cs.CoreCatalog() {
+			if !c.Builtin && c.Installed {
+				installedCores = append(installedCores, c.Title)
+			}
+		}
+	}
+
+	// One reader for BOTH questions. A second bufio.NewReader(os.Stdin) would
+	// start with an empty buffer while the first one has already swallowed the
+	// next line: on a tty that is invisible, but piped input (`printf 'yes\nn\n'`)
+	// loses the second answer and blocks on EOF.
+	stdin := bufio.NewReader(os.Stdin)
+
+	// Whether the cores get their own question: only when nothing pre-answered it,
+	// the run is interactive, and there is something to keep. A DB that would not
+	// open still asks, since "no cores installed" is then unproven.
+	askCores := coresAnswer == "" && !assumeYes && (!dbOK || len(installedCores) > 0)
 
 	if !assumeYes {
 		fmt.Println("This will REMOVE pro-ui and everything it installed on this host:")
@@ -414,16 +488,44 @@ func runUninstall(assumeYes bool) {
 		fmt.Println("  • /etc configs, /usr/libexec/vpn-ui bundles, logs, bin/, the database")
 		fmt.Println("  • the pro-ui binary itself")
 		fmt.Println("Distro packages and boot/modprobe edits are kept and listed at the end.")
+		if askCores {
+			// The list above is the FULL teardown, which is not what happens if the
+			// next question is answered "keep". Say so here rather than let the
+			// operator agree to a removal that then silently does not occur.
+			fmt.Println("Whether the installed VPN cores go too is a separate question, asked next.")
+		}
 		fmt.Print("Type 'yes' to proceed: ")
-		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		line, _ := stdin.ReadString('\n')
 		if strings.TrimSpace(line) != "yes" {
 			fmt.Println("Aborted — nothing was removed.")
 			return
 		}
 	}
 
+// Keep or remove the cores. The two defaults are deliberately OPPOSITE:
+	//
+	//   --yes  removes them, because that is what `--uninstall --yes` has always
+	//          done and what every unattended caller (deploy scripts, the E2E
+	//          harness) asserts on. Changing it would silently break automation.
+	//   a bare Enter keeps them, because typing "yes" to "remove pro-ui" is not
+	//          the same as agreeing to take a live VPN service down with it, and
+	//          the cores are the expensive half to rebuild.
+	keepCores := false
+	switch {
+	case coresAnswer == service.InboundsKeep:
+		keepCores = true
+	case askCores:
+		keepCores = askKeepCores(stdin, installedCores)
+	default:
+		// service.InboundsDelete, --yes, or an interactive run with no core
+		// installed: nothing to spare, so the teardown stays whole.
+	}
+
 	fmt.Println("Uninstalling pro-ui...")
-	report := service.Uninstall(service.UninstallOptions{ExePath: exePath})
+	report := service.Uninstall(service.UninstallOptions{ExePath: exePath, KeepCores: keepCores})
+	if keepCores && len(installedCores) > 0 {
+		report.Kept = append(report.Kept, "cores left installed: "+strings.Join(installedCores, ", "))
+	}
 
 	// Remove the database (next to the binary) — done here, after the service
 	// teardown that needed it to resolve the unit name.
@@ -474,6 +576,37 @@ func runUninstall(assumeYes bool) {
 		}
 	}
 	fmt.Println("\npro-ui uninstalled.")
+}
+
+// askKeepCores asks whether the installed VPN cores should come off the host as
+// well, and returns true to KEEP them. Anything other than an explicit yes keeps
+// them, EOF included: see runUninstall for why the interactive default is the
+// opposite of --yes's.
+//
+// The RADIUS sentence is not padding. Six of the ten installable cores
+// authenticate against a RADIUS server that runs in-process inside this binary
+// on 127.0.0.1:1812/1813, so "keep the cores" keeps their files and their
+// listening sockets but not their ability to let anybody new in. An operator who
+// learns that afterwards files it as a bug.
+func askKeepCores(stdin *bufio.Reader, installed []string) bool {
+	fmt.Println()
+	fmt.Println("Remove the installed VPN cores as well?")
+	if len(installed) > 0 {
+		fmt.Println("  Installed: " + strings.Join(installed, ", "))
+	}
+	fmt.Println("  • remove: their daemons, /etc configs, bundled trees and bin/ go too,")
+	fmt.Println("    along with the nftables table and fwmark routing they all pass through")
+	fmt.Println("  • keep:   all of that is left exactly as it is")
+	fmt.Println("RADIUS runs INSIDE the vpn-ui binary, not as a separate daemon, so kept L2TP,")
+	fmt.Println("PPTP, OpenVPN, OpenConnect, SSTP and IKEv2 cores cannot authenticate new logins")
+	fmt.Println("once vpn-ui is gone. WireGuard, AmneziaWG, GRE and MTProto are unaffected.")
+	fmt.Print("Remove the cores too? [y/N]: ")
+	line, _ := stdin.ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return false
+	}
+	return true
 }
 
 // randomFreePort returns a random, currently-bindable TCP port in a high range,
@@ -1600,7 +1733,6 @@ func updateSetting(port int, username string, password string, webBasePath strin
 	return nil
 }
 
-// updateCert updates the SSL certificate files for the panel.
 // generateSelfSignedPanelCert generates a self-signed TLS certificate for the
 // panel, writes it next to the binary/DB (config dir + /cert), and points the
 // panel's webCertFile/webKeyFile at it so the web server serves HTTPS. Invoked by
@@ -1616,50 +1748,213 @@ func generateSelfSignedPanelCert() {
 		os.Exit(1)
 	}
 	fmt.Printf("Generated self-signed panel certificate:\n  cert: %s\n  key:  %s\n", certPath, keyPath)
-	// updateCert stores the paths in webCertFile/webKeyFile (+ subscription cert),
-	// which flips the web server to HTTPS on next start.
+	// updateCert stores the paths in webCertFile/webKeyFile, which flips the web
+	// server to HTTPS on next start. It does NOT touch the subscription server:
+	// generating an identity for the panel says nothing about whether the links
+	// operators hand out should be served over TLS, and this one is self-signed, so
+	// every client fetching a subscription over it would have to be told to ignore
+	// the warning.
 	updateCert(certPath, keyPath)
 }
 
+// certPairStorable reports whether a pair typed on the command line may be stored,
+// printing the refusal itself when it may not.
+//
+// Validated BEFORE the database is even opened, because a refused command should
+// leave nothing behind, not even a freshly initialised DB file.
+//
+// The settings form already validates through AllSetting.CheckValid
+// (web/entity/entity.go:140-152); the CLI did not, and that asymmetry is the bug.
+// Without this, `vpn-ui cert -webCert ...` accepts a mismatched or unreadable pair
+// and the damage only surfaces at the NEXT restart, where web.go:541-556 logs one
+// line and silently comes up on plain HTTP. A silent downgrade to HTTP hours after
+// the command that caused it is not a failure anyone connects back to this command.
+//
+// service.ValidateCertPair is deliberately the same check the certificate store
+// uses to gate activation (tls.LoadX509KeyPair PLUS a key-matches-leaf test),
+// rather than a second, weaker copy of tls.LoadX509KeyPair here.
+//
+// Clearing (both empty) skips the check: that is a valid request to stop serving
+// TLS, and there is nothing to validate.
+func certPairStorable(publicKey string, privateKey string) bool {
+	if privateKey != "" && publicKey != "" {
+		if err := service.ValidateCertPair(publicKey, privateKey); err != nil {
+			fmt.Printf("refusing to store this certificate: %v\n  cert: %s\n  key:  %s\nNothing was changed.\n", err, publicKey, privateKey)
+			return false
+		}
+	}
+	return true
+}
+
+// certPairComplete enforces the both-or-neither rule: a certificate without its key
+// is not a thing any listener can serve, and storing half a pair is how a listener
+// comes up on plain HTTP with nothing in the log to explain it.
+func certPairComplete(publicKey string, privateKey string) bool {
+	if (privateKey != "" && publicKey != "") || (privateKey == "" && publicKey == "") {
+		return true
+	}
+	fmt.Println("both public and private key should be entered.")
+	return false
+}
+
+// certRestartNote is the last line of every `vpn-ui cert` invocation. Both listeners
+// read their paths out of the settings once, when they are built, so a change made
+// here is invisible until the panel starts again. Saying so is the difference
+// between an operator who restarts and one who reports that the command did nothing.
+const certRestartNote = "Both listeners read these paths when they start, so this takes effect the next time the panel starts."
+
+// updateCert points the PANEL's listener at a certificate pair. `vpn-ui cert
+// -webCert <cert> -webCertKey <key>`, and the empty pair clears it.
 func updateCert(publicKey string, privateKey string) {
+	if !certPairStorable(publicKey, privateKey) {
+		return
+	}
+
 	err := database.InitDB(config.GetDBPath())
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	if (privateKey != "" && publicKey != "") || (privateKey == "" && publicKey == "") {
-		settingService := service.SettingService{}
-		err = settingService.SetCertFile(publicKey)
-		if err != nil {
-			fmt.Println("set certificate public key failed:", err)
-		} else {
-			fmt.Println("set certificate public key success")
-		}
-
-		err = settingService.SetKeyFile(privateKey)
-		if err != nil {
-			fmt.Println("set certificate private key failed:", err)
-		} else {
-			fmt.Println("set certificate private key success")
-		}
-
-		err = settingService.SetSubCertFile(publicKey)
-		if err != nil {
-			fmt.Println("set certificate for subscription public key failed:", err)
-		} else {
-			fmt.Println("set certificate for subscription public key success")
-		}
-
-		err = settingService.SetSubKeyFile(privateKey)
-		if err != nil {
-			fmt.Println("set certificate for subscription private key failed:", err)
-		} else {
-			fmt.Println("set certificate for subscription private key success")
-		}
-	} else {
-		fmt.Println("both public and private key should be entered.")
+	if !certPairComplete(publicKey, privateKey) {
+		return
 	}
+
+	settingService := service.SettingService{}
+
+	// The subscription server can now hold a DIFFERENT certificate from the panel
+	// (see SSLService.Assign). Read where it points BEFORE the panel pair moves, so
+	// a deliberate split survives this command.
+	//
+	// AN EMPTY subCertFile IS NOT "the subscription server follows the panel". It
+	// used to count as one, and that is how a flag named -webCert came to switch a
+	// subscription server on: subCertFile is "" on every fresh install (its default
+	// in web/service/setting.go), and both installers run this command as part of
+	// one, vpn-ui.sh with `-webCert .../fullchain.pem` after acme.sh and deploy.sh
+	// with `-selfsign`. So every install mounted the panel's certificate on a
+	// subscription listener nobody had asked to serve TLS. Empty means the operator
+	// never gave that listener a certificate, and a flag named -webCert is not them
+	// asking for one; -subCert is.
+	oldPanelCert, _ := settingService.GetCertFile()
+	oldSubCert, _ := settingService.GetSubCertFile()
+	subCert := strings.TrimSpace(oldSubCert)
+	subFollowsPanel := subCert != "" &&
+		filepath.Clean(subCert) == filepath.Clean(strings.TrimSpace(oldPanelCert))
+
+	err = settingService.SetCertFile(publicKey)
+	if err != nil {
+		fmt.Println("set certificate public key failed:", err)
+	} else {
+		fmt.Println("set certificate public key success")
+	}
+
+	err = settingService.SetKeyFile(privateKey)
+	if err != nil {
+		fmt.Println("set certificate private key failed:", err)
+	} else {
+		fmt.Println("set certificate private key success")
+	}
+
+	// Only carry the subscription server along when it was already serving the
+	// panel's certificate, which is the one case where leaving it behind would be
+	// the surprise: those two settings named one file, and now one of them would
+	// name a file this command has just replaced. Every other case says out loud
+	// what it did not touch, because a command that quietly reaches a second
+	// listener is the bug this used to be.
+	if !subFollowsPanel {
+		if subCert == "" {
+			fmt.Println("subscription server: NOT changed, it has no certificate of its own and keeps serving plain HTTP")
+			fmt.Println("  give it one with: vpn-ui cert -subCert <cert> -subCertKey <key>")
+		} else {
+			fmt.Printf("subscription server: NOT changed, it stays on its own certificate (%s)\n", subCert)
+		}
+		fmt.Println(certRestartNote)
+		return
+	}
+	fmt.Println("subscription server: it was pointed at the same file as the panel, so it follows this change")
+
+	err = settingService.SetSubCertFile(publicKey)
+	if err != nil {
+		fmt.Println("set certificate for subscription public key failed:", err)
+	} else {
+		fmt.Println("set certificate for subscription public key success")
+	}
+
+	err = settingService.SetSubKeyFile(privateKey)
+	if err != nil {
+		fmt.Println("set certificate for subscription private key failed:", err)
+	} else {
+		fmt.Println("set certificate for subscription private key success")
+	}
+	fmt.Println(certRestartNote)
+}
+
+// certCommandTargets decides which listeners a `vpn-ui cert` invocation moves, from
+// the set of flags that were actually typed rather than from their values.
+//
+// A bare `vpn-ui cert` keeps meaning "clear the panel's pair", which is what it has
+// always meant and what -reset spells out. The one case that skips the panel is a
+// command that named a subscription flag and no panel flag: there, moving the panel
+// would mean clearing it, and nobody setting the subscription server's certificate
+// is asking for the panel's to be thrown away.
+func certCommandTargets(typed map[string]bool) (panel bool, sub bool) {
+	sub = typed["subCert"] || typed["subCertKey"]
+	panel = !sub || typed["webCert"] || typed["webCertKey"]
+	return panel, sub
+}
+
+// updateSubCert points the SUBSCRIPTION server's listener at a certificate pair,
+// and nothing else. `vpn-ui cert -subCert <cert> -subCertKey <key>`, and the empty
+// pair clears it.
+//
+// It exists because the two listeners are separate (sub/sub.go builds its own from
+// subCertFile/subKeyFile) and the CLI could only ever move the panel's. That left
+// the panel's own command as the only way a script could put TLS on the
+// subscription server, which it did by covering both listeners at once whether or
+// not anyone wanted the second one. Splitting the flags is what lets the panel's
+// stop doing that: an operator who genuinely wants the subscription server on a
+// certificate now has a flag that says so.
+//
+// Validation is the panel's, verbatim. A bad pair degrades this listener to plain
+// HTTP the same way, and it degrades it where far fewer people are looking.
+func updateSubCert(publicKey string, privateKey string) {
+	if !certPairStorable(publicKey, privateKey) {
+		return
+	}
+
+	err := database.InitDB(config.GetDBPath())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if !certPairComplete(publicKey, privateKey) {
+		return
+	}
+
+	settingService := service.SettingService{}
+
+	err = settingService.SetSubCertFile(publicKey)
+	if err != nil {
+		fmt.Println("set certificate for subscription public key failed:", err)
+	} else {
+		fmt.Println("set certificate for subscription public key success")
+	}
+
+	err = settingService.SetSubKeyFile(privateKey)
+	if err != nil {
+		fmt.Println("set certificate for subscription private key failed:", err)
+	} else {
+		fmt.Println("set certificate for subscription private key success")
+	}
+
+	panelCert, _ := settingService.GetCertFile()
+	if strings.TrimSpace(panelCert) == "" {
+		fmt.Println("panel: NOT changed, it has no certificate and keeps serving plain HTTP")
+	} else {
+		fmt.Printf("panel: NOT changed, it stays on %s\n", strings.TrimSpace(panelCert))
+	}
+	fmt.Println(certRestartNote)
 }
 
 // GetCertificate displays the current SSL certificate settings if getCert is true.
@@ -2539,6 +2834,8 @@ func main() {
 	//   --port <n>            set the panel web port
 	//   --path <basePath>     set the panel web base path
 	//   --systemd / systemd    install + enable-at-boot + start as a systemd unit
+	//   --cores <keep|remove>  with --uninstall only: pre-answer whether the
+	//                          installed VPN cores are removed with the panel
 	// The value switches are "work safe" exactly like --random: stop the running
 	// unit, write the change, start it again. --random and the explicit values run
 	// before --systemd, so a combined invocation boots the unit with the new
@@ -2547,6 +2844,9 @@ func main() {
 		doRandom, doSystemd, doUninstall, doForce, onlySwitches := false, false, false, false, true
 		var setUser, setPass, setPath string
 		var setPort int
+		// Kept out of hasExplicit on purpose: that flag drives applyExplicitSetting
+		// (panel port/user/pass/path), which the uninstall path never reaches.
+		var setCores string
 		hasExplicit := false
 		cliArgs := os.Args[1:]
 		for i := 0; i < len(cliArgs); i++ {
@@ -2575,6 +2875,21 @@ func main() {
 				doUninstall = true
 			case "yes", "force":
 				doForce = true
+			case "cores":
+				// Pre-answers the uninstall's cores question. "remove" is the word the
+				// switch documents; "delete" is accepted because it is the spelling
+				// service.InboundsDelete uses, and the two vocabularies must not drift.
+				switch v := strings.ToLower(strings.TrimSpace(takeVal())); v {
+				case "keep":
+					setCores = service.InboundsKeep
+				case "remove", "delete":
+					setCores = service.InboundsDelete
+				default:
+					// Refuse rather than fall back to a default: a typo'd answer under
+					// --yes would otherwise remove the very cores it was meant to keep.
+					fmt.Fprintf(os.Stderr, "invalid --cores value %q (want 'keep' or 'remove')\n", v)
+					os.Exit(1)
+				}
 			case "user":
 				setUser, hasExplicit = takeVal(), true
 			case "pass":
@@ -2594,7 +2909,7 @@ func main() {
 			requireRoot()
 			// Uninstall is exclusive and destructive — if requested, run only it.
 			if doUninstall {
-				runUninstall(doForce)
+				runUninstall(doForce, setCores)
 				return
 			}
 			if doRandom {
@@ -2627,6 +2942,8 @@ func main() {
 	var getListen bool
 	var webCertFile string
 	var webKeyFile string
+	var subCertFile string
+	var subKeyFile string
 	var tgbottoken string
 	var tgbotchatid string
 	var enabletgbot bool
@@ -2648,6 +2965,11 @@ func main() {
 	settingCmd.BoolVar(&getCert, "getCert", false, "Display current certificate settings")
 	settingCmd.StringVar(&webCertFile, "webCert", "", "Set path to public key file for panel")
 	settingCmd.StringVar(&webKeyFile, "webCertKey", "", "Set path to private key file for panel")
+	// The subscription server's own pair. Separate flags because it is a separate
+	// listener with separate settings, and because -webCert moving it as well is
+	// exactly the behaviour that had to go.
+	settingCmd.StringVar(&subCertFile, "subCert", "", "Set path to public key file for the subscription server (unset leaves it alone)")
+	settingCmd.StringVar(&subKeyFile, "subCertKey", "", "Set path to private key file for the subscription server")
 	settingCmd.BoolVar(&selfSignCert, "selfsign", false, "Generate a self-signed TLS cert for the panel and enable HTTPS")
 	settingCmd.StringVar(&tgbottoken, "tgbottoken", "", "Set token for Telegram bot")
 	settingCmd.StringVar(&tgbotRuntime, "tgbotRuntime", "", "Set cron time for Telegram bot notifications")
@@ -2664,6 +2986,12 @@ func main() {
 		fmt.Println("    import         import a 3x-ui/vpn-ui backup DB over the current one")
 		fmt.Println("                   (--from <path>; keeps this panel's port/path/cert/secret)")
 		fmt.Println("    setting        set settings")
+		fmt.Println("    cert           set the PANEL's TLS certificate:")
+		fmt.Println("                   -webCert <cert> -webCertKey <key>")
+		fmt.Println("                   (-selfsign generates one, -reset clears it)")
+		fmt.Println("                   the subscription server keeps its own and is left")
+		fmt.Println("                   alone; point it at a pair with:")
+		fmt.Println("                   -subCert <cert> -subCertKey <key>")
 		fmt.Println("    info           show the panel login, access URL and service state")
 		fmt.Println("                   (--json for scripts, --get <field> for one raw value)")
 		fmt.Println("    ctl <cmd>      control the RUNNING panel over its socket:")
@@ -2687,6 +3015,10 @@ func main() {
 		fmt.Println("    --uninstall    remove the panel: systemd unit, daemons, firewall,")
 		fmt.Println("                   routing, /etc configs, bundles, logs, DB and the binary")
 		fmt.Println("                   (--yes to skip the confirmation prompt)")
+		fmt.Println("    --cores keep|remove")
+		fmt.Println("                   with --uninstall: pre-answer whether the installed VPN")
+		fmt.Println("                   cores go too. Unset asks (Enter keeps them); with --yes")
+		fmt.Println("                   and no --cores they are removed, as they always were")
 	}
 
 	flag.Parse()
@@ -2745,12 +3077,29 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		if reset {
+		// WHICH FLAGS WERE TYPED, not which ones ended up with a value. Visit walks
+		// only the flags actually present on the command line, and that distinction
+		// is load-bearing twice over: it separates `-subCert ""` (clear the
+		// subscription listener) from an absent -subCert (leave it alone), and
+		// without it `vpn-ui cert -subCert c -subCertKey k` would fall through to
+		// updateCert("", "") and CLEAR the panel's certificate as a side effect of
+		// setting the subscription server's, which is this bug wearing the other hat.
+		typed := map[string]bool{}
+		settingCmd.Visit(func(f *flag.Flag) { typed[f.Name] = true })
+		movePanel, moveSub := certCommandTargets(typed)
+
+		switch {
+		case reset:
 			updateCert("", "")
-		} else if selfSignCert {
+		case selfSignCert:
 			generateSelfSignedPanelCert()
-		} else {
-			updateCert(webCertFile, webKeyFile)
+		default:
+			if moveSub {
+				updateSubCert(subCertFile, subKeyFile)
+			}
+			if movePanel {
+				updateCert(webCertFile, webKeyFile)
+			}
 		}
 	case "info":
 		if err := runInfo(os.Args[2:]); err != nil {

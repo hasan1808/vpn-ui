@@ -111,10 +111,9 @@ try:
     t_vless = mk_inbound("fntest-vless", 27001, "vless",
         {"clients": [{"id": "11111111-2222-3333-4444-555555555555", "email": "fn-seed", "enable": True}]})
     check("minimal vless inbound created", t_vless is not None)
-    # A filler client that is never deleted: the panel refuses to remove the LAST
-    # client of an inbound ("no client remained in Inbound"), which is pre-existing
-    # and deliberate, so without it the delete cases below would be testing that
-    # guard rather than the accounts layer.
+    # A filler client that is never deleted, so the delete cases below leave the
+    # inbound with something on it and are testing the accounts layer rather than
+    # the empty-inbound case (which has its own check further down).
     t_trojan = mk_inbound("fntest-trojan", 27002, "trojan",
         {"clients": [{"password": "fnFiller1", "email": "fn-filler", "enable": True}]})
     check("minimal trojan inbound created (no settings supplied at all)", t_trojan is not None)
@@ -240,14 +239,21 @@ try:
     check("account pruned from the accounts layer", len(lst2.get("rows") or []) == 0,
           f"still listed: {lst2.get('rows')}")
 
-    # The pre-existing last-client guard, asserted rather than tripped over: an
-    # inbound may not be left with zero clients, and the refusal must be explicit.
+    # The LAST client of an inbound is deletable, and deleting it frees the email.
+    # The panel used to refuse ("no client remained in Inbound"), which stranded the
+    # customer as live-but-deleted and held their email against a re-create.
     solo = mk_inbound("fntest-solo", 27009, "trojan",
         {"clients": [{"password": "fnSolo1", "email": "fn-solo", "enable": True}]})
     if solo:
         rr = call(f"/panel/api/inbounds/{solo['id']}/delClientByEmail/fn-solo", {}, "POST")
-        check("removing the LAST client of an inbound is refused, with a reason",
-              (not rr.get("success")) and "no client remained" in str(rr.get("msg")), str(rr.get("msg")))
+        check("removing the LAST client of an inbound succeeds", rr.get("success"), str(rr.get("msg")))
+        check("the emptied inbound is left in place", not client_on(solo["id"], "fn-solo"))
+        # And the email is free again, which is the whole point of the fix.
+        again = call("/panel/api/inbounds/addClient", {
+            "id": solo["id"],
+            "settings": json.dumps({"clients": [{"password": "fnSolo2", "email": "fn-solo", "enable": True}]}),
+        }, "POST")
+        check("the freed email can be re-created", again.get("success"), str(again.get("msg")))
 
 finally:
     print("\n=== TEARDOWN ===")

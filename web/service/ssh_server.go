@@ -28,14 +28,30 @@ type sshManager struct {
 	mu       sync.Mutex
 	servers  map[int]*sshServer                  // inboundId -> bound listener
 	sessions map[string]map[*sshSession]struct{} // email -> live sessions
-	counters map[string]*sshAcct                 // email -> byte counters
+	counters map[sshAcctKey]*sshAcct             // (inboundId, email) -> byte counters
+}
+
+// sshAcctKey is what one counter measures: this account's bytes through THIS
+// inbound's listener.
+//
+// Keyed by email alone, an account on two ssh inbounds had one counter and the tick
+// emitted a single record with no inbound on it, so the panel could only ever show
+// the pair's combined usage under one of them. The gateway always knows which
+// listener a session arrived on (sshSession.inboundId), so there was never anything
+// to resolve here - the id was simply being dropped.
+//
+// Sessions stay keyed by email: enforce() disables and trims per ACCOUNT, which is
+// panel-wide by definition.
+type sshAcctKey struct {
+	inboundId int
+	email     string
 }
 
 func newSshManager() *sshManager {
 	return &sshManager{
 		servers:  map[int]*sshServer{},
 		sessions: map[string]map[*sshSession]struct{}{},
-		counters: map[string]*sshAcct{},
+		counters: map[sshAcctKey]*sshAcct{},
 	}
 }
 
@@ -218,11 +234,13 @@ func (m *sshManager) handleConn(srv *sshServer, nConn net.Conn) {
 		srcIP:     srcIP,
 		since:     time.Now(),
 		conn:      sshConn,
-		acct:      m.acctFor(email),
+		acct:      m.acctFor(srv.inboundId, email),
 	}
 
 	// User Limit: reject the (K+1)th distinct device, or admit and evict the oldest.
-	k, strategy := srv.svc.inboundLimit(srv.inboundId)
+	// K is this ACCOUNT's, which is the inbound's unless the account carries a lower
+	// cap of its own.
+	k, strategy := srv.svc.accountLimit(srv.inboundId, email)
 	evicted, ok := m.admit(sess, k, strategy)
 	if !ok {
 		sshConn.Close()
@@ -423,13 +441,14 @@ func (m *sshManager) removeSession(sess *sshSession) {
 	}
 }
 
-func (m *sshManager) acctFor(email string) *sshAcct {
+func (m *sshManager) acctFor(inboundId int, email string) *sshAcct {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	a := m.counters[email]
+	key := sshAcctKey{inboundId: inboundId, email: email}
+	a := m.counters[key]
 	if a == nil {
 		a = &sshAcct{}
-		m.counters[email] = a
+		m.counters[key] = a
 	}
 	return a
 }
@@ -440,16 +459,19 @@ func (m *sshManager) collect() []*xray.ClientTraffic {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []*xray.ClientTraffic
-	for email, a := range m.counters {
+	for key, a := range m.counters {
 		up := a.up.Swap(0)
 		down := a.down.Swap(0)
 		if up == 0 && down == 0 {
-			if _, live := m.sessions[email]; !live {
-				delete(m.counters, email)
+			if _, live := m.sessions[key.email]; !live {
+				delete(m.counters, key)
 			}
 			continue
 		}
-		out = append(out, &xray.ClientTraffic{Email: email, Up: up, Down: down})
+		// One record per (inbound, account). addClientTraffic sums every record for
+		// an email into the account total, so an account on two ssh inbounds is
+		// billed the same as before and now splits correctly between them.
+		out = append(out, &xray.ClientTraffic{Email: key.email, InboundId: key.inboundId, Up: up, Down: down})
 	}
 	return out
 }
@@ -478,7 +500,7 @@ func (m *sshManager) enforce(svc *SshService, disabled map[string]bool) {
 				ipFirst[s.srcIP] = s.since
 			}
 		}
-		k, _ := svc.inboundLimit(inboundId)
+		k, _ := svc.accountLimit(inboundId, email)
 		if k <= 0 || len(ipFirst) <= k {
 			continue
 		}

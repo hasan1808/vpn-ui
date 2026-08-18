@@ -120,18 +120,19 @@ func (s *SubService) resolveTraffic(inbound *model.Inbound, email string) (traff
 }
 
 // GetSubs retrieves subscription links for a given subscription ID and host.
-func (s *SubService) GetSubs(subId string, host string) (result []string, lastOnline int64, traffic xray.ClientTraffic, err error) {
+func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.ClientTraffic, error) {
 	s = s.forResponse()
 	s.address = host
-	var t xray.ClientTraffic
+	var result []string
+	var traffic xray.ClientTraffic
 	usage := newSubUsage()
 	inbounds, err := s.getInboundsBySubId(subId)
 	if err != nil {
-		return nil, 0, t, err
+		return nil, 0, traffic, err
 	}
 
 	if len(inbounds) == 0 {
-		return nil, 0, t, common.NewError("No inbounds found with ", subId)
+		return nil, 0, traffic, common.NewError("No inbounds found with ", subId)
 	}
 
 	s.datepicker = s.resolveDatepicker()
@@ -157,8 +158,7 @@ func (s *SubService) GetSubs(subId string, host string) (result []string, lastOn
 				// account's remaining traffic/days for ALL protocols, including ones with
 				// no raw link (wg-c/awg deliver via the Clash sub and gre via the page's
 				// config downloads; the credential VPNs add a connection-info line via
-				// getLink).  The subscriber's username is client.Email, and the password
-				// field (if any) is c.Password.
+				// getLink).
 				ct, accountBacked, _ := s.resolveTraffic(inbound, client.Email)
 				usage.add(client.Email, ct, accountBacked)
 				if link := s.getLink(inbound, client.Email); link != "" {
@@ -169,41 +169,6 @@ func (s *SubService) GetSubs(subId string, host string) (result []string, lastOn
 	}
 
 	return result, usage.lastOnline, usage.result(), nil
-}
-
-// accountCredential returns the account's username (email) and password for the
-// subscription info page. The subId IS the account's email identity. The password
-// is the first enabled client's Password field (the same credential the modal's
-// genConnectionCard uses for credential VPNs). If no password is found, the
-// username alone is returned; the caller can fall back to showing just the email.
-func (s *SubService) accountCredential(subId string) (email, password string) {
-	inbounds, err := s.getInboundsBySubId(subId)
-	if err != nil {
-		return subId, ""
-	}
-	for _, inbound := range inbounds {
-		clients, err := s.inboundService.GetClients(inbound)
-		if err != nil {
-			continue
-		}
-		for _, client := range clients {
-			if client.Enable && client.SubID == subId {
-				if email == "" {
-					email = client.Email
-				}
-				if password == "" && client.Password != "" {
-					password = client.Password
-				}
-			}
-		}
-		if email != "" && password != "" {
-			break
-		}
-	}
-	if email == "" {
-		email = subId
-	}
-	return email, password
 }
 
 // getInboundsBySubId returns every enabled inbound holding a client with this subId.
@@ -245,6 +210,41 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 		return nil, err
 	}
 	return inbounds, nil
+}
+
+// accountCredential returns the account's username (email) and password for the
+// subscription info page. The subId IS the account's email identity. The password
+// is the first enabled client's Password field (the same credential the modal's
+// genConnectionCard uses for credential VPNs). If no password is found, the
+// username alone is returned; the caller can fall back to showing just the email.
+func (s *SubService) accountCredential(subId string) (email, password string) {
+	inbounds, err := s.getInboundsBySubId(subId)
+	if err != nil {
+		return subId, ""
+	}
+	for _, inbound := range inbounds {
+		clients, err := s.inboundService.GetClients(inbound)
+		if err != nil {
+			continue
+		}
+		for _, client := range clients {
+			if client.Enable && client.SubID == subId {
+				if email == "" {
+					email = client.Email
+				}
+				if password == "" && client.Password != "" {
+					password = client.Password
+				}
+			}
+		}
+		if email != "" && password != "" {
+			break
+		}
+	}
+	if email == "" {
+		email = subId
+	}
+	return email, password
 }
 
 // getClientTraffics finds an email's row among an inbound's preloaded stats. The
@@ -371,18 +371,6 @@ func mtprotoSecretFor(secret, mode, tlsDomain string) string {
 	}
 }
 
-func mtprotoModeEnabled(c model.Client, mode string) bool {
-	switch mode {
-	case "classic":
-		return c.ModeClassic
-	case "secure":
-		return c.ModeSecure
-	case "tls":
-		return c.ModeTls
-	}
-	return false
-}
-
 // encodeURIComponentGo replicates JS encodeURIComponent. url.QueryEscape is NOT a
 // substitute: it escapes ! * ' ( ) and encodes space as '+' rather than %20. Each
 // UTF-8 byte is percent-encoded, so walk bytes.
@@ -413,6 +401,16 @@ func (s *SubService) genMtprotoLink(inbound *model.Inbound, email string) string
 	}
 	c := clients[idx]
 
+	// The modes and the FakeTLS domain belong to the INBOUND, not the subscriber's client
+	// entry: telemt applies one FakeTLS domain per process and writes its mode map from
+	// the inbound's set, so a link built off the old per-client keys would offer
+	// transports the proxy refuses. Resolved through the panel's own reader rather than a
+	// local struct so an inbound still in the pre-move shape (a restored backup, an API
+	// write, the window before the startup lift runs) yields the same links here as the
+	// config the daemon is given. Unparseable settings resolve to no mode and no link,
+	// which is what a decode error produced before.
+	proxy := service.MtprotoInboundPolicyOf(inbound.Settings)
+
 	type endpoint struct {
 		host string
 		port int
@@ -420,23 +418,32 @@ func (s *SubService) genMtprotoLink(inbound *model.Inbound, email string) string
 	var endpoints []endpoint
 	// Mirror links() EXACTLY: no empty-dest filter, no port fallback. Diverging here
 	// would break byte-for-byte parity with the JS-generated links.
-	if len(c.ExternalProxy) > 0 {
+	//
+	// Three tiers, most specific first. The account's own list wins outright over the
+	// inbound's rather than adding to it: both answer "where do this account's links
+	// point", so merging would keep handing out the endpoint the operator overrode.
+	switch {
+	case len(c.ExternalProxy) > 0:
 		for _, ep := range c.ExternalProxy {
 			endpoints = append(endpoints, endpoint{host: ep.Dest, port: ep.Port})
 		}
-	} else {
+	case len(proxy.ExternalProxy) > 0:
+		for _, ep := range proxy.ExternalProxy {
+			endpoints = append(endpoints, endpoint{host: ep.Dest, port: ep.Port})
+		}
+	default:
 		endpoints = append(endpoints, endpoint{host: s.address, port: inbound.Port})
 	}
 
 	var links []string
 	for _, ep := range endpoints {
 		for _, mode := range mtprotoModeOrder {
-			if !mtprotoModeEnabled(c, mode) {
+			if !proxy.ModeEnabled(mode) {
 				continue
 			}
 			links = append(links, "tg://proxy?server="+encodeURIComponentGo(ep.host)+
 				"&port="+strconv.Itoa(ep.port)+
-				"&secret="+mtprotoSecretFor(c.Secret, mode, c.TlsDomain))
+				"&secret="+mtprotoSecretFor(c.Secret, mode, proxy.TlsDomain))
 		}
 	}
 	return strings.Join(links, "\n")
@@ -2252,8 +2259,6 @@ type PageData struct {
 	SubClashUrl  string
 	Result       []string
 	Configs      []SubConfigLink
-	Email        string
-	Password     string
 }
 
 // ResolveRequest extracts scheme and host info from request/headers consistently.
@@ -2379,8 +2384,6 @@ func (s *SubService) BuildPageData(subId string, hostHeader string, traffic xray
 		remained = common.FormatTraffic(left)
 	}
 
-	email, password := s.accountCredential(subId)
-
 	return PageData{
 		Host:         hostHeader,
 		BasePath:     basePath,
@@ -2400,8 +2403,6 @@ func (s *SubService) BuildPageData(subId string, hostHeader string, traffic xray
 		SubJsonUrl:   subJsonURL,
 		SubClashUrl:  subClashURL,
 		Result:       subs,
-		Email:        email,
-		Password:     password,
 	}
 }
 

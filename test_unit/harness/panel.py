@@ -426,44 +426,31 @@ class Panel:
             "sniffing": "{}",
         })
 
-    def set_mtproto_modes(self, inbound_id: int, email: str, modes) -> dict:
-        """Flip one mtproto account's connection modes via updateClient, exactly as
-        the UI's client modal does, and return the client JSON as posted.
+    def set_mtproto_modes(self, inbound_id: int, modes) -> dict:
+        """Flip an mtproto INBOUND's connection modes, exactly as the inbound form
+        does, and return the settings as posted. `modes` is any iterable of
+        classic/secure/tls.
 
-        This is a CLIENT-only change, so the panel rewrites config.toml and lets
-        telemt hot-reload it rather than restarting: live connections on the other
-        accounts survive. That makes it the one path that proves the toggles reach
-        the running daemon, which is not the same claim as "the config file is
-        right". `modes` is any iterable of classic/secure/tls.
+        Inbound-level, not per account: telemt's listener modes are process-wide and
+        its per-account map is written from this one set, so the panel owns them here.
+        Re-saving an inbound restarts telemt (the modes live in a section it reads at
+        startup), so callers must (re)connect after this, not before.
         """
         want = set(modes)
         ib = self.get_inbound(inbound_id)
         settings = json.loads(ib.get("settings") or "{}")
-        target = None
-        for c in settings.get("clients", []):
-            if c.get("email") == email:
-                target = dict(c)
-                break
-        if target is None:
-            raise PanelError(f"client {email} not found on inbound {inbound_id}")
-        target["modeClassic"] = "classic" in want
-        target["modeSecure"] = "secure" in want
-        target["modeTls"] = "tls" in want
-        # Identity is the email; the panel mirrors it into id (the wg-c model), so
-        # either works as the clientId. Send what the UI sends.
-        client_id = target.get("id", "") or target.get("email", "")
-        self._post(f"/panel/api/inbounds/updateClient/{client_id}", {
-            "id": str(inbound_id),
-            "remark": ib.get("remark", ""),
-            "enable": "true",
-            "listen": ib.get("listen", "") or "",
-            "port": str(ib.get("port", 0)),
-            "protocol": ib.get("protocol", ""),
-            "settings": json.dumps({"clients": [target]}),
-            "streamSettings": "{}",
-            "sniffing": "{}",
-        })
-        return target
+        settings["modeClassic"] = "classic" in want
+        settings["modeSecure"] = "secure" in want
+        settings["modeTls"] = "tls" in want
+        self.update_inbound(
+            inbound_id,
+            ib.get("remark", ""),
+            ib.get("port", 0),
+            ib.get("protocol", ""),
+            settings,
+            ib.get("listen", "") or "",
+        )
+        return settings
 
     def set_mtproto_adtag(self, inbound_id: int, email: str, tag: str) -> dict:
         """Set (tag non-empty) or clear (tag "") one mtproto account's Ad Tag via

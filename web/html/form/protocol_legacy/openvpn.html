@@ -1,0 +1,369 @@
+{{/*
+  The openvpn inbound form as it stood before the rail redesign (b2e71a68), kept
+  whole for the old dialog. The live form/protocol/openvpn.html is the same body
+  cut into network/security/access/reach sections for the rail; this is the one
+  the operator sees when Old inbound modify UI is on. Adding a field to one and not
+  the other is caught by TestLegacyInboundFormsCarryEveryField.
+*/}}
+{{define "form/legacy/openvpn"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Auto-managed contiguous block (UDP shown; TCP mirrors into 10.3.x).
+                    Grows automatically as clients are added.
+                </template>
+                IP Range
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <template v-if="inbound.settings.ipRanges && inbound.settings.ipRanges.length">
+            <a-input
+                v-for="(r, i) in inbound.settings.ipRanges"
+                :key="i"
+                :value="r"
+                read-only
+                :style="{ marginBottom: '4px' }"
+            ></a-input>
+        </template>
+        <span v-else :style="{ color: '#888' }">
+            Assigned automatically on save
+        </span>
+    </a-form-item>
+    <a-form-item label="DNS 1">
+        <a-input
+            v-model.trim="inbound.settings.dns1"
+            placeholder="8.8.8.8"
+        ></a-input>
+    </a-form-item>
+    <a-form-item label="DNS 2">
+        <a-input
+            v-model.trim="inbound.settings.dns2"
+            placeholder="8.8.4.4"
+        ></a-input>
+    </a-form-item>
+    <a-form-item label="MTU">
+        <a-input-number
+            v-model.number="inbound.settings.mtu"
+            :min="1200"
+            :max="1500"
+        ></a-input-number>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Name shown for the imported profile in OpenVPN Connect, written
+                    into the .ovpn as `setenv FRIENDLY_NAME`. Leave blank to omit it,
+                    and the app falls back to the file name.
+                </template>
+                Friendly Name
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input
+            v-model.trim="inbound.settings.friendlyName"
+            placeholder="My VPN"
+        ></a-input>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Simultaneous devices per account (each gets its own IP). 10 = ten consecutive IPs per account (default). Lower it to fit more accounts in the pool, raise it for accounts that run more devices; 0 reserves a 16-IP block, which is still a cap and not unlimited. Max 64.
+                </template>
+                User Limit
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            :value="inbound.settings.userLimit"
+            @change="inbound.settings.userLimit = Math.max(0, Math.min(64, Math.floor($event || 0)))"
+            :min="0" :max="64" :step="1" :precision="0" style="width: 90px"
+        ></a-input-number>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    When an account is already at its device limit and another
+                    device connects: reject the new one, or accept it and
+                    disconnect that account's oldest device.
+                </template>
+                User Limit Strategy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-radio-group v-model="inbound.settings.userLimitStrategy" button-style="solid">
+            <a-radio-button value="accept">Accept</a-radio-button>
+            <a-radio-button value="reject">Reject</a-radio-button>
+        </a-radio-group>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Allow connected clients to reach each other
+                </template>
+                Client to Client
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.clientToClient"
+            @change="val => { if (!val) inbound.settings.crossInbound = false }"
+        ></a-switch>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Also reach clients of other inbounds (both inbounds must enable this)
+                </template>
+                Cross Inbound
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.crossInbound"
+            :disabled="!inbound.settings.clientToClient"
+        ></a-switch>
+    </a-form-item>
+    <a-form-item label="External Proxy">
+        <a-switch v-model="ovpnExternalProxy"></a-switch>
+        <a-button
+            icon="plus"
+            v-if="ovpnExternalProxy"
+            type="primary"
+            :style="{ marginLeft: '10px' }"
+            size="small"
+            @click="inbound.settings.externalProxy.push({dest: '', port: inbound.port, remark: ''})"
+        ></a-button>
+    </a-form-item>
+    <a-input-group
+        :style="{ margin: '8px 0' }"
+        compact
+        v-for="(row, index) in inbound.settings.externalProxy"
+    >
+        <a-input
+            :style="{ width: '45%' }"
+            v-model.trim="row.dest"
+            placeholder='{{ i18n "host" }}'
+        ></a-input>
+        <a-tooltip title='{{ i18n "pages.inbounds.port" }}'>
+            <a-input-number
+                :style="{ width: '20%' }"
+                v-model.number="row.port"
+                min="1"
+                max="65535"
+            ></a-input-number>
+        </a-tooltip>
+        <a-input
+            :style="{ width: '30%', top: '0' }"
+            v-model.trim="row.remark"
+            placeholder='{{ i18n "remark" }}'
+        >
+            <template slot="addonAfter">
+                <a-button
+                    icon="minus"
+                    size="small"
+                    @click="inbound.settings.externalProxy.splice(index, 1)"
+                ></a-button>
+            </template>
+        </a-input>
+    </a-input-group>
+    <a-collapse :style="{ margin: '10px 0' }">
+        <a-collapse-panel header="Ciphers">
+            <a-form-item label="Mode">
+                <a-select
+                    :value="inbound.settings.cipherMode"
+                    @change="ovpnSetCipherMode"
+                    :dropdown-class-name="themeSwitcher.currentTheme"
+                >
+                    <a-select-option value="old">Old Devices</a-select-option>
+                    <a-select-option value="new">New Devices</a-select-option>
+                    <a-select-option value="all">All Devices</a-select-option>
+                    <a-select-option value="custom">Custom</a-select-option>
+                </a-select>
+            </a-form-item>
+            <a-divider orientation="left" :style="{ fontSize: '13px' }">
+                AEAD — modern
+            </a-divider>
+            <a-row>
+                <a-col
+                    :xs="12"
+                    :md="8"
+                    v-for="c in ovpnAeadCiphers"
+                    :key="c"
+                    :style="{ marginBottom: '6px' }"
+                >
+                    <a-checkbox
+                        :checked="inbound.settings.ciphers.includes(c)"
+                        @change="e => ovpnToggleCipher(c, e.target.checked)"
+                        >[[ c ]]</a-checkbox
+                    >
+                </a-col>
+            </a-row>
+            <a-divider orientation="left" :style="{ fontSize: '13px' }">
+                CBC — legacy
+            </a-divider>
+            <a-row>
+                <a-col
+                    :xs="12"
+                    :md="8"
+                    v-for="c in ovpnCbcCiphers"
+                    :key="c"
+                    :style="{ marginBottom: '6px' }"
+                >
+                    <a-checkbox
+                        :checked="inbound.settings.ciphers.includes(c)"
+                        @change="e => ovpnToggleCipher(c, e.target.checked)"
+                        >[[ c ]]</a-checkbox
+                    >
+                </a-col>
+            </a-row>
+        </a-collapse-panel>
+    </a-collapse>
+    <a-divider>Certificates</a-divider>
+    <!-- Cert source: inline PEM content (default, stored in the panel DB) vs
+         operator-supplied file paths on the server. In file mode OpenVPN reads the
+         files directly and the panel writes/generates nothing (mirrors Xray's TLS
+         cert-file option). -->
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Content: paste or generate PEM stored in the panel. File Paths:
+                    point OpenVPN at existing cert files already on the server —
+                    nothing is generated or written.
+                </template>
+                Certificate Source
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-radio-group
+            button-style="solid"
+            :value="inbound.settings.tlsUseFile ? 'file' : 'content'"
+            @change="e => { inbound.settings.tlsUseFile = e.target.value === 'file'; }"
+        >
+            <a-radio-button value="content">Content</a-radio-button>
+            <a-radio-button value="file">File Paths</a-radio-button>
+        </a-radio-group>
+    </a-form-item>
+
+    <!-- tls-crypt is optional in OpenVPN, so it is a toggle: off drops the directive
+         from the server config and the <tls-crypt> block from the .ovpn, and the key
+         box below stops being required. Existing clients carry the key, so turning it
+         off on a live inbound locks them out until they re-import their profile. -->
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Wrap the TLS control channel in a pre-shared key, which hides the
+                    handshake from probes. Optional: turn it off and no key is needed.
+                    Changing this on a live inbound means every client must re-import
+                    its profile.
+                </template>
+                TLS-Crypt
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="inbound.settings.tlsCryptEnable"></a-switch>
+    </a-form-item>
+
+    <!-- File-path mode: reference existing cert files on disk. The client .ovpn
+         embeds the CA (and the tls-crypt key, when enabled) read from these paths. -->
+    <template v-if="inbound.settings.tlsUseFile">
+        <a-form-item label="CA Certificate File">
+            <a-input v-model="inbound.settings.caCertFile" placeholder="/path/to/ca.crt"></a-input>
+        </a-form-item>
+        <a-form-item label="Server Certificate File">
+            <a-input v-model="inbound.settings.serverCertFile" placeholder="/path/to/server.crt"></a-input>
+        </a-form-item>
+        <a-form-item label="Server Key File">
+            <a-input v-model="inbound.settings.serverKeyFile" placeholder="/path/to/server.key"></a-input>
+        </a-form-item>
+        <a-form-item label="TLS-Crypt Key File" v-if="inbound.settings.tlsCryptEnable">
+            <a-input v-model="inbound.settings.tlsCryptFile" placeholder="/path/to/tc.key"></a-input>
+        </a-form-item>
+    </template>
+
+    <!-- Content mode (default): inline PEM, generated by the button below. -->
+    <template v-else>
+        <a-form-item label="CA Certificate">
+            <a-textarea
+                v-model="inbound.settings.caCert"
+                :rows="3"
+                placeholder="-----BEGIN CERTIFICATE-----"
+            ></a-textarea>
+        </a-form-item>
+        <a-form-item label="CA Key">
+            <a-textarea
+                v-model="inbound.settings.caKey"
+                :rows="3"
+                placeholder="-----BEGIN EC PRIVATE KEY-----"
+            ></a-textarea>
+        </a-form-item>
+        <a-form-item label="Server Certificate">
+            <a-textarea
+                v-model="inbound.settings.serverCert"
+                :rows="3"
+                :read-only="true"
+                placeholder="Auto-generated from CA"
+            ></a-textarea>
+        </a-form-item>
+        <a-form-item label="Server Key">
+            <a-textarea
+                v-model="inbound.settings.serverKey"
+                :rows="3"
+                :read-only="true"
+                placeholder="Auto-generated from CA"
+            ></a-textarea>
+        </a-form-item>
+        <a-form-item label="TLS-Crypt Key" v-if="inbound.settings.tlsCryptEnable">
+            <a-textarea
+                v-model="inbound.settings.tlsCrypt"
+                :rows="3"
+                :read-only="true"
+                placeholder="Auto-generated"
+            ></a-textarea>
+        </a-form-item>
+        <a-form-item :wrapper-col="{ md: {offset:8, span:14} }">
+            <a-button
+                type="primary"
+                @click="generateOpenVpnCerts"
+            >
+                Generate Self-Signed CA
+            </a-button>
+        </a-form-item>
+    </template>
+    <!-- Show client-config downloads once the inbound exists and a cert source is
+         set: inline CA content, or file-path mode (the .ovpn CA/tls-crypt is read
+         from the operator's files server-side). -->
+    <template v-if="inbound.id && (inbound.settings.caCert || inbound.settings.tlsUseFile)">
+        <a-divider>Client Config</a-divider>
+        <a-form-item :wrapper-col="{ md: {offset:8, span:14} }">
+            <a-button
+                v-if="inbound.settings.udpEnable"
+                icon="download"
+                @click="downloadOvpn('udp')"
+                :style="{ marginRight: '8px' }"
+            >
+                UDP Config (.ovpn)
+            </a-button>
+            <a-button
+                v-if="inbound.settings.tcpEnable"
+                icon="download"
+                @click="downloadOvpn('tcp')"
+            >
+                TCP Config (.ovpn)
+            </a-button>
+        </a-form-item>
+    </template>
+</a-form>
+{{end}}

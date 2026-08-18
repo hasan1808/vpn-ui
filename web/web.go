@@ -227,26 +227,31 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	}
-	// Set Secure flag when TLS is configured
-	if certFile, err := s.settingService.GetCertFile(); err == nil && certFile != "" {
-		sessionOptions.Secure = true
-	}
 	if sessionMaxAge, err := s.settingService.GetSessionMaxAge(); err == nil && sessionMaxAge > 0 {
 		sessionOptions.MaxAge = sessionMaxAge * 60 // minutes -> seconds
 	}
 	store.Options(sessionOptions)
-	// Session cookie name stays "vpn-ui" for compatibility with external API
-	// consumers (e.g. the sales bot) that authenticate with the vpn-ui cookie,
-	// even though the panel brand is now pro-ui.
 	engine.Use(sessions.Sessions("vpn-ui", store))
-	engine.Use(middleware.LoginRateLimit())
 	engine.Use(func(c *gin.Context) {
 		c.Set("base_path", basePath)
 	})
+	// A year is only safe because the URL carries a token derived from the asset
+	// bytes (see assetFingerprint): a changed file means a changed URL, so nothing
+	// cached under the old one is ever wanted again.
+	//
+	// Debug mode is the exception. There the assets are read from the working tree
+	// on every request so an edit shows up without a restart, but the token is
+	// fixed at start and cannot follow those edits, so a long max-age would freeze
+	// the browser on whatever it loaded first. That is the shape of bug this whole
+	// mechanism exists to prevent, so debug does not cache at all.
+	assetCacheControl := "max-age=31536000"
+	if config.IsDebug() {
+		assetCacheControl = "no-store"
+	}
 	engine.Use(func(c *gin.Context) {
 		uri := c.Request.RequestURI
 		if strings.HasPrefix(uri, assetsBasePath) {
-			c.Header("Cache-Control", "max-age=31536000")
+			c.Header("Cache-Control", assetCacheControl)
 		}
 	})
 
@@ -267,6 +272,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.SetFuncMap(funcMap)
 	engine.Use(locale.LocalizerMiddleware())
 
+	// Publish the token the templates stamp on every asset URL. Done before the
+	// templates are registered so the first page served already carries it.
+	config.SetAssetVersion(assetFingerprint())
+
 	// set static files and template
 	if config.IsDebug() {
 		// for development
@@ -279,11 +288,11 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		engine.StaticFS(basePath+"assets", http.FS(os.DirFS("web/assets")))
 	} else {
 		// for production
-		tmpl, err := s.getHtmlTemplate(funcMap)
+		template, err := s.getHtmlTemplate(funcMap)
 		if err != nil {
 			return nil, err
 		}
-		engine.SetHTMLTemplate(tmpl)
+		engine.SetHTMLTemplate(template)
 		engine.StaticFS(basePath+"assets", http.FS(&wrapAssetsFS{FS: assetsFS}))
 	}
 
@@ -321,6 +330,13 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 // startTask schedules background jobs (Xray checks, traffic jobs, cron
 // jobs) which the panel relies on for periodic maintenance and monitoring.
 func (s *Server) startTask() {
+	// Before ANY Init* below touches the host: work out what on this box was already
+	// here and what vpn-ui put here, and write it down. The Init* calls create netdevs
+	// and rewrite shared config files, and the reconcilers that follow delete whatever
+	// they believe is theirs, so the ownership record has to exist first. See
+	// service/ownership.go.
+	service.OwnSynthesize()
+
 	// Generate or load RADIUS shared secret and start embedded RADIUS server
 	radiusSecret := s.getOrCreateRadiusSecret()
 	if radiusSecret != "" {
@@ -350,6 +366,13 @@ func (s *Server) startTask() {
 	s.greService.InitGre()
 	s.mtprotoService.InitMtproto()
 	s.sshService.InitSsh()
+	// BEFORE anything dials, which is why it is here and not beside InitVpnOutbound
+	// below. A carrier is a device plus a routing table, and whatever rides on it sends
+	// its first packet the moment it starts: the SSH manager dials as soon as its
+	// listener binds, and a WireGuard client hands its handshake to the kernel the
+	// instant its peer is configured. A carrier made afterwards would arrive after the
+	// packet it was meant to carry had already left in the clear.
+	service.InitVpnOutCarriers()
 	s.sshOutboundService.InitSshOutbound()
 	// Before RestartXray below, like every Init above it: the synthesized freedom
 	// outbound binds to the netdev the client tunnel brings up, so the tunnel has to
@@ -433,6 +456,50 @@ func (s *Server) startTask() {
 	// Run once a month, midnight, first of month
 	s.cron.AddJob("@monthly", job.NewPeriodicTrafficResetJob("monthly"))
 
+	// Renew the managed TLS certificate when it comes due. This is the only renewal
+	// scheduler on the box: acme.sh's own cron is deliberately not installed, because
+	// two of them racing for port 80 fail validation and failed validations are the
+	// metered kind. See job.SSLRenewSchedule for why six hours and not a day.
+	//
+	// Registered here rather than below the Telegram block on purpose: that block
+	// RETURNS early on a bad tgbot runtime (see the AddJob error path), and a renewal
+	// that silently stops happening because somebody mistyped a cron string in a
+	// completely unrelated setting is exactly the kind of failure nobody notices
+	// until TLS is already dead.
+	sslRenewJob := job.NewCheckSSLRenewJob()
+	s.cron.AddJob(job.SSLRenewSchedule, sslRenewJob)
+
+	go func() {
+		// cron's first "@every" tick is one whole interval away, so without this a box
+		// that reboots more often than the interval would never renew at all. Bound to
+		// the server context rather than a bare sleep: a SIGHUP restart builds a whole
+		// new Server (main.go:340), and this must not fire into the next one.
+		select {
+		case <-time.After(job.SSLRenewStartupDelay):
+			sslRenewJob.Run()
+		case <-s.ctx.Done():
+		}
+	}()
+
+	// Refresh the built-in geo data files. Registered unconditionally and gated
+	// INSIDE the job rather than here, so flipping the switch in the overview's
+	// Geofiles dialog takes effect on the next tick instead of on the next panel
+	// restart. Placed above the Telegram block for the same reason the SSL job is:
+	// that block returns early on a bad tgbot cron string.
+	geofileJob := job.NewUpdateGeofileJob()
+	s.cron.AddJob(job.GeofileUpdateSchedule, geofileJob)
+
+	go func() {
+		// Same reasoning as the SSL startup run above: cron's first "@every" tick is a
+		// whole interval away, and the context binding keeps a SIGHUP restart from
+		// firing this into the next Server.
+		select {
+		case <-time.After(job.GeofileUpdateStartupDelay):
+			geofileJob.Run()
+		case <-s.ctx.Done():
+		}
+	}()
+
 	// LDAP sync scheduling
 	if ldapEnabled, _ := s.settingService.GetLdapEnable(); ldapEnabled {
 		runtime, err := s.settingService.GetLdapSyncCron()
@@ -457,7 +524,7 @@ func (s *Server) startTask() {
 			runtime = "@daily"
 		}
 		logger.Infof("Tg notify enabled,run at %s", runtime)
-		entry, err = s.cron.AddJob(runtime, job.NewStatsNotifyJob())
+		_, err = s.cron.AddJob(runtime, job.NewStatsNotifyJob())
 		if err != nil {
 			logger.Warningf("Add NewStatsNotifyJob: failed to schedule runtime %q: %v", runtime, err)
 			return
@@ -471,14 +538,8 @@ func (s *Server) startTask() {
 		if (err == nil) && (cpuThreshold > 0) {
 			s.cron.AddJob("@every 10s", job.NewCheckCpuJob())
 		}
-
-		// Start Telegram bot
-		tgBot := s.tgbotService.NewTgbot()
-		tgBot.Start(i18nFS)
 	} else {
-		if entry != 0 {
-			s.cron.Remove(entry)
-		}
+		s.cron.Remove(entry)
 	}
 }
 
@@ -527,7 +588,7 @@ func (s *Server) Start() (err error) {
 		return err
 	}
 	scheme := "http"
-	if certFile != "" && keyFile != "" {
+	if certFile != "" || keyFile != "" {
 		certReloader, err := network.NewCertReloader(certFile, keyFile)
 		if err == nil {
 			c := &tls.Config{
@@ -568,6 +629,12 @@ func (s *Server) Start() (err error) {
 	}()
 
 	s.startTask()
+
+	isTgbotenabled, err := s.settingService.GetTgbotEnabled()
+	if (err == nil) && (isTgbotenabled) {
+		tgBot := s.tgbotService.NewTgbot()
+		tgBot.Start(i18nFS)
+	}
 
 	return nil
 }
@@ -632,7 +699,7 @@ func (s *Server) getOrCreateRadiusSecret() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		logger.Warning("RADIUS: failed to generate secret:", err)
-		return ""
+		return "default-radius-secret"
 	}
 	secret = fmt.Sprintf("%x", b)
 	if err := s.settingService.SetRadiusSecret(secret); err != nil {

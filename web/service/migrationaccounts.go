@@ -572,17 +572,32 @@ func newAccountFromEntry(entry map[string]any) *model.Account {
 		return 0
 	}
 	boolean := func(k string) bool { v, _ := entry[k].(bool); return v }
+	// The nullable ones cannot use num: it answers 0 for an absent key, and 0 is a real
+	// value here (unlimited for a rate) that must stay distinguishable from "inherit".
+	// An absent key, an explicit null and a non-number all read as nil, which is the
+	// value that means inherit.
+	nullableInt := func(k string) *int {
+		f, ok := entry[k].(float64)
+		if !ok {
+			return nil
+		}
+		v := int(f)
+		return &v
+	}
 
 	return &model.Account{
-		Email:      str("email"),
-		SubID:      str("subId"),
-		TotalGB:    num("totalGB"),
-		ExpiryTime: num("expiryTime"),
-		Enable:     boolean("enable"),
-		Reset:      int(num("reset")),
-		LimitIP:    int(num("limitIp")),
-		TgID:       num("tgId"),
-		Comment:    str("comment"),
+		Email:             str("email"),
+		SubID:             str("subId"),
+		TotalGB:           num("totalGB"),
+		ExpiryTime:        num("expiryTime"),
+		Enable:            boolean("enable"),
+		Reset:             int(num("reset")),
+		LimitIP:           int(num("limitIp")),
+		TgID:              num("tgId"),
+		Comment:           str("comment"),
+		SpeedLimitDown:    nullableInt("speedLimitDown"),
+		SpeedLimitUp:      nullableInt("speedLimitUp"),
+		UserLimitOverride: nullableInt("userLimitOverride"),
 	}
 }
 

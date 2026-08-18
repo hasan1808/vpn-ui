@@ -750,6 +750,12 @@ func (s *GreService) ensureGretun(name string, want *netlink.Gretun, mtu int) er
 	want.LinkAttrs = la
 
 	if existing, err := netlink.LinkByName(name); err == nil {
+		// A device wearing one of our generated names that the manifest says was here
+		// before us is the operator's, however improbable the collision. Refuse rather
+		// than recreate it: the recreate path below is a LinkDel.
+		if ownForbidsDelete(ownIface, name) {
+			return fmt.Errorf("%s already exists and was not created by vpn-ui; not touching it", name)
+		}
 		// Recreate only when an addressing-relevant attribute actually changed, so an
 		// unrelated edit never drops a live tunnel.
 		if g, ok := existing.(*netlink.Gretun); ok && greTunEquivalent(g, want) {
@@ -759,6 +765,12 @@ func (s *GreService) ensureGretun(name string, want *netlink.Gretun, mtu int) er
 			return netlink.LinkSetUp(existing)
 		}
 		_ = netlink.LinkDel(existing)
+	} else {
+		// First sighting of this name: nothing there, so whatever we create next is
+		// unambiguously ours. Recorded BEFORE the LinkAdd so a crash between the two
+		// leaves an entry that says "ours" for a device that does not exist, which the
+		// next sweep simply drops, rather than the reverse.
+		ownIfaceCreated(name, "gre")
 	}
 
 	if err := netlink.LinkAdd(want); err != nil {
@@ -805,7 +817,14 @@ func greIPEqual(a, b net.IP) bool {
 
 // ensureFouPort registers a FOU receive port for GRE. Idempotent: an existing port comes
 // back as EEXIST, which is success.
+//
+// The EEXIST branch is also the only cheap way to tell OUR listener from one the operator
+// registered themselves, so ownership is decided right here: a clean add is ours, an add
+// that bounced off an existing registration is not (unless we had already claimed it on an
+// earlier run, in which case the first sighting stands). reconcileFouPorts then only
+// unregisters what this recorded.
 func ensureFouPort(port int) error {
+	id := fouPortID(port)
 	err := netlink.FouAdd(netlink.Fou{
 		Port:     port,
 		Protocol: unix.IPPROTO_GRE,
@@ -813,11 +832,19 @@ func ensureFouPort(port int) error {
 		// EncapType is REQUIRED; omitting it sends FOU_ENCAP_UNSPEC and fails EINVAL.
 		EncapType: netlink.FOU_ENCAP_DIRECT,
 	})
-	if err == nil || errIsExist(err) {
+	if err == nil {
+		ownClaim(ownFouPort, id, "gre")
+		return nil
+	}
+	if errIsExist(err) {
+		ownNote(ownFouPort, id, "gre", "a FOU listener was already registered on this port")
 		return nil
 	}
 	return err
 }
+
+// fouPortID is the manifest key for a FOU receive port.
+func fouPortID(port int) string { return fmt.Sprintf("%d/gre", port) }
 
 // reconcileFouPorts unregisters FOU receive ports no inbound asks for any more.
 //
@@ -825,6 +852,10 @@ func ensureFouPort(port int) error {
 // inbound used to leave the old UDP listener bound until the next reboot. Only ports that carry
 // GRE are touched, so a FOU listener another service registered for a different inner protocol
 // is left alone.
+//
+// And only ports WE registered: this used to unregister every GRE-carrying FOU port on the
+// host that was not in our plan, which silently killed an operator's own fou listener the
+// first time any GRE inbound reconciled. ensureFouPort records who registered what.
 func (s *GreService) reconcileFouPorts(want map[int]bool) {
 	have, err := netlink.FouList(unix.AF_INET)
 	if err != nil {
@@ -834,6 +865,10 @@ func (s *GreService) reconcileFouPorts(want map[int]bool) {
 		if f.Protocol != unix.IPPROTO_GRE || want[f.Port] {
 			continue
 		}
+		state, found := ownStateOf(ownFouPort, fouPortID(f.Port))
+		if !found || !state.mayDelete() {
+			continue // someone else's listener, or nobody knows whose: leave it bound
+		}
 		if err := netlink.FouDel(netlink.Fou{
 			Port:     f.Port,
 			Protocol: unix.IPPROTO_GRE,
@@ -842,6 +877,7 @@ func (s *GreService) reconcileFouPorts(want map[int]bool) {
 			logger.Debug("GRE: could not unregister stale FOU port", f.Port, err)
 			continue
 		}
+		ownRemoveEntry(ownFouPort, fouPortID(f.Port))
 		logger.Info("GRE: unregistered stale FOU port", f.Port)
 	}
 }
@@ -858,13 +894,25 @@ func (s *GreService) reconcileFouPorts(want map[int]bool) {
 // There is no narrower knob: rx-gro-list and rx-udp-gro-forwarding are already off by default
 // and turning them off explicitly changes nothing, and the GRO happens on the physical NIC
 // before the packet reaches the tunnel device, so setting it on the GRE device cannot help.
-// Only applied when an inbound actually enables FOU, and never turned back on: an operator who
-// wants it on has a reason, and re-enabling it would silently break a working FOU peer.
+// Only applied when an inbound actually enables FOU, and never turned back on WHILE THE CORE
+// IS INSTALLED: an operator who wants it on has a reason, and re-enabling it mid-flight would
+// silently break a working FOU peer.
+//
+// Uninstalling GRE is a different matter, and this used to be a genuinely one-way change to
+// the host's NIC that nothing recorded and nothing put back. The previous setting is now
+// captured in the ownership manifest the first time we turn it off, and restoreGro puts it
+// back when the core goes.
 func (s *GreService) disableGroForFou() {
 	iface, err := greWanIface()
 	if err != nil {
 		logger.Warning("GRE: cannot find the WAN interface to disable GRO for FOU:", err)
 		return
+	}
+	if _, found := ownStateOf(ownEthtool, groSettingID(iface)); !found {
+		if prev := ethtoolFeature(iface, "generic-receive-offload"); prev != "" {
+			ownClaimPrev(ownEthtool, groSettingID(iface), "gre", prev,
+				"GRO turned off so FOU-encapsulated GRE is not coalesced")
+		}
 	}
 	if err := s.runCmd("ethtool", "-K", iface, "gro", "off"); err != nil {
 		// Not fatal, and worth saying out loud rather than leaving a peer to discover it as
@@ -872,6 +920,42 @@ func (s *GreService) disableGroForFou() {
 		logger.Warning("GRE: could not disable GRO on", iface,
 			"- FOU peers will see heavy loss until it is off:", err)
 	}
+}
+
+// groSettingID is the manifest key for one interface's GRO setting.
+func groSettingID(iface string) string { return iface + "/gro" }
+
+// ethtoolFeature reads one offload feature's current state ("on"/"off"), or "" when ethtool
+// is missing or does not report it. `ethtool -k` prints lines like
+// "generic-receive-offload: on [fixed]"; the "[fixed]" suffix means the driver will not let
+// it change, which is worth recording verbatim so a restore does not claim to have done
+// something it could not.
+func ethtoolFeature(iface, feature string) string {
+	out, err := exec.Command("ethtool", "-k", iface).Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		name, value, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(name) != feature {
+			continue
+		}
+		fields := strings.Fields(value)
+		if len(fields) == 0 {
+			return ""
+		}
+		return fields[0]
+	}
+	return ""
+}
+
+// restoreGro puts an interface's GRO setting back to what it was before FOU needed it off.
+// Called from the GRE core's uninstall.
+func restoreGro(iface, prev string) error {
+	if prev != "on" && prev != "off" {
+		return fmt.Errorf("no usable previous GRO setting (%q)", prev)
+	}
+	return exec.Command("ethtool", "-K", iface, "gro", prev).Run()
 }
 
 // greWanIface returns the interface the default route uses, i.e. the one FOU packets arrive on.
@@ -1016,6 +1100,13 @@ func (s *GreService) reconcileNeigh(iface string, dynamic map[string]greDynamicP
 // `gre0` is the kernel's own fallback device (auto-created by ip_gre) and is deliberately
 // left alone: we never created it, PPTP's module shares it, and deleting it is not ours to
 // do.
+//
+// OWNERSHIP IS A NAME SHAPE, NOT A PREFIX. This used to delete any *netlink.Gretun whose
+// name merely began with "gre", which is every hand-made tunnel an operator has: `ip tunnel
+// add gre1 mode gre` matched, and since this sweep runs on panel start, on every inbound
+// save and on every 10-second traffic tick, installing the GRE core silently destroyed the
+// operator's own tunnel and kept destroying it. See greOwnsLink in ifaceown.go for the
+// three gates that replaced the prefix.
 func (s *GreService) removeStaleLinks(keep map[string]bool) {
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -1023,16 +1114,12 @@ func (s *GreService) removeStaleLinks(keep map[string]bool) {
 	}
 	for _, l := range links {
 		name := l.Attrs().Name
-		if name == "gre0" || keep[name] {
+		if keep[name] || !greOwnsLink(l) {
 			continue
 		}
-		if !strings.HasPrefix(name, greP2pPrefix) {
-			continue
+		if err := netlink.LinkDel(l); err == nil {
+			ownRemoveEntry(ownIface, name)
 		}
-		if _, ok := l.(*netlink.Gretun); !ok {
-			continue // a same-prefixed device of another kind is not ours
-		}
-		_ = netlink.LinkDel(l)
 	}
 }
 
@@ -1056,11 +1143,7 @@ func (s *GreService) SetupRouting() error {
 	s.runCmd("modprobe", greModule)
 	s.runCmd("modprobe", greFouModule)
 
-	output, _ := exec.Command("ip", "rule", "show").Output()
-	if !strings.Contains(string(output), "fwmark 0x1 lookup 100") {
-		s.runCmd("ip", "rule", "add", "fwmark", "1", "lookup", "100")
-	}
-	s.runCmd("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", "100")
+	ensureVpnPolicyRoute(s.runCmd)
 
 	// A GRE netdev is NOARP and the catch-all is fed by learned neighbour entries, so
 	// strict reverse-path filtering on it would drop perfectly good customer traffic.
@@ -1075,6 +1158,10 @@ func (s *GreService) SetupRouting() error {
 }
 
 // currentIfaces lists the GRE netdevs this service owns right now.
+//
+// Same ownership rule as removeStaleLinks, and for the same reason in a quieter form:
+// SetupRouting forces rp_filter=0 on everything this returns, so the old prefix scan
+// silently relaxed reverse-path filtering on an operator's unrelated gre1.
 func (s *GreService) currentIfaces() map[string]bool {
 	out := map[string]bool{}
 	links, err := netlink.LinkList()
@@ -1082,12 +1169,8 @@ func (s *GreService) currentIfaces() map[string]bool {
 		return out
 	}
 	for _, l := range links {
-		name := l.Attrs().Name
-		if name == "gre0" || !strings.HasPrefix(name, greP2pPrefix) {
-			continue
-		}
-		if _, ok := l.(*netlink.Gretun); ok {
-			out[name] = true
+		if greOwnsLink(l) {
+			out[l.Attrs().Name] = true
 		}
 	}
 	return out
@@ -1128,20 +1211,17 @@ func (s *GreService) GreAvailable() bool {
 func (s *GreService) FouAvailable() bool { return moduleAvailable(greFouModule) }
 
 // AnyInterfaceUp reports whether at least one GRE netdev of ours exists and is up.
+//
+// Ownership matters here too, in the opposite direction: with a prefix scan the operator's
+// own gre1 made the panel report the GRE core as running on a host where it had never
+// started a thing.
 func (s *GreService) AnyInterfaceUp() bool {
 	links, err := netlink.LinkList()
 	if err != nil {
 		return false
 	}
 	for _, l := range links {
-		name := l.Attrs().Name
-		if name == "gre0" || !strings.HasPrefix(name, greP2pPrefix) {
-			continue
-		}
-		if _, ok := l.(*netlink.Gretun); !ok {
-			continue
-		}
-		if l.Attrs().Flags&net.FlagUp != 0 {
+		if greOwnsLink(l) && l.Attrs().Flags&net.FlagUp != 0 {
 			return true
 		}
 	}

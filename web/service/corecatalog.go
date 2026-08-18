@@ -133,6 +133,12 @@ var coreCatalog = []coreSpec{
 		// /etc/openvpn itself is the DISTRO package's directory and is deliberately
 		// NOT listed; only what the panel creates inside it is removed. "server" is
 		// the plain subdir the panel makes, which "server-*" does not match.
+		//
+		// Except that on Debian, Ubuntu and Fedora /etc/openvpn/server is the DISTRO's
+		// server-config directory too, and the panel only mkdir's it and writes
+		// nothing inside, so removing it could only ever destroy someone else's
+		// configs. Uninstall now asks the ownership manifest, which knows whether that
+		// mkdir actually created it.
 		globs: []string{"/etc/openvpn/server-*", "/etc/openvpn/server", "/var/run/openvpn"},
 	},
 	{
@@ -144,6 +150,11 @@ var coreCatalog = []coreSpec{
 		// The config ROOT as well as the per-inbound files: a full uninstall that
 		// left /etc/ocserv behind meant a later reinstall silently re-adopted the
 		// old certificates and ocserv.conf.
+		//
+		// Listing the root here is now a REQUEST, not a licence. It used to be an
+		// unconditional os.RemoveAll, which on a host with a distro ocserv deleted
+		// that ocserv's ocserv.conf, its certificates and its ocpasswd. Uninstall
+		// asks the ownership manifest, so the root only goes when we created it.
 		paths: []string{"/etc/ocserv"},
 		globs: []string{"/etc/ocserv/server-*", "/var/run/ocserv"},
 	},
@@ -402,9 +413,36 @@ type CoreOption struct {
 	// Shares names the cores this one shares host requirements with, so the
 	// dialog can say what an uninstall will deliberately leave behind.
 	Shares []string `json:"shares,omitempty"`
+	// Conflicts is what is ALREADY on this host that installing this core would
+	// share: a distro daemon's config we would overwrite, a unit we would disable,
+	// an interface of the operator's that shares our naming space. Nothing here
+	// blocks an install; it is shown so taking over a running xl2tpd (or living
+	// beside a hand-made GRE tunnel) is a decision rather than a surprise. See
+	// preflight.go.
+	Conflicts []coreHostConflict `json:"conflicts,omitempty"`
 	// Builtin cores are listed for completeness but cannot be installed or
 	// removed; the dialog renders them as always-on.
 	Builtin bool `json:"builtin"`
+}
+
+// coreShouldProbeConflicts decides whether to run the pre-flight host probe for
+// one core. Extracted from CoreCatalog so the rule can be pinned by a test
+// without a host that happens to have the right daemons on it.
+//
+// `recorded` is coreInstallStateIsRecorded: did the panel WRITE DOWN this install
+// state, or infer it. The `!recorded` term is the fix for a real hole. The old
+// rule was `!builtin && !installed`, and with nothing recorded `installed` is the
+// frozen baseline GUESS, which fires from a distro openvpn on PATH plus
+// ip_forward=1. So on a fresh database the four baseline cores answered
+// installed=true, the probe was skipped, and the operator was never warned about
+// the distro xl2tpd, pptpd, libreswan and OpenVPN configs the panel was about to
+// take over. Nothing has been provisioned, so nothing on that host is ours to be
+// quiet about.
+func coreShouldProbeConflicts(builtin, installed, recorded bool) bool {
+	if builtin {
+		return false // nothing to install, so nothing to collide with
+	}
+	return !recorded || !installed
 }
 
 // CoreCatalog returns every core with its current install state, for the setup
@@ -412,10 +450,13 @@ type CoreOption struct {
 func (s *CoreService) CoreCatalog() []CoreOption {
 	installed := s.provisionedProtocolSet()
 	counts := s.inboundCountsByCore()
+	// Whether those "installed" answers are RECORDED or GUESSED. Read once: it is
+	// two setting lookups and the loop below asks it per core.
+	recorded := s.coreInstallStateIsRecorded()
 
 	out := make([]CoreOption, 0, len(coreCatalog))
 	for _, c := range coreCatalog {
-		out = append(out, CoreOption{
+		opt := CoreOption{
 			Name:      c.name,
 			Title:     c.title,
 			Backend:   c.backend,
@@ -424,7 +465,14 @@ func (s *CoreService) CoreCatalog() []CoreOption {
 			Inbounds:  counts[c.name],
 			Shares:    sharersOf(c.name),
 			Builtin:   c.builtin,
-		})
+		}
+		// Probed for a core the operator can still choose to install: once it really
+		// is installed the artifacts are ours and the manifest is the record that
+		// matters. "Really" is the load-bearing word; see coreShouldProbeConflicts.
+		if coreShouldProbeConflicts(c.builtin, installed[c.name], recorded) {
+			opt.Conflicts = coreConflictProbe(c.name)
+		}
+		out = append(out, opt)
 	}
 	return out
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/hasan1808/pro-ui/xray"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // InboundService provides business logic for managing Xray inbound configurations.
@@ -141,15 +142,20 @@ func (s *InboundService) FilterInboundForReseller(inbound *model.Inbound, ownedE
 // The AllTime fallback mirrors what the page does for rows written before all_time
 // existed (`allTime || up + down`), so a reseller's band and an admin's answer the
 // same question rather than differing on legacy data.
+//
+// Sums the per-INBOUND share, not the account totals on the same rows. ClientStats
+// now lists an account under every inbound serving it, so adding up Up/Down would
+// count a two-inbound account's whole usage twice and hand the reseller a band
+// larger than the traffic they have sold.
 func rescopeInboundTraffic(inbound *model.Inbound) {
 	var up, down, allTime int64
 	for _, stat := range inbound.ClientStats {
-		up += stat.Up
-		down += stat.Down
-		if stat.AllTime > 0 {
-			allTime += stat.AllTime
+		up += stat.InboundUp
+		down += stat.InboundDown
+		if stat.InboundAllTime > 0 {
+			allTime += stat.InboundAllTime
 		} else {
-			allTime += stat.Up + stat.Down
+			allTime += stat.InboundUp + stat.InboundDown
 		}
 	}
 	inbound.Up = up
@@ -250,12 +256,19 @@ const inboundDisplayOrder = "CASE WHEN sort_order > 0 THEN 0 ELSE 1 END, sort_or
 func (s *InboundService) getInboundsWhere(ids []int) ([]*model.Inbound, error) {
 	db := database.GetDB()
 	var inbounds []*model.Inbound
-	q := db.Model(model.Inbound{}).Preload("ClientStats").Order(inboundDisplayOrder)
+	q := db.Model(model.Inbound{}).Order(inboundDisplayOrder)
 	if ids != nil {
 		q = q.Where("id IN (?)", ids)
 	}
 	err := q.Find(&inbounds).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+	// The rows this inbound SERVES, with its own share of their usage. Not the
+	// Preload("ClientStats") this replaces: that is a has-many on
+	// client_traffics.inbound_id, and with one row per account panel-wide it showed
+	// each account under a single inbound holding the whole account's traffic.
+	if err := s.attachClientStats(db, inbounds); err != nil {
 		return nil, err
 	}
 	// Enrich client stats with UUID/SubId from inbound settings
@@ -368,8 +381,12 @@ func (s *InboundService) ReorderInbounds(ids []int) error {
 func (s *InboundService) GetAllInbounds() ([]*model.Inbound, error) {
 	db := database.GetDB()
 	var inbounds []*model.Inbound
-	err := db.Model(model.Inbound{}).Preload("ClientStats").Find(&inbounds).Error
+	err := db.Model(model.Inbound{}).Find(&inbounds).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+	// Every account this inbound serves, carrying its share. See getInboundsWhere.
+	if err := s.attachClientStats(db, inbounds); err != nil {
 		return nil, err
 	}
 	// Enrich client stats with UUID/SubId from inbound settings
@@ -595,8 +612,73 @@ func normalizeClientEmails(settings string) string {
 
 // duplicateEmailError is shared so the mutation paths cannot drift into wording the
 // UI shows differently for the same rejection.
-func duplicateEmailError(email string) error {
-	return common.NewErrorf("Duplicate email: %q is already used by another client. Emails must be unique across all inbounds.", email)
+//
+// holders names the inbound(s) whose settings already carry the email, and is the
+// whole point of it. The check reads settings.clients and nothing else, so the
+// rejection is always TRUTHFUL, but with no WHERE in it an operator who has just
+// deleted that customer reads it as the panel remembering a phantom, and goes
+// looking for a leftover row that does not exist. Naming the inbound turns the same
+// rejection into something they can act on: the entry is right there.
+//
+// Variadic and not required, because a caller without a usable DB handle should
+// still get the plain sentence rather than no rejection at all.
+// holderIsParkedAccount stands in for "the holder is an account on no inbound", which
+// has no inbound name to print and so cannot go through the "on inbound %s" wording.
+const holderIsParkedAccount = "\x00parked"
+
+func duplicateEmailError(email string, holders ...string) error {
+	if len(holders) == 1 && holders[0] == holderIsParkedAccount {
+		return common.NewErrorf("Duplicate email: %q already belongs to a client that is not "+
+			"attached to any inbound. Open that client and attach this inbound to it, or pick "+
+			"another email.", email)
+	}
+	switch len(holders) {
+	case 0:
+		return common.NewErrorf("Duplicate email: %q is already used by another client. Emails must be unique across all inbounds.", email)
+	case 1:
+		return common.NewErrorf("Duplicate email: %q is already used by another client, on inbound %s. Emails must be unique across all inbounds.", email, holders[0])
+	default:
+		return common.NewErrorf("Duplicate email: %q is already used by another client, on inbounds %s. Emails must be unique across all inbounds.", email, strings.Join(holders, ", "))
+	}
+}
+
+// emailHolders names the inbounds already serving an email, for the rejection above.
+//
+// Best effort on purpose: it runs while the caller is already returning an error, so
+// a failure here drops the detail and must never turn a duplicate the operator can
+// fix into an opaque database error.
+func (s *InboundService) emailHolders(email string) []string {
+	db := database.GetDB()
+	if db == nil || strings.TrimSpace(email) == "" {
+		return nil
+	}
+	rows, err := s.inboundsServingEmails(db, []string{email})
+	if err != nil {
+		return nil
+	}
+	// A parked account holds the email with no inbound to point at, so the rejection
+	// would otherwise read "already used by another client" and send the operator
+	// hunting through inbound lists for an entry that is not in any of them.
+	if len(rows) == 0 && s.emailIsParked(email) {
+		return []string{holderIsParkedAccount}
+	}
+	seen := map[int]bool{}
+	var out []string
+	for _, row := range rows {
+		if seen[row.Id] {
+			continue
+		}
+		seen[row.Id] = true
+		// The remark is what the operator sees in the inbound list; the tag is the
+		// fallback for an inbound that never got one. The id is always there because
+		// two inbounds may share a remark.
+		name := row.Remark
+		if strings.TrimSpace(name) == "" {
+			name = row.Tag
+		}
+		out = append(out, fmt.Sprintf("%q (#%d)", name, row.Id))
+	}
+	return out
 }
 
 // getAllEmailsExcludingInbound lists every client email in the DB except one
@@ -621,7 +703,50 @@ func (s *InboundService) getAllEmailsExcludingInbound(ignoreInboundId int) ([]st
 	if err != nil {
 		return nil, err
 	}
-	return emails, nil
+
+	// Accounts that no inbound serves. They have no settings entry for the scan above
+	// to find, and since an account is allowed to sit on zero inbounds that is now a
+	// state an operator PARKS one in, not a leftover.
+	//
+	// Without this the email reads as free, so creating a "new" client with it walks
+	// straight into AddClientStat's orphan branch: it finds the parked account's
+	// client_traffics row, sees nothing serving the email, and zeroes up/down/all_time
+	// along with the quota and expiry - then upsertAccountFromEntry adopts the parked
+	// account itself. The customer's history is gone and nothing reports it as more
+	// than an Info line. Reserving the email is the whole point of parking one.
+	//
+	// NOT filtered by ignoreInboundId: a parked account has no membership, so it can
+	// never be the row the caller is mid-write on. Best-effort in the same spirit as
+	// the rest of this check - a failure here must not turn an ordinary add into an
+	// opaque database error, so the scan above still stands on its own.
+	var parked []string
+	if err := db.Raw(`
+		SELECT COALESCE(accounts.email, '')
+		FROM accounts
+		WHERE NOT EXISTS (
+			SELECT 1 FROM account_inbounds WHERE account_inbounds.account_id = accounts.id
+		)
+		`).Scan(&parked).Error; err != nil {
+		logger.Warning("listing accounts on no inbound for the duplicate-email check: ", err)
+		return emails, nil
+	}
+	return append(emails, parked...), nil
+}
+
+// emailIsParked reports whether an email belongs to an account no inbound serves.
+// Used only to word the duplicate rejection, so a failure just drops the detail.
+func (s *InboundService) emailIsParked(email string) bool {
+	db := database.GetDB()
+	key := accountKey(email)
+	if db == nil || key == "" {
+		return false
+	}
+	var n int64
+	err := db.Model(&model.Account{}).
+		Where("LOWER(TRIM(email)) = ?", key).
+		Where("NOT EXISTS (SELECT 1 FROM account_inbounds WHERE account_inbounds.account_id = accounts.id)").
+		Count(&n).Error
+	return err == nil && n > 0
 }
 
 func (s *InboundService) getAllEmails() ([]string, error) {
@@ -1070,11 +1195,20 @@ func (s *InboundService) validateInboundConfig(inbound *model.Inbound) error {
 
 	if inbound.Protocol == "openvpn" {
 		var st struct {
-			TcpEnable  bool   `json:"tcpEnable"`
-			TcpPort    int    `json:"tcpPort"`
-			UdpEnable  bool   `json:"udpEnable"`
-			CaCert     string `json:"caCert"`
-			ServerCert string `json:"serverCert"`
+			TcpEnable      bool   `json:"tcpEnable"`
+			TcpPort        int    `json:"tcpPort"`
+			UdpEnable      bool   `json:"udpEnable"`
+			TlsUseFile     bool   `json:"tlsUseFile"`
+			CaCert         string `json:"caCert"`
+			ServerCert     string `json:"serverCert"`
+			CaCertFile     string `json:"caCertFile"`
+			ServerCertFile string `json:"serverCertFile"`
+			ServerKeyFile  string `json:"serverKeyFile"`
+			TlsCryptFile   string `json:"tlsCryptFile"`
+			TlsCrypt       string `json:"tlsCrypt"`
+			// Absent on every inbound created before the toggle, which all carry a
+			// tls-crypt key, so absent has to read as enabled.
+			TlsCryptEnable *bool `json:"tlsCryptEnable"`
 		}
 		if err := json.Unmarshal([]byte(inbound.Settings), &st); err != nil {
 			return common.NewError("Invalid OpenVPN settings:", err)
@@ -1088,8 +1222,24 @@ func (s *InboundService) validateInboundConfig(inbound *model.Inbound) error {
 		if st.TcpEnable && !validPort(st.TcpPort) {
 			return common.NewError("Invalid OpenVPN TCP port (must be 1-65535):", st.TcpPort)
 		}
-		if strings.TrimSpace(st.CaCert) == "" || strings.TrimSpace(st.ServerCert) == "" {
-			return common.NewError("OpenVPN certificate is required: generate or provide a certificate before saving")
+		// Which boxes have to be filled depends on the cert source the admin picked:
+		// file mode never populates the inline PEM fields, so demanding them there
+		// made a file-mode inbound unsaveable.
+		tlsCryptOn := st.TlsCryptEnable == nil || *st.TlsCryptEnable
+		if st.TlsUseFile {
+			if strings.TrimSpace(st.CaCertFile) == "" || strings.TrimSpace(st.ServerCertFile) == "" || strings.TrimSpace(st.ServerKeyFile) == "" {
+				return common.NewError("OpenVPN certificate file paths are required: set the CA, server certificate and server key files before saving")
+			}
+			if tlsCryptOn && strings.TrimSpace(st.TlsCryptFile) == "" {
+				return common.NewError("OpenVPN TLS-Crypt is enabled but no key file is set: provide the key file or turn TLS-Crypt off")
+			}
+		} else {
+			if strings.TrimSpace(st.CaCert) == "" || strings.TrimSpace(st.ServerCert) == "" {
+				return common.NewError("OpenVPN certificate is required: generate or provide a certificate before saving")
+			}
+			if tlsCryptOn && strings.TrimSpace(st.TlsCrypt) == "" {
+				return common.NewError("OpenVPN TLS-Crypt is enabled but no key was generated: generate a self-signed CA or turn TLS-Crypt off")
+			}
 		}
 		return nil
 	}
@@ -1183,6 +1333,11 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 	if exist {
 		return inbound, false, common.NewError("Port already exists:", inbound.Port)
 	}
+	// Everything the row's own port column cannot answer: OpenVPN's second port, the
+	// panel's own listeners, and whatever else on the host already holds the socket.
+	if err := s.checkPortConflicts(inbound, 0); err != nil {
+		return inbound, false, err
+	}
 
 	clients, err := s.GetClients(inbound)
 	if err != nil {
@@ -1194,6 +1349,12 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 	if err := validateClientIdentities(inbound.Protocol, clients); err != nil {
 		return inbound, false, err
 	}
+	if err := ValidateShadowsocksKeys(inbound, clients, nil); err != nil {
+		return inbound, false, err
+	}
+	if err := validateClientLimits(clients); err != nil {
+		return inbound, false, err
+	}
 
 	// Nothing to exclude: this inbound has no row yet, so the whole DB is "other".
 	existEmail, err := s.checkEmailsExistExcludingInbound(clients, 0)
@@ -1201,7 +1362,7 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 		return inbound, false, err
 	}
 	if existEmail != "" {
-		return inbound, false, duplicateEmailError(existEmail)
+		return inbound, false, duplicateEmailError(existEmail, s.emailHolders(existEmail)...)
 	}
 
 	// Ensure created_at and updated_at on clients in settings
@@ -1293,7 +1454,9 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 	if err == nil {
 		if len(inbound.ClientStats) == 0 {
 			for _, client := range clients {
-				s.AddClientStat(tx, inbound.Id, &client)
+				if err = s.AddClientStat(tx, inbound.Id, &client); err != nil {
+					return inbound, false, err
+				}
 			}
 		}
 	} else {
@@ -1364,6 +1527,13 @@ func (s *InboundService) DelInbound(id int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// And the memberships on it, which carry this inbound's share of each account's
+	// usage. SyncInboundAccounts drops them too when the controller reaches it, but
+	// not every caller of DelInbound does, and a membership left pointing at a
+	// deleted inbound keeps its bytes out of the Xray-native remainder for good.
+	if err := db.Where("inbound_id = ?", id).Delete(&model.AccountInbound{}).Error; err != nil {
+		return false, err
+	}
 	inbound, err := s.GetInbound(id)
 	if err != nil {
 		return false, err
@@ -1388,18 +1558,16 @@ func (s *InboundService) DelInbound(id int) (bool, error) {
 // Deliberately not folded into GetInbound: that one is on every write path in this
 // service, and none of them read ClientStats, so the join would be paid dozens of
 // times per request for nothing.
+//
+// Goes through attachClientStats like every other list, so a single /get/:id answers
+// the same as the row in the list did. A "WHERE inbound_id = ?" here would hand this
+// one route the old, wrong answer: the accounts HOMED on the inbound rather than the
+// ones it serves, each with the whole account's usage.
 func (s *InboundService) LoadClientStats(inbound *model.Inbound) error {
 	if inbound == nil {
 		return nil
 	}
-	var stats []xray.ClientTraffic
-	err := database.GetDB().Model(xray.ClientTraffic{}).
-		Where("inbound_id = ?", inbound.Id).Find(&stats).Error
-	if err != nil && err != gorm.ErrRecordNotFound {
-		return err
-	}
-	inbound.ClientStats = stats
-	return nil
+	return s.attachClientStats(database.GetDB(), []*model.Inbound{inbound})
 }
 
 func (s *InboundService) GetInbound(id int) (*model.Inbound, error) {
@@ -1433,6 +1601,12 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 	if exist {
 		return inbound, false, common.NewError("Port already exists:", inbound.Port)
 	}
+	// Same widened check as the add path. Ports this inbound already holds are
+	// exempt, so an edit that leaves the port alone is never blocked by its own
+	// running listener.
+	if err := s.checkPortConflicts(inbound, inbound.Id); err != nil {
+		return inbound, false, err
+	}
 
 	// This edit REPLACES the client list, so the inbound's own persisted row is not a
 	// competitor and must be excluded, or every client being kept collides with
@@ -1465,7 +1639,17 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 		if err := validateChangedClientIdentities(inbound.Protocol, updatedClients, storedClients); err != nil {
 			return inbound, false, err
 		}
+		if err := ValidateShadowsocksKeys(inbound, updatedClients, storedClients); err != nil {
+			return inbound, false, err
+		}
 	} else if err := validateClientIdentities(inbound.Protocol, updatedClients); err != nil {
+		return inbound, false, err
+	} else if err := ValidateShadowsocksKeys(inbound, updatedClients, nil); err != nil {
+		return inbound, false, err
+	}
+	// Outside the branch above: the limits are brand new columns, so no stored client
+	// can carry a bad one and there is nothing to exempt.
+	if err := validateClientLimits(updatedClients); err != nil {
 		return inbound, false, err
 	}
 
@@ -1474,7 +1658,7 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 		return inbound, false, err
 	}
 	if existEmail != "" {
-		return inbound, false, duplicateEmailError(existEmail)
+		return inbound, false, duplicateEmailError(existEmail, s.emailHolders(existEmail)...)
 	}
 
 	// No exclusion needed, unlike the email check above: this list REPLACES the stored
@@ -1775,6 +1959,12 @@ func (s *InboundService) AddInboundClient(data *model.Inbound) (bool, error) {
 		if err := validateClientIdentities(target.Protocol, clients); err != nil {
 			return false, err
 		}
+		if err := ValidateShadowsocksKeys(target, clients, nil); err != nil {
+			return false, err
+		}
+	}
+	if err := validateClientLimits(clients); err != nil {
+		return false, err
 	}
 
 	var settings map[string]any
@@ -1801,7 +1991,7 @@ func (s *InboundService) AddInboundClient(data *model.Inbound) (bool, error) {
 		return false, err
 	}
 	if existEmail != "" {
-		return false, duplicateEmailError(existEmail)
+		return false, duplicateEmailError(existEmail, s.emailHolders(existEmail)...)
 	}
 
 	oldInbound, err := s.GetInbound(data.Id)
@@ -1928,7 +2118,9 @@ func (s *InboundService) AddInboundClient(data *model.Inbound) (bool, error) {
 	s.xrayApi.Init(p.GetAPIPort())
 	for _, client := range clients {
 		if len(client.Email) > 0 {
-			s.AddClientStat(tx, data.Id, &client)
+			if err = s.AddClientStat(tx, data.Id, &client); err != nil {
+				return false, err
+			}
 			if client.Enable {
 				cipher := ""
 				if oldInbound.Protocol == "shadowsocks" {
@@ -2100,7 +2292,16 @@ func (s *InboundService) buildTargetClientFromSource(source model.Client, target
 		// protocols keyed on the password (see clientIdentityKey).
 		target.ID = s.generateRandomCredential(targetProtocol)
 		target.Password = s.generateRandomCredential(targetProtocol)
-	case model.WGC, model.AWG, model.GRE, model.MTPROTO, model.SSH:
+	case model.MTPROTO:
+		// Email-identity like the group below, but the SECRET is the credential, and it
+		// was copied verbatim from the source account by the struct assignment above.
+		// Minting a fresh one is both the privacy answer (two accounts sharing one
+		// secret are the same account to the proxy) and the correctness one: without
+		// it the copy sat blank whenever the source had none, and only became usable
+		// on the next ReconcileSecrets sweep.
+		target.ID = email
+		target.Secret = s.generateRandomCredential(targetProtocol) // dashless uuid = the 32 hex chars telemt wants
+	case model.WGC, model.AWG, model.GRE, model.SSH:
 		// Email-identity protocols: their settings JSON stores id=email and the
 		// panel's client models derive id from email, so a random credential here
 		// would name an account that does not exist.
@@ -2302,8 +2503,19 @@ func (s *InboundService) DelInboundClient(inboundId int, clientId string) (bool,
 		return false, common.NewError("client not found:", clientId)
 	}
 
-	if len(newClients) == 0 {
-		return false, common.NewError("no client remained in Inbound")
+	// Emptying an inbound is allowed. This used to refuse with "no client remained in
+	// Inbound", inherited from upstream, and no invariant ever backed it: AddInbound
+	// creates an inbound with clients:[] and UpdateInbound saves one down to it, both
+	// releasing the email correctly. What the guard actually did was make the LAST
+	// account of an inbound undeletable, which on a multi-inbound account left a
+	// customer the operator had deleted still serving on that one membership, and left
+	// their email held against a re-create.
+	//
+	// nil is normalized because the loop above only ever appends: left alone it
+	// marshals `"clients": null`, and a null client list is not the same shape as an
+	// empty one to everything that reads settings back.
+	if newClients == nil {
+		newClients = []any{}
 	}
 
 	settings["clients"] = newClients
@@ -2324,16 +2536,33 @@ func (s *InboundService) DelInboundClient(inboundId int, clientId string) (bool,
 	needRestart := false
 
 	if len(email) > 0 {
+		// Read into a slice, not First. A missing row is not an error here, it is "no
+		// stats to delete", and it is the ordinary state of the SECOND membership of one
+		// account: email is unique panel-wide, so an account on N inbounds has ONE
+		// traffic row, the first delete takes it, and every remaining membership then
+		// failed outright with "Get stats error" and could never be removed. That left a
+		// deleted account still serving on every inbound but the first. Same trap and
+		// same fix as DelInboundClientByEmail below.
+		//
+		// notDepleted stays true when there is no row: it only decides whether to bother
+		// calling RemoveUser, and a user the core does not have answers "User %s not
+		// found." which the branch below already treats as done. Defaulting it false
+		// instead would skip the call and leave a deleted account connected until the
+		// next restart.
 		notDepleted := true
-		err = db.Model(xray.ClientTraffic{}).Select("enable").Where("email = ?", email).First(&notDepleted).Error
+		var stats []xray.ClientTraffic
+		err = db.Model(xray.ClientTraffic{}).Select("enable").Where("email = ?", email).Find(&stats).Error
 		if err != nil {
 			logger.Error("Get stats error")
 			return false, err
 		}
-		err = s.DelClientStat(db, email)
-		if err != nil {
-			logger.Error("Delete stats Data Error")
-			return false, err
+		if len(stats) > 0 {
+			notDepleted = stats[0].Enable
+			err = s.DelClientStat(db, email)
+			if err != nil {
+				logger.Error("Delete stats Data Error")
+				return false, err
+			}
 		}
 		if needApiDel && notDepleted {
 			s.xrayApi.Init(p.GetAPIPort())
@@ -2352,7 +2581,33 @@ func (s *InboundService) DelInboundClient(inboundId int, clientId string) (bool,
 			s.xrayApi.Close()
 		}
 	}
-	return needRestart, db.Save(oldInbound).Error
+	if err := db.Save(oldInbound).Error; err != nil {
+		return needRestart, err
+	}
+	dropMembershipAfterDelete(db, inboundId, email)
+	return needRestart, nil
+}
+
+// dropMembershipAfterDelete takes the account off this inbound in the accounts layer
+// once its settings entry is gone.
+//
+// In the delete itself and not left to the caller: a membership that outlives its
+// entry RESURRECTS the client on the next projection (see DropMembership), and the
+// callers are precisely where that kept being missed - the LDAP sync job and the
+// reseller cascade both delete clients and neither reconciles the mirror. Doing it
+// here makes every caller correct by construction, including ones not written yet.
+//
+// Never fails the delete. The settings write has already committed, so the client IS
+// gone from the data plane; a mirror that could not be updated is a stale row for the
+// startup cleanup to collect, not a reason to report a delete that happened as failed.
+func dropMembershipAfterDelete(db *gorm.DB, inboundId int, email string) {
+	if email == "" {
+		return
+	}
+	var accountService AccountService
+	if err := accountService.DropMembership(db, inboundId, email); err != nil {
+		logger.Warningf("dropping the accounts-layer membership of %q on inbound %d after deleting it: %v", email, inboundId, err)
+	}
 }
 
 func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId string) (bool, error) {
@@ -2392,6 +2647,12 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 	if err := validateChangedClientIdentities(oldInbound.Protocol, clients, oldClients); err != nil {
 		return false, err
 	}
+	if err := ValidateShadowsocksKeys(oldInbound, clients, oldClients); err != nil {
+		return false, err
+	}
+	if err := validateClientLimits(clients); err != nil {
+		return false, err
+	}
 
 	oldEmail := ""
 	newClientId := clientIdentity(oldInbound.Protocol, clients[0])
@@ -2421,7 +2682,7 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 			return false, err
 		}
 		if existEmail != "" {
-			return false, duplicateEmailError(existEmail)
+			return false, duplicateEmailError(existEmail, s.emailHolders(existEmail)...)
 		}
 	}
 
@@ -2542,7 +2803,9 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 				return false, err
 			}
 		} else {
-			s.AddClientStat(tx, data.Id, &clients[0])
+			if err = s.AddClientStat(tx, data.Id, &clients[0]); err != nil {
+				return false, err
+			}
 		}
 	} else {
 		err = s.DelClientStat(tx, oldEmail)
@@ -2600,6 +2863,60 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 	return needRestart, tx.Save(oldInbound).Error
 }
 
+// AdmitAccount reports whether one more account can be placed on an inbound.
+//
+// It is the two capacity guards AddInboundClient applies (see the block above the
+// "Secure client ID" loop there), lifted out so the membership path can run them
+// too. AccountService.ApplyMemberships is the membership writer and knows about
+// neither: nextFreeSlot hands out the next index whether or not the pool has an
+// address behind it, and nothing in the accounts layer has ever heard of an ikev2
+// auth mode. A membership added without this check therefore produces an account
+// that is listed on the inbound, reads as provisioned, and is silently unroutable
+// (no peer, no route), or a second PSK/EAP-TLS account the daemon cannot tell
+// apart from the first.
+//
+// nil when the account is ALREADY a member: it holds its slot already, so
+// re-applying a set that includes a full inbound must not be refused.
+func (s *InboundService) AdmitAccount(inboundId int, email string) error {
+	inbound, err := s.GetInbound(inboundId)
+	if err != nil {
+		return err
+	}
+	if inbound == nil {
+		return fmt.Errorf("inbound %d not found", inboundId)
+	}
+	existing, err := s.GetClients(inbound)
+	if err != nil {
+		return err
+	}
+	for i := range existing {
+		if sameEmail(existing[i].Email, email) {
+			return nil
+		}
+	}
+	// maxVpnAccounts counts the largest pool the inbound could ever expand to, so
+	// this never refuses an account the pool could actually hold. Slots can be
+	// sparse (a delete frees one without renumbering the rest), so the question is
+	// which slot this account would take, not how many accounts there are.
+	if maxAcc, ok := maxVpnAccounts(inbound); ok {
+		if slots := slotsForNewAccounts(existing, 1); len(slots) > 0 && slots[0] >= maxAcc {
+			return common.NewError(fmt.Sprintf(
+				"IP pool full for %q: this %s inbound can hold at most %d account(s) at the current User Limit (%d already present). Lower the User Limit, or add another inbound.",
+				inbound.Remark, inbound.Protocol, maxAcc, len(existing)))
+		}
+	}
+	// psk / eap-tls share one key or one client certificate across the inbound, so
+	// a second account there is a second name for the same credential.
+	switch ikev2AuthMode(inbound) {
+	case "psk", "eap-tls":
+		if len(existing) >= 1 {
+			return common.NewError(fmt.Sprintf(
+				"%q is a PSK or EAP-TLS IKEv2 inbound, which allows only one account", inbound.Remark))
+		}
+	}
+	return nil
+}
+
 // --- Bulk client operations ---------------------------------------------------
 
 // BulkClientTarget identifies one client (by email, unique within an inbound) that a
@@ -2613,13 +2930,21 @@ type BulkClientTarget struct {
 // many inbounds. Op is one of addDays/subDays/addTraffic/subTraffic/enable/disable.
 // Days is used by the day ops; AmountBytes by the traffic ops.
 type BulkClientUpdateRequest struct {
-	Op            string             `json:"op"`
-	Days          int64              `json:"days"`
-	AmountBytes   int64              `json:"amountBytes"`
-	SkipFirstUse  bool               `json:"skipFirstUse"`
-	SkipUnlimited bool               `json:"skipUnlimited"`
-	SkipDisabled  bool               `json:"skipDisabled"`
-	Targets       []BulkClientTarget `json:"targets"`
+	Op            string `json:"op"`
+	Days          int64  `json:"days"`
+	AmountBytes   int64  `json:"amountBytes"`
+	SkipFirstUse  bool   `json:"skipFirstUse"`
+	SkipUnlimited bool   `json:"skipUnlimited"`
+	SkipDisabled  bool   `json:"skipDisabled"`
+	// InboundIds is the membership operations' own argument: the inbounds the
+	// selected accounts are being added TO or removed FROM. Every other op names
+	// its targets and nothing else, and leaves this empty.
+	//
+	// It is deliberately NOT a second way to name targets. BulkUpdateClients does
+	// not read it at all; only the membership handler does, and that one applies
+	// its change through the accounts layer rather than through this applier.
+	InboundIds []int              `json:"inboundIds"`
+	Targets    []BulkClientTarget `json:"targets"`
 }
 
 // BulkClientUpdateResult reports how many targeted clients were changed vs skipped
@@ -2955,6 +3280,11 @@ func (s *InboundService) AddTraffic(inboundTraffics []*xray.Traffic, clientTraff
 	if err != nil {
 		return err, false, nil, nil, nil
 	}
+	// Before the client records are applied, and with the inbound totals in hand:
+	// Xray's per-account stat names no inbound, and this is where that gap is closed
+	// while the same tick's per-inbound evidence is still available to close it with.
+	// See web/service/coreattribution.go.
+	attributeCoreRecords(tx, inboundTraffics, clientTraffics)
 	err = s.addClientTraffic(tx, clientTraffics)
 	if err != nil {
 		return err, false, nil, nil, nil
@@ -3011,6 +3341,9 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 		// Empty onlineUsers
 		if p != nil {
 			p.SetOnlineClients(make([]string, 0))
+			// Cleared with it, or the last tick that DID see traffic keeps every
+			// membership it lit showing live for as long as the panel stays up.
+			p.SetOnlineMemberships(make([]string, 0))
 		}
 		return nil
 	}
@@ -3099,6 +3432,31 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 		}
 	}
 
+	// The per-inbound BREAKDOWN, accumulated alongside the account total below from
+	// the SAME billed deltas so the two cannot disagree. Keyed by (source inbound,
+	// account); records that name no source inbound are left out of it and reach the
+	// total only. See web/service/membershipusage.go.
+	membershipDeltas := map[membershipUsageKey]*membershipUsageDelta{}
+
+	// WHICH inbound each online account was seen on, in the same tick and from the
+	// same records the breakdown above is built from.
+	//
+	// onlineClients answers "is this account connected", which is an account-wide
+	// question with an account-wide answer, and the Clients page repeated that one
+	// answer against every membership: an account on ssh and l2tp connecting over ssh
+	// alone lit up BOTH, and there was no way to tell from the page which of them the
+	// customer was actually using.
+	//
+	// The evidence is already here. A record that names its source inbound places the
+	// session exactly; one that does not (everything Xray counts, whose stat is
+	// "user>>><email>>>>traffic" with no inbound in it) is filed under inbound 0,
+	// which the page renders as "on one of this account's Xray inbounds, and the core
+	// cannot say which". That is the same distinction the usage figures already draw,
+	// deliberately: one guess would otherwise be marking a customer live on an
+	// inbound they have never once connected to.
+	onlineMembershipSet := map[string]bool{}
+	onlineMemberships := make([]string, 0, len(traffics))
+
 	// Every record matching an email is applied, not just the first. A tick can legitimately
 	// carry more than one record for an account (a client billed under two protocols, or a
 	// relay reporting alongside Xray), and stopping at the first silently threw the rest
@@ -3141,6 +3499,27 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 				// AllTime stays raw: it's the lifetime record of bytes actually moved,
 				// and survives the resets that up/down don't.
 				dbClientTraffics[dbTraffic_index].AllTime += (rawUp + rawDown)
+				// The same delta, filed under the inbound it came from. The values are
+				// the billed ones (and the raw one for all_time) rather than a second
+				// calculation, so summing the breakdown reproduces the account row
+				// exactly, minus whatever named no source.
+				addTo(membershipDeltas,
+					traffics[traffic_index].InboundId,
+					dbClientTraffics[dbTraffic_index].Email,
+					billedUp, billedDown, rawUp+rawDown)
+				// Bytes on the wire are the whole of the liveness signal here, exactly
+				// as they are for the account-wide flag below. Measured bytes, not
+				// billed: a multiplier of zero is a pricing decision and must not make
+				// a connected customer look offline.
+				if rawUp+rawDown > 0 {
+					key := onlineMembershipKey(
+						traffics[traffic_index].InboundId,
+						dbClientTraffics[dbTraffic_index].Email)
+					if !onlineMembershipSet[key] {
+						onlineMembershipSet[key] = true
+						onlineMemberships = append(onlineMemberships, key)
+					}
+				}
 				moved += rawUp + rawDown
 			}
 		}
@@ -3157,12 +3536,17 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 	// and an unguarded call there takes the whole traffic job down.
 	if p != nil {
 		p.SetOnlineClients(onlineClients)
+		p.SetOnlineMemberships(onlineMemberships)
 	}
 
 	err = tx.Save(dbClientTraffics).Error
 	if err != nil {
 		logger.Warning("AddClientTraffic update data ", err)
 	}
+
+	// After the authoritative row, and never gating it: this is the display split,
+	// and a failure to attribute must not cost the tick its billing.
+	addMembershipTraffic(tx, membershipDeltas)
 
 	return nil
 }
@@ -3324,6 +3708,9 @@ func (s *InboundService) autoRenewClients(tx *gorm.DB) (bool, int64, error) {
 		traffics[traffic_index].Up = 0
 		traffics[traffic_index].Enable = true
 	}
+	// A renewal zeroes up/down, so the per-inbound breakdown of those accounts has to
+	// go with them or it would keep claiming the bytes of the period just closed.
+	resetMembershipUsage(tx, renewEmails)
 
 	for inbound_index := range inbounds {
 		settings := map[string]any{}
@@ -3512,6 +3899,7 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, []stri
 type inboundServingEmail struct {
 	Id       int
 	Tag      string
+	Remark   string
 	Email    string
 	Protocol string
 }
@@ -3556,7 +3944,7 @@ func (s *InboundService) inboundsServingEmails(tx *gorm.DB, emails []string) ([]
 
 	var inbounds []*model.Inbound
 	if err := tx.Model(&model.Inbound{}).
-		Select("id", "tag", "protocol", "settings").
+		Select("id", "tag", "remark", "protocol", "settings").
 		Order("id ASC").Find(&inbounds).Error; err != nil {
 		return nil, err
 	}
@@ -3576,6 +3964,7 @@ func (s *InboundService) inboundsServingEmails(tx *gorm.DB, emails []string) ([]
 			out = append(out, inboundServingEmail{
 				Id:       inbound.Id,
 				Tag:      inbound.Tag,
+				Remark:   inbound.Remark,
 				Email:    original,
 				Protocol: string(inbound.Protocol),
 			})
@@ -3587,6 +3976,14 @@ func (s *InboundService) inboundsServingEmails(tx *gorm.DB, emails []string) ([]
 // SingleInboundIdByEmail maps each account served by a protocol to the inbound
 // serving it, keyed by normalized email, for the traffic collectors to stamp the
 // SOURCE of the bytes they report.
+//
+// It is now the FALLBACK, not the primary answer. The session registry knows which
+// inbound a live tunnel belongs to (radiusSession.inboundId), and the traffic job
+// asks it first; this covers only an address the registry cannot place, such as one
+// left over from before a panel restart. That ordering matters because of the very
+// next paragraph: this function gives up and returns 0 whenever an account is on two
+// inbounds of a protocol, which is exactly the case the whole per-inbound breakdown
+// exists for.
 //
 // An email served by TWO inbounds of the same protocol is deliberately mapped to
 // 0 rather than to either of them. Zero means "source unknown", which makes the
@@ -3658,17 +4055,77 @@ func (s *InboundService) GetInboundTags() (string, error) {
 }
 
 func (s *InboundService) MigrationRemoveOrphanedTraffics() {
-	db := database.GetDB()
-	db.Exec(`
-		DELETE FROM client_traffics
-		WHERE email NOT IN (
-			SELECT JSON_EXTRACT(client.value, '$.email')
-			FROM inbounds,
-				JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
-		)
-	`)
+	if err := removeOrphanedTraffics(database.GetDB()); err != nil {
+		logger.Warning("MigrationRemoveOrphanedTraffics - ", err)
+	}
 }
 
+// removeOrphanedTraffics deletes the counter rows no settings entry claims.
+//
+// It was broken two ways at once, which is why installs still carry orphans that
+// hold an email against a re-create:
+//
+//   - NOT IN over a sub-select of JSON_EXTRACT. A client stored with no `email` key
+//     yields SQL NULL, and that really happens (see the COALESCE in
+//     getAllEmailsExcludingInbound, which exists for exactly it). ONE NULL anywhere
+//     in a NOT IN list makes the whole predicate NULL for every row, so the delete
+//     matched NOTHING and the GC was silently inert. NOT EXISTS is NULL-safe.
+//   - A byte-exact comparison. Identity is case- and whitespace-insensitive
+//     everywhere else in the panel, so a row spelled "Bob" whose settings entry says
+//     "bob" read as an orphan: on the day the NULL stopped shielding it, this would
+//     have DELETED a live paying account's quota row. LOWER(TRIM()) on BOTH sides.
+//
+// COALESCE around the clients array too, because JSON_EACH must be handed valid
+// JSON: a protocol whose settings carry no clients key at all would otherwise take
+// the whole statement down with "malformed JSON".
+func removeOrphanedTraffics(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	return db.Exec(`
+		DELETE FROM client_traffics
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM inbounds,
+				JSON_EACH(COALESCE(JSON_EXTRACT(inbounds.settings, '$.clients'), '[]')) AS client
+			WHERE LOWER(TRIM(COALESCE(JSON_EXTRACT(client.value, '$.email'), '')))
+				= LOWER(TRIM(client_traffics.email))
+		)
+	`).Error
+}
+
+// AddClientStat creates the account's counter row.
+//
+// Email is unique panel-wide, so an account gets exactly one row however many
+// inbounds serve it, and inbound_id on that row records which one created it (its
+// HOME inbound). Every later membership calls this and must not make a second row,
+// which is why the insert carries ON CONFLICT DO NOTHING: a duplicate is expected
+// and intentional here, and every OTHER error is real and reaches the caller.
+//
+// A CONFLICT MEANS TWO DIFFERENT THINGS, and telling them apart is the rest of this
+// function. Do not collapse it back into one branch:
+//
+//   - The email belongs to a LIVE account: it is served on another inbound, or a
+//     membership row says it is about to be. This is the ordinary multi-inbound
+//     case - one account, one counter row - and the existing row is the CORRECT
+//     one. It is left completely untouched: its usage, quota, expiry and enable
+//     flag are the customer's real state and a second membership must not restate
+//     them.
+//
+//   - Nothing else serves the email. Then the row is an ORPHAN left by a client
+//     that was deleted (a delete whose settings write landed while its row did
+//     not, a case-split spelling the old exact-match delete could not find, or an
+//     inbound dropped out from under it), and the client being created now is a
+//     NEW customer who merely reused the name. Inheriting it is the "I deleted them
+//     and recreated them and it still does not work" report: the predecessor's
+//     up/down carry over, so a fresh account is born over its quota, disabled and
+//     expired, with nothing in the UI explaining why. Its values are overwritten
+//     with the incoming client's.
+//
+// The distinction lives HERE, at the one statement that can see the conflict, and
+// not at the five call sites: RowsAffected is the only honest signal that the row
+// pre-existed, and a caller re-deriving it with its own SELECT would race the
+// insert and would have to be got right five times.
 func (s *InboundService) AddClientStat(tx *gorm.DB, inboundId int, client *model.Client) error {
 	clientTraffic := xray.ClientTraffic{}
 	clientTraffic.InboundId = inboundId
@@ -3679,9 +4136,120 @@ func (s *InboundService) AddClientStat(tx *gorm.DB, inboundId int, client *model
 	clientTraffic.Up = 0
 	clientTraffic.Down = 0
 	clientTraffic.Reset = client.Reset
-	result := tx.Create(&clientTraffic)
-	err := result.Error
-	return err
+	result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&clientTraffic)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		// Inserted. There was no predecessor to decide about.
+		return nil
+	}
+
+	served, err := s.emailServedOutside(tx, inboundId, client.Email)
+	if err != nil {
+		return err
+	}
+	if served {
+		// A real membership of a live account. Reusing the row is the point.
+		return nil
+	}
+
+	// Matched on the stored spelling, not on accountKey: the unique index is BINARY,
+	// so the conflict we just took proves a row with exactly this email exists, and a
+	// case-insensitive UPDATE could reach a different account's row instead.
+	if err := tx.Model(xray.ClientTraffic{}).
+		Where("email = ?", client.Email).
+		Updates(map[string]any{
+			"inbound_id":  inboundId,
+			"enable":      client.Enable,
+			"total":       client.TotalGB,
+			"expiry_time": client.ExpiryTime,
+			"reset":       client.Reset,
+			"up":          0,
+			"down":        0,
+			// all_time as well, not just up/down. It is monotonic across a traffic
+			// reset by design, so leaving it is how a brand new account gets billed
+			// for its predecessor's lifetime traffic: the reseller refund arithmetic
+			// reads consumption as AllTime minus AllTimeBase.
+			"all_time":    0,
+			"last_online": 0,
+		}).Error; err != nil {
+		return err
+	}
+	// The per-inbound breakdown of the row just zeroed. A stale membership can outlive
+	// the client it described (nothing prunes account_inbounds when a settings entry
+	// goes), and its bytes would keep being displayed against the new account.
+	resetMembershipUsage(tx, []string{client.Email})
+	logger.Infof("AddClientStat - %q reused an orphaned traffic row (no inbound or membership served it); its counters, quota, expiry and enable state were reset to the new client's", client.Email)
+	return nil
+}
+
+// emailServedOutside answers whether an email is already served by something OTHER
+// than the client the caller is writing right now. It is the live-account test
+// AddClientStat uses to decide whether a pre-existing counter row is a real
+// membership or an orphan.
+//
+// exceptInboundId is skipped because the caller is mid-write on it, and the two
+// orders both occur: AddInbound has already saved the settings holding the new
+// client (so the target inbound would always answer "live" and no orphan would ever
+// be reset), while AddInboundClient and UpdateInboundClient have not saved yet. The
+// duplicate-email check runs ahead of every one of these paths, so a client reaching
+// here is one no OTHER inbound was supposed to be holding anyway.
+//
+// Two sources, and deliberately not servingInboundIds, which unions a third:
+// client_traffics.inbound_id. That column is read off the very row whose liveness is
+// in question, so an orphan would vouch for itself and the reset could never happen.
+//
+//   - settings.clients, scanned. The source of truth in both worlds, correct before
+//     the accounts migration has run and after it.
+//   - account_inbounds, filtered to inbounds that still exist. It catches a
+//     membership recorded before the projection spliced its entry into settings.
+//     Including it can only make this answer "live" more often, which is the safe
+//     direction: the worst case is the old behaviour (reuse the row), where a wrong
+//     "orphan" would zero a paying customer's usage.
+func (s *InboundService) emailServedOutside(tx *gorm.DB, exceptInboundId int, email string) (bool, error) {
+	key := accountKey(email)
+	if key == "" {
+		return false, nil
+	}
+
+	var inbounds []*model.Inbound
+	if err := tx.Model(&model.Inbound{}).Select("id", "settings").Find(&inbounds).Error; err != nil {
+		return false, err
+	}
+	liveIds := make(map[int]bool, len(inbounds))
+	for _, inbound := range inbounds {
+		liveIds[inbound.Id] = true
+	}
+	for _, inbound := range inbounds {
+		if inbound.Id == exceptInboundId {
+			continue
+		}
+		clients, ok := parseSettingsClients(inbound.Settings)
+		if !ok {
+			continue
+		}
+		for _, entry := range clients {
+			entryEmail, _ := entry["email"].(string)
+			if accountKey(entryEmail) == key {
+				return true, nil
+			}
+		}
+	}
+
+	var memberships []int
+	if err := tx.Table("account_inbounds").
+		Joins("JOIN accounts ON accounts.id = account_inbounds.account_id").
+		Where("LOWER(TRIM(accounts.email)) = ?", key).
+		Pluck("account_inbounds.inbound_id", &memberships).Error; err != nil {
+		return false, err
+	}
+	for _, id := range memberships {
+		if id != exceptInboundId && liveIds[id] {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *InboundService) UpdateClientStat(tx *gorm.DB, email string, client *model.Client) error {
@@ -4090,6 +4658,11 @@ func (s *InboundService) ResetClientTrafficByEmail(clientEmail string) error {
 		return err
 	}
 
+	// The per-inbound breakdown of the row just zeroed. Left behind, it would keep
+	// claiming bytes the account no longer has, so the split would total more than
+	// the account itself.
+	resetMembershipUsage(db, []string{clientEmail})
+
 	return nil
 }
 
@@ -4158,6 +4731,8 @@ func (s *InboundService) ResetClientTraffic(id int, clientEmail string) (bool, e
 	if err != nil {
 		return false, err
 	}
+	// Same zeroing on the per-inbound breakdown, see ResetClientTrafficByEmail.
+	resetMembershipUsage(db, []string{traffic.Email})
 
 	return needRestart, nil
 }
@@ -4174,6 +4749,16 @@ func (s *InboundService) ResetAllClientTraffics(id int) error {
 			whereText += " = ?"
 		}
 
+		// Exactly the accounts the update below zeroes, read first because after it
+		// there is nothing left to identify them by. Note this is the accounts HOMED
+		// on the inbound rather than the ones it serves, which is what this route has
+		// always reset; the breakdown only has to follow it, not correct it.
+		var affected []string
+		if err := tx.Model(xray.ClientTraffic{}).Where(whereText, id).
+			Pluck("email", &affected).Error; err != nil {
+			return err
+		}
+
 		// Reset client traffics
 		result := tx.Model(xray.ClientTraffic{}).
 			Where(whereText, id).
@@ -4182,6 +4767,10 @@ func (s *InboundService) ResetAllClientTraffics(id int) error {
 		if result.Error != nil {
 			return result.Error
 		}
+
+		// The per-inbound breakdown of the rows just zeroed, or the split would keep
+		// claiming bytes the accounts no longer have.
+		resetMembershipUsage(tx, affected)
 
 		// Update lastTrafficResetTime for the inbound(s)
 		inboundWhereText := "id "
@@ -4248,46 +4837,74 @@ func (s *InboundService) DelDepletedClientsScoped(id int, onlyEmails map[string]
 		}
 	}()
 
-	whereText := "reset = 0 and inbound_id "
-	if id < 0 {
-		whereText += "> ?"
-	} else {
-		whereText += "= ?"
-	}
-	// Only consider truly depleted clients: expired OR traffic exhausted
-	depletedWhere := whereText + " and ((total > 0 and up + down >= total) or (expiry_time > 0 and expiry_time <= ?))"
+	// The predicate is panel-wide and no longer carries `inbound_id <op> ?`.
+	//
+	// That scoping was the bug: inbound_id is the account's HOME inbound, ONE
+	// arbitrary membership of however many serve it, so grouping the sweep by it took
+	// a depleted account off that inbound only, then deleted its single quota row -
+	// leaving a live client on every other inbound with no quota, no expiry and
+	// nothing left to deplete it a second time. Which inbounds really serve an
+	// account is resolved below through servingInboundIds (memberships plus the
+	// settings blobs), and the account is removed from all of them, because the quota
+	// this sweep acts on is the ACCOUNT's and not one inbound's slice of it.
+	//
+	// reset = 0 keeps its original meaning: an account on a reset cycle is not swept.
+	depletedWhere := "reset = 0 and ((total > 0 and up + down >= total) or (expiry_time > 0 and expiry_time <= ?))"
 
 	now := time.Now().Unix() * 1000
 	depletedClients := []xray.ClientTraffic{}
-	err = db.Model(xray.ClientTraffic{}).
-		Where(depletedWhere, id, now).
-		Select("inbound_id, GROUP_CONCAT(email) as email").
-		Group("inbound_id").
-		Find(&depletedClients).Error
+	// Read on db and not on tx, here and for servingInboundIds below. Both are reads
+	// of the state BEFORE this sweep writes anything, which is what the resolution
+	// wants, and holding a read transaction open across the DelInbound call further
+	// down deadlocks SQLite against that call's own write transaction.
+	err = db.Model(xray.ClientTraffic{}).Where(depletedWhere, now).Find(&depletedClients).Error
 	if err != nil {
 		return nil, err
 	}
 
+	// Resolved in full before anything is written, so the settings rewrites below
+	// cannot see a half-swept panel.
+	removals := map[int][]string{} // inbound id -> the emails to take out of its settings
 	deleted = []string{}
-	for _, depletedClient := range depletedClients {
-		emails := []string{}
-		for _, email := range strings.Split(depletedClient.Email, ",") {
-			if onlyEmails == nil || ResellerOwnsEmail(onlyEmails, email) {
-				emails = append(emails, email)
-			}
-		}
-		// Every depleted account on this inbound belongs to someone else.
-		if len(emails) == 0 {
+	for _, row := range depletedClients {
+		email := row.Email
+		if onlyEmails != nil && !ResellerOwnsEmail(onlyEmails, email) {
 			continue
 		}
-		oldInbound, err := s.GetInbound(depletedClient.InboundId)
-		if err != nil {
-			return nil, err
+		ids, ierr := servingInboundIds(db, email)
+		if ierr != nil {
+			return nil, ierr
+		}
+		if id >= 0 && !containsInt(ids, id) {
+			// A sweep of ONE inbound only considers the accounts that inbound serves.
+			// An orphaned row homed here but served nowhere is still swept, which is
+			// what the old inbound_id predicate did for it.
+			if len(ids) > 0 || row.InboundId != id {
+				continue
+			}
+		}
+		for _, inboundId := range ids {
+			removals[inboundId] = append(removals[inboundId], email)
+		}
+		deleted = append(deleted, email)
+	}
+
+	inboundIds := make([]int, 0, len(removals))
+	for inboundId := range removals {
+		inboundIds = append(inboundIds, inboundId)
+	}
+	sort.Ints(inboundIds)
+
+	for _, inboundId := range inboundIds {
+		emails := removals[inboundId]
+		oldInbound, gerr := s.GetInbound(inboundId)
+		if gerr != nil || oldInbound == nil {
+			// Gone between resolving and now: nothing left to remove from it.
+			continue
 		}
 		var oldSettings map[string]any
-		err = json.Unmarshal([]byte(oldInbound.Settings), &oldSettings)
-		if err != nil {
-			return nil, err
+		if uerr := json.Unmarshal([]byte(oldInbound.Settings), &oldSettings); uerr != nil {
+			return nil, uerr
 		}
 
 		// Comma-ok on both asserts: a settings blob shaped unexpectedly is a bad row
@@ -4304,7 +4921,12 @@ func (s *InboundService) DelDepletedClientsScoped(id int, onlyEmails map[string]
 			cEmail, _ := c["email"].(string)
 			deplete := false
 			for _, email := range emails {
-				if email == cEmail {
+				// accountKey, not ==. These two strings come from different tables
+				// (client_traffics on one side, the settings blob on the other) and
+				// identity is case-insensitive across the panel, so an exact compare
+				// left a depleted account in the settings while the sweep deleted its
+				// traffic row below: a live client with no quota row at all.
+				if accountKey(email) == accountKey(cEmail) {
 					deplete = true
 					break
 				}
@@ -4313,12 +4935,17 @@ func (s *InboundService) DelDepletedClientsScoped(id int, onlyEmails map[string]
 				newClients = append(newClients, client)
 			}
 		}
-		// Delete inbound if no client remains. Never on a scoped sweep: the reseller
-		// owns accounts, not the inbound, and emptying their last one must not take
-		// an object shared with the admin who does own it.
-		if len(newClients) == 0 && onlyEmails == nil {
-			s.DelInbound(depletedClient.InboundId)
-			deleted = append(deleted, emails...)
+		// Delete the inbound if no client remains, but ONLY the inbound this sweep was
+		// asked about. Never on a scoped sweep either: the reseller owns accounts, not
+		// the inbound, and emptying their last one must not take an object shared with
+		// the admin who does own it.
+		//
+		// The restriction is what the reach above makes necessary. The sweep now
+		// follows an account onto every inbound serving it, and without this a sweep
+		// of inbound 3 could destroy inbound 5 - port, certificates, daemon config and
+		// all - because one expired customer happened to be its only client.
+		if len(newClients) == 0 && onlyEmails == nil && (id < 0 || inboundId == id) {
+			s.DelInbound(inboundId)
 			continue
 		}
 		if newClients == nil {
@@ -4326,32 +4953,38 @@ func (s *InboundService) DelDepletedClientsScoped(id int, onlyEmails map[string]
 		}
 		oldSettings["clients"] = newClients
 
-		newSettings, err := json.MarshalIndent(oldSettings, "", "  ")
-		if err != nil {
-			return nil, err
+		newSettings, merr := json.MarshalIndent(oldSettings, "", "  ")
+		if merr != nil {
+			return nil, merr
 		}
 
 		oldInbound.Settings = string(newSettings)
-		err = tx.Save(oldInbound).Error
-		if err != nil {
-			return nil, err
+		if serr := tx.Save(oldInbound).Error; serr != nil {
+			return nil, serr
 		}
-		deleted = append(deleted, emails...)
 	}
 
-	// Delete stats only for truly depleted clients, and on a scoped sweep only for
-	// the ones just taken out of the settings: the predicate alone matches every
-	// admin's depleted accounts too.
-	if onlyEmails == nil {
-		err = tx.Where(depletedWhere, id, now).Delete(xray.ClientTraffic{}).Error
-	} else if len(deleted) > 0 {
-		err = tx.Where(depletedWhere, id, now).Where("email IN ?", deleted).Delete(xray.ClientTraffic{}).Error
-	}
-	if err != nil {
-		return nil, err
+	// Exactly the accounts just taken out of the settings, and no longer "everything
+	// the predicate matches": with the sweep scoped by membership rather than by
+	// inbound_id, the predicate on its own names accounts this call was never about.
+	if len(deleted) > 0 {
+		if err = tx.Where("email IN ?", deleted).Delete(xray.ClientTraffic{}).Error; err != nil {
+			return nil, err
+		}
 	}
 
 	return deleted, nil
+}
+
+// containsInt is the plain membership test the sweep needs; servingInboundIds
+// returns a sorted slice and the sets involved are single digits long.
+func containsInt(ids []int, want int) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *InboundService) GetClientTrafficTgBot(tgId int64) ([]*xray.ClientTraffic, error) {
@@ -4574,8 +5207,12 @@ func (s *InboundService) ClearClientIps(clientEmail string) error {
 func (s *InboundService) SearchInbounds(query string) ([]*model.Inbound, error) {
 	db := database.GetDB()
 	var inbounds []*model.Inbound
-	err := db.Model(model.Inbound{}).Preload("ClientStats").Where("remark like ?", "%"+query+"%").Find(&inbounds).Error
+	err := db.Model(model.Inbound{}).Where("remark like ?", "%"+query+"%").Find(&inbounds).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+	// Every account this inbound serves, carrying its share. See getInboundsWhere.
+	if err := s.attachClientStats(db, inbounds); err != nil {
 		return nil, err
 	}
 	return inbounds, nil
@@ -4679,7 +5316,9 @@ func (s *InboundService) MigrationRequirements() {
 				var count int64
 				tx.Model(xray.ClientTraffic{}).Where("email = ?", modelClient.Email).Count(&count)
 				if count == 0 {
-					s.AddClientStat(tx, inbounds[inbound_index].Id, &modelClient)
+					if err = s.AddClientStat(tx, inbounds[inbound_index].Id, &modelClient); err != nil {
+						return
+					}
 				}
 			}
 		}
@@ -4742,6 +5381,18 @@ func (s *InboundService) MigrateDB() {
 	s.MigrationSubIds()
 	s.MigrationAccountSlots()
 	s.MigrationRemoveOrphanedTraffics()
+	// Move an MTProto inbound's connection modes, FakeTLS domain and device cap off its
+	// clients and onto the inbound itself. It also runs on every start (from
+	// GenerateAllConfigs, which is where a plain binary upgrade gets it), so this is
+	// specifically for a database that arrives ALREADY OLD: a restored backup, an
+	// imported foreign DB, or `vpn-ui migrate`. Nothing between here and the first
+	// GenerateAllConfigs would otherwise lift it, and an mtproto reader is tolerant of
+	// the old shape but a WRITER through the panel's form is not: it would post back what
+	// it read. Idempotent and cheap, like every other pass here.
+	mtproto := &MtprotoService{}
+	if err := mtproto.LiftClientSettingsToInbound(); err != nil {
+		logger.Warning("MigrateDB - lifting legacy MTProto client settings failed: ", err)
+	}
 }
 
 // MigrationAccountSlots stamps every pool-protocol account with the slot it is effectively
@@ -4911,6 +5562,12 @@ func (s *InboundService) GetClientStatsFor(user *model.User) (*ClientStatsSummar
 
 	summary := &ClientStatsSummary{}
 	now := time.Now().UnixMilli()
+	// An ACCOUNT is depleted once, however many inbounds serve it. ClientStats now
+	// lists it under every one of them (it used to appear only under its home
+	// inbound), so without this an account on three inbounds would be counted as
+	// three depleted customers. Deliberately not applied to Total, which has always
+	// counted client ENTRIES and must keep answering the same question.
+	countedDepletion := make(map[string]bool)
 	for _, inbound := range inbounds {
 		clients, err := s.GetClients(inbound)
 		if err != nil {
@@ -4928,6 +5585,10 @@ func (s *InboundService) GetClientStatsFor(user *model.User) (*ClientStatsSummar
 			}
 		}
 		for _, stat := range inbound.ClientStats {
+			if countedDepletion[accountKey(stat.Email)] {
+				continue
+			}
+			countedDepletion[accountKey(stat.Email)] = true
 			exhausted := stat.Total > 0 && (stat.Up+stat.Down) >= stat.Total
 			expired := stat.ExpiryTime > 0 && stat.ExpiryTime <= now
 			if exhausted || expired {
@@ -4952,6 +5613,27 @@ func (s *InboundService) GetOnlineClients() []string {
 		return []string{}
 	}
 	return p.GetOnlineClients()
+}
+
+// onlineMembershipKey is the wire form of one (inbound, account) liveness pair.
+// Inbound 0 is not a missing value to be cleaned up but a meaning: "connected, and
+// the collector could not name which of this account's inbounds it came through".
+func onlineMembershipKey(inboundId int, email string) string {
+	return strconv.Itoa(inboundId) + ":" + accountKey(email)
+}
+
+// GetOnlineMemberships returns the (inbound, account) pairs the last traffic tick
+// saw bytes for, as "<inboundId>:<email>" with the email normalised.
+//
+// Separate from GetOnlineClients rather than replacing it: the account-wide list is
+// what the dashboard counts, what the Telegram bot reports and what the row-level
+// lamp on the Clients page lights, and all three want "is this customer connected"
+// rather than "where". Only the per-membership view needs this.
+func (s *InboundService) GetOnlineMemberships() []string {
+	if p == nil {
+		return []string{}
+	}
+	return p.GetOnlineMemberships()
 }
 
 func (s *InboundService) GetClientsLastOnline() (map[string]int64, error) {
@@ -5021,15 +5703,33 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 	var newClients []any
 	needApiDel := false
 	found := false
+	// The entry's OWN spelling of the email, which is what client_traffics, the IP
+	// bindings and the core were all written with. Everything below keys on this
+	// rather than on the caller's spelling, because the match is now case-insensitive
+	// and the tables it has to clean up are not.
+	storedEmail := ""
 
+	wanted := accountKey(email)
 	for _, client := range interfaceClients {
 		c, ok := client.(map[string]any)
 		if !ok {
+			// KEPT, not skipped. Dropping it silently deleted whatever this entry is
+			// along with the client that was actually asked for, which the equivalent
+			// loop in DelInboundClient never did.
+			newClients = append(newClients, client)
 			continue
 		}
-		if cEmail, ok := c["email"].(string); ok && cEmail == email {
+		cEmail, _ := c["email"].(string)
+		// accountKey on both sides, not ==. Identity is case- and whitespace-insensitive
+		// everywhere else in the panel (sameEmail, the duplicate check, RADIUS), so an
+		// exact compare here made an account stored "Bob" undeletable by every caller
+		// holding "bob": it reported "not found" and the client stayed live. The empty
+		// key is excluded so a caller with no email cannot match the first entry that
+		// happens to carry no `email` key either.
+		if wanted != "" && accountKey(cEmail) == wanted {
 			// matched client, drop it
 			found = true
+			storedEmail = cEmail
 			needApiDel, _ = c["enable"].(bool)
 		} else {
 			newClients = append(newClients, client)
@@ -5039,8 +5739,10 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 	if !found {
 		return false, common.NewError(fmt.Sprintf("client with email %s not found", email))
 	}
-	if len(newClients) == 0 {
-		return false, common.NewError("no client remained in Inbound")
+	// Emptying an inbound is allowed; see the same guard's removal in DelInboundClient
+	// for why, and why the nil has to be normalized rather than marshalled as null.
+	if newClients == nil {
+		newClients = []any{}
 	}
 
 	settings["clients"] = newClients
@@ -5054,7 +5756,7 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 	db := database.GetDB()
 
 	// remove IP bindings
-	if err := s.DelClientIPs(db, email); err != nil {
+	if err := s.DelClientIPs(db, storedEmail); err != nil {
 		logger.Error("Error in delete client IPs")
 		return false, err
 	}
@@ -5062,7 +5764,7 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 	needRestart := false
 
 	// remove stats too
-	if len(email) > 0 {
+	if len(storedEmail) > 0 {
 		// Counted directly rather than read through GetClientTrafficByEmail. That one
 		// resolves the account's inbound (to attach a uuid this path never uses) and
 		// reports a MISSING row as a hard error, "Inbound Not Found For Email".
@@ -5073,11 +5775,11 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 		// remaining membership then failed outright and could never be removed. That
 		// left a deleted account still serving on every inbound but the first.
 		var stats int64
-		if err := db.Model(xray.ClientTraffic{}).Where("email = ?", email).Count(&stats).Error; err != nil {
+		if err := db.Model(xray.ClientTraffic{}).Where("email = ?", storedEmail).Count(&stats).Error; err != nil {
 			return false, err
 		}
 		if stats > 0 {
-			if err := s.DelClientStat(db, email); err != nil {
+			if err := s.DelClientStat(db, storedEmail); err != nil {
 				logger.Error("Delete stats Data Error")
 				return false, err
 			}
@@ -5085,11 +5787,11 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 
 		if needApiDel {
 			s.xrayApi.Init(p.GetAPIPort())
-			if err1 := s.xrayApi.RemoveUser(oldInbound.Tag, email); err1 == nil {
-				logger.Debug("Client deleted by api:", email)
+			if err1 := s.xrayApi.RemoveUser(oldInbound.Tag, storedEmail); err1 == nil {
+				logger.Debug("Client deleted by api:", storedEmail)
 				needRestart = false
 			} else {
-				if strings.Contains(err1.Error(), fmt.Sprintf("User %s not found.", email)) {
+				if strings.Contains(err1.Error(), fmt.Sprintf("User %s not found.", storedEmail)) {
 					logger.Debug("User is already deleted. Nothing to do more...")
 				} else {
 					logger.Debug("Error in deleting client by api:", err1)
@@ -5100,5 +5802,9 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 		}
 	}
 
-	return needRestart, db.Save(oldInbound).Error
+	if err := db.Save(oldInbound).Error; err != nil {
+		return needRestart, err
+	}
+	dropMembershipAfterDelete(db, inboundId, storedEmail)
+	return needRestart, nil
 }

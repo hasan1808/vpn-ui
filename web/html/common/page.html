@@ -7,11 +7,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex,nofollow">
   <link rel="stylesheet" href="{{ .base_path }}assets/ant-design-vue/antd.min.css">
-  <link rel="stylesheet" href="{{ .base_path }}assets/css/tokens.css?{{ .cur_ver }}">
-  <link rel="stylesheet" href="{{ .base_path }}assets/css/custom.css?{{ .cur_ver }}">
-  <link rel="stylesheet" href="{{ .base_path }}assets/css/components.css?{{ .cur_ver }}">
-  <link rel="stylesheet" href="{{ .base_path }}assets/css/ant-bridge.css?{{ .cur_ver }}">
-  <link rel="stylesheet" href="{{ .base_path }}assets/css/terminal.css?{{ .cur_ver }}">
+  <link rel="stylesheet" href="{{ .base_path }}assets/css/tokens.css?{{ .asset_ver }}">
+  <link rel="stylesheet" href="{{ .base_path }}assets/css/custom.css?{{ .asset_ver }}">
+  <link rel="stylesheet" href="{{ .base_path }}assets/css/components.css?{{ .asset_ver }}">
+  <link rel="stylesheet" href="{{ .base_path }}assets/css/ant-bridge.css?{{ .asset_ver }}">
+  <link rel="stylesheet" href="{{ .base_path }}assets/css/terminal.css?{{ .asset_ver }}">
   <style>
     [v-cloak] {
       display: none;
@@ -217,13 +217,13 @@
 {{ end }}
 
 {{ define "page/body_scripts" }}
-<script src="{{ .base_path }}assets/vue/vue.min.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/vue/vue.min.js?{{ .asset_ver }}"></script>
 <script src="{{ .base_path }}assets/moment/moment.min.js"></script>
 <script src="{{ .base_path }}assets/ant-design-vue/antd.min.js"></script>
-<script src="{{ .base_path }}assets/axios/axios.min.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/axios/axios.min.js?{{ .asset_ver }}"></script>
 <script src="{{ .base_path }}assets/qs/qs.min.js"></script>
-<script src="{{ .base_path }}assets/js/axios-init.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/js/util/index.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/js/axios-init.js?{{ .asset_ver }}"></script>
+<script src="{{ .base_path }}assets/js/util/index.js?{{ .asset_ver }}"></script>
 <script>
   const basePath = '{{ .base_path }}';
   axios.defaults.baseURL = basePath;
@@ -244,7 +244,7 @@
   };
   document.addEventListener('click', function() { window.__langData.langOpen = false; });
 </script>
-<script src="{{ .base_path }}assets/js/websocket.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/js/websocket.js?{{ .asset_ver }}"></script>
 {{ end }}
   
 {{ define "page/body_end" }}

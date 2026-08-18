@@ -420,6 +420,55 @@ func (m *ProcManager) StopAll() {
 	}
 }
 
+// bundledDaemonBin resolves a daemon to a path INSIDE one of our bundles, or ""
+// when this build has no bundle for it. daemonBin falls back to PATH, which is
+// right for launching but catastrophic for `pkill -f`: it would match the host's
+// own daemon. Two callers must never confuse the two, so they are two functions.
+func bundledDaemonBin(name string) string {
+	if p := backend.DaemonPath(name); p != "" {
+		return p
+	}
+	if p := backend.AccelBinPath(name); p != "" {
+		return p
+	}
+	if p := backend.StrongswanBinPath(name); p != "" {
+		return p
+	}
+	return ""
+}
+
+// unitEnabled / unitActive read a systemd unit's two independent states. Both are
+// recorded before we disable a unit, because they come apart: a distro xl2tpd can
+// be enabled but stopped, and restoring only "active" would lose the boot setting.
+func unitEnabled(unit string) bool {
+	out, _ := exec.Command("systemctl", "is-enabled", unit).Output()
+	return strings.TrimSpace(string(out)) == "enabled"
+}
+
+func unitActive(unit string) bool {
+	out, _ := exec.Command("systemctl", "is-active", unit).Output()
+	return strings.TrimSpace(string(out)) == "active"
+}
+
+// disableUnitRecording stops and disables a systemd unit, having first written
+// down whether it was enabled and whether it was running.
+//
+// The unit is only recorded when the distro provides it (distroUnitExists) or it
+// is currently in use: one of OUR generated units in /etc/systemd/system carries
+// no operator intent worth restoring, and the file is deleted a few lines later
+// anyway.
+func disableUnitRecording(unit, core string) {
+	name := unit
+	if !strings.Contains(name, ".") {
+		name += ".service"
+	}
+	enabled, active := unitEnabled(name), unitActive(name)
+	if enabled || active || backend.DistroUnitExists(name) {
+		ownRecordUnit(name, core, enabled, active)
+	}
+	_ = exec.Command("systemctl", "disable", "--now", name).Run()
+}
+
 // migrateFromSystemdOnce tears down the previous systemd-based design (bundled
 // units + running instances) so the panel can own the daemons as child
 // processes. Idempotent and safe to call every startup: once the units are gone
@@ -431,22 +480,44 @@ func migrateFromSystemd() {
 		if !commandExists("systemctl") {
 			return
 		}
-		// Stop + disable OpenVPN per-inbound instances.
-		out, _ := exec.Command("systemctl", "list-units", "--all", "--no-legend", "openvpn-server@*").Output()
-		for _, line := range strings.Split(string(out), "\n") {
-			fields := strings.Fields(strings.TrimLeft(line, "●* "))
-			if len(fields) > 0 && strings.HasPrefix(fields[0], "openvpn-server@") {
-				_ = exec.Command("systemctl", "disable", "--now", fields[0]).Run()
+		// EVERY disable below is now SCOPED and RECORDED, and both halves matter.
+		//
+		// These are not only OUR units. openvpn-server@, xl2tpd, pptpd and ipsec are
+		// the distro's own units on a host that had those daemons before vpn-ui, and
+		// this ran unconditionally on every provisioning pass. A host that installed
+		// nothing but WireGuard still had its working xl2tpd stopped and disabled, and
+		// nothing ever gave it back.
+		//
+		// The scope is "have we got a daemon of our own to run in its place", read off
+		// the extracted binary. Provisioning extracts only the SELECTED cores' daemons
+		// (ExtractOnly(daemonsFor(target))) and does so before this runs, and a restart
+		// re-extracts only the INSTALLED cores' (RefreshInstalledDaemons), so the test
+		// answers "is the panel about to take this daemon over" on both paths without
+		// this function having to be told which cores are in play.
+		//
+		// disableUnitRecording captures the unit's enabled/active state first, and the
+		// core uninstall replays it (restoreDisabledUnits in coreuninstall.go).
+		if bundledDaemonBin("openvpn") != "" {
+			// Stop + disable OpenVPN per-inbound instances.
+			out, _ := exec.Command("systemctl", "list-units", "--all", "--no-legend", "openvpn-server@*").Output()
+			for _, line := range strings.Split(string(out), "\n") {
+				fields := strings.Fields(strings.TrimLeft(line, "●* "))
+				if len(fields) > 0 && strings.HasPrefix(fields[0], "openvpn-server@") {
+					disableUnitRecording(fields[0], "openvpn")
+				}
 			}
 		}
 		// Stop + disable the single-instance daemons.
-		for _, unit := range []string{"xl2tpd", "pptpd"} {
-			_ = exec.Command("systemctl", "disable", "--now", unit).Run()
+		if bundledDaemonBin("xl2tpd") != "" {
+			disableUnitRecording("xl2tpd", "l2tp")
+		}
+		if bundledDaemonBin("pptpd") != "" {
+			disableUnitRecording("pptpd", "pptp")
 		}
 		// When we run our own bundled pluto, the host ipsec.service must not also be
 		// running — it would hold UDP 500/4500 and conflict with the bundled daemon.
 		if usingBundledIpsec() {
-			_ = exec.Command("systemctl", "disable", "--now", "ipsec").Run()
+			disableUnitRecording("ipsec", "l2tp")
 		}
 		// Remove the unit files the old design generated.
 		for _, f := range []string{
@@ -463,16 +534,30 @@ func migrateFromSystemd() {
 		// without a clean shutdown (SIGKILL/crash) — they would hold the ports the
 		// child processes need. Safe: procMgr has spawned nothing yet at this
 		// point, so only pre-existing processes match.
+		//
+		// "Pre-existing" is exactly the problem, though, so the reap is scoped twice
+		// over. It only runs for a core this host has actually installed, and it only
+		// matches a BUNDLED binary path, never a PATH-resolved one: with a system
+		// daemon and no bundle, daemonBin("openvpn") resolves to /usr/sbin/openvpn and
+		// `pkill -f /usr/sbin/openvpn` killed the operator's own running OpenVPN on
+		// every panel start.
 		if commandExists("pkill") {
+			var cs CoreService
+			installedCore := cs.provisionedProtocolSet()
 			// accel-pppd (SSTP) runs through the bundle's musl loader-wrapper, so its
 			// cmdline contains ".../sbin/accel-pppd.bin"; a `-f` match on the resolved
 			// launcher path (".../sbin/accel-pppd") is a substring of that and reaps a
 			// stale orphan from a crashed panel. accel-pppd does NOT retitle itself
 			// (unlike ocserv), so it does not need the exact-name `-x` pass below.
-			for _, d := range []string{"openvpn", "xl2tpd", "pptpd", "accel-pppd"} {
-				bin := daemonBin(d)
-				if bin == d {
-					continue // unresolved — avoid a too-broad match on a bare name
+			for _, d := range []struct{ daemon, core string }{
+				{"openvpn", "openvpn"}, {"xl2tpd", "l2tp"}, {"pptpd", "pptp"}, {"accel-pppd", "sstp"},
+			} {
+				if !installedCore[d.core] {
+					continue
+				}
+				bin := bundledDaemonBin(d.daemon)
+				if bin == "" {
+					continue // no bundle: whatever is running is the host's, not ours
 				}
 				_ = exec.Command("pkill", "-KILL", "-f", bin).Run()
 			}
@@ -496,10 +581,16 @@ func migrateFromSystemd() {
 			// ocserv can't bind → exit 1 → a permanent 5s procmgr restart loop, while
 			// the orphan keeps old sessions alive that the panel can't manage (occtl
 			// eviction hits the panel's socket, not the orphan) — exactly the
-			// "User Limit does nothing / new client has no internet" failure. Safe
-			// here: procMgr has spawned nothing yet, so any ocserv* is a stale orphan.
-			for _, comm := range []string{"ocserv-main", "ocserv-sm", "ocserv-worker", "ocserv"} {
-				_ = exec.Command("pkill", "-KILL", "-x", comm).Run()
+			// "User Limit does nothing / new client has no internet" failure.
+			//
+			// An exact-name kill cannot tell our orphan from a distro ocserv the
+			// operator runs under systemd, and it killed that too, on every panel
+			// start. Gated on the OpenConnect core being installed, which is the only
+			// state in which any ocserv on this box can plausibly be ours.
+			if installedCore["openconnect"] {
+				for _, comm := range []string{"ocserv-main", "ocserv-sm", "ocserv-worker", "ocserv"} {
+					_ = exec.Command("pkill", "-KILL", "-x", comm).Run()
+				}
 			}
 		}
 	})

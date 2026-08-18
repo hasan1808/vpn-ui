@@ -114,6 +114,11 @@ func setGrubDefaultSaved() error {
 	if !found {
 		lines = append(lines, "GRUB_DEFAULT=saved")
 	}
+	// /etc/default/grub is the operator's bootloader configuration and we edit their
+	// GRUB_DEFAULT line. Backed up before the first edit so the original can be put
+	// back; nothing recorded this before, so a kernel-modules install changed how the
+	// host boots with no way to tell what it had been.
+	ownPrepareHostFile(path, "")
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644)
 }
 

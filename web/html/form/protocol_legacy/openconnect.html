@@ -1,0 +1,232 @@
+{{/*
+  The openconnect inbound form as it stood before the rail redesign (b2e71a68), kept
+  whole for the old dialog. The live form/protocol/openconnect.html is the same body
+  cut into network/security/access/reach sections for the rail; this is the one
+  the operator sees when Old inbound modify UI is on. Adding a field to one and not
+  the other is caught by TestLegacyInboundFormsCarryEveryField.
+*/}}
+{{define "form/legacy/openconnect"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Auto-managed contiguous block (10.4.x). Grows automatically as
+                    clients are added.
+                </template>
+                IP Range
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <template v-if="inbound.settings.ipRanges && inbound.settings.ipRanges.length">
+            <a-input
+                v-for="(r, i) in inbound.settings.ipRanges"
+                :key="i"
+                :value="r"
+                read-only
+                :style="{ marginBottom: '4px' }"
+            ></a-input>
+        </template>
+        <span v-else :style="{ color: '#888' }">
+            Assigned automatically on save
+        </span>
+    </a-form-item>
+    <a-form-item label="DNS 1">
+        <a-input v-model.trim="inbound.settings.dns1" placeholder="8.8.8.8"></a-input>
+    </a-form-item>
+    <a-form-item label="DNS 2">
+        <a-input v-model.trim="inbound.settings.dns2" placeholder="8.8.4.4"></a-input>
+    </a-form-item>
+    <a-form-item label="MTU">
+        <a-input-number
+            v-model.number="inbound.settings.mtu"
+            :min="1200"
+            :max="1500"
+        ></a-input-number>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Simultaneous devices per account (each gets its own IP).
+                    10 = ten consecutive IPs per account (default). Lower it to fit more accounts in the pool, raise it for accounts that run more devices; 0 reserves a 16-IP block, which is still a cap and not unlimited. Max 64.
+                </template>
+                User Limit
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            :value="inbound.settings.userLimit"
+            @change="inbound.settings.userLimit = Math.max(0, Math.min(64, Math.floor($event || 0)))"
+            :min="0" :max="64" :step="1" :precision="0" style="width: 90px"
+        ></a-input-number>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    When an account is already at its device limit and another
+                    device connects: reject the new one, or accept it and
+                    disconnect that account's oldest device.
+                </template>
+                User Limit Strategy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-radio-group v-model="inbound.settings.userLimitStrategy" button-style="solid">
+            <a-radio-button value="accept">Accept</a-radio-button>
+            <a-radio-button value="reject">Reject</a-radio-button>
+        </a-radio-group>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Allow connected clients to reach each other
+                </template>
+                Client to Client
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.clientToClient"
+            @change="val => { if (!val) inbound.settings.crossInbound = false }"
+        ></a-switch>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Also reach clients of other inbounds (both inbounds must enable this)
+                </template>
+                Cross Inbound
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.crossInbound"
+            :disabled="!inbound.settings.clientToClient"
+        ></a-switch>
+    </a-form-item>
+
+    <a-divider>TLS Certificate</a-divider>
+    <a-form-item label="Certificate Source">
+        <a-radio-group v-model="inbound.settings.tlsUseFile" button-style="solid">
+            <a-radio-button :value="true">Path</a-radio-button>
+            <a-radio-button :value="false">Content</a-radio-button>
+        </a-radio-group>
+    </a-form-item>
+    <!-- The managed certificate picker. Same list and same stable paths as the
+         Xray TLS form; see form/tls_settings.html for why it writes the active
+         path rather than a version directory. -->
+    <a-form-item v-if="sslCertChoices().length" label='{{ i18n "pages.inbounds.useManagedCert" }}'>
+        <a-select :value="sslCertSelectedSettings()" @change="applyManagedCertSettings"
+            :dropdown-class-name="themeSwitcher.currentTheme">
+            <a-select-option :value="''">{{ i18n "none" }}</a-select-option>
+            <a-select-option v-for="c in sslCertChoices()" :key="c.profile" :value="c.profile">
+                [[ c.label ]]<span v-if="c.expired"> &middot; {{ i18n "pages.settings.ssl.expired" }}</span><span
+                    v-else-if="c.selfSigned"> &middot; {{ i18n "pages.settings.ssl.selfSigned" }}</span>
+            </a-select-option>
+        </a-select>
+    </a-form-item>
+    <template v-if="inbound.settings.tlsUseFile">
+        <a-form-item label="Certificate Path">
+            <a-input
+                v-model.trim="inbound.settings.certificateFile"
+                placeholder="/path/to/fullchain.pem"
+            >
+                <template slot="addonAfter">
+                    <a-tooltip title="Use the panel's TLS certificate paths">
+                        <a-icon type="import" @click="ocservSetDefaultCert"></a-icon>
+                    </a-tooltip>
+                </template>
+            </a-input>
+        </a-form-item>
+        <a-form-item label="Key Path">
+            <a-input
+                v-model.trim="inbound.settings.keyFile"
+                placeholder="/path/to/privkey.pem"
+            ></a-input>
+        </a-form-item>
+    </template>
+    <template v-else>
+        <a-form-item label="Server Certificate">
+            <a-textarea
+                v-model="inbound.settings.certificate"
+                :rows="3"
+                placeholder="-----BEGIN CERTIFICATE-----"
+            ></a-textarea>
+        </a-form-item>
+        <a-form-item label="Server Key">
+            <a-textarea
+                v-model="inbound.settings.key"
+                :rows="3"
+                placeholder="-----BEGIN EC PRIVATE KEY-----"
+            ></a-textarea>
+        </a-form-item>
+        <a-form-item :wrapper-col="{ md: {offset:8, span:14} }">
+            <a-button type="primary" @click="generateOcservCert">
+                Generate Self-Signed Cert
+            </a-button>
+        </a-form-item>
+    </template>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Advertise an alternate server address (a relay / port-forward host)
+                    in the exported credentials and account info instead of the panel
+                    host. Add one entry per endpoint.
+                </template>
+                External Proxy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="vpnExternalProxy"></a-switch>
+        <a-button
+            icon="plus"
+            v-if="vpnExternalProxy"
+            type="primary"
+            :style="{ marginLeft: '10px' }"
+            size="small"
+            @click="inbound.settings.externalProxy.push({dest: '', port: inbound.port, remark: ''})"
+        ></a-button>
+    </a-form-item>
+    <a-input-group
+        :style="{ margin: '8px 0' }"
+        compact
+        v-for="(row, index) in inbound.settings.externalProxy"
+    >
+        <a-input
+            :style="{ width: '45%' }"
+            v-model.trim="row.dest"
+            placeholder='{{ i18n "host" }}'
+        ></a-input>
+        <a-tooltip title='{{ i18n "pages.inbounds.port" }}'>
+            <a-input-number
+                :style="{ width: '20%' }"
+                v-model.number="row.port"
+                min="1"
+                max="65535"
+            ></a-input-number>
+        </a-tooltip>
+        <a-input
+            :style="{ width: '30%', top: '0' }"
+            v-model.trim="row.remark"
+            placeholder='{{ i18n "remark" }}'
+        >
+            <template slot="addonAfter">
+                <a-button
+                    icon="minus"
+                    size="small"
+                    @click="inbound.settings.externalProxy.splice(index, 1)"
+                ></a-button>
+            </template>
+        </a-input>
+    </a-input-group>
+</a-form>
+{{end}}

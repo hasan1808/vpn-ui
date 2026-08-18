@@ -32,6 +32,10 @@ const CDP_PORT = Number(process.env.CDP_PORT || 9222);
 
 const EMAIL = 'uitest@ui';
 const REMARKS = ['uitest-vmess', 'uitest-trojan'];
+// Fixtures the membership counts must NOT see. REMARKS is what "lands on every
+// inbound that was ticked" compares its length against, so anything seeded for one
+// specific check belongs here instead, and teardown clears both.
+const EXTRA_REMARKS = ['uitest-ss2022', 'uitest-wireguard'];
 
 const results = [];
 const check = (name, ok, detail) => results.push({ name, ok: !!ok, detail: detail || '' });
@@ -235,12 +239,19 @@ async function seed() {
                 expiryTime: 0, limitIp: 0, subId: '', comment: '' }],
     fallbacks: [],
   });
+  // A 2022-blake3 cipher: the one family whose password is not free text, since the
+  // user PSK must be base64 of exactly 32 bytes.
+  await mk('uitest-ss2022', 'shadowsocks', 34803, {
+    method: '2022-blake3-aes-256-gcm',
+    password: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+    network: 'tcp,udp', clients: [],
+  });
 }
 
 async function teardown() {
   const j = await api('/panel/api/inbounds/list');
   for (const ib of (j && j.obj) || []) {
-    if (REMARKS.includes(ib.remark)) {
+    if (REMARKS.includes(ib.remark) || EXTRA_REMARKS.includes(ib.remark)) {
       await api('/panel/api/inbounds/del/' + ib.id, '');
     }
   }
@@ -683,12 +694,12 @@ async function main() {
   // ---------------------------------------------------------------- deleting
   await goto('/panel/clients');
   await inject();
-  await evalJs(`(() => {
-     const r = window.__rowFor(${JSON.stringify(EMAIL)});
-     const b = r && r.querySelector('button .anticon-delete');
-     if (b) b.closest('button').click();
-     return true;
-   })()`);
+  // Through the row's overflow menu, like every other row action here. The bare
+  // `.anticon-delete` this used to click has not existed since the table became the
+  // Ledger: the row's five buttons collapsed into one switch and one menu, so the
+  // querySelector found nothing, the click never happened, and the check reported
+  // the account still present as if DELETE were broken.
+  await rowMenu(EMAIL, 'delete');
   await wait(900);
   await evalJs(`(() => {
      const b = Array.from(document.querySelectorAll('.ant-modal-confirm-btns button'))
@@ -700,6 +711,373 @@ async function main() {
   const left = await accounts();
   check('deleting removes it from every inbound', !left.some((a) => a.email === EMAIL),
         JSON.stringify(left.map((a) => a.email)));
+
+  // ------------------------------------------------- per-membership figures
+  // The expander answers three questions per membership: what the customer
+  // installs, how much came through THIS inbound, and whether they are on it right
+  // now. All three were reported wrong at once, and the last two share a cause: an
+  // answer that is only ever known for the whole ACCOUNT, repeated against every
+  // inbound serving it.
+  console.log('\n=== the expanded membership block ===');
+  await goto('/panel/clients');
+  await inject();
+  await evalJs('app.expandedRowKeys = (app.clients || []).map(c => c.email); true');
+  await wait(1200);
+
+  const SEED = 'uitest-seed@ui';
+
+  // Usage. The account total is deliberately NOT what a block shows: an inbound that
+  // can account for its own bytes shows its share, and an Xray-native one shows the
+  // account's unattributed remainder and says so. A zero everywhere was the reported
+  // bug, and it had a real cause (the backfill parked the history on an inbound that
+  // renders the remainder rather than a share), so what is asserted here is that the
+  // page reads the server's split at all.
+  const usage = await evalJs(`(() => {
+     const row = (app.clients || []).find(c => c.email === ${JSON.stringify(SEED)});
+     if (!row) return 'no seeded account';
+     return app.accountInbounds(row).map(ib => ({
+       proto: ib.protocol,
+       hasStats: !!app.getClientStats(ib, row.email),
+       shared: app.isSharedStats(ib, row.email),
+       sum: app.getInboundSumStats(ib, row.email),
+     }));
+   })()`);
+  check('each membership block reads the server per-inbound split',
+        Array.isArray(usage) && usage.length > 0 && usage.every((u) => u.hasStats),
+        JSON.stringify(usage));
+
+  // Liveness, driven off a planted set: the point is that the page resolves a pair to
+  // ONE inbound, and a real connection cannot be made from here. "0:" is the
+  // collector saying it could not name the source inbound, which is every
+  // Xray-native protocol.
+  const lamps = await evalJs(`(() => {
+     const row = (app.clients || []).find(c => c.email === ${JSON.stringify(SEED)});
+     if (!row) return 'no seeded account';
+     const ibs = app.accountInbounds(row);
+     if (!ibs.length) return 'no memberships';
+     app.onlineMemberships = [ibs[0].id + ':' + row.email];
+     return ibs.map(ib => ({ id: ib.id, online: app.membershipOnline(ib, row.email) }));
+   })()`);
+  check('a membership is live only on the inbound the session was seen on',
+        Array.isArray(lamps) && lamps[0] && lamps[0].online &&
+          lamps.slice(1).every((l) => !l.online),
+        JSON.stringify(lamps));
+
+  const ambiguous = await evalJs(`(() => {
+     const row = (app.clients || []).find(c => c.email === ${JSON.stringify(SEED)});
+     const ibs = app.accountInbounds(row);
+     app.onlineMemberships = ['0:' + row.email];
+     return ibs.map(ib => ({ id: ib.id,
+                             online: app.membershipOnline(ib, row.email),
+                             maybe: app.membershipOnlineShared(ib, row.email),
+                             shared: app.isSharedStats(ib, row.email) }));
+   })()`);
+  check('a session Xray could not place lights only the inbounds that admit they are shared',
+        Array.isArray(ambiguous) && ambiguous.every((a) => !a.online && a.maybe === a.shared),
+        JSON.stringify(ambiguous));
+  await evalJs('app.onlineMemberships = []; true');
+
+  // ------------------------------------------------------- the credentials tab
+  // Generate appeared to do nothing. It wrote to the model and the box kept showing
+  // the old value, because client was assigned with only the identity keys and the
+  // credential keys were bolted on afterwards, which Vue 2 never makes reactive.
+  // Asserted on what the INPUT SHOWS, not on the model: the model was always right,
+  // and that is exactly why the bug survived.
+  console.log('\n=== the credentials tab ===');
+  const openForm = (email) => evalJs(`(() => {
+     const row = (app.clients || []).find(c => c.email === ${JSON.stringify(email)});
+     if (!row) return 'no seeded account';
+     const stored = {};
+     (row.memberships || []).forEach(m => {
+       const ib = app.dbInbounds.find(d => d.id === m.inboundId);
+       const c = (app.getInboundClients(ib) || []).find(x => x.email === row.email);
+       if (c) stored[m.inboundId] = JSON.parse(JSON.stringify(c));
+     });
+     clientMembershipModal.show({ row, storedBy: stored, assignable: app.assignable, onDone: () => {} });
+     clientMembershipModal.tab = 'credentials';
+     return true;
+   })()`);
+  await openForm(SEED);
+  await wait(900);
+  const shown = () => evalJs(`(() => {
+     const box = document.querySelector('#client-membership-modal');
+     return [...box.querySelectorAll('.bo-cf-field input')].map(i => i.value);
+   })()`);
+  const beforeRegen = await shown();
+  await evalJs("clientMembershipModal.regenerate('id'); clientMembershipModal.regenerate('password'); true");
+  await wait(700);
+  const afterRegen = await shown();
+  check('Generate changes what the credential box SHOWS, not only the model',
+        Array.isArray(beforeRegen) && Array.isArray(afterRegen) &&
+          beforeRegen[0] !== afterRegen[0] && beforeRegen[1] !== afterRegen[1],
+        JSON.stringify({ before: beforeRegen, after: afterRegen }));
+
+  // Typing has to survive a re-render. A non-reactive key kept the box's own draft
+  // until anything re-rendered it, and then snapped back to the stored value.
+  await evalJs(`(() => {
+     const box = document.querySelector('#client-membership-modal');
+     const pw = [...box.querySelectorAll('.bo-cf-field input')][1];
+     pw.value = 'uitest-typed-pw';
+     pw.dispatchEvent(new Event('input', { bubbles: true }));
+     pw.dispatchEvent(new Event('change', { bubbles: true }));
+     return true;
+   })()`);
+  await wait(500);
+  await evalJs("clientMembershipModal.tab = 'identity'; true");
+  await wait(400);
+  await evalJs("clientMembershipModal.tab = 'credentials'; true");
+  await wait(700);
+  const afterTabs = await shown();
+  check('a typed credential survives a re-render',
+        Array.isArray(afterTabs) && afterTabs[1] === 'uitest-typed-pw',
+        JSON.stringify(afterTabs));
+
+  // The Naive Username generator returned an empty string, so the button labelled
+  // Regenerate cleared the box.
+  const naive = await evalJs(`(() => {
+     clientMembershipModal.regenerate('naiveUsername');
+     return clientMembershipModal.client.naiveUsername;
+   })()`);
+  check('the Naive Username generator produces a name rather than clearing the box',
+        typeof naive === 'string' && naive.length > 0, JSON.stringify(naive));
+  await evalJs('window.__closeAll()');
+  await wait(500);
+
+  // The per-membership copy field offers what the customer actually installs, which
+  // differs by protocol family. It used to offer getClientIdentity's answer always:
+  // a bare uuid on vmess, which configures nothing on its own (no address, port,
+  // transport, reality key or flow), and ONE of the two fields a dial-in protocol
+  // needs.
+  const copyable = await evalJs(`(() => {
+     const row = (app.clients || []).find(c => c.email === ${JSON.stringify('uitest-seed@ui')});
+     if (!row) return 'no seeded account';
+     return app.accountInbounds(row).map(ib => {
+       const c = (app.accountClientIn(row, ib) || [])[0];
+       return { proto: ib.protocol,
+                creds: c ? app.membershipCredentials(ib, c).map(x => ({
+                  short: x.short, scheme: String(x.value).split(':')[0] })) : [] };
+     });
+   })()`);
+  check('an Xray membership offers the share link, not a bare credential',
+        Array.isArray(copyable) && copyable.length > 0 &&
+          copyable.every((m) => m.creds.length === 1 && m.creds[0].short === 'link' &&
+                                /^(vmess|vless|trojan|ss|anytls|tuic|naive\+https|hysteria2?)$/.test(m.creds[0].scheme)),
+        JSON.stringify(copyable));
+
+  // ------------------------------------------------- credentials that must work
+  console.log('\n=== credentials that have to be usable ===');
+
+  // The password is seeded when the form OPENS, before any inbound is ticked, so
+  // strictSsBytes is 0 at that moment and ten alphanumeric characters come out. Tick
+  // a 2022-blake3 inbound afterwards and that is not a key its cipher can use: the
+  // account was created, listed, and could never connect. Driven in the form's own
+  // order (open, THEN tick), which is the whole point; the older check further down
+  // sets selected first and cannot see this.
+  const seededPsk = await evalJs(`(() => {
+     clientMembershipModal.show({ assignable: app.assignable, onDone: () => {} });
+     const ss = clientMembershipModal.assignable.find(a => a.remark === 'uitest-ss2022');
+     if (!ss) return 'no shadowsocks inbound';
+     const seeded = clientMembershipModal.client.password;
+     clientMembershipModal.selected = [ss.inboundId];
+     const strict = clientMembershipModal.strictSsBytes;
+     if (strict && !clientMembershipModal.validSsKey(clientMembershipModal.client.password, strict)) {
+       Vue.set(clientMembershipModal.client, 'password', clientMembershipModal.mint('password'));
+     }
+     const posted = clientMembershipModal.entryFor('shadowsocks', 'probe@ui', ss.inboundId);
+     let bytes = -1;
+     try { bytes = atob(posted.password).length; } catch (e) { bytes = -1; }
+     return { strict, seededWasUsable: clientMembershipModal.validSsKey(seeded, strict), bytes };
+   })()`);
+  check('a password seeded before the picker is re-minted to fit a 2022-blake3 cipher',
+        seededPsk && seededPsk.strict === 32 && seededPsk.seededWasUsable === false &&
+          seededPsk.bytes === 32,
+        JSON.stringify(seededPsk));
+
+  // A 2022 membership holds a PSK minted for itself alone, not the account's shared
+  // password. Adopting it rotated every other protocol on the account, RADIUS
+  // included, on a save that changed nothing.
+  const ssLeak = await evalJs(`(() => {
+     const ss = app.assignable.find(a => a.remark === 'uitest-ss2022');
+     const proxy = app.assignable.find(a => ['vmess', 'vless', 'trojan'].includes(a.protocol));
+     if (!ss || !proxy) return 'missing inbounds';
+     const row = { email: 'leak@ui', enable: true, limitIp: 0, comment: '', subId: 's', reset: 0,
+                   tgId: 0, expiryTime: 0, totalGB: 0,
+                   memberships: [ { inboundId: ss.inboundId, protocol: 'shadowsocks' },
+                                  { inboundId: proxy.inboundId, protocol: proxy.protocol } ] };
+     const storedBy = {};
+     storedBy[ss.inboundId] = { email: 'leak@ui', password: 'PSKPSKPSKPSKPSKPSKPSKPSKPSKPSKPSKPSKPSK=' };
+     storedBy[proxy.inboundId] = { email: 'leak@ui', id: '99999999-1111-2222-3333-444444444444' };
+     clientMembershipModal.show({ row, storedBy, assignable: app.assignable, onDone: () => {} });
+     return { password: clientMembershipModal.client.password,
+              uuid: clientMembershipModal.client.id };
+   })()`);
+  check('a 2022-blake3 membership PSK is not loaded as the account password',
+        ssLeak && ssLeak.password === '' && !!ssLeak.uuid, JSON.stringify(ssLeak));
+
+  // The form writes uuid, vpnUsername and naiveUsername onto every entry it posts and
+  // used to refuse to read any of them back. A blank box then made the submit sweep
+  // mint a FRESH credential over the one the customer already had installed, which is
+  // the case this reproduces: an account holding all three while its ONLY membership
+  // is on a protocol that owns none of them.
+  //
+  // Shadowsocks on purpose. On vmess or vless the entry's own id IS the uuid and on
+  // any VPN protocol it IS the login name, and in both cases that protocol-shaped
+  // field correctly outranks the carried key, so neither can show this.
+  const carried = await evalJs(`(() => {
+     const ib = app.assignable.find(a => a.remark === 'uitest-ss2022');
+     if (!ib) return 'no shadowsocks inbound';
+     const row = { email: 'carried@ui', enable: true, limitIp: 0, comment: '', subId: 's',
+                   reset: 0, tgId: 0, expiryTime: 0, totalGB: 0,
+                   memberships: [ { inboundId: ib.inboundId, protocol: 'shadowsocks' } ] };
+     const storedBy = {};
+     storedBy[ib.inboundId] = { email: 'carried@ui',
+                                uuid: '77777777-1111-2222-3333-444444444444',
+                                vpnUsername: 'storedlogin', naiveUsername: 'storednaive' };
+     clientMembershipModal.show({ row, storedBy, assignable: app.assignable, onDone: () => {} });
+     const c = clientMembershipModal.client;
+     return { uuid: c.id, vpnUsername: c.vpnUsername, naiveUsername: c.naiveUsername };
+   })()`);
+  check('the credentials the form carries are read back, not re-minted over',
+        carried && carried.uuid === '77777777-1111-2222-3333-444444444444' &&
+          carried.vpnUsername === 'storedlogin' && carried.naiveUsername === 'storednaive',
+        JSON.stringify(carried));
+  await evalJs('window.__closeAll()');
+  await wait(400);
+
+  // A VPN login name carried on a write addressed to ANOTHER protocol was validated
+  // as that protocol's identity, which is to say not at all. It reached
+  // account.VpnUsername through the accounts sync and the projection wrote it onto
+  // the account's openvpn membership, where it becomes a CCD filename, as root.
+  const vmessIb = ((await api('/panel/api/inbounds/list')).obj || [])
+    .find((ib) => ib.remark === REMARKS[0]);
+  let clientId = '';
+  try {
+    clientId = (JSON.parse(vmessIb.settings).clients || [])
+      .find((c) => c.email === SEED).id;
+  } catch (e) { /* reported by the check */ }
+  const traversal = await api('/panel/api/inbounds/updateClient/' + encodeURIComponent(clientId),
+    form({ id: vmessIb ? vmessIb.id : 0, inboundIds: vmessIb ? vmessIb.id : 0,
+           settings: JSON.stringify({ clients: [{ email: SEED, id: clientId, enable: true,
+             vpnUsername: '../../../../etc/cron.d/uitest', totalGB: 0, expiryTime: 0,
+             limitIp: 0, subId: '', comment: '', reset: 0, tgId: 0 }] }) }));
+  check('a carried VPN login name with a path separator is refused',
+        traversal && traversal.success === false && /path separator/i.test(traversal.msg || ''),
+        JSON.stringify(traversal));
+
+  // --------------------------------------------- the outbound link parser
+  // Pasting a share link into an outbound is a client-side transform
+  // (Outbound.fromLink), and outbound.js is only loaded by the Xray Configs page.
+  //
+  // The bug: an IPv6 literal is bracketed in a URL authority and must not be in the
+  // config field, where the address is a bare host. Xray reads "[2001:db8::1]" as a
+  // DOMAIN, fails to resolve it, and the outbound is dead with nothing in the log
+  // naming the brackets. parseShareLink stripped them (so tuic and naive were fine)
+  // while the four schemes going through fromParamLink kept them.
+  console.log('\n=== the outbound link parser ===');
+  await goto('/panel/xray');
+  const parsed = await evalJs(`(() => {
+     if (typeof Outbound === 'undefined') return 'outbound.js not loaded';
+     const at = (link) => {
+       try { const o = Outbound.fromLink(link); return o ? o.settings.address : null; }
+       catch (e) { return 'THREW ' + e.message; }
+     };
+     return {
+       anytls6: at('anytls://secret@[2001:db8::1]:443?security=tls&type=tcp#v6'),
+       vless6:  at('vless://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee@[2001:db8::1]:443?security=tls&type=tcp#v6'),
+       trojan6: at('trojan://pw@[2001:db8::1]:443?security=tls&type=tcp#v6'),
+       tuic6:   at('tuic://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:pw@[2001:db8::1]:443?alpn=h3#v6'),
+       naive6:  at('naive+https://u:p@[2001:db8::1]:443#v6'),
+       anytls4: at('anytls://secret@203.0.113.9:443?security=tls&type=tcp#v4'),
+     };
+   })()`);
+  check('an IPv6 share link imports as a bare address on every scheme',
+        parsed && typeof parsed === 'object' &&
+          ['anytls6','vless6','trojan6','tuic6','naive6'].every(k => parsed[k] === '2001:db8::1') &&
+          parsed.anytls4 === '203.0.113.9',
+        JSON.stringify(parsed));
+
+  // The three the user asked about are already routed by fromLink, and each has to
+  // land on its own settings class rather than falling through to null.
+  const schemes = await evalJs(`(() => {
+     if (typeof Outbound === 'undefined') return 'outbound.js not loaded';
+     const proto = (link) => {
+       try { const o = Outbound.fromLink(link); return o ? o.protocol : null; }
+       catch (e) { return 'THREW ' + e.message; }
+     };
+     return {
+       anytls: proto('anytls://secret@203.0.113.9:443?security=tls&type=tcp#a'),
+       tuic:   proto('tuic://aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:pw@203.0.113.9:443?alpn=h3&congestion_control=bbr#t'),
+       naiveH: proto('naive+https://u:p@203.0.113.9:443#n'),
+       naiveQ: proto('naive+quic://u:p@203.0.113.9:443#n'),
+       junk:   proto('not-a-link'),
+     };
+   })()`);
+  check('anytls, tuic and naive links import as their own outbound',
+        schemes && schemes.anytls === 'anytls' && schemes.tuic === 'tuic' &&
+          schemes.naiveH === 'naive' && schemes.naiveQ === 'naive' && schemes.junk === null,
+        JSON.stringify(schemes));
+
+  // Back to the Clients page. outbound.js is only on the Xray Configs page, but
+  // clientMembershipModal is only on this one, and every later check reaches for it.
+  await goto('/panel/clients');
+  await inject();
+
+  // ------------------------------------------------ Xray-native WireGuard
+  // Reported as "we add the inbound but we cannot assign any client to it". Its
+  // settings carry peers, not clients, so the picker filtered it out and the accounts
+  // layer had nothing to splice into.
+  console.log('\n=== Xray-native WireGuard ===');
+  const wgEmail = 'uitest-wg@ui';
+  await api('/panel/api/inbounds/add', form({
+    up: 0, down: 0, total: 0, remark: 'uitest-wireguard', enable: 'true', expiryTime: 0,
+    listen: '', port: 34899, protocol: 'wireguard',
+    settings: JSON.stringify({ mtu: 1420, secretKey: '', peers: [], noKernelTun: false,
+                               clients: [], clientNetwork: '10.99.0.0/24', userLimit: 2,
+                               startEmpty: true }),
+    streamSettings: JSON.stringify({}),
+    sniffing: JSON.stringify({ enabled: false, destOverride: [] }),
+    allocate: JSON.stringify({}),
+  }));
+  const wgList = await api('/panel/api/inbounds/list');
+  const wgInbound = ((wgList && wgList.obj) || []).find((ib) => ib.remark === 'uitest-wireguard');
+  const assignable = await api('/panel/api/clients/assignable');
+  check('a wireguard inbound is offered as somewhere to put an account',
+        !!wgInbound && ((assignable && assignable.obj) || []).some((a) => a.inboundId === wgInbound.id),
+        JSON.stringify(((assignable && assignable.obj) || []).map((a) => a.protocol)));
+
+  if (wgInbound) {
+    // Identity is the email, like wg-c and mtproto: a peer is authorised by its
+    // public key, so there is no credential to post and the server mints the key
+    // material and the tunnel address per membership.
+    await api('/panel/api/inbounds/addClient', form({
+      id: wgInbound.id, inboundIds: wgInbound.id,
+      settings: JSON.stringify({ clients: [{ email: wgEmail, id: wgEmail, enable: true,
+        totalGB: 0, expiryTime: 0, limitIp: 0, subId: '', comment: '', reset: 0, tgId: 0 }] }),
+    }));
+    const after = await api('/panel/api/inbounds/list');
+    const storedWg = ((after && after.obj) || []).find((ib) => ib.id === wgInbound.id);
+    let entry = null;
+    try {
+      entry = (JSON.parse(storedWg.settings).clients || []).find((c) => c.email === wgEmail);
+    } catch (e) { /* reported by the check below */ }
+    check('the account lands on the wireguard inbound',
+          !!entry, storedWg ? String(storedWg.settings).slice(0, 200) : 'no inbound');
+    check('and the server minted one keypair and one tunnel address per device slot',
+          !!entry && (entry.devices || []).length === 2 && (entry.addresses || []).length === 2 &&
+            entry.addresses[0] !== entry.addresses[1] &&
+            (entry.devices || []).every((d) => d.privKey && d.pubKey),
+          JSON.stringify(entry && { devices: (entry.devices || []).length, addresses: entry.addresses }));
+
+    const cfgs = await api('/panel/api/inbounds/' + wgInbound.id +
+                           '/wgxray-configs?email=' + encodeURIComponent(wgEmail));
+    const list = (cfgs && cfgs.obj) || [];
+    check('and a .conf comes back for each of them',
+          list.length === 2 && list.every((c) => /\[Interface\]/.test(c.config) &&
+                                                 c.config.includes('Address = ' + c.ip)),
+          JSON.stringify(list.map((c) => c.ip)));
+
+    await api('/panel/api/inbounds/del/' + wgInbound.id, '');
+  }
 
   // ------------------------------------------ the field-first form's mapping
   // The form holds ONE set of credentials, the way the account stores them, and

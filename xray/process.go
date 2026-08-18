@@ -151,6 +151,12 @@ type process struct {
 	apiPort int
 
 	onlineClients []string
+	// onlineMemberships is the same tick's liveness, per (inbound, account) rather
+	// than per account: "<inboundId>:<email>", with inbound 0 for a session whose
+	// source inbound the collector could not name. Held here beside onlineClients
+	// because both are derived from one traffic tick and neither survives a restart
+	// (nothing persists liveness; the next tick rebuilds it in full).
+	onlineMemberships []string
 
 	config     *Config
 	configPath string // if set, use this path instead of GetConfigPath() and remove on Stop
@@ -236,6 +242,18 @@ func (p *Process) GetOnlineClients() []string {
 // SetOnlineClients sets the list of online clients for the Xray process.
 func (p *Process) SetOnlineClients(users []string) {
 	p.onlineClients = users
+}
+
+// GetOnlineMemberships returns which (inbound, account) pairs the last tick saw
+// traffic for, as "<inboundId>:<email>".
+func (p *Process) GetOnlineMemberships() []string {
+	return p.onlineMemberships
+}
+
+// SetOnlineMemberships records which (inbound, account) pairs the last tick saw
+// traffic for.
+func (p *Process) SetOnlineMemberships(pairs []string) {
+	p.onlineMemberships = pairs
 }
 
 // GetUptime returns the uptime of the Xray process in seconds.

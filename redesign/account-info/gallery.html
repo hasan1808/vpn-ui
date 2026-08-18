@@ -1,0 +1,1572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account info, five directions</title>
+<style>
+/* ==================================================================
+   Tokens. Lifted from web/assets/css/tokens.css so these mockups can
+   be judged as "would this look right in the panel" rather than as
+   pretty pictures in a palette the panel cannot ship.
+
+   Three theme signals, in the order they must win: the OS preference,
+   then the viewer's explicit toggle, then nothing else.
+   ================================================================== */
+:root {
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eef2f4;
+  --border:#e4e9ee;
+  --border-strong:#d2dae1;
+
+  --text:#1b2430;
+  --text-2:#5a6675;
+  --text-3:#6b7787;
+
+  --accent:#008771;
+  --accent-strong:#00806b;
+  --accent-weak:#e2f2ee;
+  --on-accent:#ffffff;
+
+  --ok:#1c7a45;
+  --info:#1f6fd0;
+  --warn:#8a6008;
+  --error:#b3261e;
+  --off:#6b7787;
+
+  --ok-weak:rgba(28,122,69,.10);
+  --info-weak:rgba(31,111,208,.10);
+  --warn-weak:rgba(138,96,8,.12);
+  --error-weak:rgba(179,38,30,.10);
+  --off-weak:rgba(107,119,135,.12);
+
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10),0 2px 5px rgba(16,24,32,.05);
+
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+
+  /* Not in tokens.css. The one colour the panel's switch knob needs and no
+     semantic token supplies: it has to read against BOTH the off track
+     (--border-strong) and the on track (--accent), so it cannot be --surface. */
+  --knob:#ffffff;
+
+  --r:10px;
+  color-scheme:light;
+}
+:root, :root[data-theme="light"] { --_t:light; }
+
+/* One dark palette, applied from either signal. Written once and pointed at
+   by both selectors, so the toggle and the OS preference cannot drift. */
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0a1222;
+    --surface:#151f31;
+    --surface-2:#1c2740;
+    --border:#2c3950;
+    --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88);
+    --text-2:rgba(255,255,255,.60);
+    --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f;
+    --accent-strong:#1bbf9f;
+    --accent-weak:rgba(27,191,159,.14);
+    --on-accent:#071a16;
+    --ok:#4fd08d;
+    --info:#6fa8f5;
+    --warn:#e0a94a;
+    --error:#f2726a;
+    --off:#8593a8;
+    --ok-weak:rgba(79,208,141,.13);
+    --info-weak:rgba(111,168,245,.13);
+    --warn-weak:rgba(224,169,74,.14);
+    --error-weak:rgba(242,114,106,.13);
+    --off-weak:rgba(133,147,168,.15);
+    --knob:rgba(255,255,255,.94);
+    --shadow-sm:none;
+    --shadow-md:none;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0a1222;
+  --surface:#151f31;
+  --surface-2:#1c2740;
+  --border:#2c3950;
+  --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88);
+  --text-2:rgba(255,255,255,.60);
+  --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f;
+  --accent-strong:#1bbf9f;
+  --accent-weak:rgba(27,191,159,.14);
+  --on-accent:#071a16;
+  --ok:#4fd08d;
+  --info:#6fa8f5;
+  --warn:#e0a94a;
+  --error:#f2726a;
+  --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13);
+  --info-weak:rgba(111,168,245,.13);
+  --warn-weak:rgba(224,169,74,.14);
+  --error-weak:rgba(242,114,106,.13);
+  --off-weak:rgba(133,147,168,.15);
+  --knob:rgba(255,255,255,.94);
+  --shadow-sm:none;
+  --shadow-md:none;
+  color-scheme:dark;
+}
+
+*, *::before, *::after { box-sizing:border-box; }
+html, body { margin:0; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:var(--ui); font-size:13.5px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+@media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
+
+.num { font-variant-numeric:tabular-nums; }
+.mono { font-family:var(--mono); }
+.dim { color:var(--text-3); }
+.sp { margin-inline-start:auto; }
+
+/* ================================= page chrome ================================= */
+.page { max-width:1160px; margin:0 auto; padding:36px 24px 80px; }
+
+.masthead { margin-bottom:26px; }
+.eyebrow {
+  font-size:11px; font-weight:700; letter-spacing:.10em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 10px;
+}
+.masthead h1 {
+  font-size:26px; font-weight:600; letter-spacing:-.015em; margin:0 0 8px;
+  text-wrap:balance;
+}
+.masthead p { margin:0 0 8px; color:var(--text-2); max-width:70ch; }
+
+/* The switcher. Sticky because comparing five layouts means flipping between
+   them repeatedly while scrolled into the middle of one. */
+.switcher {
+  position:sticky; top:0; z-index:20;
+  display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+  padding:12px 0; margin-bottom:20px;
+  background:var(--bg);
+  border-bottom:1px solid var(--border);
+}
+.tabs { display:flex; gap:4px; flex-wrap:wrap; }
+.tab {
+  font:inherit; font-size:13px; font-weight:500; cursor:pointer;
+  padding:7px 13px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  transition:color .15s, border-color .15s, background .15s;
+}
+.tab:hover { color:var(--text); border-color:var(--border-strong); }
+.tab[aria-selected="true"] {
+  background:var(--accent-weak); border-color:var(--accent); color:var(--accent); font-weight:600;
+}
+.tab .n { font-variant-numeric:tabular-nums; opacity:.55; margin-inline-end:5px; }
+.switcher-right { margin-inline-start:auto; display:flex; gap:8px; align-items:center; }
+.ghost {
+  font:inherit; font-size:12.5px; cursor:pointer; color:var(--text-2);
+  padding:6px 11px; border-radius:8px;
+  border:1px solid var(--border); background:var(--surface);
+}
+.ghost:hover { color:var(--text); border-color:var(--border-strong); }
+.ghost[aria-pressed="true"] { color:var(--error); border-color:var(--error); background:var(--error-weak); }
+
+/* The rationale strip. Five templates exist to be CHOSEN between, and a choice
+   needs its cost stated next to its benefit. */
+.rationale {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:0;
+  border:1px solid var(--border); border-radius:var(--r);
+  background:var(--surface); margin-bottom:20px; overflow:hidden;
+}
+.rationale div { padding:12px 16px; border-inline-start:1px solid var(--border); }
+.rationale div:first-child { border-inline-start:0; }
+.rationale dt {
+  font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 4px;
+}
+.rationale dd { margin:0; font-size:12.5px; color:var(--text-2); line-height:1.45; }
+.rationale dd b { color:var(--text); font-weight:600; }
+
+.view { display:none; }
+.view.on { display:block; }
+
+/* ================================= the modal plate =============================
+ * Every direction is drawn inside a plate the size of a real ant-design modal,
+ * because that constraint is the whole argument. The one shipping today is
+ * width="600px" with no height cap, so it grows a browser scrollbar rather than
+ * an inner one. The plate caps the body at 640px and scrolls inside, which is
+ * what a modal on a 1440x900 laptop actually gets.
+ * ============================================================================= */
+.stage { display:flex; justify-content:center; padding:6px 0 4px; }
+.plate {
+  width:var(--w,600px); max-width:100%;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r); box-shadow:var(--shadow-md); overflow:hidden;
+}
+.plate-head {
+  display:flex; align-items:center; gap:10px;
+  padding:12px 16px; border-bottom:1px solid var(--border);
+}
+.plate-head h2 { margin:0; font-size:14px; font-weight:600; }
+.plate-head .w { font-size:11px; color:var(--text-3); font-family:var(--mono); }
+.plate-x {
+  width:26px; height:26px; border-radius:6px; border:1px solid transparent;
+  background:transparent; color:var(--text-3); cursor:pointer; padding:0;
+  display:inline-flex; align-items:center; justify-content:center; font-size:16px; line-height:1;
+}
+.plate-x:hover { color:var(--text); border-color:var(--border); }
+.plate-body { max-height:640px; overflow-y:auto; }
+
+/* ================================= shared atoms ================================ */
+.lamp { width:8px; height:8px; border-radius:50%; flex:0 0 auto; background:var(--off); }
+.lamp.ok { background:var(--ok); }
+.lamp.warn { background:var(--warn); }
+.lamp.error { background:var(--error); }
+.lamp.off { background:var(--off); }
+.lamp.live { box-shadow:0 0 0 3px var(--ok-weak); }
+
+/* Per-membership liveness, three states and not two. Copied from
+   components.css .bo-mb-lamp: hollow at rest, filled with a ring when the core
+   named this inbound, filled weakly with no ring when it only said "somewhere
+   in Xray". Same hue for the last two on purpose: it is the same evidence held
+   less certainly, and a third colour would be a third state to learn. */
+.mlamp {
+  width:7px; height:7px; border-radius:50%; flex:0 0 auto;
+  border:1px solid var(--border); background:transparent;
+}
+.mlamp.live { border-color:var(--ok); background:var(--ok); box-shadow:0 0 0 2px var(--ok-weak); }
+.mlamp.maybe { border-color:var(--ok); background:var(--ok-weak); }
+
+.pill {
+  display:inline-flex; align-items:center; gap:5px; flex:0 0 auto;
+  font-size:11px; font-weight:600; line-height:18px;
+  padding:0 8px; border-radius:999px;
+  background:var(--off-weak); color:var(--off);
+}
+.pill.ok { background:var(--ok-weak); color:var(--ok); }
+.pill.warn { background:var(--warn-weak); color:var(--warn); }
+.pill.error { background:var(--error-weak); color:var(--error); }
+.pill.info { background:var(--info-weak); color:var(--info); }
+.pill.hollow { background:transparent; border:1px dashed var(--border-strong); color:var(--text-3); }
+
+/* Protocol chips stay NEUTRAL. Hue is reserved for state in this panel, the chip
+   already spells the name, and an account's four memberships are not four health
+   states. (The shipped ant-bridge.css currently tints them by data plane, xray
+   blue and vpn green. These mockups do not, so that decision gets re-made rather
+   than inherited.) */
+.proto {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:11px; font-weight:600; line-height:18px;
+  padding:0 7px; border-radius:5px;
+  background:var(--surface-2); color:var(--text-2);
+  border:1px solid var(--border); flex:0 0 auto;
+}
+.proto .port { font-family:var(--mono); font-weight:400; opacity:.7; }
+
+.meter { height:5px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.meter > i { display:block; height:100%; background:var(--accent); border-radius:999px; }
+.meter.warn > i { background:var(--warn); }
+.meter.error > i { background:var(--error); }
+.meter.inf { background:repeating-linear-gradient(90deg,var(--border) 0 5px,transparent 5px 10px); }
+
+.iconbtn {
+  width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  border-radius:7px; cursor:pointer; padding:0; flex:0 0 auto;
+}
+.iconbtn:hover { color:var(--accent); border-color:var(--accent); }
+.iconbtn.danger:hover { color:var(--error); border-color:var(--error); }
+.iconbtn svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+
+.btn {
+  font:inherit; font-size:12.5px; font-weight:500; cursor:pointer;
+  padding:5px 11px; border-radius:7px; white-space:nowrap;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+}
+.btn:hover { color:var(--text); border-color:var(--border-strong); }
+.btn.primary {
+  background:var(--accent-strong); border-color:var(--accent-strong); color:var(--on-accent); font-weight:600;
+}
+.btn.primary:hover { color:var(--on-accent); }
+.btn.quiet { border-color:transparent; background:transparent; color:var(--accent); }
+
+.switch {
+  width:34px; height:19px; border-radius:999px; border:0; padding:0; cursor:pointer;
+  background:var(--border-strong); position:relative; flex:0 0 auto;
+  transition:background .15s;
+}
+.switch::after {
+  content:""; position:absolute; top:2px; inset-inline-start:2px;
+  width:15px; height:15px; border-radius:50%; background:var(--knob);
+  transition:inset-inline-start .15s;
+}
+.switch[aria-checked="true"] { background:var(--accent); }
+.switch[aria-checked="true"]::after { inset-inline-start:17px; }
+
+/* The atom this whole modal is made of: a value that is longer than its box and
+   exists to be copied. Three rules, and all three are load-bearing.
+   1. min-width:0 on the flex child, or the ellipsis never fires and the button
+      is pushed off the edge instead.
+   2. The visible string is never what gets copied. The button carries the full
+      value, so a middle-truncated URL is safe to show.
+   3. unicode-bidi:isolate, because a uuid or a URL reordered by a Persian or
+      Arabic paragraph direction is unreadable and, worse, quietly wrong. */
+.copy {
+  display:flex; align-items:center; gap:6px; min-width:0;
+  padding:5px 6px 5px 10px; border-radius:8px;
+  border:1px solid var(--border); background:var(--surface-2);
+}
+.copy .v {
+  flex:1 1 auto; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-family:var(--mono); font-size:12px; color:var(--text-2);
+  direction:ltr; unicode-bidi:isolate;
+}
+.copy.hero { padding:7px 7px 7px 12px; }
+.copy.hero .v { font-size:12.5px; color:var(--text); }
+.copy .iconbtn { background:var(--surface); }
+
+.fld { min-width:0; }
+.fld-k {
+  font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--text-3); margin-bottom:4px; display:flex; align-items:baseline; gap:6px;
+}
+.fld-k i { font-family:var(--mono); font-style:normal; font-weight:400; letter-spacing:0; text-transform:none; opacity:.75; }
+
+.sect { padding:16px 18px; border-top:1px solid var(--border); }
+.sect:first-child { border-top:0; }
+.sect > h3 {
+  font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 11px; display:flex; align-items:baseline; gap:8px;
+}
+.sect > h3 span { font-weight:400; letter-spacing:0; text-transform:none; font-size:11.5px; }
+
+/* The header every direction shares. Not a design decision so much as the one
+   thing all five agreed on: an operator has to know whose modal this is. */
+.who { display:flex; align-items:flex-start; gap:10px; padding:16px 18px; }
+.who .id { min-width:0; flex:1 1 auto; }
+.who .em { font-size:16px; font-weight:600; letter-spacing:-.01em; word-break:break-all; }
+.who .note { font-size:12px; color:var(--text-3); margin-top:2px; }
+.who .lamp { margin-top:7px; }
+
+.warnline {
+  display:flex; gap:8px; align-items:flex-start;
+  padding:9px 12px; border-radius:8px; font-size:12px; line-height:1.45;
+  background:var(--error-weak); color:var(--error);
+}
+.warnline.info { background:var(--info-weak); color:var(--info); }
+.warnline.neutral { background:var(--surface-2); color:var(--text-2); }
+
+/* ================================================================== *
+ * 1 - HANDOUT
+ * The artifact is the subject. An operator opens this modal because a
+ * customer is waiting for something, so the things that can be handed
+ * over are the page, and state is one line above them.
+ * ================================================================== */
+.ho-state {
+  display:flex; flex-wrap:wrap; align-items:center; gap:0 14px;
+  padding:9px 18px; background:var(--surface-2);
+  border-block:1px solid var(--border);
+  font-size:12.5px; color:var(--text-2);
+}
+.ho-state b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+.ho-state .bad b { color:var(--error); }
+.ho-state .dot { width:3px; height:3px; border-radius:50%; background:var(--border-strong); }
+
+.ho-sub { display:flex; flex-direction:column; gap:8px; }
+.ho-alt { display:flex; gap:6px; flex-wrap:wrap; }
+
+.art {
+  border:1px solid var(--border); border-radius:9px;
+  padding:10px 11px; display:flex; flex-direction:column; gap:8px;
+}
+.art + .art { margin-top:8px; }
+.art.off { opacity:.55; }
+.art-head { display:flex; align-items:center; gap:7px; min-width:0; }
+.art-head .nm { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.art-head .pt { font-family:var(--mono); font-size:11.5px; color:var(--text-3); flex:0 0 auto; }
+/* Three up, not two. The dial-in handover is exactly three strings, and at a
+   180px minimum the third one wrapped onto a row of its own and cost 56px of a
+   modal that is already over its height budget. */
+.art-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:8px; }
+.art-none { font-size:11.5px; color:var(--text-3); }
+
+.ho-foot {
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+  padding:12px 18px; border-top:1px solid var(--border); background:var(--surface-2);
+}
+
+/* ================================================================== *
+ * 2 - VITALS
+ * State is the subject. Three figures and one two-track spine, so
+ * "burning data faster than the clock" is a SHAPE rather than two
+ * numbers held in the head. Same spine the Roster direction proposed
+ * for the Clients list, deliberately: one idea, two places.
+ * ================================================================== */
+.vi-hero {
+  display:grid; grid-template-columns:repeat(3,1fr);
+  border-block:1px solid var(--border);
+}
+.vi-hero > div { padding:14px 18px; border-inline-start:1px solid var(--border); }
+.vi-hero > div:first-child { border-inline-start:0; }
+.vi-hero dt {
+  font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 5px;
+}
+.vi-hero dd { margin:0; font-size:20px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.vi-hero dd.bad { color:var(--error); }
+.vi-hero dd small { display:block; font-size:11.5px; font-weight:400; color:var(--text-3); letter-spacing:0; margin-top:2px; }
+
+.spine { display:flex; flex-direction:column; gap:7px; padding:14px 18px; }
+.spine .track { display:flex; align-items:center; gap:10px; }
+.spine .lbl {
+  font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--text-3); width:36px; flex:0 0 auto;
+}
+.spine .rail { flex:1 1 auto; height:6px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.spine .rail > i { display:block; height:100%; border-radius:999px; background:var(--accent); }
+.spine .rail.time > i { background:var(--text-3); }
+.spine .rail.warn > i { background:var(--warn); }
+.spine .rail.error > i { background:var(--error); }
+.spine .val { font-size:11.5px; color:var(--text-2); width:104px; flex:0 0 auto; text-align:end; font-variant-numeric:tabular-nums; }
+
+.vi-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:0; border-top:1px solid var(--border); }
+.vi-grid > div { padding:11px 18px; border-inline-start:1px solid var(--border); border-bottom:1px solid var(--border); }
+.vi-grid > div:nth-child(odd) { border-inline-start:0; }
+.vi-grid > div:nth-last-child(-n+2) { border-bottom:0; }
+.vi-grid dt { font-size:11px; color:var(--text-3); margin:0 0 2px; }
+.vi-grid dd { margin:0; font-size:13px; font-weight:500; font-variant-numeric:tabular-nums; }
+
+.vi-srv { display:flex; flex-direction:column; gap:6px; }
+.vi-srv .row { display:flex; align-items:center; gap:8px; min-width:0; font-size:12.5px; }
+.vi-srv .row.off { opacity:.55; }
+.vi-srv .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vi-srv .b { margin-inline-start:auto; color:var(--text-3); font-variant-numeric:tabular-nums; flex:0 0 auto; }
+
+.vi-more { border-top:1px solid var(--border); }
+.vi-more > summary {
+  list-style:none; cursor:pointer; padding:13px 18px;
+  display:flex; align-items:center; gap:8px;
+  font-size:12.5px; font-weight:600; color:var(--accent);
+}
+.vi-more > summary::-webkit-details-marker { display:none; }
+.vi-more > summary .chev { transition:transform .15s; display:inline-flex; }
+.vi-more[open] > summary .chev { transform:rotate(90deg); }
+.vi-more > summary .cnt { color:var(--text-3); font-weight:400; }
+.vi-more .body { padding:0 18px 16px; display:flex; flex-direction:column; gap:10px; }
+
+/* ================================================================== *
+ * 3 - MANIFEST
+ * The membership is the subject. An account is not a thing with a
+ * credential, it is a LIST of inbounds each with its own credential,
+ * its own bytes and its own lamp. The account-level facts collapse
+ * into one band so the list can be the page.
+ * ================================================================== */
+.mf-band {
+  position:sticky; top:0; z-index:2;
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding:11px 18px; background:var(--surface);
+  border-bottom:1px solid var(--border);
+}
+.mf-band .em { font-weight:600; font-size:14px; }
+.mf-band .q { min-width:150px; flex:0 0 auto; }
+.mf-band .q .figs { font-size:11.5px; color:var(--text-2); margin-bottom:3px; font-variant-numeric:tabular-nums; }
+.mf-band .q .figs b { color:var(--text); font-weight:600; }
+.mf-band .exp { font-size:11.5px; color:var(--text-2); font-variant-numeric:tabular-nums; }
+.mf-band .exp b { display:block; color:var(--text); font-weight:600; font-size:12.5px; }
+
+.mf-list { padding:14px 18px 16px; display:flex; flex-direction:column; gap:10px; }
+.mfc { border:1px solid var(--border); border-radius:9px; overflow:hidden; }
+.mfc.off { opacity:.62; }
+.mfc-head {
+  display:flex; align-items:center; gap:8px; min-width:0;
+  padding:9px 11px; background:var(--surface-2); border-bottom:1px solid var(--border);
+}
+.mfc-head .nm { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mfc-head .pt { font-family:var(--mono); font-size:11.5px; color:var(--text-3); flex:0 0 auto; }
+.mfc-body { padding:10px 11px; display:flex; flex-direction:column; gap:9px; }
+.mfc-facts { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:11.5px; color:var(--text-3); }
+.mfc-facts b { color:var(--text-2); font-weight:500; font-family:var(--mono); }
+.mfc-use { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-2); flex-wrap:wrap; }
+.mfc-use b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+.mfc-arts { display:flex; gap:6px; flex-wrap:wrap; }
+
+/* ================================================================== *
+ * 4 - SHEET
+ * The FIELD is the subject. Every value the modal has, at one size, in
+ * one order, with the JSON key it came from printed next to its label.
+ * Built for the operator who opens twenty of these in a row and is
+ * comparing, not reading.
+ * ================================================================== */
+.sh-head {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:11px 16px; border-bottom:1px solid var(--border); background:var(--surface-2);
+}
+.sh-head .em { font-weight:600; font-family:var(--mono); font-size:13px; }
+.sh-nav { display:flex; gap:4px; }
+/* minmax(0,1fr), never 1fr. A plain 1fr carries an AUTO minimum, so the column
+   holding the share links refused to shrink below their min-content and took
+   180px off its neighbour: the two halves rendered 412px and 234px, and the IP
+   log in the narrow one ellipsised away its timestamps while the wide one had
+   slack to spare. min-width:0 on the children is the same fix one level down. */
+.sh-cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0 20px; padding:12px 16px 14px; align-items:start; }
+.sh-cols > div { min-width:0; }
+@media (max-width:640px) { .sh-cols { grid-template-columns:minmax(0,1fr); } }
+.shg { margin-bottom:11px; }
+.shg > h3 {
+  font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--accent); margin:0 0 4px; padding-bottom:3px; border-bottom:1px solid var(--border);
+}
+/* 2px, not 3. This direction's only claim is that it fits, so its row rhythm is
+   the one number worth tuning: 32 rows at one pixel each is a section. */
+.shr {
+  display:grid; grid-template-columns:104px 1fr auto; gap:8px; align-items:baseline;
+  padding:2px 0; min-width:0;
+}
+.shr + .shr { border-top:1px dashed var(--border); }
+.shr .k { font-size:11.5px; color:var(--text-3); }
+.shr .k i { display:block; font-style:normal; font-family:var(--mono); font-size:9.5px; opacity:.7; }
+.shr .v {
+  font-family:var(--mono); font-size:11.5px; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  direction:ltr; unicode-bidi:isolate;
+}
+.shr .v.wrap { white-space:normal; word-break:break-all; }
+.shr .c {
+  border:0; background:transparent; color:var(--text-3); cursor:pointer; padding:0;
+  display:inline-flex; align-self:center;
+}
+.shr .c:hover { color:var(--accent); }
+.shr .c svg { width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.shr .v.ok { color:var(--ok); }
+.shr .v.bad { color:var(--error); }
+.shr .v.muted { color:var(--text-3); font-style:italic; }
+/* Two rows and then it scrolls. Sized for the WORST case rather than the sample:
+   limitIp caps concurrent devices, not the log, and clientIps on a busy account
+   is dozens of lines. Letting it size itself is how this group silently becomes
+   the tallest thing in the modal. */
+.sh-ips { max-height:52px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; }
+.sh-mem { display:flex; align-items:center; gap:6px; font-size:11.5px; padding:3px 0; }
+.sh-mem + .sh-mem { border-top:1px dashed var(--border); }
+.sh-mem .v { flex:1 1 auto; font-family:var(--mono); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* nowrap and flex:0 0 auto together, or a long credential in the cell before it
+   pushed the byte figure onto a second line and the membership rows stopped
+   being one line each, which is the only reason this group is a list. */
+.sh-mem .b { flex:0 0 auto; white-space:nowrap; color:var(--text-3); font-variant-numeric:tabular-nums; }
+
+/* ================================================================== *
+ * 5 - TIMELINE
+ * The EVENT is the subject. What happened to this account, in order,
+ * with the figure that changed attached to each step. Reads the way an
+ * operator explains an account to a customer on the phone.
+ * ================================================================== */
+.tl-now {
+  display:flex; gap:0; border-block:1px solid var(--border);
+}
+.tl-now > div { flex:1 1 0; padding:12px 18px; border-inline-start:1px solid var(--border); }
+.tl-now > div:first-child { border-inline-start:0; }
+.tl-now dt { font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text-3); margin:0 0 4px; }
+.tl-now dd { margin:0; font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; }
+.tl-now dd.bad { color:var(--error); }
+
+.tl { list-style:none; margin:0; padding:16px 18px 4px; }
+.tl li {
+  position:relative; padding:0 0 16px 26px; min-width:0;
+}
+.tl li::before {
+  content:""; position:absolute; inset-inline-start:4px; top:14px; bottom:-2px;
+  width:1px; background:var(--border);
+}
+.tl li:last-child::before { display:none; }
+.tl li.synthetic::before { background:repeating-linear-gradient(180deg,var(--border) 0 3px,transparent 3px 7px); }
+.tl .dot {
+  position:absolute; inset-inline-start:0; top:5px;
+  width:9px; height:9px; border-radius:50%;
+  border:1.5px solid var(--border-strong); background:var(--surface);
+}
+.tl li.done .dot { background:var(--border-strong); }
+.tl li.now .dot { border-color:var(--ok); background:var(--ok); box-shadow:0 0 0 3px var(--ok-weak); }
+.tl li.bad .dot { border-color:var(--error); background:var(--error); }
+.tl li.future .dot { border-style:dashed; background:var(--surface); }
+.tl li.future .what, .tl li.future .when { color:var(--text-3); }
+.tl .when {
+  font-size:11px; color:var(--text-3); font-variant-numeric:tabular-nums;
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+}
+.tl .what { font-size:13px; font-weight:500; margin-top:1px; }
+.tl .fig { font-size:12px; color:var(--text-2); font-weight:400; margin-top:2px; }
+.tl .fig b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+.tl-foot { padding:0 18px 16px; }
+
+.footnote {
+  margin-top:34px; padding-top:16px; border-top:1px solid var(--border);
+  font-size:12px; color:var(--text-3); max-width:72ch;
+}
+.footnote b { color:var(--text-2); font-weight:600; }
+.footnote + .footnote { margin-top:12px; border-top:0; padding-top:0; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="masthead">
+    <p class="eyebrow">vpn-ui, account info modal</p>
+    <h1>Five ways to show one account</h1>
+    <p>
+      What is being replaced is the account half of <code>modals/inboundInfoModal</code>: 799 lines that
+      render an inbound's transport and a customer's identity, usage and links as one column of
+      <code>a-tag</code> elements in <code>&lt;table&gt;</code> rows. It is opened per membership from the
+      Clients expander, so the operator arrives already knowing the email, the quota, the expiry and the
+      protocol. What they came for is the part the row cannot show.
+    </p>
+    <p>
+      Five information architectures, same account, same tokens. Each is drawn inside a plate the width of
+      a real modal, with its body capped at 640px and scrolling inside, because that constraint decides
+      more here than any styling does.
+    </p>
+  </header>
+
+  <div class="switcher">
+    <div class="tabs" role="tablist" aria-label="Direction">
+      <button class="tab" role="tab" data-view="handout" aria-selected="true"><span class="n">1</span>Handout</button>
+      <button class="tab" role="tab" data-view="vitals" aria-selected="false"><span class="n">2</span>Vitals</button>
+      <button class="tab" role="tab" data-view="manifest" aria-selected="false"><span class="n">3</span>Manifest</button>
+      <button class="tab" role="tab" data-view="sheet" aria-selected="false"><span class="n">4</span>Sheet</button>
+      <button class="tab" role="tab" data-view="timeline" aria-selected="false"><span class="n">5</span>Timeline</button>
+    </div>
+    <div class="switcher-right">
+      <button class="ghost" id="state" aria-pressed="false">Show depleted</button>
+      <button class="ghost" id="theme">Dark</button>
+    </div>
+  </div>
+
+  <!-- 1 -->
+  <section class="view on" id="v-handout" aria-label="Handout">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Handing something over.</b> The artifacts are the page.</dd></div>
+      <div><dt>The change</dt><dd>Subscription URL first and large, then one block per inbound carrying whatever that protocol can actually give a customer.</dd></div>
+      <div><dt>Costs</dt><dd>State is one line, so a call that starts "why is it slow" goes back to the Clients row. And the fourth inbound is below the fold.</dd></div>
+      <div><dt>Measured</dt><dd><b>600px</b> wide, today's. Body <b>908px</b> against a 640px view.</dd></div>
+    </dl>
+    <div class="stage"><div class="plate" style="--w:600px" id="p-handout"></div></div>
+  </section>
+
+  <!-- 2 -->
+  <section class="view" id="v-vitals" aria-label="Vitals">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Answering "is this account healthy".</b> Data against time, as one shape.</dd></div>
+      <div><dt>The change</dt><dd>Three figures and a two-track spine lead. Credentials and links go behind one disclosure.</dd></div>
+      <div><dt>Costs</dt><dd>Restates the quota and expiry the Clients row already showed, and puts the copy job one click deeper.</dd></div>
+      <div><dt>Measured</dt><dd><b>600px</b> wide, today's. Body <b>625px</b> healthy, 692px once the depleted notice appears. The closest to fitting.</dd></div>
+    </dl>
+    <div class="stage"><div class="plate" style="--w:600px" id="p-vitals"></div></div>
+  </section>
+
+  <!-- 3 -->
+  <section class="view" id="v-manifest" aria-label="Manifest">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>An account on several inbounds.</b> Each membership is a first-class object.</dd></div>
+      <div><dt>The change</dt><dd>The account collapses to one sticky band. The body is a card per inbound: its own lamp, its own credential field, its own bytes, its own artifact.</dd></div>
+      <div><dt>Costs</dt><dd>Tallest of the five. Four memberships already scroll, eight is four screens, and a single-inbound account looks over-built.</dd></div>
+      <div><dt>Measured</dt><dd><b>760px</b> wide, the modal has to grow. Body <b>1027px</b> at four memberships.</dd></div>
+    </dl>
+    <div class="stage"><div class="plate" style="--w:760px" id="p-manifest"></div></div>
+  </section>
+
+  <!-- 4 -->
+  <section class="view" id="v-sheet" aria-label="Sheet">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Auditing in sequence.</b> Twenty accounts, same fields, same places.</dd></div>
+      <div><dt>The change</dt><dd>Every field at one size in two columns, each labelled with the JSON key it came from, plus previous and next so the modal never has to close.</dd></div>
+      <div><dt>Costs</dt><dd>No hierarchy at all, so nothing is fast. <code>updated_at</code> is the same size as the thing you came for.</dd></div>
+      <div><dt>Measured</dt><dd><b>700px</b> wide. Body <b>660px</b>, so even the dense one misses a 640px view by one row.</dd></div>
+    </dl>
+    <div class="stage"><div class="plate" style="--w:700px" id="p-sheet"></div></div>
+  </section>
+
+  <!-- 5 -->
+  <section class="view" id="v-timeline" aria-label="Timeline">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Explaining an account.</b> What happened to it, in order.</dd></div>
+      <div><dt>The change</dt><dd>Created, first seen, reset, edited, last seen, expires, on one spine, each step carrying the figure that changed.</dd></div>
+      <div><dt>Costs</dt><dd><b>Four of its nine events are not stored.</b> The panel keeps five timestamps, not a log. Marked, not faked.</dd></div>
+      <div><dt>Measured</dt><dd><b>620px</b> wide. Body <b>989px</b>, six of nine events above the fold.</dd></div>
+    </dl>
+    <div class="stage"><div class="plate" style="--w:620px" id="p-timeline"></div></div>
+  </section>
+
+  <p class="footnote">
+    <b>Sample data.</b> One account on four inbounds of four families, so every shape the real modal has to
+    render appears at once: a 36-character uuid (vless), a password credential (trojan, l2tp), an
+    email-identity protocol with no credential to show and no share link at all (ssh), a membership
+    switched off on its own (l2tp), a subscription URL too long for any of these boxes, and a share link
+    of roughly 250 characters. The "Show depleted" control above swaps the same account into the state the
+    depletion sweep leaves it in, so all five can be judged on the ugly case rather than the happy one.
+  </p>
+  <p class="footnote">
+    <b>Two figures are marked, not hidden.</b> Xray counts per account with no inbound in the stat name, so
+    the vless and trojan memberships cannot report bytes of their own: both show the same unattributed
+    remainder, tagged. Their liveness has the same problem, which is why both carry the hollow lamp
+    (connected somewhere in Xray) while ssh, which can account for itself, carries the filled one.
+  </p>
+</div>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * The account. ONE customer, four inbounds, four families, and every
+ * awkward shape the real modal has to survive.
+ *
+ * Field names are the real ones. Where a value is read off a different
+ * object in the panel than you would guess, the note says which:
+ * the Clients page reads AccountRow (web/service/accountlist.go), the
+ * modal reads infoModal.clientSettings (the stored client entry) and
+ * infoModal.clientStats (the client_traffics row), and those two
+ * disagree about enable, totalGB and expiryTime by design.
+ * ------------------------------------------------------------------ */
+const ACCOUNT = {
+  email: "k7m2x9qp4",                       // clientSettings.email / AccountRow.Email
+  comment: "Reza, 4 devices, renewed 14 Jul", // clientSettings.comment
+  subId: "7hq3f0vn2c8rbx1e",                // clientSettings.subId
+  subUrl: "https://sub.example-node.net:2097/subscription/7hq3f0vn2c8rbx1e",
+  subJsonUrl: "https://sub.example-node.net:2097/json/7hq3f0vn2c8rbx1e",
+  tgId: "5512340987",                       // clientSettings.tgId, gated on app.tgBotEnable
+  limitIp: 4,                               // clientSettings.limitIp, gated on app.ipLimitEnable
+  resetDays: 30,                            // AccountRow.Reset
+  nextResetDays: 12,
+  createdAt: "14 May 2026, 09:12",          // clientSettings.created_at (ms)
+  updatedAt: "1 Aug 2026, 17:40",           // clientSettings.updated_at (ms)
+  totalGB: 100,                             // clientStats.total, bytes despite the name
+  expiryAbs: "29 Aug 2026",                 // clientSettings.expiryTime > 0
+  expiryDays: 24,
+  host: "de1.example-node.net",
+  // clientIpsArray, formatted exactly as formatIpInfo() does today.
+  ips: [
+    "185.104.22.61 (05/08/2026 11:42:08)",
+    "5.201.140.19 (04/08/2026 22:03:51)",
+    "185.104.22.61 (03/08/2026 08:17:30)",
+  ],
+};
+
+/* The memberships, as AccountMembershipView plus the two things the view does
+   not carry: which field the protocol authenticates on, and whether the core
+   can attribute bytes to this inbound at all.
+
+   `key` is clientIdentityKey / getClientIdentity: id for vmess and vless, the
+   password for trojan and the credential VPNs, the EMAIL for wg-c, awg, gre,
+   mtproto and ssh. That last case is why a credential cannot be shown once on
+   the account and has to live per membership. */
+const MEMBERSHIPS = [
+  {
+    inboundId: 7, protocol: "VLESS", remark: "vless-reality-de", port: 11645,
+    enable: true, key: "id", clientId: "a3f19c7e-6b48-4d2a-9f05-8c71e2b0d4a6",
+    facts: [["flow", "xtls-rprx-vision"], ["security", "reality"], ["sni", "www.cloudflare.com"]],
+    shared: true, attributable: false,
+    link: "vless://a3f19c7e-6b48-4d2a-9f05-8c71e2b0d4a6@de1.example-node.net:11645?type=tcp&security=reality&pbk=Zx1Qn8dKt7Ry4Uw2Fm6Bp0Hs3Lc9Ne5Vg8Jd1Ka4Tz&fp=chrome&sni=www.cloudflare.com&sid=6ba85179&spx=%2F&flow=xtls-rprx-vision#k7m2x9qp4-vless-reality-de",
+    artifact: "link",
+  },
+  {
+    inboundId: 12, protocol: "Trojan", remark: "trojan-ws-cdn", port: 11707,
+    enable: true, key: "password", clientId: "Qk8vR2mZ1sPd",
+    facts: [["security", "tls"], ["network", "ws"], ["path", "/ws"]],
+    shared: true, attributable: false,
+    link: "trojan://Qk8vR2mZ1sPd@cdn.example-node.net:11707?type=ws&security=tls&host=cdn.example-node.net&path=%2Fws&sni=cdn.example-node.net&alpn=h2%2Chttp%2F1.1&fp=chrome#k7m2x9qp4-trojan-ws-cdn",
+    artifact: "link",
+  },
+  {
+    // Switched off on this inbound alone. account_inbounds.enable is a separate
+    // flag from the account's, and the projection renders the AND of the two.
+    inboundId: 19, protocol: "L2TP", remark: "l2tp-dialin", port: 1701,
+    enable: false, key: "password", clientId: "Zt4-pw-9nQx",
+    facts: [["username", "k7m2x9qp4"], ["psk", "set"], ["mtu", "1400"]],
+    shared: false, attributable: true,
+    link: null, artifact: "dialin",
+  },
+  {
+    // Email-identity. getClientIdentity returns client.id, and the ssh model's
+    // `get id()` returns the email, so membershipCredential() renders NOTHING
+    // here today. hasLink() is false, so there is no share link either. What
+    // the customer installs comes from the ssh-configs endpoint.
+    inboundId: 23, protocol: "SSH", remark: "ssh-gw", port: 2222,
+    enable: true, key: "email", clientId: null,
+    facts: [["user", "k7m2x9qp4"], ["auth", "password"], ["host", "de1.example-node.net"]],
+    shared: false, attributable: true, live: true,
+    link: null, artifact: "config",
+  },
+];
+
+/* Two states of the SAME account, so every direction can be judged on the ugly
+   one. Depleted is what disableInvalidClients leaves behind: the quota is gone,
+   client_traffics.enable has been set false by the sweep, and every membership
+   went dark with it while none of them individually changed. */
+const STATES = {
+  healthy: {
+    key: "healthy", label: "Online", tone: "ok", enable: true, online: true,
+    up: 12.6, down: 55.8, sharedGB: 66.3, sshGB: 2.1,
+    lastSeen: "now", lastSeenAbs: "5 Aug 2026, 11:42",
+    why: null,
+  },
+  depleted: {
+    key: "depleted", label: "Depleted", tone: "error", enable: false, online: false,
+    up: 22.9, down: 77.1, sharedGB: 95.8, sshGB: 4.2,
+    lastSeen: "3 days ago", lastSeenAbs: "2 Aug 2026, 19:05",
+    why: "Quota reached on 2 Aug. The panel switched the account off, which took every inbound below with it. 24 days are still on the clock.",
+  },
+};
+let STATE = STATES.healthy;
+
+/* --------------------------------- helpers --------------------------------- */
+const el = (t, cls, txt) => {
+  const n = document.createElement(t);
+  if (cls) n.className = cls;
+  if (txt != null) n.textContent = txt;
+  return n;
+};
+const gb = (n) => (n >= 100 ? n.toFixed(0) : n.toFixed(1)) + " GB";
+const used = () => STATE.up + STATE.down;
+const left = () => Math.max(0, ACCOUNT.totalGB - used());
+const pct = () => Math.min(100, (used() / ACCOUNT.totalGB) * 100);
+const quotaTone = () => (pct() >= 100 ? "error" : pct() >= 85 ? "warn" : "");
+const memberGB = (m) => (m.shared ? STATE.sharedGB : m.protocol === "SSH" ? STATE.sshGB : 0);
+
+// Enabled here is the AND of two flags: the account's and this membership's.
+// All four going dark at once is therefore evidence about the ACCOUNT row, not
+// about four inbounds, and the depleted view says so in words rather than
+// leaving an operator to work it out from a row of grey dots.
+const memberOn = (m) => STATE.enable && m.enable;
+const memberLamp = (m) => {
+  if (!memberOn(m)) return "";
+  if (m.shared) return STATE.online ? "maybe" : "";
+  return STATE.online && m.live ? "live" : "";
+};
+const memberLampText = (m) => {
+  if (!STATE.enable) return "Off, the account is disabled";
+  if (!m.enable) return "Off on this inbound only";
+  if (m.shared) return STATE.online ? "Connected somewhere in Xray, the core does not say which inbound" : "Offline";
+  return STATE.online && m.live ? "Connected on this inbound" : "Offline";
+};
+
+/* Middle truncation, used ONLY on the subscription URL. Everywhere else the
+   head of the value identifies it and a plain CSS ellipsis is correct, which
+   also keeps the string selectable. A sub URL is the opposite: every one of them
+   shares a host and a path and differs only in the subId at the tail, so a
+   tail-cut ellipsis turns them all into the same string. The button copies the
+   full value regardless of what is drawn. */
+function midTrunc(s, max) {
+  if (s.length <= max) return s;
+  const head = Math.ceil((max - 1) * 0.58);
+  const tail = max - 1 - head;
+  return s.slice(0, head) + "…" + s.slice(s.length - tail);
+}
+
+// "1.2.3.4 (05/08/2026 11:42:08)" to "1.2.3.4  05/08 11:42". Used by the Sheet
+// only, where the column cannot hold the full form.
+function shortIp(s) {
+  const m = /^(\S+)\s+\((\d{2}\/\d{2})\/\d{4}\s+(\d{2}:\d{2}):\d{2}\)$/.exec(s);
+  return m ? m[1] + "  " + m[2] + " " + m[3] : s;
+}
+
+const ICON = {
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5h10"/>',
+  qr: '<rect x="4" y="4" width="6" height="6"/><rect x="14" y="4" width="6" height="6"/><rect x="4" y="14" width="6" height="6"/><path d="M14 14h3v3h3v3"/>',
+  down: '<path d="M12 4v11"/><path d="M8 12l4 4 4-4"/><path d="M5 20h14"/>',
+  open: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  edit: '<path d="M4 20h4l10-10a2.8 2.8 0 1 0-4-4L4 16v4z"/>',
+  sync: '<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4v5h-5"/>',
+  trash: '<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>',
+  prev: '<path d="M15 5l-7 7 7 7"/>',
+  next: '<path d="M9 5l7 7-7 7"/>',
+  chev: '<path d="M9 5l7 7-7 7"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+};
+function svg(name, size) {
+  const s = '<svg viewBox="0 0 24 24" aria-hidden="true"' +
+    (size ? ' style="width:' + size + 'px;height:' + size + 'px"' : "") + ">" + ICON[name] + "</svg>";
+  return s;
+}
+function iconBtn(name, title, cls) {
+  const b = el("button", "iconbtn" + (cls ? " " + cls : ""));
+  b.type = "button"; b.title = title; b.setAttribute("aria-label", title);
+  b.innerHTML = svg(name);
+  return b;
+}
+function btn(label, cls) {
+  const b = el("button", "btn" + (cls ? " " + cls : ""), label);
+  b.type = "button";
+  return b;
+}
+function switchEl(on, label) {
+  const s = el("button", "switch");
+  s.type = "button"; s.setAttribute("role", "switch");
+  s.setAttribute("aria-checked", on ? "true" : "false");
+  s.setAttribute("aria-label", label || "Enabled");
+  return s;
+}
+function protoChip(m, withPort) {
+  const c = el("span", "proto");
+  c.append(document.createTextNode(m.protocol));
+  if (withPort) c.append(el("span", "port", ":" + m.port));
+  return c;
+}
+
+/* The atom. A value longer than its box that exists to be copied. */
+function copyRow(value, opts) {
+  opts = opts || {};
+  const row = el("div", "copy" + (opts.cls ? " " + opts.cls : ""));
+  const v = el("span", "v", opts.shown || value);
+  v.title = value;
+  row.append(v);
+  (opts.actions || ["copy"]).forEach((k) => {
+    row.append(iconBtn(k, { copy: "Copy", qr: "QR code", open: "Open", down: "Download" }[k]));
+  });
+  return row;
+}
+function fieldBlock(label, jsonKey, value, opts) {
+  const w = el("div", "fld");
+  const k = el("div", "fld-k");
+  k.append(document.createTextNode(label));
+  if (jsonKey) k.append(el("i", "", jsonKey));
+  w.append(k, copyRow(value, opts));
+  return w;
+}
+
+/* The header every direction carries. Same atoms, so a decision about one is a
+   decision about all five. */
+function whoHeader(opts) {
+  opts = opts || {};
+  const w = el("div", "who");
+  const lamp = el("span", "lamp " + (STATE.tone === "ok" ? "ok" : "error") + (STATE.online ? " live" : ""));
+  lamp.title = STATE.label;
+  const id = el("div", "id");
+  id.append(el("div", "em", ACCOUNT.email));
+  if (ACCOUNT.comment) id.append(el("div", "note", ACCOUNT.comment));
+  const right = el("div");
+  right.style.display = "flex"; right.style.alignItems = "center"; right.style.gap = "8px";
+  right.append(el("span", "pill " + STATE.tone, STATE.label));
+  if (opts.toggle) right.append(switchEl(STATE.enable, "Enabled"));
+  if (opts.edit) right.append(iconBtn("edit", "Edit account"));
+  w.append(lamp, id, right);
+  return w;
+}
+function plateHead(title, width, host) {
+  const h = el("div", "plate-head");
+  h.append(el("h2", "", title), el("span", "w", width));
+  const x = el("button", "plate-x", "×");
+  x.type = "button"; x.title = "Close"; x.setAttribute("aria-label", "Close");
+  x.style.marginInlineStart = "auto";
+  h.append(x);
+  host.append(h);
+  const body = el("div", "plate-body");
+  host.append(body);
+  return body;
+}
+
+/* ================================================================== *
+ * 1. HANDOUT
+ * ================================================================== */
+function buildHandout() {
+  const host = document.getElementById("p-handout");
+  host.textContent = "";
+  const body = plateHead("Account", "600px", host);
+
+  body.append(whoHeader({ edit: true }));
+
+  // State, compressed to one line. Everything on it is already on the Clients
+  // row this modal was opened from, which is exactly why it gets one line.
+  const st = el("div", "ho-state");
+  const bit = (label, value, bad) => {
+    const s = el("span", bad ? "bad" : "");
+    s.append(el("b", "", value), document.createTextNode(" " + label));
+    return s;
+  };
+  st.append(bit("left of " + gb(ACCOUNT.totalGB), gb(left()), left() === 0));
+  st.append(el("span", "dot"));
+  st.append(bit("left, " + ACCOUNT.expiryAbs, ACCOUNT.expiryDays + " days"));
+  st.append(el("span", "dot"));
+  st.append(bit("", "Seen " + STATE.lastSeen));
+  body.append(st);
+
+  if (STATE.why) {
+    const w = el("div", "sect");
+    w.style.paddingBottom = "0"; w.style.borderTop = "0";
+    const line = el("div", "warnline");
+    line.innerHTML = svg("info", 15);
+    line.append(el("span", "", STATE.why));
+    w.append(line);
+    body.append(w);
+  }
+
+  // The subscription. One subId is projected onto every inbound serving the
+  // account, so this single URL is the whole account for any client that speaks
+  // subscriptions, and it is the reason this direction leads with it.
+  const sub = el("div", "sect");
+  const h = el("h3");
+  h.append(document.createTextNode("Subscription"), el("span", "", "one link, every inbound below"));
+  sub.append(h);
+  const subWrap = el("div", "ho-sub");
+  subWrap.append(copyRow(ACCOUNT.subUrl, {
+    cls: "hero", shown: midTrunc(ACCOUNT.subUrl, 52), actions: ["copy", "qr", "open"],
+  }));
+  const alt = el("div", "ho-alt");
+  alt.append(btn("Copy json link", "quiet"), btn("Copy subId", "quiet"));
+  subWrap.append(alt);
+  sub.append(subWrap);
+  body.append(sub);
+
+  // One block per inbound, carrying whatever that protocol can actually hand
+  // over. Three different answers, none of them "a share link".
+  const per = el("div", "sect");
+  const h2 = el("h3");
+  h2.append(document.createTextNode("Per inbound"), el("span", "", MEMBERSHIPS.length + " memberships"));
+  per.append(h2);
+  MEMBERSHIPS.forEach((m) => {
+    const a = el("div", "art" + (memberOn(m) ? "" : " off"));
+    const head = el("div", "art-head");
+    const lamp = el("span", "mlamp " + memberLamp(m));
+    lamp.title = memberLampText(m);
+    head.append(lamp, protoChip(m), el("span", "nm", m.remark), el("span", "pt", ":" + m.port));
+    if (!m.enable) head.append(el("span", "pill", "Off"));
+    head.append(el("span", "sp"));
+    a.append(head);
+
+    if (m.artifact === "link") {
+      a.append(copyRow(m.link, { actions: ["copy", "qr"] }));
+    } else if (m.artifact === "dialin") {
+      // No share link exists for a dial-in protocol, so the artifact is the three
+      // strings a customer types into the OS dialog. Spelling them out beats a
+      // link-shaped box that says "none".
+      const g = el("div", "art-grid");
+      g.append(fieldBlock("Server", "", ACCOUNT.host));
+      g.append(fieldBlock("Username", "", ACCOUNT.email));
+      g.append(fieldBlock("Password", "password", m.clientId));
+      a.append(g);
+      a.append(el("div", "art-none", "No share link. L2TP is dialled by hand, so these three fields are the handover."));
+    } else {
+      const g = el("div", "art-grid");
+      g.append(fieldBlock("Host", "", ACCOUNT.host + ":" + m.port));
+      g.append(fieldBlock("User", "email", ACCOUNT.email));
+      a.append(g);
+      const row = el("div", "ho-alt");
+      const d = btn("Download config", "primary");
+      d.style.display = "inline-flex"; d.style.alignItems = "center"; d.style.gap = "6px";
+      row.append(d, btn("Copy config", "quiet"));
+      a.append(row);
+      a.append(el("div", "art-none", "No share link and no credential to show: SSH is addressed by the email, so the config file is the only artifact."));
+    }
+    per.append(a);
+  });
+  body.append(per);
+
+  const foot = el("div", "ho-foot");
+  foot.append(btn("Copy all as text"), btn("Export PDF"));
+  foot.append(el("span", "sp"));
+  foot.append(btn("Full details", "quiet"));
+  body.append(foot);
+}
+
+/* ================================================================== *
+ * 2. VITALS
+ * ================================================================== */
+function buildVitals() {
+  const host = document.getElementById("p-vitals");
+  host.textContent = "";
+  const body = plateHead("Account", "600px", host);
+
+  body.append(whoHeader({ toggle: true, edit: true }));
+
+  const hero = el("dl", "vi-hero");
+  const cell = (k, v, sub, bad) => {
+    const w = el("div");
+    w.append(el("dt", "", k));
+    const dd = el("dd", bad ? "bad" : "");
+    dd.append(document.createTextNode(v));
+    if (sub) dd.append(el("small", "", sub));
+    w.append(dd);
+    return w;
+  };
+  hero.append(cell("Data left", gb(left()), "of " + gb(ACCOUNT.totalGB), left() === 0));
+  hero.append(cell("Time left", ACCOUNT.expiryDays + " days", ACCOUNT.expiryAbs));
+  hero.append(cell("Last seen", STATE.online ? "Now" : STATE.lastSeen, STATE.lastSeenAbs));
+  body.append(hero);
+
+  // The spine. Two tracks on one x axis, so spending 68% of the data in 55% of
+  // the term is a visible mismatch and not arithmetic the operator has to do.
+  const spine = el("div", "spine");
+  const track = (label, cls, fill, val, tone) => {
+    const t = el("div", "track");
+    t.append(el("span", "lbl", label));
+    const rail = el("div", "rail " + cls);
+    const i = el("i");
+    i.style.width = fill + "%";
+    rail.append(i);
+    t.append(rail);
+    const v = el("span", "val", val);
+    if (tone) v.style.color = "var(--" + tone + ")";
+    t.append(v);
+    return t;
+  };
+  const termDays = 107;
+  const elapsed = termDays - ACCOUNT.expiryDays;
+  spine.append(track("Data", quotaTone(), pct(), gb(used()) + " of " + gb(ACCOUNT.totalGB),
+    quotaTone() === "error" ? "error" : ""));
+  spine.append(track("Time", "time", (elapsed / termDays) * 100, elapsed + " of " + termDays + " days", ""));
+  body.append(spine);
+
+  if (STATE.why) {
+    const w = el("div", "spine");
+    w.style.paddingTop = "0";
+    const line = el("div", "warnline");
+    line.innerHTML = svg("info", 15);
+    line.append(el("span", "", STATE.why));
+    w.append(line);
+    body.append(w);
+  }
+
+  const grid = el("dl", "vi-grid");
+  const g = (k, v) => { const w = el("div"); w.append(el("dt", "", k), el("dd", "", v)); return w; };
+  grid.append(g("IP slots in use", ACCOUNT.ips.length + " of " + ACCOUNT.limitIp));
+  grid.append(g("Traffic resets", "Every " + ACCOUNT.resetDays + " days, next in " + ACCOUNT.nextResetDays));
+  grid.append(g("Created", ACCOUNT.createdAt));
+  grid.append(g("Last edited", ACCOUNT.updatedAt));
+  body.append(grid);
+
+  const srv = el("div", "sect");
+  srv.append(el("h3", "", "Served on"));
+  const list = el("div", "vi-srv");
+  MEMBERSHIPS.forEach((m) => {
+    const row = el("div", "row" + (memberOn(m) ? "" : " off"));
+    const lamp = el("span", "mlamp " + memberLamp(m));
+    lamp.title = memberLampText(m);
+    row.append(lamp, protoChip(m), el("span", "nm", m.remark), el("span", "dim mono", ":" + m.port));
+    if (!m.enable) row.append(el("span", "pill", "Off"));
+    const b = el("span", "b", gb(memberGB(m)) + (m.shared ? " shared" : ""));
+    b.title = m.shared
+      ? "Xray counts per account with no inbound in the stat name. This is the account's unattributed remainder, shared with the other Xray inbound."
+      : "Counted for this inbound alone.";
+    row.append(b);
+    list.append(row);
+  });
+  srv.append(list);
+  body.append(srv);
+
+  // Everything Handout puts first, one click away. This is the trade, stated in
+  // the component rather than only in the notes above it.
+  const more = el("details", "vi-more");
+  const sum = el("summary");
+  const chev = el("span", "chev");
+  chev.innerHTML = svg("chev", 13);
+  sum.append(chev, document.createTextNode("Links and credentials"),
+    el("span", "cnt", "1 subscription, 2 share links, 3 credentials"));
+  more.append(sum);
+  const mb = el("div", "body");
+  mb.append(fieldBlock("Subscription", "subId", ACCOUNT.subUrl,
+    { shown: midTrunc(ACCOUNT.subUrl, 46), actions: ["copy", "qr"] }));
+  MEMBERSHIPS.forEach((m) => {
+    if (m.link) {
+      mb.append(fieldBlock(m.remark, m.key, m.link, { actions: ["copy", "qr"] }));
+    } else if (m.clientId) {
+      mb.append(fieldBlock(m.remark, m.key, m.clientId));
+    } else {
+      const w = el("div", "fld");
+      const k = el("div", "fld-k");
+      k.append(document.createTextNode(m.remark), el("i", "", "email"));
+      w.append(k);
+      w.append(el("div", "art-none", "Addressed by the email. No credential and no share link, download the config instead."));
+      mb.append(w);
+    }
+  });
+  more.append(mb);
+  body.append(more);
+}
+
+/* ================================================================== *
+ * 3. MANIFEST
+ * ================================================================== */
+function buildManifest() {
+  const host = document.getElementById("p-manifest");
+  host.textContent = "";
+  const body = plateHead("Account", "760px", host);
+
+  // The whole account, on one line. Everything here is already on the Clients
+  // row, so it is compressed to the smallest thing that still orients someone
+  // who has scrolled four membership cards down.
+  const band = el("div", "mf-band");
+  const lamp = el("span", "lamp " + (STATE.tone === "ok" ? "ok" : "error") + (STATE.online ? " live" : ""));
+  lamp.title = STATE.label;
+  band.append(lamp, el("span", "em", ACCOUNT.email), el("span", "pill " + STATE.tone, STATE.label));
+
+  const q = el("div", "q");
+  const figs = el("div", "figs");
+  figs.append(el("b", "", gb(used())), document.createTextNode(" of " + gb(ACCOUNT.totalGB)));
+  const meter = el("div", "meter " + quotaTone());
+  const fill = el("i");
+  fill.style.width = pct() + "%";
+  meter.append(fill);
+  q.append(figs, meter);
+  band.append(q);
+
+  const exp = el("div", "exp");
+  exp.append(el("b", "", ACCOUNT.expiryDays + " days left"), document.createTextNode(ACCOUNT.expiryAbs));
+  band.append(exp);
+
+  band.append(el("span", "sp"));
+  band.append(btn("Subscription", "primary"), iconBtn("edit", "Edit account"));
+  body.append(band);
+
+  const list = el("div", "mf-list");
+
+  if (STATE.why) {
+    const line = el("div", "warnline");
+    line.innerHTML = svg("info", 15);
+    line.append(el("span", "", STATE.why));
+    list.append(line);
+  }
+
+  MEMBERSHIPS.forEach((m) => {
+    const c = el("div", "mfc" + (memberOn(m) ? "" : " off"));
+
+    const head = el("div", "mfc-head");
+    const l = el("span", "mlamp " + memberLamp(m));
+    l.title = memberLampText(m);
+    head.append(l, protoChip(m), el("span", "nm", m.remark), el("span", "pt", ":" + m.port),
+      el("span", "dim mono", "#" + m.inboundId));
+    if (!m.enable) head.append(el("span", "pill", "Off on this inbound"));
+    head.append(el("span", "sp"));
+    head.append(switchEl(m.enable, "Enabled on this inbound"));
+    c.append(head);
+
+    const b = el("div", "mfc-body");
+
+    // The credential, with the field name spelled out. Naming it is the point:
+    // the same customer is a uuid here and a password one card down, and an
+    // operator reading a value out over the phone has to know which.
+    if (m.clientId) {
+      b.append(fieldBlock("Credential", m.key, m.clientId));
+    } else {
+      const w = el("div", "fld");
+      const k = el("div", "fld-k");
+      k.append(document.createTextNode("Credential"), el("i", "", m.key));
+      w.append(k, el("div", "art-none",
+        "Addressed by the email, so there is nothing here the account line does not already say."));
+      b.append(w);
+    }
+
+    const facts = el("div", "mfc-facts");
+    m.facts.forEach(([k, v]) => {
+      const s = el("span");
+      s.append(document.createTextNode(k + " "), el("b", "", v));
+      facts.append(s);
+    });
+    b.append(facts);
+
+    const use = el("div", "mfc-use");
+    use.append(el("b", "", gb(memberGB(m))));
+    use.append(el("span", "", "on this inbound"));
+    if (m.shared) {
+      const p = el("span", "pill hollow", "shared figure");
+      p.title = "Xray counts per account with no inbound in the stat name, so this is the account's unattributed remainder and the other Xray membership shows the same number.";
+      use.append(p);
+    }
+    if (!m.attributable && !m.shared) use.append(el("span", "pill hollow", "not counted"));
+    b.append(use);
+
+    const arts = el("div", "mfc-arts");
+    if (m.link) {
+      b.append(copyRow(m.link, { actions: ["copy", "qr"] }));
+    } else if (m.artifact === "dialin") {
+      arts.append(btn("Copy dial-in details"), btn("Export as text", "quiet"));
+      b.append(el("div", "art-none", "No share link: hasLink() is false for L2TP, so nothing here can be scanned."));
+      b.append(arts);
+    } else {
+      arts.append(btn("Download config", "primary"), btn("Copy config", "quiet"));
+      b.append(el("div", "art-none", "No share link: the ssh-configs endpoint renders the profile server side."));
+      b.append(arts);
+    }
+
+    c.append(b);
+    list.append(c);
+  });
+
+  body.append(list);
+}
+
+/* ================================================================== *
+ * 4. SHEET
+ * ================================================================== */
+function buildSheet() {
+  const host = document.getElementById("p-sheet");
+  host.textContent = "";
+  const body = plateHead("Account", "700px", host);
+
+  const head = el("div", "sh-head");
+  head.append(el("span", "em", ACCOUNT.email), el("span", "pill " + STATE.tone, STATE.label));
+  head.append(el("span", "sp"));
+  const nav = el("div", "sh-nav");
+  nav.append(iconBtn("prev", "Previous account"), iconBtn("next", "Next account"));
+  head.append(nav, btn("Copy all as text"));
+  body.append(head);
+
+  const cols = el("div", "sh-cols");
+
+  const group = (title) => {
+    const g = el("div", "shg");
+    g.append(el("h3", "", title));
+    return g;
+  };
+  const row = (label, jsonKey, value, opts) => {
+    opts = opts || {};
+    const r = el("div", "shr");
+    const k = el("div", "k");
+    k.append(document.createTextNode(label));
+    if (jsonKey) k.append(el("i", "", jsonKey));
+    const v = el("div", "v" + (opts.tone ? " " + opts.tone : "") + (opts.wrap ? " wrap" : ""), value);
+    v.title = opts.full || value;
+    r.append(k, v);
+    if (opts.copy) {
+      const c = el("button", "c");
+      c.type = "button"; c.title = "Copy"; c.setAttribute("aria-label", "Copy " + label);
+      c.innerHTML = svg("copy");
+      r.append(c);
+    } else {
+      r.append(el("span"));
+    }
+    return r;
+  };
+
+  const left1 = el("div");
+  const identity = group("Identity");
+  identity.append(row("Email", "email", ACCOUNT.email, { copy: true }));
+  identity.append(row("Comment", "comment", ACCOUNT.comment));
+  identity.append(row("Sub id", "subId", ACCOUNT.subId, { copy: true }));
+  identity.append(row("Telegram", "tgId", ACCOUNT.tgId, { copy: true }));
+  identity.append(row("Reseller", "ownedByReseller", "house account", { tone: "muted" }));
+  left1.append(identity);
+
+  const plan = group("Plan");
+  plan.append(row("Quota", "totalGB", gb(ACCOUNT.totalGB)));
+  plan.append(row("Used", "up + down", gb(used()), { tone: pct() >= 100 ? "bad" : "" }));
+  plan.append(row("Remaining", "", gb(left()), { tone: left() === 0 ? "bad" : "ok" }));
+  plan.append(row("Up", "up", gb(STATE.up)));
+  plan.append(row("Down", "down", gb(STATE.down)));
+  plan.append(row("Resets", "reset", "every " + ACCOUNT.resetDays + " days"));
+  left1.append(plan);
+
+  const time = group("Time");
+  time.append(row("Expires", "expiryTime", ACCOUNT.expiryAbs + " (" + ACCOUNT.expiryDays + "d)"));
+  time.append(row("Created", "created_at", ACCOUNT.createdAt));
+  time.append(row("Updated", "updated_at", ACCOUNT.updatedAt));
+  time.append(row("Last online", "", STATE.lastSeenAbs, { tone: STATE.online ? "ok" : "" }));
+  time.append(row("Enabled", "enable", STATE.enable ? "true" : "false",
+    { tone: STATE.enable ? "ok" : "bad" }));
+
+  const right1 = el("div");
+  const access = group("Access");
+  access.append(row("IP limit", "limitIp", String(ACCOUNT.limitIp)));
+  const ipRow = el("div", "shr");
+  const ipK = el("div", "k");
+  ipK.append(document.createTextNode("Recent IPs"), el("i", "", "clientIps"));
+  const ipBox = el("div", "sh-ips");
+  // Shortened here and nowhere else. formatIpInfo() emits
+  // "<ip> (dd/mm/yyyy HH:MM:SS)", which is about 300px of monospace, and this
+  // column is 200. Ellipsising it cut the timestamp off entirely and rendered
+  // the two entries from the same IP as one repeated string; wrapping pushed
+  // the timestamps out of the scroll box. Dropping the year and the seconds is
+  // the only one of the three that leaves the log answering its question. The
+  // title and the copy both carry the full value.
+  ACCOUNT.ips.forEach((ip) => {
+    const line = el("div", "v", shortIp(ip));
+    line.title = ip;
+    ipBox.append(line);
+  });
+  ipRow.append(ipK, ipBox);
+  const sync = el("button", "c");
+  sync.type = "button"; sync.title = "Refresh"; sync.innerHTML = svg("sync");
+  ipRow.append(sync);
+  access.append(ipRow);
+  // Access joins the LEFT column and Time the right, so the two are within a
+  // row of each other. Grouping by subject and then filling one column at a
+  // time left a 200px hole beside the tallest group, and in a direction whose
+  // whole claim is "no scrolling" that hole is what pushed it over the cap.
+  left1.append(access);
+  right1.append(time);
+
+  const mem = group("Memberships");
+  MEMBERSHIPS.forEach((m) => {
+    const r = el("div", "sh-mem" + (memberOn(m) ? "" : " off"));
+    if (!memberOn(m)) r.style.opacity = ".6";
+    const l = el("span", "mlamp " + memberLamp(m));
+    l.title = memberLampText(m);
+    r.append(l, protoChip(m, true));
+    const v = el("span", "v", m.clientId || ACCOUNT.email);
+    v.title = m.key + " = " + (m.clientId || ACCOUNT.email);
+    r.append(v);
+    r.append(el("span", "b", gb(memberGB(m)) + (m.shared ? "*" : "")));
+    mem.append(r);
+  });
+  const star = el("div", "art-none");
+  star.style.marginTop = "5px";
+  star.textContent = "* one shared figure, Xray cannot attribute it per inbound.";
+  mem.append(star);
+  right1.append(mem);
+
+  const arts = group("Artifacts");
+  arts.append(row("Subscription", "subURI", midTrunc(ACCOUNT.subUrl, 34),
+    { copy: true, full: ACCOUNT.subUrl }));
+  arts.append(row("Json link", "subJsonURI", midTrunc(ACCOUNT.subJsonUrl, 34),
+    { copy: true, full: ACCOUNT.subJsonUrl }));
+  MEMBERSHIPS.forEach((m) => {
+    if (m.link) {
+      arts.append(row(m.protocol + " link", "", m.link, { copy: true }));
+    } else {
+      arts.append(row(m.protocol + " link", "", "none, hasLink() is false", { tone: "muted" }));
+    }
+  });
+  right1.append(arts);
+
+  cols.append(left1, right1);
+  body.append(cols);
+}
+
+/* ================================================================== *
+ * 5. TIMELINE
+ * ================================================================== */
+function buildTimeline() {
+  const host = document.getElementById("p-timeline");
+  host.textContent = "";
+  const body = plateHead("Account", "620px", host);
+
+  body.append(whoHeader({ edit: true }));
+
+  const now = el("dl", "tl-now");
+  const cell = (k, v, bad) => {
+    const w = el("div");
+    w.append(el("dt", "", k), el("dd", bad ? "bad" : "", v));
+    return w;
+  };
+  now.append(cell("Data left", gb(left()), left() === 0));
+  now.append(cell("Days left", String(ACCOUNT.expiryDays)));
+  now.append(cell("State", STATE.label, STATE.tone === "error"));
+  body.append(now);
+
+  /* Every event, with an honest flag on each: `stored` means the panel can
+     render it from a column it already has, `synthetic` means it cannot and
+     would need an audit table that does not exist. Four of eight are synthetic,
+     which is the cost of this direction and is drawn rather than described. */
+  const EVENTS = STATE.key === "healthy" ? [
+    { when: ACCOUNT.createdAt, what: "Created", cls: "done", stored: true,
+      fig: "100 GB, 30 day term, 4 IP slots", src: "created_at" },
+    { when: "14 May 2026, 21:06", what: "First connected", cls: "done", stored: false,
+      fig: "on vless-reality-de", src: null },
+    { when: "13 Jun 2026", what: "Traffic reset", cls: "done", stored: false,
+      fig: "counter back to 0, second cycle", src: null },
+    { when: "13 Jul 2026", what: "Traffic reset", cls: "done", stored: false,
+      fig: "counter back to 0, third cycle", src: null },
+    { when: ACCOUNT.updatedAt, what: "Edited", cls: "done", stored: true,
+      fig: "expiry moved out to 29 Aug", src: "updated_at" },
+    { when: "2 Aug 2026", what: "l2tp-dialin switched off", cls: "done", stored: false,
+      fig: "one membership only, the other three kept serving", src: null },
+    { when: "Now", what: "Connected", cls: "now", stored: true,
+      fig: "68.4 GB used of 100 GB, three sessions", src: "lastOnline" },
+    { when: "17 Aug 2026", what: "Next traffic reset", cls: "future", stored: true,
+      fig: "in 12 days, counter returns to 0", src: "reset" },
+    { when: ACCOUNT.expiryAbs, what: "Expires", cls: "future", stored: true,
+      fig: "in " + ACCOUNT.expiryDays + " days, the panel switches it off", src: "expiryTime" },
+  ] : [
+    { when: ACCOUNT.createdAt, what: "Created", cls: "done", stored: true,
+      fig: "100 GB, 30 day term, 4 IP slots", src: "created_at" },
+    { when: "14 May 2026, 21:06", what: "First connected", cls: "done", stored: false,
+      fig: "on vless-reality-de", src: null },
+    { when: "13 Jul 2026", what: "Traffic reset", cls: "done", stored: false,
+      fig: "counter back to 0, third cycle", src: null },
+    { when: ACCOUNT.updatedAt, what: "Edited", cls: "done", stored: true,
+      fig: "expiry moved out to 29 Aug", src: "updated_at" },
+    { when: "2 Aug 2026", what: "l2tp-dialin switched off", cls: "done", stored: false,
+      fig: "one membership only", src: null },
+    { when: STATE.lastSeenAbs, what: "Last connected", cls: "done", stored: true,
+      fig: "100 GB used of 100 GB", src: "lastOnline" },
+    { when: "2 Aug 2026, 19:07", what: "Quota reached, panel switched it off", cls: "bad", stored: true,
+      fig: "all four memberships went dark with the account", src: "enable" },
+    { when: "17 Aug 2026", what: "Next traffic reset", cls: "future", stored: true,
+      fig: "in 12 days, this account starts serving again", src: "reset" },
+    { when: ACCOUNT.expiryAbs, what: "Expires", cls: "future", stored: true,
+      fig: "in " + ACCOUNT.expiryDays + " days, still on the clock", src: "expiryTime" },
+  ];
+
+  const ol = el("ol", "tl");
+  EVENTS.forEach((e) => {
+    const li = el("li", e.cls + (e.stored ? "" : " synthetic"));
+    li.append(el("span", "dot"));
+    const when = el("div", "when");
+    when.append(document.createTextNode(e.when));
+    if (e.src) when.append(el("span", "dim mono", e.src));
+    else when.append(el("span", "pill hollow", "not stored"));
+    li.append(when);
+    li.append(el("div", "what", e.what));
+    const fig = el("div", "fig", e.fig);
+    li.append(fig);
+    ol.append(li);
+  });
+  body.append(ol);
+
+  const foot = el("div", "tl-foot");
+  const note = el("div", "warnline neutral");
+  note.innerHTML = svg("info", 15);
+  note.append(el("span", "", "The panel stores five timestamps and no log: created_at, updated_at, expiryTime, reset and the last-online tick. The dashed steps above are the ones that would need an audit table before this could ship."));
+  foot.append(note);
+  const acts = el("div", "ho-alt");
+  acts.style.marginTop = "10px";
+  acts.append(btn("Copy subscription", "primary"), btn("Links and credentials", "quiet"));
+  foot.append(acts);
+  body.append(foot);
+}
+
+/* --------------------------------- controls -------------------------------- */
+function renderAll() {
+  buildHandout();
+  buildVitals();
+  buildManifest();
+  buildSheet();
+  buildTimeline();
+}
+
+document.querySelectorAll(".tab").forEach((t) => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("on"));
+    document.getElementById("v-" + t.dataset.view).classList.add("on");
+  });
+});
+
+const stateBtn = document.getElementById("state");
+stateBtn.addEventListener("click", () => {
+  const on = stateBtn.getAttribute("aria-pressed") === "true";
+  stateBtn.setAttribute("aria-pressed", String(!on));
+  STATE = on ? STATES.healthy : STATES.depleted;
+  stateBtn.textContent = on ? "Show depleted" : "Show healthy";
+  renderAll();
+});
+
+const themeBtn = document.getElementById("theme");
+function isDark() {
+  return document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+}
+function syncThemeLabel() { themeBtn.textContent = isDark() ? "Light" : "Dark"; }
+themeBtn.addEventListener("click", () => {
+  document.documentElement.dataset.theme = isDark() ? "light" : "dark";
+  syncThemeLabel();
+});
+syncThemeLabel();
+
+renderAll();
+</script>
+</body>
+</html>

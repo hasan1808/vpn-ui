@@ -26,6 +26,11 @@ import (
 // So every account on a limited inbound gets its OWN bucket at that rate: this is not
 // a shared pool for the inbound, and an account's K devices share one bucket.
 //
+// An individual account may carry its own rate, which REPLACES the inbound's for it
+// (resolveSpeedLimitRates). That is a per-account entitlement, so it can raise as well as
+// lower, and it works on an inbound whose own limiter is switched off entirely - which is
+// the case an operator reaches for first, and the one every gate in here has to let past.
+//
 // The panel decides, Xray obeys. "Limit After" is resolved HERE against the usage the
 // panel already tracks, and the core receives only the already-resolved rate. That
 // keeps quota semantics (resets, VPN usage sourced from nft/RADIUS rather than Xray's
@@ -75,11 +80,25 @@ type speedLimitDoc struct {
 }
 
 // speedLimitClient is one account as an inbound carries it: the identity, plus the client's
-// own IP cap. That cap is an OVERRIDE of the inbound's default, not the whole answer, so it
-// is never read on its own: resolveIPLimit is what turns the pair into a published number.
+// own caps. All three are OVERRIDES of the inbound's policy, not the whole answer, so none
+// is ever read on its own: resolveIPLimit and resolveSpeedLimitRates are what turn each
+// pair into a published number.
+//
+// The rates are pointers and the IP cap is not, and that asymmetry is storage, not taste:
+// LimitIP is a plain int column so "never set" and "0" are the same value there (see
+// resolveIPLimit), while the rate columns are nullable and can therefore mean "this account
+// is exempt" with a 0 that is genuinely distinct from "inherit".
 type speedLimitClient struct {
-	email   string
-	ipLimit int
+	email     string
+	ipLimit   int
+	speedDown *int // KB/s, nil = inherit the inbound's rate
+	speedUp   *int
+}
+
+// hasSpeedOverride reports whether this client carries a rate of its own in either
+// direction.
+func (c speedLimitClient) hasSpeedOverride() bool {
+	return c.speedDown != nil || c.speedUp != nil
 }
 
 // speedLimitPolicy pairs one inbound's limiter columns with the clients it covers.
@@ -88,6 +107,17 @@ type speedLimitClient struct {
 type speedLimitPolicy struct {
 	inbound *model.Inbound
 	clients []speedLimitClient
+}
+
+// anySpeedOverride reports whether any client on this policy carries its own rate, which
+// is what lets an inbound whose OWN limiter is switched off still contribute.
+func (p speedLimitPolicy) anySpeedOverride() bool {
+	for _, c := range p.clients {
+		if c.hasSpeedOverride() {
+			return true
+		}
+	}
+	return false
 }
 
 // bytesPerKB is the ONLY place the 1024-vs-1000 question exists. The UI speaks KB/s,
@@ -122,6 +152,35 @@ func inboundSpeedLimitRates(inb *model.Inbound) (down, up int64) {
 		return down, kbpsToBps(inb.SpeedLimitUp)
 	}
 	return down, down
+}
+
+// resolveSpeedLimitRates is this inbound's contribution FOR ONE CLIENT: the inbound's own
+// rates with the client's override folded in, per direction and independently.
+//
+// The override REPLACES the inbound's rate for that direction, it does not compete with it.
+// Feeding it to minNonZero as a third candidate would look equivalent and is not: an
+// account deliberately raised ABOVE the inbound's rate would silently keep the inbound's
+// rate, because most-restrictive-wins is the merge rule for the SAME account seen on TWO
+// inbounds, not for two statements about one inbound. So the pair is resolved here first,
+// and only the result reaches that merge.
+//
+// A direction the client leaves nil inherits, including the mirroring an inbound in
+// non-separate mode does: an account that overrides only its download keeps the inbound's
+// rate on the upload it did not mention.
+//
+// An explicit 0 is a real override meaning UNLIMITED in that direction, which is the one
+// thing the IP cap cannot express (see resolveIPLimit). A negative is read as absent by
+// kbpsToBps, exactly as a negative inbound rate is: validateClientLimits refuses one at the
+// write path, and this is the last line for a row that arrived some other way.
+func resolveSpeedLimitRates(inb *model.Inbound, c speedLimitClient) (down, up int64) {
+	down, up = inboundSpeedLimitRates(inb)
+	if c.speedDown != nil {
+		down = kbpsToBps(*c.speedDown)
+	}
+	if c.speedUp != nil {
+		up = kbpsToBps(*c.speedUp)
+	}
+	return down, up
 }
 
 // speedLimitArmed reports whether an account with the given cumulative usage has
@@ -319,20 +378,28 @@ func computeSpeedLimits(policies []speedLimitPolicy, usage map[string]int64, ipM
 	merged := make(map[string]limits)
 
 	for _, p := range policies {
-		down, up := inboundSpeedLimitRates(p.inbound)
+		inbDown, inbUp := inboundSpeedLimitRates(p.inbound)
 		coreIPCap := ipLimitEnforcedInCore(p.inbound)
 		// The rates and the IP cap are INDEPENDENT contributions: an inbound with no
 		// speed limit at all still publishes its clients' caps. Skipping the policy on
 		// the rates alone is what would make an ipLimit-only account (the common case
 		// once the IP Limit UI is visible again) silently absent from the file, i.e. the
 		// feature doing nothing at all.
-		if down == 0 && up == 0 && !coreIPCap {
+		//
+		// A client's own rate is a third independent contribution, and reading the
+		// inbound's columns alone would drop exactly the case an operator reaches for
+		// first: one throttled customer on an inbound nobody else is throttled on.
+		if inbDown == 0 && inbUp == 0 && !coreIPCap && !p.anySpeedOverride() {
 			continue
 		}
 		for _, c := range p.clients {
 			if c.email == "" {
 				continue
 			}
+			// This inbound's contribution for THIS client, the override already folded
+			// in. Resolved per client rather than per policy, because two accounts on
+			// one inbound no longer have to be limited alike.
+			down, up := resolveSpeedLimitRates(p.inbound, c)
 			m := merged[c.email]
 			// Same email on several inbounds: minimum non-zero wins, per direction and
 			// independently. The bucket is per email, so per-(email, inbound) rates would
@@ -342,6 +409,10 @@ func computeSpeedLimits(policies []speedLimitPolicy, usage map[string]int64, ipM
 			// contributing "unlimited": a not-yet-armed inbound must not unlimit an
 			// account that an armed one limits, which is the same 0-loses-the-min rule.
 			// down/up are 0 for an ipLimit-only inbound, so this is a no-op there.
+			//
+			// "Limit After" stays the INBOUND's, and an override is armed by it like
+			// any other rate. A per-client threshold was deliberately not added: it is
+			// a quota rule, and the account already has exactly one quota.
 			if speedLimitArmed(p.inbound, usage[c.email]) {
 				m.down = minNonZero(m.down, down)
 				m.up = minNonZero(m.up, up)
@@ -430,12 +501,14 @@ func loadSpeedLimitPolicies() []speedLimitPolicy {
 		return nil
 	}
 
-	// Decoded locally, and to the two fields used, rather than through
+	// Decoded locally, and to the fields used, rather than through
 	// InboundService.GetClients: every protocol stores its accounts under settings.clients
 	// with an email, so this needs no per-protocol knowledge and pulls in no service.
 	type clientEntry struct {
-		Email   string `json:"email"`
-		LimitIP int    `json:"limitIp"`
+		Email          string `json:"email"`
+		LimitIP        int    `json:"limitIp"`
+		SpeedLimitDown *int   `json:"speedLimitDown"` // nil = inherit the inbound's rate
+		SpeedLimitUp   *int   `json:"speedLimitUp"`
 	}
 	type settingsJSON struct {
 		Clients []clientEntry `json:"clients"`
@@ -444,10 +517,16 @@ func loadSpeedLimitPolicies() []speedLimitPolicy {
 	policies := make([]speedLimitPolicy, 0, len(inbounds))
 	for _, inbound := range inbounds {
 		coreIPCap := ipLimitEnforcedInCore(inbound)
-		if !inbound.SpeedLimitEnable && !coreIPCap {
-			// A VPN/ssh/mtproto inbound with no speed limit can contribute nothing, and
-			// its blob is the one worth not parsing: those are the inbounds with a client
-			// per device.
+		if !inbound.SpeedLimitEnable && !coreIPCap && !mayCarrySpeedOverride(inbound.Settings) {
+			// A VPN/ssh/mtproto inbound with no speed limit and nobody on it overriding
+			// one can contribute nothing, and its blob is the one worth not parsing:
+			// those are the inbounds with a client per device.
+			//
+			// The override is the reason this is no longer a question about the inbound
+			// alone. It lives INSIDE the blob, so the only sound way to skip a parse is
+			// to prove the key is not in there at all, which is what the substring test
+			// does: a false positive costs one parse, and a false negative is impossible
+			// because a client carrying an override spells the key out verbatim.
 			continue
 		}
 		var settings settingsJSON
@@ -455,9 +534,11 @@ func loadSpeedLimitPolicies() []speedLimitPolicy {
 			continue
 		}
 		clients := make([]speedLimitClient, 0, len(settings.Clients))
-		// The inbound's own default caps every client on it, so it arms the policy by
-		// itself: nobody needs an override for this inbound to contribute one.
-		capped := coreIPCap && inbound.IPLimit > 0
+		// Whether anything on this inbound has something to publish, once its own
+		// speed-limit switch has already said no. The inbound's own IP default caps
+		// every client on it, so it arms the policy by itself: nobody needs an override
+		// for this inbound to contribute one.
+		contributes := coreIPCap && inbound.IPLimit > 0
 		for _, c := range settings.Clients {
 			if strings.TrimSpace(c.Email) == "" {
 				continue
@@ -465,17 +546,39 @@ func loadSpeedLimitPolicies() []speedLimitPolicy {
 			// The email is used verbatim, NOT trimmed or folded: it has to match the key
 			// BuildVpnEmailToIPMap and client_traffics use, and those are the stored
 			// string. Normalization belongs on write (see normalizeClientEmails), not here.
-			clients = append(clients, speedLimitClient{email: c.Email, ipLimit: c.LimitIP})
+			client := speedLimitClient{
+				email: c.Email, ipLimit: c.LimitIP,
+				speedDown: c.SpeedLimitDown, speedUp: c.SpeedLimitUp,
+			}
+			clients = append(clients, client)
 			if c.LimitIP > 0 {
-				capped = true
+				contributes = true
+			}
+			// An override arms the policy exactly as the inbound's own limiter does, and
+			// a 0 arms it too: "unlimited for this one account" is only visible as an
+			// override if the account reaches the merge at all.
+			if client.hasSpeedOverride() {
+				contributes = true
 			}
 		}
-		if !inbound.SpeedLimitEnable && !capped {
-			continue // native inbound, but nobody on it is capped
+		if !inbound.SpeedLimitEnable && !contributes {
+			continue // native inbound, but nobody on it is capped or overridden
 		}
 		policies = append(policies, speedLimitPolicy{inbound: inbound, clients: clients})
 	}
 	return policies
+}
+
+// speedLimitOverrideMarker is the substring every client-level rate override contains.
+// It is the JSON key prefix shared by speedLimitDown and speedLimitUp, and it must stay
+// in step with the tags on loadSpeedLimitPolicies' clientEntry ten lines above.
+const speedLimitOverrideMarker = "speedLimit"
+
+// mayCarrySpeedOverride reports whether a settings blob could hold a client rate override,
+// without parsing it. Conservative in the only direction that is safe: "no" is a proof
+// (the key is not in the bytes), "yes" is a guess that costs one json.Unmarshal.
+func mayCarrySpeedOverride(settings string) bool {
+	return strings.Contains(settings, speedLimitOverrideMarker)
 }
 
 // loadSpeedLimitUsage returns cumulative up+down per email.

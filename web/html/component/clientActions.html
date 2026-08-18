@@ -15,8 +15,9 @@
   //            getDBInbounds()            re-read the inbound list after a write
   //            loading(spinning)          page-level spinner
   //            refreshResellerBalance()   re-read the reseller's balance chip
-  //   state:   dbInbounds, inbounds, membershipIndex, onlineClients, lastOnlineMap,
-  //            selInbounds, selClients, expireDiff, trafficDiff
+  //   state:   dbInbounds, inbounds, membershipIndex, onlineClients,
+  //            onlineMemberships, lastOnlineMap, selInbounds, selClients,
+  //            expireDiff, trafficDiff
   //
   // Vue merges a page's own methods over a mixin's, so a page may override any of
   // the rest the same way.
@@ -42,19 +43,33 @@
 
   // Every bulk operation the modal can offer, in the order it lists them.
   const BULK_OPS = ['addDays', 'subDays', 'addTraffic', 'subTraffic',
-    'enable', 'disable', 'freeze', 'unfreeze', 'delete'];
+    'enable', 'disable', 'freeze', 'unfreeze', 'addInbounds', 'removeInbounds', 'delete'];
 
-  // Two of them are withheld from a reseller. subDays is refused outright by the
+  // The two that change WHICH INBOUNDS serve an account rather than what the
+  // account is allowed. They do not go through the bulk client applier at all:
+  // see runBulkMembership.
+  const BULK_MEMBERSHIP_OPS = ['addInbounds', 'removeInbounds'];
+
+  // Four of them are withheld from a reseller. subDays is refused outright by the
   // server for a reseller, so offering it only buys them a failed run. addDays is
   // dropped when their profile derives an account's duration from its traffic
   // (daysPerGb): the day count is recomputed from the GB on the next edit, so a
-  // manual change there looks applied and then quietly is not.
-  // Presentation only, as always: the server re-checks both.
+  // manual change there looks applied and then quietly is not. The two membership
+  // ops are an admin's call: a reseller's grant says which inbounds they may sell
+  // FROM, not that they may move a customer between them, and the server refuses
+  // them the same way.
+  // Presentation only, as always: the server re-checks all four.
   function isBulkOpAllowed(op) {
     if (op === 'subDays' && RESELLER.isReseller) return false;
     if (op === 'addDays' && (Number(RESELLER.daysPerGb) || 0) > 0) return false;
+    if (BULK_MEMBERSHIP_OPS.includes(op) && RESELLER.isReseller) return false;
     return true;
   }
+
+  // The three protocols whose accounts cannot be told apart across two inbounds of
+  // the same kind, mirrored from ValidateMembershipSet (web/service/account.go).
+  // Presentation only: the server refuses the set per account regardless.
+  const BULK_AMBIGUOUS_PROTOCOLS = ['l2tp', 'pptp', 'ikev2'];
 
   // The first option that survives the filter, so the select never opens pointing
   // at an operation it does not render. An a-select bound to a value with no
@@ -84,6 +99,11 @@
           skipFirstUse: false,
           skipUnlimited: false,
           skipDisabled: false,
+          // The inbounds the two membership ops add to / remove from. Declared
+          // here rather than added when the op is picked: Vue 2 walks this object
+          // once, so a key bolted on later is bound to nothing and the checkbox
+          // group would tick boxes that never re-render.
+          inboundIds: [],
           progress: { running: false, done: 0, total: 0, applied: 0, skipped: 0, etaText: '' },
         },
       };
@@ -142,6 +162,11 @@
       openBulkOps() {
         if (!this.selectedCount()) { this.$message.warning('{{ i18n "pages.inbounds.exportNoneSelected" }}'); return; }
         this.bulkOps.progress = { running: false, done: 0, total: 0, applied: 0, skipped: 0, etaText: '' };
+        // The inbound picks do NOT survive the modal closing: they name a
+        // destination for one specific batch, and re-opening on a different
+        // selection with the last run's inbounds still ticked is how an operator
+        // re-homes the wrong customers.
+        this.bulkOps.inboundIds = [];
         // A previous run may have left a selection that is no longer offered, and
         // the value survives the modal closing. Snap it back to a rendered option.
         if (!isBulkOpAllowed(this.bulkOps.op)) this.bulkOps.op = DEFAULT_BULK_OP;
@@ -151,6 +176,43 @@
       bulkOpAllowed(op) { return isBulkOpAllowed(op); },
       bulkIsTrafficOp() { return ['addTraffic', 'subTraffic'].includes(this.bulkOps.op); },
       bulkIsNumericOp() { return ['addDays', 'subDays', 'addTraffic', 'subTraffic'].includes(this.bulkOps.op); },
+      // --- the inbound checklist the two membership ops render ------------
+      bulkIsMembershipOp() { return BULK_MEMBERSHIP_OPS.includes(this.bulkOps.op); },
+      // The page's own inbound picker list (GET /panel/api/clients/assignable),
+      // already loaded and already filtered to what this caller may assign. The
+      // guard is for the Inbounds page, which mixes this in and does not hold one:
+      // it never opens the modal, so the list is simply empty there.
+      bulkAssignable() { return this.assignable || []; },
+      bulkAllInboundsChecked() {
+        const all = this.bulkAssignable();
+        return all.length > 0 && this.bulkOps.inboundIds.length === all.length;
+      },
+      bulkSomeInboundsChecked() {
+        const n = this.bulkOps.inboundIds.length;
+        return n > 0 && n < this.bulkAssignable().length;
+      },
+      bulkToggleAllInbounds(e) {
+        this.bulkOps.inboundIds = e.target.checked
+          ? this.bulkAssignable().map(i => i.inboundId) : [];
+      },
+      // Two inbounds of the same ambiguous protocol in ONE batch, which the server
+      // refuses for every account it would apply to. Said here so the whole run is
+      // not spent discovering it one account at a time.
+      //
+      // It cannot see the other half of the rule: an account ALREADY on an l2tp
+      // inbound being added to a second one clashes too, and only the server knows
+      // each account's current set. Those come back as skips with a reason.
+      bulkProtocolClash() {
+        if (this.bulkOps.op !== 'addInbounds') return false;
+        const seen = {};
+        for (const id of this.bulkOps.inboundIds) {
+          const ib = this.bulkAssignable().find(x => x.inboundId === id);
+          if (!ib || !BULK_AMBIGUOUS_PROTOCOLS.includes(ib.protocol)) continue;
+          if (seen[ib.protocol]) return true;
+          seen[ib.protocol] = true;
+        }
+        return false;
+      },
       bulkProgressPercent() {
         const p = this.bulkOps.progress;
         return p.total > 0 ? Math.floor((p.done / p.total) * 100) : 0;
@@ -215,6 +277,9 @@
         // (its accounts go with it, no per-client filtering), a selected ACCOUNT is
         // removed on its own. Separate flow from the in-place client update ops.
         if (b.op === 'delete') return this.runBulkDelete();
+        // Membership is not a client field, so it does not go through the client
+        // applier: it is written through the accounts layer, on its own route.
+        if (this.bulkIsMembershipOp()) return this.runBulkMembership();
         let targets = this.resolveSelectedTargets();
         if (!targets.length) return;
         const amount = Math.max(0, Number(b.amount) || 0);
@@ -267,6 +332,71 @@
         if (ok) {
           b.visible = false;
           this.$message.success('{{ i18n "pages.inbounds.bulkDone" }} {{ i18n "pages.inbounds.bulkAffected" }}: ' + b.progress.applied + ' {{ i18n "pages.inbounds.bulkSkipped" }}: ' + b.progress.skipped);
+          this.clearSelection();
+          await this.getDBInbounds();
+        }
+      },
+      // Add the selected accounts to, or remove them from, the ticked inbounds.
+      //
+      // Batched by ACCOUNT rather than by target, which is the one thing this
+      // cannot borrow from runBulkOps. A target is an (inbound, email) pair and an
+      // account contributes one per membership it already has, so a fixed slice of
+      // twenty TARGETS can cut one account's pairs across two requests. The server
+      // reduces each request to the accounts it names, so the same account in two
+      // requests is the operation applied twice: harmless for the add (the second
+      // is a no-op skip) and a lie in the counters for both. Grouping first also
+      // makes the progress bar count customers, which is what the operator picked.
+      async runBulkMembership() {
+        const b = this.bulkOps;
+        const inboundIds = (b.inboundIds || []).slice();
+        if (!inboundIds.length) {
+          this.$message.warning('{{ i18n "pages.inbounds.bulkMembershipNoInbound" }}');
+          return;
+        }
+        if (this.bulkProtocolClash()) {
+          this.$message.error('{{ i18n "pages.inbounds.membershipSameProtocol" }}');
+          return;
+        }
+        const groups = {};
+        this.resolveSelectedTargets().forEach(t => {
+          const key = accountKeyOf(t.email);
+          if (!key) return;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(t);
+        });
+        const accounts = Object.values(groups);
+        if (!accounts.length) return;
+
+        b.confirmLoading = true;
+        b.progress = { running: true, done: 0, total: accounts.length, applied: 0, skipped: 0, etaText: '' };
+        const start = Date.now();
+        const BATCH = 20;
+        const reasons = [];
+        let ok = true;
+        for (let i = 0; i < accounts.length; i += BATCH) {
+          const group = accounts.slice(i, i + BATCH);
+          const targets = [].concat.apply([], group);
+          const msg = await HttpUtil.post('/panel/api/inbounds/bulkMembership',
+            { data: JSON.stringify({ op: b.op, inboundIds, targets }) });
+          if (!msg.success) { ok = false; break; }
+          const r = msg.obj || {};
+          b.progress.applied += (r.applied || 0);
+          b.progress.skipped += (r.skipped || 0);
+          b.progress.done += group.length;
+          (r.reasons || []).forEach(x => { if (!reasons.includes(x)) reasons.push(x); });
+          this.bulkTickEta(start);
+        }
+        b.progress.running = false;
+        b.confirmLoading = false;
+        if (ok) {
+          b.visible = false;
+          this.$message.success('{{ i18n "pages.inbounds.bulkDone" }} {{ i18n "pages.inbounds.bulkAffected" }}: ' + b.progress.applied + ' {{ i18n "pages.inbounds.bulkSkipped" }}: ' + b.progress.skipped);
+          // A skip here is a refusal with a cause, not a filtered-out row, so the
+          // causes are shown rather than left as a number. Capped and held longer
+          // than a success toast, because they are the part worth reading.
+          if (reasons.length) {
+            this.$message.warning(reasons.slice(0, 4).join(' · '), 10);
+          }
           this.clearSelection();
           await this.getDBInbounds();
         }
@@ -506,31 +636,16 @@
         newDbInbound = this.checkFallback(dbInbound);
         qrModal.show('{{ i18n "qrCode"}}', newDbInbound, client);
       },
-      downloadMembershipQr(dbInbound, client) {
-        if (!dbInbound || !client) return;
-        const inbound = typeof dbInbound.toInbound === 'function' ? dbInbound.toInbound() : dbInbound;
-        if (typeof inbound.hasLink === 'function' && !inbound.hasLink()) return;
-        let links = [];
-        if (typeof inbound.genAllLinks === 'function') {
-          links = inbound.genAllLinks(dbInbound.remark, '', client);
-        }
-        for (let i = 0; i < links.length; i++) {
-          if (!links[i].link) continue;
-          const canvas = document.createElement('canvas');
-          new QRious({ element: canvas, size: 400, value: links[i].link, background: 'white', foreground: 'black', padding: 2, level: 'L' });
-          const a = document.createElement('a');
-          a.href = canvas.toDataURL('image/png');
-          const suffix = links.length > 1 ? '_' + (i + 1) : '';
-          a.download = (client.email || 'client').replace(/[^a-zA-Z0-9@._-]/g, '_') + '_' + dbInbound.id + suffix + '.png';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        }
-      },
       showWgcConfig(dbInboundId, client) {
         // WireGuard (C) configs are rendered server-side (per-device .conf with
         // backend-minted keys); the modal fetches them from the wgc-configs API.
         wgcConfigModal.show(dbInboundId, client);
+      },
+      showWireguardXrayConfig(dbInboundId, client) {
+        // Xray-native WireGuard. Same viewer as wg-c above and the same server-side
+        // rendering, off a different endpoint: the two implementations differ in
+        // where the tunnel is terminated, not in what a client installs.
+        wgcConfigModal.show(dbInboundId, client, 'wgxray-configs');
       },
       showAwgConfig(dbInboundId, client) {
         // AmneziaWG configs are rendered server-side (per-device .conf with
@@ -553,6 +668,17 @@
       showInfo(dbInboundId, client) {
         dbInbound = this.dbInbounds.find(row => row.id === dbInboundId);
         if (!dbInbound) return;
+        // Called two ways. With a client it is ONE MEMBERSHIP, which the redesigned
+        // panel answers; without one it is the Inbounds page asking about a
+        // non-multi-user inbound, which only inboundInfoModal renders (tunnel, socks,
+        // http, Xray-native WireGuard peers, single-config Shadowsocks). The typeof
+        // guard is not defensiveness: the Inbounds page does not include the new
+        // modal, and reaching for an absent global is a ReferenceError, not a no-op.
+        if (client && typeof membershipInfoModal !== 'undefined') {
+          membershipInfoModalApp.app = this;
+          membershipInfoModal.show(this.checkFallback(dbInbound), client);
+          return;
+        }
         index = 0;
         if (dbInbound.isMultiUser()) {
           inbound = dbInbound.toInbound();
@@ -697,6 +823,44 @@
         if (!clientStats) return 0;
         return clientStats.allTime || (clientStats.up + clientStats.down);
       },
+      // --- per-inbound usage ------------------------------------------------
+      // The four above answer "how much has this ACCOUNT used", which is the right
+      // question for anything measured against the quota: the quota is account-wide,
+      // so a progress bar or a depletion check fed one inbound's slice would read
+      // empty for a customer who is actually out of traffic.
+      //
+      // These answer "how much came through THIS inbound", which is only meaningful
+      // where an inbound is named. Server-side split (attachClientStats), from the
+      // account's membership row.
+      getInboundUpStats(dbInbound, email) {
+        if (!email || email.length == 0) return 0;
+        let clientStats = this.getClientStats(dbInbound, email);
+        return clientStats ? (clientStats.inboundUp || 0) : 0;
+      },
+      getInboundDownStats(dbInbound, email) {
+        if (!email || email.length == 0) return 0;
+        let clientStats = this.getClientStats(dbInbound, email);
+        return clientStats ? (clientStats.inboundDown || 0) : 0;
+      },
+      getInboundSumStats(dbInbound, email) {
+        return this.getInboundUpStats(dbInbound, email) + this.getInboundDownStats(dbInbound, email);
+      },
+      getInboundAllTime(dbInbound, email) {
+        if (!email || email.length == 0) return 0;
+        let clientStats = this.getClientStats(dbInbound, email);
+        if (!clientStats) return 0;
+        return clientStats.inboundAllTime || (clientStats.inboundUp + clientStats.inboundDown) || 0;
+      },
+      // Whether the three above are this inbound's own or the account's pooled
+      // remainder. True only for the Xray-native protocols, whose per-user stat
+      // carries no inbound name, so the same number stands for every one of them
+      // serving the account. Set server-side; never inferred from the protocol
+      // here, so the two cannot drift apart.
+      isSharedStats(dbInbound, email) {
+        if (!email || email.length == 0) return false;
+        let clientStats = this.getClientStats(dbInbound, email);
+        return !!(clientStats && clientStats.shared);
+      },
       getRemStats(dbInbound, email) {
         if (!email || email.length == 0) return 0;
         let clientStats = this.getClientStats(dbInbound, email);
@@ -756,6 +920,57 @@
       },
       isClientOnline(email) {
         return this.onlineClients.includes(email);
+      },
+      // --- per-membership liveness -----------------------------------------
+      // Which of an account's inbounds it is actually connected over.
+      //
+      // The account-wide flag (isClientOnline, the lamp on the row) says only THAT a
+      // customer is connected. Both pages used to read it per inbound, so an account
+      // on ssh and l2tp connecting over ssh showed both as live, and an account on ten
+      // inbounds counted as an online client on all ten.
+      //
+      // The set the server sends is "<inboundId>:<email>" per pair seen in the last
+      // traffic tick, with inbound 0 for a session whose source inbound could not be
+      // named at all. That is now rare - the core's per-user stat carries no inbound,
+      // but the panel resolves it whenever only one of the account's inbounds could
+      // have produced it (web/service/coreattribution.go) - and what is left over is
+      // marked live-but-ambiguous rather than guessed at, exactly as its usage figure
+      // is marked shared.
+      //
+      // Indexed once per refresh: this is called for every rendered block, and
+      // Array.includes over the whole panel's sessions per block is quadratic.
+      membershipOnlineIndex() {
+        const list = this.onlineMemberships || [];
+        if (this._onlineIdxSrc !== list) {
+          this._onlineIdxSrc = list;
+          this._onlineIdx = new Set(list);
+        }
+        return this._onlineIdx;
+      },
+      // Seen on THIS inbound. The email is normalised the way the server normalises
+      // it, or an account created as "Foo@x" never matches its own session.
+      membershipOnline(dbInbound, email) {
+        if (!dbInbound || !email) return false;
+        return this.membershipOnlineIndex().has(dbInbound.id + ':' + String(email).trim().toLowerCase());
+      },
+      // Live, but on one of this account's Xray-native inbounds without the core
+      // saying which. Gated on the server's own `shared` flag rather than on a
+      // protocol list kept here, so the liveness and the usage figure cannot end up
+      // disagreeing about whether an inbound can account for itself.
+      membershipOnlineShared(dbInbound, email) {
+        if (!dbInbound || !email) return false;
+        if (!this.isSharedStats(dbInbound, email)) return false;
+        return this.membershipOnlineIndex().has('0:' + String(email).trim().toLowerCase());
+      },
+      membershipLampClass(dbInbound, email) {
+        if (this.membershipOnline(dbInbound, email)) return 'bo-mb-lamp--live';
+        if (this.membershipOnlineShared(dbInbound, email)) return 'bo-mb-lamp--maybe';
+        return '';
+      },
+      membershipOnlineText(dbInbound, email) {
+        if (this.membershipOnline(dbInbound, email)) return '{{ i18n "online" }}';
+        if (this.membershipOnlineShared(dbInbound, email)) return '{{ i18n "pages.clients.onlineShared" }}';
+        return '{{ i18n "offline" }}';
       },
       getLastOnline(email) {
         return this.lastOnlineMap[email] || null

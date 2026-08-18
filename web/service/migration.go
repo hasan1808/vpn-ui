@@ -187,6 +187,28 @@ func (s *ServerService) ImportForeignDB(src dbFile, activate bool) (*ImportRepor
 	report := s.buildImportReport(preserved)
 
 	if activate {
+		// Bring the ACCOUNTS layer up for the data that just arrived.
+		//
+		// MigrateDB above does not do this, and neither did anything else on this
+		// path: MigrationAccounts and the wireguard reconcile are only called from
+		// the panel's own startup sequence. So a live import left the accounts table
+		// exactly as it was, and the Clients page (which reads that table and
+		// nothing else, see ListAccounts) showed NOTHING until somebody happened to
+		// restart the panel. The Inbounds page looked fine throughout, because it
+		// reads settings.clients directly, which made it read as "the import lost my
+		// customers" rather than as a page that had not been told about them.
+		//
+		// Both are additive and idempotent, and both are guarded against re-running,
+		// so doing them here costs a no-op on the next start rather than a second
+		// pass. Ordered as the startup sequence orders them: slots and subIds first
+		// (MigrateDB has just done those), then the backfill that reads them.
+		accountService := &AccountService{}
+		accountService.MigrationAccounts()
+		// Imported wireguard inbounds get their clients array and their device
+		// address here for the same reason: until they have one they cannot be
+		// offered as somewhere to put an account.
+		ReconcileAllWireguardXrayKeys()
+
 		// Re-normalize tunnelled-protocol ranges for this host and bring the data
 		// plane up against the imported inbounds.
 		for _, proto := range vpnRangeProtocols {

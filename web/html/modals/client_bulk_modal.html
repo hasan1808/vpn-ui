@@ -558,7 +558,7 @@
         case 'sstp': case 'ikev2': case 'ssh':
           return Object.assign(base, { id: acc.vpnUsername, password: acc.password });
         // Identity IS the email for these, so "id" carries it rather than a uuid.
-        case 'wg-c': case 'awg': case 'gre':
+        case 'wg-c': case 'awg': case 'gre': case 'wireguard':
           return Object.assign(base, { id: acc.email });
         case 'mtproto':
           return Object.assign(base, { id: acc.email, secret: acc.secret });

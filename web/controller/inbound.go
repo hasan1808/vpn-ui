@@ -85,6 +85,15 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/:id/copyClients", requirePerm(model.PermCreateClient), owns, a.copyInboundClients)
 	g.POST("/:id/delClient/:clientId", requirePerm(model.PermDeleteClient), owns, a.delInboundClient)
 	g.POST("/updateClient/:clientId", requirePerm(model.PermEditClient), a.updateInboundClient)
+	// The two routes for an account NO inbound addresses. Neither is a second write
+	// path for an ordinary client: an account with a membership is created, edited and
+	// deleted through the three routes above, and these exist for the state those
+	// cannot express, where there is no inbound to address and no protocol to give the
+	// account an identity in. Both are super-admin-only in the handler (see
+	// callerMayLeaveAccountUnserved), which is a narrower gate than these permission
+	// bits and the reason the bits are still the ones its served twin uses.
+	g.POST("/saveAccount", requirePerm(model.PermCreateClient), a.saveAccountClient)
+	g.POST("/delAccount/:email", requirePerm(model.PermDeleteClient), a.delAccountClient)
 	// Switch one account on or off on ONE inbound. Deliberately not a shape of
 	// updateClient: `enable` inside a posted client entry means the ACCOUNT's flag
 	// to every existing caller, so the per-inbound intent needs its own route or it
@@ -93,6 +102,12 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/:id/setMembershipEnable/:email", requirePerm(model.PermEditClient), owns, ownsClient, a.setMembershipEnable)
 	g.POST("/bulkUpdateClients", requirePerm(model.PermBulkOperation), a.bulkUpdateClients)
 	g.POST("/bulkPreview", requirePerm(model.PermBulkOperation), a.bulkPreview)
+	// Adding or removing MEMBERSHIPS in bulk. Deliberately its own route rather
+	// than two more ops on bulkUpdateClients: that applier rewrites
+	// settings.clients in place and leaves the accounts layer to be re-synced
+	// after the fact, and memberships ARE the accounts layer. Same permission bit,
+	// because it is the same button.
+	g.POST("/bulkMembership", requirePerm(model.PermBulkOperation), a.bulkClientMembership)
 	// ownsClient as well as owns: the service resolves this one by :email and ignores
 	// :id, so guarding only :id checks the wrong object.
 	g.POST("/:id/resetClientTraffic/:email", requirePerm(model.PermEditClient), owns, ownsClient, a.resetClientTraffic)
@@ -101,6 +116,7 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/delDepletedClients/:id", requirePerm(model.PermDeleteClient), owns, a.delDepletedClients)
 	g.POST("/import", requirePerm(model.PermCreateInbound), a.importInbound)
 	g.POST("/onlines", read, a.onlines)
+	g.POST("/onlineMemberships", read, a.onlineMemberships)
 	g.POST("/lastOnline", read, a.lastOnline)
 	g.POST("/updateClientTraffic/:email", requirePerm(model.PermEditClient), ownsClient, a.updateClientTraffic)
 	g.POST("/:id/delClientByEmail/:email", requirePerm(model.PermDeleteClient), owns, a.delInboundClientByEmail)
@@ -117,10 +133,17 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/check-ikev2-cert", requirePerm(model.PermCreateInbound), a.checkIkev2Cert)
 	// WireGuard (C): render a client's per-device .conf(s) (keys are server-minted).
 	g.GET("/:id/wgc-configs", read, owns, a.getWgcConfigs)
+	g.GET("/:id/wgxray-configs", read, owns, a.getWireguardXrayConfigs)
 	// AmneziaWG: render a client's per-device .conf(s) with obfuscation (server-minted keys).
 	g.GET("/:id/awg-configs", read, owns, a.getAwgConfigs)
 	g.GET("/:id/gre-configs", read, owns, a.getGreConfigs)
 	g.GET("/:id/ssh-configs", read, owns, a.getSshConfigs)
+	// IKEv2 "Remote ID" (the cert SAN / IKE identity the server presents). Inbound-wide,
+	// not per-account, so this is gated like getInbound (read+owns) rather than the
+	// client-touch check the account-config getters above need. The account export calls
+	// it only when settings.serverAddr is blank, since that fallback is a server-side
+	// default-route probe a browser cannot reproduce.
+	g.GET("/:id/ikev2-remote-id", read, owns, a.getIkev2RemoteId)
 
 	// Address-plane introspection (web/controller/addressing.go). The pool, the slot
 	// and the tunnel address an account lands on are all decided by the panel and were
@@ -340,6 +363,17 @@ func (a *InboundController) sshChanged(clientOnly bool) {
 	// The paired socks inbound (its account list and this inbound's routing tag) is
 	// built from the SSH settings, so Xray must pick the change up.
 	a.xrayService.SetToNeedRestart()
+}
+
+// onWireguardXrayClientChanged mints the key material and tunnel address every client
+// of an Xray-native `wireguard` inbound needs, and persists it.
+//
+// No daemon and no kernel interface, unlike wg-c: the device is inside Xray, so the
+// only thing to do here is make sure the peer list the config is generated FROM
+// exists. The restart itself is the caller's (reconcileForInbounds), which already
+// asks for one for every Xray-native protocol.
+func (a *InboundController) onWireguardXrayClientChanged() {
+	service.ReconcileAllWireguardXrayKeys()
 }
 
 // onWgcChanged reconciles WireGuard (C) keys + the kernel interface peer set when a
@@ -672,6 +706,11 @@ func (a *InboundController) addInbound(c *gin.Context) {
 		a.onMtprotoChanged()
 	} else if inbound.Protocol == model.SSH {
 		a.onSshChanged()
+	} else if inbound.Protocol == model.WireGuard {
+		// Xray-native, so it still wants the restart below, but its peers are built
+		// from key material that has to exist first.
+		a.onWireguardXrayClientChanged()
+		a.xrayService.SetToNeedRestart()
 	} else if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
@@ -752,6 +791,11 @@ func (a *InboundController) delInbound(c *gin.Context) {
 		a.onMtprotoChanged()
 	} else if oldInbound != nil && oldInbound.Protocol == model.SSH {
 		a.onSshChanged()
+	} else if oldInbound != nil && oldInbound.Protocol == model.WireGuard {
+		// Xray-native, so it still wants the restart below, but its peers are built
+		// from key material that has to exist first.
+		a.onWireguardXrayClientChanged()
+		a.xrayService.SetToNeedRestart()
 	} else if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
@@ -847,6 +891,11 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 		a.onMtprotoChanged()
 	} else if inbound.Protocol == model.SSH {
 		a.onSshChanged()
+	} else if inbound.Protocol == model.WireGuard {
+		// Xray-native, so it still wants the restart below, but its peers are built
+		// from key material that has to exist first.
+		a.onWireguardXrayClientChanged()
+		a.xrayService.SetToNeedRestart()
 	} else if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
@@ -937,6 +986,10 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
 		return
 	}
+	if membershipsExplicit && len(membershipIds) == 0 && !a.callerMayLeaveAccountUnserved(c) {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errNoInboundNotYours)
+		return
+	}
 	if err := a.validateMembershipSet(membershipIds); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -986,12 +1039,11 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 	// it just changed have to reach all of them), so the reconcile below has to cover
 	// those too or a daemon keeps serving the settings JSON it no longer matches.
 	var projected []int
-	caller := session.GetLoginUser(c)
 	if emails := postedClientEmails(data); len(emails) > 1 {
 		a.syncInboundAccounts(data.Id)
 		if membershipsExplicit {
 			for _, email := range emails {
-				touched, merr := a.applyClientMemberships(c, email, membershipIds, membershipsExplicit, caller.Id)
+				touched, merr := a.applyClientMemberships(c, email, data.Id, membershipIds, membershipsExplicit)
 				if merr != nil {
 					logger.Warning("applying client memberships for ", email, ": ", merr)
 				}
@@ -999,7 +1051,7 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 			}
 		}
 	} else {
-		touched, merr := a.applyClientMemberships(c, postedClientEmail(data), membershipIds, membershipsExplicit, caller.Id)
+		touched, merr := a.applyClientMemberships(c, postedClientEmail(data), data.Id, membershipIds, membershipsExplicit)
 		if merr != nil {
 			logger.Warning("applying client memberships: ", merr)
 		}
@@ -1009,6 +1061,141 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientAddSuccess"), nil)
 
 	a.reconcileForInbounds(unionInboundIds(membershipIds, projected), needRestart)
+}
+
+// saveAccountClient writes a client that NO inbound addresses, and sets which
+// inbounds serve it - which may still be none.
+//
+// The one client write that is not addressed to an inbound, because it is the one
+// the addressed routes cannot express. /addClient splices the posted entry into the
+// settings of the inbound in its body, and /updateClient/:clientId finds the entry
+// there by the identity its protocol keys on; an account on no inbound has neither a
+// blob to be spliced into nor a protocol to have an identity in. So the two states
+// that need this are exactly:
+//
+//   - CREATE with nothing ticked. There is no inbound to post to at all.
+//   - EDIT of an account that is already on nothing, including the edit that puts it
+//     back on inbounds. Re-attaching goes through the membership writer rather than
+//     /addClient because the account already exists: the duplicate-email check would
+//     refuse it, and rightly, since the email IS taken - by the very account being
+//     re-attached.
+//
+// Everything else keeps its existing path. An account with one membership left is
+// still edited through /updateClient addressed at it, even when the edit is what
+// empties it, so the ordinary write keeps its reseller pricing, its rename handling
+// and its protocol validation.
+func (a *InboundController) saveAccountClient(c *gin.Context) {
+	if !a.callerMayLeaveAccountUnserved(c) {
+		// Not only about the empty set: this route's other job is editing an account
+		// that is ALREADY on nothing, which is an account only a super admin can see.
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errNoInboundNotYours)
+		return
+	}
+	data := &model.Inbound{}
+	if err := c.ShouldBind(data); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	entry, err := singlePostedClientEntry(data.Settings)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	email, _ := entry["email"].(string)
+	if err := service.ValidateClientEmail(email); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	if subId, ok := entry["subId"].(string); ok {
+		if err := service.ValidateClientSubID(subId); err != nil {
+			jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+			return
+		}
+	}
+
+	// Target 0: nothing addressed this write, so the set is exactly what was posted.
+	membershipIds, _ := postedMembershipIds(c, 0)
+	if !a.callerOwnsInbounds(c, membershipIds) {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
+		return
+	}
+	if err := a.validateMembershipSet(membershipIds); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	// The per-protocol admission guards ApplyMemberships does not run: the IP-pool
+	// capacity check and the one-account rule of a PSK or EAP-TLS IKEv2 inbound. Same
+	// call the bulk membership path makes, and for the same reason - the membership
+	// writer hands out the next slot whether or not the pool has an address behind it.
+	for _, id := range membershipIds {
+		if refused := a.inboundService.AdmitAccount(id, email); refused != nil {
+			jsonMsg(c, I18nWeb(c, "somethingWentWrong"), refused)
+			return
+		}
+	}
+
+	if _, err := accountService.SaveAccountWithoutInbound(entry); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	// Anchor 0: no settings blob was written, so there is nothing for the mirror to
+	// read the account back out of. Explicit, always: this route's whole contract is
+	// that the posted set is the account's set.
+	previous, perr := accountService.InboundIdsForEmail(email)
+	if perr != nil {
+		logger.Warning("reading previous memberships: ", perr)
+	}
+	projected, merr := accountService.ApplyMembershipsFrom(email, 0, membershipIds, previous, true)
+	if merr != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), merr)
+		return
+	}
+
+	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientAddSuccess"), nil)
+
+	// The inbounds it is on now and the ones it just left, exactly as the edit path
+	// does: a membership that went away has to rewrite that daemon's config too.
+	// needRestart is true because nothing here hot-added anything into the running
+	// core - ApplyMembershipsFrom only writes the database.
+	a.reconcileForInbounds(unionInboundIds(unionInboundIds(membershipIds, previous), projected), true)
+}
+
+// delAccountClient removes an account that no inbound serves.
+//
+// Its own route for the same reason saveAccountClient is: /:id/delClientByEmail/:email
+// is addressed to an inbound, and this account has none. It refuses an account that
+// still holds a membership, so a served account keeps exactly one destructive path -
+// the one that also takes the entry out of settings.clients, drops the IP bindings
+// and removes the user from the running core.
+func (a *InboundController) delAccountClient(c *gin.Context) {
+	if !a.callerMayLeaveAccountUnserved(c) {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errNoInboundNotYours)
+		return
+	}
+	email := c.Param("email")
+	if err := accountService.DeleteAccountWithoutInbound(email); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientDeleteSuccess"), nil)
+}
+
+// singlePostedClientEntry pulls the ONE client entry out of a posted settings blob,
+// as the raw map the accounts layer reads. A map rather than a model.Client because
+// the account columns are decided on the PRESENCE of a key, not on its decoded value
+// (see upsertAccountFromEntry): a struct cannot tell an omitted speedLimitDown from
+// an explicit null, and those mean "inherit the inbound" and "no limit here".
+func singlePostedClientEntry(settings string) (map[string]any, error) {
+	var parsed struct {
+		Clients []map[string]any `json:"clients"`
+	}
+	if err := json.Unmarshal([]byte(settings), &parsed); err != nil {
+		return nil, err
+	}
+	if len(parsed.Clients) != 1 {
+		return nil, fmt.Errorf("expected exactly one client, got %d", len(parsed.Clients))
+	}
+	return parsed.Clients[0], nil
 }
 
 // copyInboundClients copies clients from source inbound to target inbound.
@@ -1059,6 +1246,14 @@ func (a *InboundController) copyInboundClients(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
+	// Mirror the copies into the accounts layer, like every other write path. Without
+	// it the copied clients existed in settings.clients and client_traffics but in no
+	// account row, so none of them appeared on the Clients page (which lists the
+	// accounts layer) until some later single-client write to the same inbound
+	// happened to reconcile it. Both inbounds are touched: the copy mints a subId back
+	// into the SOURCE for any client that had none.
+	a.syncInboundAccounts(targetID)
+	a.syncInboundAccounts(req.SourceInboundID)
 	jsonObj(c, result, nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
@@ -1127,6 +1322,11 @@ func (a *InboundController) delInboundClient(c *gin.Context) {
 		a.onMtprotoChanged()
 	} else if oldInbound != nil && oldInbound.Protocol == model.SSH {
 		a.onSshChanged()
+	} else if oldInbound != nil && oldInbound.Protocol == model.WireGuard {
+		// Xray-native, so it still wants the restart below, but its peers are built
+		// from key material that has to exist first.
+		a.onWireguardXrayClientChanged()
+		a.xrayService.SetToNeedRestart()
 	} else if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
@@ -1155,6 +1355,13 @@ func (a *InboundController) updateInboundClient(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
 		return
 	}
+	// Unticking the last inbound is a real edit, not a delete: the account, its
+	// credentials and its usage row all survive it. See callerMayLeaveAccountUnserved
+	// for why not everyone may make one.
+	if membershipsExplicit && len(membershipIds) == 0 && !a.callerMayLeaveAccountUnserved(c) {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), errNoInboundNotYours)
+		return
+	}
 	if err := a.validateMembershipSet(membershipIds); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -1167,6 +1374,16 @@ func (a *InboundController) updateInboundClient(c *gin.Context) {
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
+	}
+
+	// The email as STORED, read before the write replaces it. An edit may rename the
+	// account, and after the write there is nothing left to learn the old identity
+	// from: UpdateInboundClient rewrites the entry in place. ticket.Email holds the
+	// same thing but only for a reseller, and a rename by an admin splits the account
+	// exactly as badly.
+	previousEmail := ""
+	if stored, gerr := a.inboundService.GetInbound(inbound.Id); gerr == nil {
+		previousEmail = a.clientEmailOnInbound(stored, clientId)
 	}
 
 	needRestart, err := a.inboundService.UpdateInboundClient(inbound, clientId)
@@ -1196,11 +1413,28 @@ func (a *InboundController) updateInboundClient(c *gin.Context) {
 			email = a.clientEmailOnInbound(dbInbound, clientId)
 		}
 	}
+	// Carry the ACCOUNT onto the new email, the same way the ledger was carried just
+	// above, and before anything applies memberships under the new key.
+	//
+	// UpdateInboundClient rewrote the one inbound this was posted against. Every OTHER
+	// inbound serving the account still carries the old email, and the account row
+	// still answers to it, so applying memberships now would find no account for the
+	// new key, mint a SECOND one, and project it alongside the old entries instead of
+	// over them: one customer, two accounts, and the old email left live and billable
+	// on every inbound but this one. Renaming first means the projection below matches
+	// in place and has nothing to append.
+	var renamed []int
+	if previousEmail != "" && email != "" && previousEmail != email {
+		var rerr error
+		if renamed, rerr = accountService.RenameAccount(previousEmail, email); rerr != nil {
+			logger.Warning("carrying the account across a client rename: ", rerr)
+		}
+	}
 	previous, perr := accountService.InboundIdsForEmail(email)
 	if perr != nil {
 		logger.Warning("reading previous memberships: ", perr)
 	}
-	projected, merr := a.applyClientMemberships(c, email, membershipIds, membershipsExplicit, session.GetLoginUser(c).Id)
+	projected, merr := a.applyClientMemberships(c, email, inbound.Id, membershipIds, membershipsExplicit)
 	if merr != nil {
 		logger.Warning("applying client memberships: ", merr)
 	}
@@ -1210,7 +1444,12 @@ func (a *InboundController) updateInboundClient(c *gin.Context) {
 	// Reconcile the inbounds it is on now AND the ones it was just removed from:
 	// a dropped membership has to rewrite that daemon's config too, or the account
 	// keeps working there until something else happens to trigger a regeneration.
-	a.reconcileForInbounds(unionInboundIds(unionInboundIds(membershipIds, previous), projected), needRestart)
+	//
+	// `renamed` is in the set for the same reason: a rename is a new RADIUS login and
+	// a new per-account routing rule on every inbound the old email was written into,
+	// and those inbounds are not otherwise in any of the three lists.
+	reconcile := unionInboundIds(unionInboundIds(membershipIds, previous), projected)
+	a.reconcileForInbounds(unionInboundIds(reconcile, renamed), needRestart)
 }
 
 // unionInboundIds merges two id lists, preserving order and dropping duplicates.
@@ -1393,6 +1632,262 @@ func (a *InboundController) bulkUpdateClients(c *gin.Context) {
 	if xrayRestart {
 		a.xrayService.SetToNeedRestart()
 	}
+}
+
+// bulkMembershipResult is what one bulk membership run reports back.
+//
+// applied/skipped keep the shape every other bulk response uses, so the modal's
+// progress accounting needs no special case. Reasons is the addition, and for
+// this operation it is the interesting half: an account left on nothing, a
+// same-protocol clash and a full IP pool are three different problems, and a bare
+// "3 skipped" tells an operator none of them apart.
+type bulkMembershipResult struct {
+	Applied int      `json:"applied"`
+	Skipped int      `json:"skipped"`
+	Reasons []string `json:"reasons,omitempty"`
+}
+
+// bulkClientMembership puts the selected accounts ON a set of inbounds, or takes
+// them OFF it.
+//
+// Its own route rather than two more ops on bulkUpdateClients, because that
+// applier is the wrong machine for this job: it edits settings.clients in place
+// and leaves the accounts layer to be re-synced afterwards, and a membership IS
+// an accounts-layer row. Everything a new membership needs - minting the
+// credential its protocol keys on, allocating a pool slot, projecting the
+// account's quota and expiry onto the new inbound, and stripping the entry from
+// the ones it left - lives behind AccountService.ApplyMemberships.
+//
+// Three properties of the request decide the rest of the handler:
+//
+//   - Targets are (inbound, email) PAIRS, and the Clients page expands one ticked
+//     account into one pair per membership it already has. So an account on four
+//     inbounds arrives four times, and the emails have to be reduced to a set or
+//     the operation runs four times for that one account.
+//   - An account CAN be left on nothing, and that is not a delete: the account row,
+//     its credentials and its client_traffics row all survive, so the customer's
+//     usage history and installed credentials are still there when an inbound is
+//     attached again. Only a super admin may do it, because an account with no
+//     membership falls outside every inbound grant and so outside every other
+//     caller's own Clients list; for them it is skipped with a reason.
+//   - The set the caller is allowed to remove FROM is not the set they are
+//     allowed to add TO. Both are asserted below, over both id lists.
+func (a *InboundController) bulkClientMembership(c *gin.Context) {
+	var body struct {
+		Data string `form:"data" json:"data"`
+	}
+	if err := c.ShouldBind(&body); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	var req service.BulkClientUpdateRequest
+	if err := json.Unmarshal([]byte(body.Data), &req); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	var adding bool
+	switch req.Op {
+	case "addInbounds":
+		adding = true
+	case "removeInbounds":
+	default:
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"),
+			fmt.Errorf("unknown bulk membership operation: %q", req.Op))
+		return
+	}
+
+	// The reseller decision, and it is a refusal. Which inbounds serve an account
+	// is the admin's call: a reseller's grant says which inbounds they may sell
+	// FROM, and says nothing about moving a customer between them. Re-homing would
+	// spend another admin's IP pool and user-limit capacity on a shared inbound,
+	// and would let a reseller park an account on an inbound with a laxer limit
+	// than the one it was sold on. Neither is priced in bytes, so the ledger has no
+	// opinion to fall back on. See ErrBulkNoMembership.
+	user := session.GetLoginUser(c)
+	if user == nil || user.IsReseller {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), service.ErrBulkNoMembership)
+		return
+	}
+
+	// unionInboundIds with nothing to union is just "dedupe, keep order". The id
+	// filter is the same one postedMembershipIds applies: a 0 reaches the ownership
+	// check as a real question, and for a super admin it passes, after which it is
+	// only caught per account as "inbound 0 not found".
+	positive := make([]int, 0, len(req.InboundIds))
+	for _, id := range req.InboundIds {
+		if id > 0 {
+			positive = append(positive, id)
+		}
+	}
+	chosen := unionInboundIds(positive, nil)
+	if len(chosen) == 0 {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"),
+			fmt.Errorf("no inbound was named to add to or remove from"))
+		return
+	}
+	// Two assertions over two different id sets, and both are load-bearing.
+	// `chosen` authorises the write: adding is authorised by owning the inbound
+	// added TO, removing by owning the one removed FROM. `targets` authorises
+	// reaching these ACCOUNTS at all - the same whole-batch rule bulkUpdateClients
+	// applies, refusing rather than partially applying, so an account shared with
+	// an admin whose inbounds this caller cannot see is left alone entirely.
+	if !a.callerOwnsInbounds(c, chosen) || !a.callerOwnsInbounds(c, distinctInboundIds(req.Targets)) {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
+		return
+	}
+
+	result := bulkMembershipResult{}
+	seen := map[string]bool{}
+	skip := func(reason string) {
+		result.Skipped++
+		if reason != "" && !seen[reason] {
+			seen[reason] = true
+			result.Reasons = append(result.Reasons, reason)
+		}
+	}
+	var touched []int
+	for _, email := range distinctTargetEmails(req.Targets) {
+		current, err := accountService.InboundIdsForEmail(email)
+		if err != nil {
+			skip(fmt.Sprintf("%s: %v", email, err))
+			continue
+		}
+		if len(current) == 0 {
+			// No membership means no account row to re-home. ApplyMemberships would
+			// answer "no account for ..." a layer down; saying it here keeps the
+			// reason attached to the email it is about.
+			skip(fmt.Sprintf("%s: no such account", email))
+			continue
+		}
+		wanted := current
+		if adding {
+			wanted = unionInboundIds(current, chosen)
+		} else {
+			wanted = subtractInboundIds(current, chosen)
+		}
+		// Exact, not an approximation: adding can only grow the set and removing
+		// can only shrink it, so an unchanged length means an unchanged set.
+		//
+		// One shared reason rather than one per account, so it collapses to a
+		// single line however many accounts are in this state. Without it a run
+		// over accounts that are all already where they were asked to be reports
+		// "0 applied, 40 skipped" and explains none of it.
+		if len(wanted) == len(current) {
+			skip("some accounts were already in the requested state and were left alone")
+			continue
+		}
+		if len(wanted) == 0 && !a.callerMayLeaveAccountUnserved(c) {
+			skip(fmt.Sprintf("%s: %v", email, errNoInboundNotYours))
+			continue
+		}
+		if err := a.validateMembershipSet(wanted); err != nil {
+			skip(fmt.Sprintf("%s: %v", email, err))
+			continue
+		}
+		if adding {
+			// Guards ApplyMemberships does not run. Re-read per account inside the
+			// loop, because each applied account has already taken its slot.
+			var refused error
+			for _, id := range chosen {
+				if containsInboundId(current, id) {
+					continue
+				}
+				if refused = a.inboundService.AdmitAccount(id, email); refused != nil {
+					break
+				}
+			}
+			if refused != nil {
+				skip(fmt.Sprintf("%s: %v", email, refused))
+				continue
+			}
+		}
+		// Removing is authorised by owning the inbound removed FROM, which is why
+		// this is not simply "everything not in wanted": an account can be on an
+		// inbound this caller cannot see, and that membership must survive. Every
+		// id in `chosen` was owner-checked above, so the intersection is exactly
+		// the set they may drop.
+		var removable []int
+		if !adding {
+			removable = intersectInboundIds(current, chosen)
+		}
+		changed, err := accountService.ApplyMemberships(email, wanted, removable, true)
+		if err != nil {
+			skip(fmt.Sprintf("%s: %v", email, err))
+			continue
+		}
+		result.Applied++
+		touched = unionInboundIds(touched, changed)
+	}
+	jsonObj(c, result, nil)
+
+	// needRestart is true because nothing here hot-added anything. AddInboundClient
+	// pushes a new account into the running core over the Xray API and can honestly
+	// report false; ApplyMemberships only writes the database, so an Xray-native
+	// inbound that just gained a member is serving a config the core has not read.
+	// The VPN protocols each request their own restart from their hook regardless.
+	if len(touched) > 0 {
+		a.reconcileForInbounds(touched, true)
+	}
+}
+
+// distinctTargetEmails reduces a bulk target list to the ACCOUNTS it names.
+//
+// The Clients page posts one (inbound, email) pair per membership, so a customer
+// on four inbounds arrives four times and any account-level operation would run
+// four times for them. Keyed the way the server keys account identity
+// (accountKey: trimmed, lower-cased), but the first spelling seen is what is
+// returned, since that is what the reasons are reported against.
+func distinctTargetEmails(targets []service.BulkClientTarget) []string {
+	seen := make(map[string]bool, len(targets))
+	out := make([]string, 0, len(targets))
+	for _, t := range targets {
+		key := strings.ToLower(strings.TrimSpace(t.Email))
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, t.Email)
+	}
+	return out
+}
+
+// subtractInboundIds returns the ids in a that are not in b, order preserved.
+func subtractInboundIds(a, b []int) []int {
+	drop := make(map[int]bool, len(b))
+	for _, id := range b {
+		drop[id] = true
+	}
+	out := make([]int, 0, len(a))
+	for _, id := range a {
+		if !drop[id] {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// intersectInboundIds returns the ids present in both lists, order following a.
+func intersectInboundIds(a, b []int) []int {
+	keep := make(map[int]bool, len(b))
+	for _, id := range b {
+		keep[id] = true
+	}
+	out := make([]int, 0, len(a))
+	for _, id := range a {
+		if keep[id] {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func containsInboundId(ids []int, id int) bool {
+	for _, candidate := range ids {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }
 
 // resetClientTraffic resets the traffic counter for a specific client in an inbound.
@@ -1646,7 +2141,11 @@ func (a *InboundController) delDepletedClients(c *gin.Context) {
 			u, known := usage[strings.ToLower(strings.TrimSpace(email))]
 			a.refundDeletedClient(email, u, known)
 		}
-		a.syncInboundAccountsAll(id)
+		// -1, not id. The sweep follows a depleted account onto EVERY inbound serving
+		// it (its quota is account-wide, so removing it from one and deleting its
+		// counter row would leave it live and unmetered on the rest), so reconciling
+		// only the inbound named in the route leaves the mirror stale on the others.
+		a.syncInboundAccountsAll(-1)
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.delDepletedClientsSuccess"), nil)
 		return
 	}
@@ -1656,7 +2155,8 @@ func (a *InboundController) delDepletedClients(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
-	a.syncInboundAccountsAll(id)
+	// -1 for the same reason as the reseller branch above.
+	a.syncInboundAccountsAll(-1)
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.delDepletedClientsSuccess"), nil)
 }
 
@@ -1666,6 +2166,67 @@ func (a *InboundController) onlines(c *gin.Context) {
 	// per-admin data. Scoping only the websocket broadcast would have been
 	// cosmetic: the same two datasets are one unfiltered POST away.
 	jsonObj(c, a.scopeEmails(c, a.inboundService.GetOnlineClients()), nil)
+}
+
+// onlineMemberships reports the same liveness per (inbound, account) pair, for the
+// Clients page's expander. "<inboundId>:<email>", inbound 0 meaning the session's
+// source inbound could not be named.
+//
+// Scoped on BOTH halves, and it has to be. The email scope is the same one onlines
+// applies and for the same reason (this is per-admin data on a panel-wide table);
+// the inbound scope is on top of it, because a shared inbound carries other admins'
+// customers and an account visible to this caller may also be a member of an inbound
+// that is not. Answering for that pair would tell them an inbound exists, its id,
+// and that someone is on it right now.
+func (a *InboundController) onlineMemberships(c *gin.Context) {
+	pairs := a.inboundService.GetOnlineMemberships()
+	if len(pairs) == 0 {
+		jsonObj(c, []string{}, nil)
+		return
+	}
+
+	byEmail := make(map[string][]string, len(pairs))
+	emails := make([]string, 0, len(pairs))
+	for _, pair := range pairs {
+		sep := strings.IndexByte(pair, ':')
+		if sep < 0 {
+			continue
+		}
+		email := pair[sep+1:]
+		if _, seen := byEmail[email]; !seen {
+			emails = append(emails, email)
+		}
+		byEmail[email] = append(byEmail[email], pair)
+	}
+
+	allowed := func(int) bool { return true }
+	if user := session.GetLoginUser(c); user != nil && !user.IsSuperAdmin {
+		ids, err := accessService.AccessibleInboundIds(user.Id)
+		if err != nil {
+			jsonObj(c, []string{}, nil)
+			return
+		}
+		granted := make(map[int]bool, len(ids))
+		for _, id := range ids {
+			granted[id] = true
+		}
+		// Inbound 0 is "source unknown", not an inbound anyone holds a grant on. It
+		// stays visible for an account the caller may see, because that is the only
+		// evidence there is that an Xray-native membership is live at all.
+		allowed = func(id int) bool { return id == 0 || granted[id] }
+	}
+
+	out := make([]string, 0, len(pairs))
+	for _, email := range a.scopeEmails(c, emails) {
+		for _, pair := range byEmail[email] {
+			id, err := strconv.Atoi(pair[:strings.IndexByte(pair, ':')])
+			if err != nil || !allowed(id) {
+				continue
+			}
+			out = append(out, pair)
+		}
+	}
+	jsonObj(c, out, nil)
 }
 
 // lastOnline retrieves the last online timestamps for clients.
@@ -2026,6 +2587,37 @@ func (a *InboundController) getWgcConfigs(c *gin.Context) {
 	jsonObj(c, configs, nil)
 }
 
+// getWireguardXrayConfigs renders the client configuration(s) for one account
+// (?email=) of an Xray-native `wireguard` inbound: one .conf per device slot, with
+// server-minted keys and the panel-access host as the endpoint.
+//
+// Same shape and the same ownership reasoning as getWgcConfigs: the account arrives
+// as a query param no middleware inspects, and the payload is its private keys, so
+// `owns` on :id is not enough on its own.
+func (a *InboundController) getWireguardXrayConfigs(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, "Invalid inbound ID", err)
+		return
+	}
+	if !a.callerMayTouchClient(c, c.Query("email")) {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.notFound"), errNotOwned)
+		return
+	}
+	service.ReconcileAllWireguardXrayKeys()
+	inbound, err := a.inboundService.GetInbound(id)
+	if err != nil {
+		jsonMsg(c, "Inbound not found", err)
+		return
+	}
+	configs, err := service.RenderWireguardXrayConfigs(inbound, c.Query("email"), browserHost(c))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, configs, nil)
+}
+
 // getAwgConfigs renders the AmneziaWG client configuration(s) for one account (?email=) of an
 // inbound: identical to getWgcConfigs but each [Interface] carries the obfuscation params.
 func (a *InboundController) getAwgConfigs(c *gin.Context) {
@@ -2114,6 +2706,31 @@ func (a *InboundController) getSshConfigs(c *gin.Context) {
 	jsonObj(c, configs, nil)
 }
 
+// getIkev2RemoteId resolves an ikev2 inbound's Remote ID / Server Identity
+// (Ikev2Service.serverID): the IKE identity the server presents, which is also the SAN
+// GenerateSelfSignedCert issued the server cert for. The account export already has this
+// for free from inbound.settings.serverAddr whenever it is set; this endpoint exists only
+// for the blank case, whose fallback (getServerIP's default-route probe) runs server-side
+// and cannot be reproduced in the browser.
+func (a *InboundController) getIkev2RemoteId(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, "Invalid inbound ID", err)
+		return
+	}
+	inbound, err := a.inboundService.GetInbound(id)
+	if err != nil {
+		jsonMsg(c, "Inbound not found", err)
+		return
+	}
+	remoteId, err := a.ikev2Service.ResolveServerID(inbound)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, map[string]string{"remoteId": remoteId}, nil)
+}
+
 // checkIkev2Cert inspects the supplied IKEv2 server certificate's public-key type
 // and returns a device-compatibility warning (non-RSA → iOS silently rejects it).
 // Non-blocking: the UI surfaces the warning; it does not prevent saving.
@@ -2191,13 +2808,24 @@ func (a *InboundController) callerOwnsInbound(c *gin.Context, inboundId int) boo
 // requests: the first is an ordinary single-inbound write that must keep its
 // current behaviour exactly, the second is "put this account on this inbound and
 // no other" and has to drop the memberships it left out.
+//
+// ZERO INBOUNDS has to be said in a separate field, because form encoding cannot
+// say it with the list: Qs.stringify drops an empty array entirely, so "I ticked
+// nothing" and "I did not mention memberships" arrive as the same request - no
+// inboundIds field at all - and those two mean opposite things here. The absent
+// field must keep meaning "leave the set alone" for every caller written before
+// this existed, so the deliberate empty set gets its own flag rather than a
+// re-reading of the old one. Named for what the Clients page calls the state it
+// produces ("No inbounds").
 func postedMembershipIds(c *gin.Context, targetId int) ([]int, bool) {
 	raw := c.PostFormArray("inboundIds")
-	if len(raw) == 0 {
-		return []int{targetId}, false
+	seen := map[int]bool{}
+	out := []int{}
+	if targetId > 0 {
+		seen[targetId] = true
+		out = append(out, targetId)
 	}
-	seen := map[int]bool{targetId: true}
-	out := []int{targetId}
+	named := 0
 	for _, value := range raw {
 		// The empty-string sentinel is how the browser posts a CLEARED checkbox
 		// group (see admin_modal.html); it means "none ticked", not "id 0".
@@ -2210,8 +2838,42 @@ func postedMembershipIds(c *gin.Context, targetId int) ([]int, bool) {
 		}
 		seen[id] = true
 		out = append(out, id)
+		named++
 	}
+	// A named inbound beats the flag, always. The two together are a contradictory
+	// request, and of the two readings only this one cannot unprovision an account
+	// the caller was asking to attach.
+	if named > 0 {
+		return out, true
+	}
+	if isTruthyForm(c.PostForm("noInbounds")) {
+		return nil, true
+	}
+	if len(raw) == 0 {
+		if targetId <= 0 {
+			// No list and no addressed inbound: there is no set to apply, and
+			// answering []int{0} sent the membership writer looking for inbound 0.
+			return nil, false
+		}
+		return []int{targetId}, false
+	}
+	// The list was posted and named nothing usable - the cleared-checkbox sentinel,
+	// or ids that do not parse. Unchanged from before the flag existed: the addressed
+	// inbound alone, as an explicit set. Emptying an account is deliberate enough to
+	// need saying, and a malformed list is not saying it.
 	return out, true
+}
+
+// isTruthyForm reads a boolean posted as a form field. Qs.stringify writes a JS
+// true as the string "true", and a hand-written client is as likely to send "1",
+// so both are accepted and everything else - including the absent field, which
+// PostForm answers as "" - is false.
+func isTruthyForm(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "true", "1", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // syncInboundAccountsAll reconciles one inbound, or every inbound when the route
@@ -2272,7 +2934,7 @@ func distinctInboundIds(targets []service.BulkClientTarget) []int {
 // the inbound itself (where it drops every membership pointing at an id that is
 // gone).
 func (a *InboundController) syncInboundAccounts(inboundId int) {
-	if err := accountService.SyncInboundAccounts(database.GetDB(), inboundId, 0); err != nil {
+	if err := accountService.SyncInboundAccounts(database.GetDB(), inboundId); err != nil {
 		logger.Warning("syncing the accounts layer for inbound ", inboundId, ": ", err)
 	}
 }
@@ -2283,7 +2945,14 @@ func (a *InboundController) syncInboundAccounts(inboundId int) {
 // Returns the inbound ids whose settings actually changed, for the reconcile
 // fan-out. A single-inbound request is a no-op beyond the mirror sync, which is
 // what keeps the legacy path byte-identical.
-func (a *InboundController) applyClientMemberships(c *gin.Context, email string, inboundIds []int, explicit bool, createdBy int) ([]int, error) {
+//
+// anchorInboundId is the inbound the request was ADDRESSED to, which is where the
+// entry this write just saved is sitting. It is passed separately because it is not
+// always one of inboundIds: a write that takes the account off every inbound leaves
+// an empty set, and the account-wide fields the same request changed (quota, expiry,
+// comment) would never reach the account row if the mirror had no blob to read them
+// from.
+func (a *InboundController) applyClientMemberships(c *gin.Context, email string, anchorInboundId int, inboundIds []int, explicit bool) ([]int, error) {
 	if email == "" {
 		return nil, nil
 	}
@@ -2310,7 +2979,7 @@ func (a *InboundController) applyClientMemberships(c *gin.Context, email string,
 			}
 		}
 	}
-	return accountService.ApplyMemberships(email, inboundIds, removable, explicit, createdBy)
+	return accountService.ApplyMembershipsFrom(email, anchorInboundId, inboundIds, removable, explicit)
 }
 
 // reconcileForInbounds fires each protocol's reconcile hook once for the set of
@@ -2332,7 +3001,16 @@ func (a *InboundController) reconcileForInbounds(inboundIds []int, needRestart b
 
 	// Each VPN hook regenerates its own daemon config and requests the Xray
 	// restart itself, so only the native Xray protocols fall through to the
-	// bare SetToNeedRestart below.
+	// bare SetToNeedRestart below — and only when the caller could not apply the
+	// change live.
+	//
+	// needRestart is the whole point of the flag: AddInboundClient and
+	// UpdateInboundClient push the account into the running core over the Xray API
+	// and report false when that worked. Forcing a restart on top of a successful
+	// hot-add threw the hot-add away and dropped every live connection on the box
+	// each time an operator added one vmess/vless/trojan account, which is what
+	// this used to do before the reconcile fan-out was factored out of the three
+	// client handlers.
 	xrayOnly := needRestart
 	for protocol := range protocols {
 		switch protocol {
@@ -2358,8 +3036,15 @@ func (a *InboundController) reconcileForInbounds(inboundIds []int, needRestart b
 			a.onMtprotoClientChanged()
 		case model.SSH:
 			a.onSshClientChanged()
-		default:
+		case model.WireGuard:
+			// Xray-native, so it needs the core restarted like every other default
+			// case below, but its peers do not exist until the keys and tunnel
+			// addresses are minted, and the generated config is built from them.
+			a.onWireguardXrayClientChanged()
 			xrayOnly = true
+		default:
+			// Nothing to do: the account is already in the running core if the API
+			// call succeeded, and needRestart already says so if it did not.
 		}
 	}
 	if xrayOnly {
@@ -2549,4 +3234,26 @@ func (a *InboundController) callerOwnsInbounds(c *gin.Context, inboundIds []int)
 	}
 	owns, err := accessService.CanAccessAllInbounds(inboundIds, user.Id)
 	return err == nil && owns
+}
+
+// errNoInboundNotYours refuses to leave an account on no inbound at all, for a
+// caller who would then never see it again.
+var errNoInboundNotYours = fmt.Errorf(
+	"only a super admin can leave an account on no inbound: an account with no membership " +
+		"sits outside every inbound grant, so it would disappear from your own Clients list " +
+		"with no way to reach it again")
+
+// callerMayLeaveAccountUnserved answers whether this caller may leave an account
+// with no inbound at all.
+//
+// Super admins only, and the reason is the Clients list rather than the write. An
+// ordinary admin sees the accounts with at least one membership on an inbound they
+// hold (AccountService.visibilityFilter), and a reseller sees the ones their ledger
+// says they own. Zero memberships is outside the first of those two questions
+// entirely: the account is real, listed for the super admin, and invisible to the
+// admin who just made it. Refusing says so; allowing it would look like the save
+// deleted the customer.
+func (a *InboundController) callerMayLeaveAccountUnserved(c *gin.Context) bool {
+	user := session.GetLoginUser(c)
+	return user != nil && user.IsSuperAdmin
 }

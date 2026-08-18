@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/hasan1808/pro-ui/config"
-	"github.com/hasan1808/pro-ui/web/service"
-	"github.com/hasan1808/pro-ui/xray"
 
 	"github.com/gin-gonic/gin"
 )
@@ -100,8 +98,7 @@ func (a *SUBController) initRouter(g *gin.RouterGroup) {
 	}
 }
 
-// subs handles HTTP requests for subscription links, returning either HTML page or
-// the payload rendered by the operator-chosen template (base64/plain/clash/json/custom).
+// subs handles HTTP requests for subscription links, returning either HTML page or base64-encoded subscription data.
 func (a *SUBController) subs(c *gin.Context) {
 	subId := c.Param("subid")
 	scheme, host, hostWithPort, hostHeader := a.subService.ResolveRequest(c)
@@ -112,144 +109,81 @@ func (a *SUBController) subs(c *gin.Context) {
 	// from exactly those accounts. GetSubs already errors when the subId matches nothing.
 	if err != nil {
 		c.String(400, "Error!")
-		return
-	}
-
-	// If the request expects HTML (e.g., browser) or explicitly asked (?html=1 or ?view=html), render the info page here
-	accept := c.GetHeader("Accept")
-	if strings.Contains(strings.ToLower(accept), "text/html") || c.Query("html") == "1" || strings.EqualFold(c.Query("view"), "html") {
-		// Build page data in service
-		subURL, subJsonURL, subClashURL := a.subService.BuildURLs(scheme, hostWithPort, a.subPath, a.subJsonPath, a.subClashPath, subId)
-		if !a.jsonEnabled {
-			subJsonURL = ""
+	} else {
+		result := ""
+		for _, sub := range subs {
+			result += sub + "\n"
 		}
-		if !a.clashEnabled {
-			subClashURL = ""
-		}
-		// Get base_path from context (set by middleware)
-		basePath, exists := c.Get("base_path")
-		if !exists {
-			basePath = "/"
-		}
-		// Add subId to base_path for asset URLs
-		basePathStr := basePath.(string)
-		if basePathStr == "/" {
-			basePathStr = "/" + subId + "/"
-		} else {
-			// Remove trailing slash if exists, add subId, then add trailing slash
-			basePathStr = strings.TrimRight(basePathStr, "/") + "/" + subId + "/"
-		}
-		page := a.subService.BuildPageData(subId, hostHeader, traffic, lastOnline, subs, subURL, subJsonURL, subClashURL, basePathStr)
-		// OpenVPN and WireGuard cannot be set up from a link: the page offers their
-		// config files as downloads. Rendered only for the browser view, since a
-		// subscription client has no use for them.
-		page.Configs = a.subService.ConfigLinks(subId, host, scheme, hostWithPort, a.subPath)
-		c.HTML(200, "subpage.html", gin.H{
-			"title":        "subscription.title",
-			"cur_ver":      config.GetVersion(),
-			"host":         page.Host,
-			"base_path":    page.BasePath,
-			"sId":          page.SId,
-			"download":     page.Download,
-			"upload":       page.Upload,
-			"total":        page.Total,
-			"used":         page.Used,
-			"remained":     page.Remained,
-			"expire":       page.Expire,
-			"lastOnline":   page.LastOnline,
-			"datepicker":   page.Datepicker,
-			"downloadByte": page.DownloadByte,
-			"uploadByte":   page.UploadByte,
-			"totalByte":    page.TotalByte,
-			"subUrl":       page.SubUrl,
-			"subJsonUrl":   page.SubJsonUrl,
-			"subClashUrl":  page.SubClashUrl,
-			"result":       page.Result,
-			"configs":      page.Configs,
-			"email":        page.Email,
-			"password":     page.Password,
-		})
-		return
-	}
 
-	profileUrl := a.subProfileUrl
-	if profileUrl == "" {
-		profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
-	}
-
-	// The operator-chosen template is read from the settings table PER REQUEST (a
-	// zero-value SettingService reads live), so saving a new template in the panel
-	// applies to the running sub server immediately — no restart, unlike the other
-	// sub options which are snapshotted at Start(). Unknown values fall back to the
-	// legacy base64 behaviour (the switch's default) so a config written by a future
-	// version never breaks the raw link outright.
-	var ss service.SettingService
-	template, _ := ss.GetSubTemplate()
-
-	switch template {
-	case "plain":
-		header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
-		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
-		c.String(200, strings.Join(subs, "\n"))
-	case "json":
-		jsonSub, header, err := a.subJsonService.GetJson(subId, host)
-		if err != nil || len(jsonSub) == 0 {
-			// No JSON form for this account's protocols (e.g. openvpn/l2tp);
-			// serve the raw links instead so a template choice never breaks the link.
-			a.serveRawLinks(c, subs, traffic, profileUrl)
+		// If the request expects HTML (e.g., browser) or explicitly asked (?html=1 or ?view=html), render the info page here
+		accept := c.GetHeader("Accept")
+		if strings.Contains(strings.ToLower(accept), "text/html") || c.Query("html") == "1" || strings.EqualFold(c.Query("view"), "html") {
+			// Build page data in service
+			subURL, subJsonURL, subClashURL := a.subService.BuildURLs(scheme, hostWithPort, a.subPath, a.subJsonPath, a.subClashPath, subId)
+			if !a.jsonEnabled {
+				subJsonURL = ""
+			}
+			if !a.clashEnabled {
+				subClashURL = ""
+			}
+			// Get base_path from context (set by middleware)
+			basePath, exists := c.Get("base_path")
+			if !exists {
+				basePath = "/"
+			}
+			// Add subId to base_path for asset URLs
+			basePathStr := basePath.(string)
+			if basePathStr == "/" {
+				basePathStr = "/" + subId + "/"
+			} else {
+				// Remove trailing slash if exists, add subId, then add trailing slash
+				basePathStr = strings.TrimRight(basePathStr, "/") + "/" + subId + "/"
+			}
+			page := a.subService.BuildPageData(subId, hostHeader, traffic, lastOnline, subs, subURL, subJsonURL, subClashURL, basePathStr)
+			// OpenVPN and WireGuard cannot be set up from a link: the page offers their
+			// config files as downloads. Rendered only for the browser view, since a
+			// subscription client has no use for them.
+			page.Configs = a.subService.ConfigLinks(subId, host, scheme, hostWithPort, a.subPath)
+			c.HTML(200, "subpage.html", gin.H{
+				"title":        "subscription.title",
+				"cur_ver":      config.GetVersion(),
+				"asset_ver":    config.GetAssetVersion(),
+				"host":         page.Host,
+				"base_path":    page.BasePath,
+				"sId":          page.SId,
+				"download":     page.Download,
+				"upload":       page.Upload,
+				"total":        page.Total,
+				"used":         page.Used,
+				"remained":     page.Remained,
+				"expire":       page.Expire,
+				"lastOnline":   page.LastOnline,
+				"datepicker":   page.Datepicker,
+				"downloadByte": page.DownloadByte,
+				"uploadByte":   page.UploadByte,
+				"totalByte":    page.TotalByte,
+				"subUrl":       page.SubUrl,
+				"subJsonUrl":   page.SubJsonUrl,
+				"subClashUrl":  page.SubClashUrl,
+				"result":       page.Result,
+				"configs":      page.Configs,
+			})
 			return
 		}
-		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
-		c.String(200, jsonSub)
-	case "clash":
-		clashSub, header, err := a.subClashService.GetClash(subId, host)
-		if err != nil || len(clashSub) == 0 {
-			// Same fallback as json: protocols with no Clash proxy (naive, mtproto,
-			// ssh, gre) still get the raw links instead of "Error!".
-			a.serveRawLinks(c, subs, traffic, profileUrl)
-			return
+
+		// Add headers
+		header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
+		profileUrl := a.subProfileUrl
+		if profileUrl == "" {
+			profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
 		}
 		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
-		c.Data(200, "application/yaml; charset=utf-8", []byte(clashSub))
-	case "custom":
-		custom, _ := ss.GetSubCustomTemplate()
-		email, _ := a.subService.accountCredential(subId)
-		content := renderSubTemplate(custom, subTemplateVars{
-			Links:    strings.Join(subs, "\n"),
-			Email:    email,
-			SubTitle: a.subTitle,
-			Up:       traffic.Up,
-			Down:     traffic.Down,
-			Total:    traffic.Total,
-			Expire:   traffic.ExpiryTime / 1000,
-		})
-		header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
-		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
-		c.String(200, content)
-	default: // "base64"
-		result := strings.Join(subs, "\n")
-		header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
-		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
+
 		if a.subEncrypt {
 			c.String(200, base64.StdEncoding.EncodeToString([]byte(result)))
 		} else {
 			c.String(200, result)
 		}
-	}
-}
-
-// serveRawLinks serves the account's raw links (base64-encoded when subEncrypt is
-// set) with the standard headers. It is the fallback for templates that have no
-// representation of the account's protocols, so a template choice never turns a
-// working link into "Error!".
-func (a *SUBController) serveRawLinks(c *gin.Context, subs []string, traffic xray.ClientTraffic, profileUrl string) {
-	result := strings.Join(subs, "\n")
-	header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
-	a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
-	if a.subEncrypt {
-		c.String(200, base64.StdEncoding.EncodeToString([]byte(result)))
-	} else {
-		c.String(200, result)
 	}
 }
 

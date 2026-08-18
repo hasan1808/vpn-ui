@@ -1,4 +1,5 @@
-{{define "form/ikev2"}}
+{{define "form/ikev2"}}{{end}}
+{{define "form/ikev2/network"}}
 <a-form
     :colon="false"
     :label-col="{ md: {span:8} }"
@@ -28,6 +29,27 @@
             Assigned automatically on save
         </span>
     </a-form-item>
+    <a-form-item label="DNS 1">
+        <a-input v-model.trim="inbound.settings.dns1" placeholder="8.8.8.8"></a-input>
+    </a-form-item>
+    <a-form-item label="DNS 2">
+        <a-input v-model.trim="inbound.settings.dns2" placeholder="8.8.4.4"></a-input>
+    </a-form-item>
+    <a-form-item label="MTU">
+        <a-input-number
+            v-model.number="inbound.settings.mtu"
+            :min="1200"
+            :max="1500"
+        ></a-input-number>
+    </a-form-item>
+</a-form>
+{{end}}
+{{define "form/ikev2/security"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
     <a-form-item>
         <template slot="label">
             <a-tooltip>
@@ -74,25 +96,91 @@
             placeholder="auto-detect server IP"
         ></a-input>
     </a-form-item>
-    <a-form-item label="DNS 1">
-        <a-input v-model.trim="inbound.settings.dns1" placeholder="8.8.8.8"></a-input>
-    </a-form-item>
-    <a-form-item label="DNS 2">
-        <a-input v-model.trim="inbound.settings.dns2" placeholder="8.8.4.4"></a-input>
-    </a-form-item>
-    <a-form-item label="MTU">
-        <a-input-number
-            v-model.number="inbound.settings.mtu"
-            :min="1200"
-            :max="1500"
-        ></a-input-number>
-    </a-form-item>
+    <template v-if="inbound.settings.authMode !== 'psk'">
+        <div class="bo-if-sub">TLS Certificate</div>
+        <a-alert
+            v-if="ikev2CertWarning"
+            type="warning"
+            show-icon
+            :message="ikev2CertWarning"
+            :style="{ margin: '0 0 12px' }"
+        ></a-alert>
+        <a-form-item label="Certificate Source">
+            <a-radio-group v-model="inbound.settings.tlsUseFile" button-style="solid">
+                <a-radio-button :value="true">Path</a-radio-button>
+                <a-radio-button :value="false">Content</a-radio-button>
+            </a-radio-group>
+        </a-form-item>
+        <!-- The managed certificate picker. Same list and same stable paths as
+             the Xray TLS form; see form/tls_settings.html for the reasoning. -->
+        <a-form-item v-if="sslCertChoices().length" label='{{ i18n "pages.inbounds.useManagedCert" }}'>
+            <a-select :value="sslCertSelectedSettings()" @change="applyManagedCertSettings"
+                :dropdown-class-name="themeSwitcher.currentTheme">
+                <a-select-option :value="''">{{ i18n "none" }}</a-select-option>
+                <a-select-option v-for="c in sslCertChoices()" :key="c.profile" :value="c.profile">
+                    [[ c.label ]]<span v-if="c.expired"> &middot; {{ i18n "pages.settings.ssl.expired" }}</span><span
+                        v-else-if="c.selfSigned"> &middot; {{ i18n "pages.settings.ssl.selfSigned" }}</span>
+                </a-select-option>
+            </a-select>
+        </a-form-item>
+        <template v-if="inbound.settings.tlsUseFile">
+            <a-form-item label="Certificate Path">
+                <a-input
+                    v-model.trim="inbound.settings.certificateFile"
+                    placeholder="/path/to/fullchain.pem"
+                    @blur="ikev2CheckCert"
+                >
+                    <template slot="addonAfter">
+                        <a-tooltip title="Use the panel's TLS certificate paths">
+                            <a-icon type="import" @click="ikev2SetDefaultCert"></a-icon>
+                        </a-tooltip>
+                    </template>
+                </a-input>
+            </a-form-item>
+            <a-form-item label="Key Path">
+                <a-input
+                    v-model.trim="inbound.settings.keyFile"
+                    placeholder="/path/to/privkey.pem"
+                ></a-input>
+            </a-form-item>
+        </template>
+        <template v-else>
+            <a-form-item label="Server Certificate">
+                <a-textarea
+                    v-model="inbound.settings.certificate"
+                    :rows="3"
+                    placeholder="-----BEGIN CERTIFICATE-----"
+                    @blur="ikev2CheckCert"
+                ></a-textarea>
+            </a-form-item>
+            <a-form-item label="Server Key">
+                <a-textarea
+                    v-model="inbound.settings.key"
+                    :rows="3"
+                    placeholder="-----BEGIN PRIVATE KEY-----"
+                ></a-textarea>
+            </a-form-item>
+            <a-form-item :wrapper-col="{ md: {offset:8, span:14} }">
+                <a-button type="primary" @click="generateIkev2Cert">
+                    Generate Self-Signed Cert
+                </a-button>
+            </a-form-item>
+        </template>
+    </template>
+</a-form>
+{{end}}
+{{define "form/ikev2/access"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
     <a-form-item>
         <template slot="label">
             <a-tooltip>
                 <template slot="title">
                     Simultaneous devices per account (each gets its own IP).
-                    1 = one IP per account (default, best capacity). Higher values reserve that many consecutive IPs per account, so fewer accounts fit the pool; 0 reserves a 16-IP block. Max 64.
+                    10 = ten consecutive IPs per account (default). Lower it to fit more accounts in the pool, raise it for accounts that run more devices; 0 reserves a 16-IP block, which is still a cap and not unlimited. Max 64.
                 </template>
                 User Limit
                 <a-icon type="question-circle"></a-icon>
@@ -152,65 +240,14 @@
         ></a-switch>
     </a-form-item>
 
-    <template v-if="inbound.settings.authMode !== 'psk'">
-        <a-divider>TLS Certificate</a-divider>
-        <a-alert
-            v-if="ikev2CertWarning"
-            type="warning"
-            show-icon
-            :message="ikev2CertWarning"
-            :style="{ margin: '0 0 12px' }"
-        ></a-alert>
-        <a-form-item label="Certificate Source">
-            <a-radio-group v-model="inbound.settings.tlsUseFile" button-style="solid">
-                <a-radio-button :value="true">Path</a-radio-button>
-                <a-radio-button :value="false">Content</a-radio-button>
-            </a-radio-group>
-        </a-form-item>
-        <template v-if="inbound.settings.tlsUseFile">
-            <a-form-item label="Certificate Path">
-                <a-input
-                    v-model.trim="inbound.settings.certificateFile"
-                    placeholder="/path/to/fullchain.pem"
-                    @blur="ikev2CheckCert"
-                >
-                    <template slot="addonAfter">
-                        <a-tooltip title="Use the panel's TLS certificate paths">
-                            <a-icon type="import" @click="ikev2SetDefaultCert"></a-icon>
-                        </a-tooltip>
-                    </template>
-                </a-input>
-            </a-form-item>
-            <a-form-item label="Key Path">
-                <a-input
-                    v-model.trim="inbound.settings.keyFile"
-                    placeholder="/path/to/privkey.pem"
-                ></a-input>
-            </a-form-item>
-        </template>
-        <template v-else>
-            <a-form-item label="Server Certificate">
-                <a-textarea
-                    v-model="inbound.settings.certificate"
-                    :rows="3"
-                    placeholder="-----BEGIN CERTIFICATE-----"
-                    @blur="ikev2CheckCert"
-                ></a-textarea>
-            </a-form-item>
-            <a-form-item label="Server Key">
-                <a-textarea
-                    v-model="inbound.settings.key"
-                    :rows="3"
-                    placeholder="-----BEGIN PRIVATE KEY-----"
-                ></a-textarea>
-            </a-form-item>
-            <a-form-item :wrapper-col="{ md: {offset:8, span:14} }">
-                <a-button type="primary" @click="generateIkev2Cert">
-                    Generate Self-Signed Cert
-                </a-button>
-            </a-form-item>
-        </template>
-    </template>
+</a-form>
+{{end}}
+{{define "form/ikev2/reach"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
     <a-form-item>
         <template slot="label">
             <a-tooltip>

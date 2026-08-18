@@ -1,0 +1,216 @@
+{{/*
+  The gre inbound form as it stood before the rail redesign (b2e71a68), kept
+  whole for the old dialog. The live form/protocol/gre.html is the same body
+  cut into network/security/access/reach sections for the rail; this is the one
+  the operator sees when Old inbound modify UI is on. Adding a field to one and not
+  the other is caught by TestLegacyInboundFormsCarryEveryField.
+*/}}
+{{define "form/legacy/gre"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Auto-managed contiguous block. Grows automatically as
+                    clients are added.
+                </template>
+                IP Range
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <template v-if="inbound.settings.ipRanges && inbound.settings.ipRanges.length">
+            <a-input
+                v-for="(r, i) in inbound.settings.ipRanges"
+                :key="i"
+                :value="r"
+                read-only
+                :style="{ marginBottom: '4px' }"
+            ></a-input>
+        </template>
+        <span v-else :style="{ color: '#888' }">
+            Assigned automatically on save
+        </span>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Leave at 0 to let the kernel pick, which is almost always right: the
+                    correct value differs per mode (1476 for plain GRE, less under FOU or
+                    IPsec) and the kernel already knows which one applies. GRE does not
+                    negotiate MTU, so set it on the router too if you override it.
+                </template>
+                MTU
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            v-model.number="inbound.settings.mtu"
+            :min="0"
+            :max="1500"
+            style="width: 110px"
+        ></a-input-number>
+        <span :style="{ marginLeft: '8px', color: '#888' }">0 = kernel default</span>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Outer TTL of the encapsulated packets.
+                </template>
+                TTL
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            v-model.number="inbound.settings.ttl"
+            :min="1"
+            :max="255"
+            style="width: 110px"
+        ></a-input-number>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    How many peer ROUTERS each account may attach. The account gets one
+                    tunnel address per peer, and you fill in each peer's public IP on the
+                    account itself. The limit is structural: only this many addresses
+                    exist, so there is nothing to enforce at connect time (GRE has no
+                    handshake and no session). Lowering it removes the surplus peer slots.
+                    10 = ten peers (default); lower it for better pool capacity. 0 = the
+                    maximum, 64 peers, which fits only ~3 accounts per /24.
+                </template>
+                User Limit
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            :value="inbound.settings.userLimit"
+            @change="inbound.settings.userLimit = Math.max(0, Math.min(64, Math.floor($event || 0)))"
+            :min="0" :max="64" :step="1" :precision="0" style="width: 90px"
+        ></a-input-number>
+        <span :style="{ marginLeft: '8px', color: '#888' }">peer routers</span>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Allow connected clients to reach each other
+                </template>
+                Client to Client
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.clientToClient"
+            @change="val => { if (!val) inbound.settings.crossInbound = false }"
+        ></a-switch>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Also reach clients of other inbounds (both inbounds must enable this)
+                </template>
+                Cross Inbound
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.crossInbound"
+            :disabled="!inbound.settings.clientToClient"
+        ></a-switch>
+    </a-form-item>
+
+    <a-divider :style="{ margin: '8px 0 16px' }"></a-divider>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Wrap the tunnel in IPsec (ESP transport mode) on the panel's shared
+                    strongSwan daemon. On the router this is an IPsec peer plus a policy
+                    for protocol GRE with tunnel=no.
+                </template>
+                IPsec
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="inbound.settings.ipsecEnable"></a-switch>
+    </a-form-item>
+    <!-- Acronym only, same reason as FOU below: "IPsec Pre-Shared Key" wrapped onto a
+         second line at this label-col width and dropped below the input box. -->
+    <a-form-item v-if="inbound.settings.ipsecEnable">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    The pre-shared key the router must present. Generated for you; change
+                    it if you prefer your own.
+                </template>
+                IPsec PSK
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input v-model.trim="inbound.settings.ipsecPsk"></a-input>
+    </a-form-item>
+    <a-form-item v-if="inbound.settings.ipsecEnable">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Keep accepting tunnels that arrive WITHOUT IPsec. Turn this off to
+                    require encryption: bare protocol-47 packets are then dropped, so any
+                    router still configured for plain GRE stops working. Leave it on while
+                    migrating existing customers over.
+                </template>
+                Allow Unencrypted
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="inbound.settings.allowRaw"></a-switch>
+    </a-form-item>
+
+    <a-divider :style="{ margin: '8px 0 16px' }"></a-divider>
+    <!-- Label kept to the bare acronym and the expansion moved beside the switch: at this
+         label-col width "FOU (UDP encapsulation)" wrapped onto a second line, which then
+         sat below the switch instead of beside it. -->
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Also accept GRE wrapped in UDP (FOU), for peers behind a NAT that
+                    cannot pass protocol 47. LINUX AND OPENWRT ONLY: MikroTik, Cisco and
+                    Keenetic do not implement FOU, which is why this is separate from the
+                    IPsec switch rather than bundled with it. Peers that do not use it are
+                    unaffected. Requires the peer's public IP to be filled in on the
+                    account: a peer left blank (dynamic) is always served over plain GRE,
+                    because UDP-wrapped traffic carries nothing the server can learn a
+                    changing address from.
+                </template>
+                FOU
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="inbound.settings.fouEnable"></a-switch>
+        <span :style="{ marginLeft: '8px', color: '#888' }">UDP encapsulation</span>
+    </a-form-item>
+    <a-form-item v-if="inbound.settings.fouEnable">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    UDP port the FOU listener binds. Must match encap-dport on the peer.
+                </template>
+                FOU Port
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            v-model.number="inbound.settings.fouPort"
+            :min="1" :max="65535" style="width: 130px"
+        ></a-input-number>
+    </a-form-item>
+</a-form>
+{{end}}

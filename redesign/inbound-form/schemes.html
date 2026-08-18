@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inbound add/edit: five schemes</title>
+
+<style>
+/* ==========================================================================
+   Document layer. Same drawing-set treatment as redesign/nav/schemes.html:
+   numbered sheets, a title block on each, the mockup rendered at honest size.
+
+   Two palettes live in this file and they must not be confused:
+     :root       the PAPER the schemes are drawn on
+     .frame      the PANEL itself, values copied from web/assets/css/tokens.css
+   Both flip together off the one theme control in the masthead.
+   ========================================================================== */
+
+:root{
+  --paper:#eceef1;
+  --sheet:#ffffff;
+  --sheet-2:#f5f7f9;
+  --ink:#131a23;
+  --ink-2:#4e5b6a;
+  --ink-3:#7b8796;
+  --rule:#d5dce3;
+  --rule-strong:#b9c3cd;
+  --accent:#00705e;
+  --accent-weak:rgba(0,112,94,.10);
+  --cut:#9e3b32;
+  --cut-weak:rgba(158,59,50,.09);
+  --well:#e3e7eb;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0d1117; --sheet:#141a22; --sheet-2:#1a212b;
+    --ink:rgba(255,255,255,.90); --ink-2:rgba(255,255,255,.62); --ink-3:rgba(255,255,255,.45);
+    --rule:#28313d; --rule-strong:#3a4553;
+    --accent:#3fd2b0; --accent-weak:rgba(63,210,176,.13);
+    --cut:#e08b82; --cut-weak:rgba(224,139,130,.12);
+    --well:#0a0e13; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0d1117; --sheet:#141a22; --sheet-2:#1a212b;
+  --ink:rgba(255,255,255,.90); --ink-2:rgba(255,255,255,.62); --ink-3:rgba(255,255,255,.45);
+  --rule:#28313d; --rule-strong:#3a4553;
+  --accent:#3fd2b0; --accent-weak:rgba(63,210,176,.13);
+  --cut:#e08b82; --cut-weak:rgba(224,139,130,.12);
+  --well:#0a0e13; color-scheme:dark;
+}
+
+*{box-sizing:border-box;}
+
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+.mono{ font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace; }
+.wrap{ max-width:1140px; margin:0 auto; padding:0 20px 110px; }
+
+/* ---- masthead ---- */
+.masthead{ padding:56px 0 28px; border-bottom:2px solid var(--rule-strong); }
+.masthead h1{ font-size:30px; line-height:1.15; margin:0 0 10px; letter-spacing:-.015em; font-weight:650; }
+.masthead p{ margin:0 0 10px; color:var(--ink-2); max-width:66ch; }
+.mast-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:24px; flex-wrap:wrap; }
+.themebtn{
+  flex:none; display:inline-flex; align-items:center; gap:7px; font:inherit; font-size:12.5px;
+  font-weight:600; padding:7px 13px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--rule-strong); background:var(--sheet); color:var(--ink-2);
+}
+.themebtn:hover{ border-color:var(--accent); color:var(--accent); }
+.stamp{ display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--ink-3); margin-bottom:14px; }
+
+/* ---- sheets ---- */
+.sheet{ margin-top:52px; }
+.sheet-title{ display:flex; align-items:baseline; gap:14px; border-bottom:1px solid var(--rule-strong);
+  padding-bottom:9px; margin-bottom:20px; }
+.sheet-no{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px;
+  font-weight:700; letter-spacing:.1em; color:var(--ink-3); padding-top:3px; flex:none; }
+.sheet-title h2{ font-size:21px; margin:0; font-weight:640; letter-spacing:-.01em; }
+.sheet-title .thesis{ color:var(--ink-2); font-size:13.5px; margin-left:auto; text-align:right; max-width:44ch; }
+.lede{ color:var(--ink-2); max-width:74ch; margin:0 0 22px; }
+.note{ color:var(--ink-2); font-size:13.5px; max-width:74ch; margin:18px 0 0;
+  border-left:2px solid var(--rule-strong); padding-left:14px; }
+.note b{ color:var(--ink); font-weight:600; }
+.note.cut{ border-left-color:var(--cut); }
+
+/* ---- inventory table (sheet 00) ---- */
+table.inv{ border-collapse:collapse; width:100%; font-size:13.5px; margin-bottom:8px; }
+table.inv th{ text-align:left; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink-3); font-weight:700; padding:0 10px 7px 0; border-bottom:1px solid var(--rule-strong); }
+table.inv td{ padding:7px 10px 7px 0; border-bottom:1px solid var(--rule); vertical-align:top; }
+table.inv td.n{ font-family:ui-monospace,Menlo,monospace; font-weight:700; white-space:nowrap; }
+.bar{ display:inline-block; height:7px; border-radius:2px; background:var(--accent); opacity:.62; vertical-align:middle; }
+.fam{ font-weight:600; }
+.facts{ margin:22px 0 0; padding:0; list-style:none; }
+.facts li{ position:relative; padding:0 0 12px 26px; color:var(--ink-2); max-width:78ch; font-size:14px; }
+.facts li:before{ content:attr(data-n); position:absolute; left:0; top:0; font-family:ui-monospace,Menlo,monospace;
+  font-size:11px; font-weight:700; color:var(--ink-3); }
+.facts b{ color:var(--ink); font-weight:600; }
+
+/* ---- fixture bar ---- */
+.fixbar{ position:sticky; top:0; z-index:20; background:var(--paper); border-bottom:1px solid var(--rule-strong);
+  padding:12px 0 11px; margin-top:44px; display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+.fixbar .lbl{ font-size:10.5px; font-weight:700; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3); }
+.chips{ display:flex; gap:6px; flex-wrap:wrap; }
+.chip{ font:inherit; font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--rule-strong); background:var(--sheet); color:var(--ink-2); }
+.chip:hover{ border-color:var(--accent); color:var(--accent); }
+.chip[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:var(--paper); }
+.chip .ct{ opacity:.65; font-weight:500; margin-left:5px; font-size:11px; }
+.fixnote{ color:var(--ink-2); font-size:13px; margin:14px 0 0; max-width:80ch; }
+.fixnote b{ color:var(--ink); }
+
+/* ==========================================================================
+   Panel layer. Everything inside .frame is the product, not the document.
+   Tokens copied from web/assets/css/tokens.css.
+   ========================================================================== */
+.frame{
+  --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent-p:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --ok-weak:rgba(28,122,69,.10); --info-weak:rgba(31,111,208,.10);
+  --warn-weak:rgba(138,96,8,.12); --error-weak:rgba(179,38,30,.10); --off-weak:rgba(107,119,135,.12);
+  background:var(--surface); color:var(--text); border:1px solid var(--border);
+  border-radius:12px; overflow:hidden; font-size:13px; line-height:1.5;
+  box-shadow:0 6px 16px -6px rgba(16,24,32,.10),0 2px 5px rgba(16,24,32,.05);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .frame{
+  --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent-p:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13);
+  --warn-weak:rgba(224,169,74,.14); --error-weak:rgba(242,114,106,.13); --off-weak:rgba(133,147,168,.15);
+  box-shadow:none;
+}}
+:root[data-theme="dark"] .frame{
+  --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent-p:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13);
+  --warn-weak:rgba(224,169,74,.14); --error-weak:rgba(242,114,106,.13); --off-weak:rgba(133,147,168,.15);
+  box-shadow:none;
+}
+
+/* Honest size: each scheme is drawn at the dialog width it would actually ask
+   for, not stretched to the sheet. The sizetag above each frame states it. */
+.frame.ledger{ max-width:640px; }
+.frame.rail{ max-width:960px; }
+.frame.step{ max-width:720px; }
+.frame.bento,.frame.split{ max-width:1040px; }
+
+.framewrap{ margin-top:6px; }
+.sizetag{ font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--ink-3); margin-bottom:7px;
+  display:flex; gap:10px; align-items:center; }
+.sizetag .rule{ flex:1; height:1px; background:var(--rule); }
+
+/* ---- modal chrome ---- */
+.mhead{ padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }
+.mhead h3{ margin:0; font-size:15px; font-weight:640; }
+.mhead .sub{ color:var(--text-3); font-size:12px; }
+.mhead .spacer{ margin-left:auto; }
+.mfoot{ padding:11px 18px; border-top:1px solid var(--border); display:flex; align-items:center; gap:10px;
+  background:var(--surface-2); }
+.mfoot .why{ font-size:12px; color:var(--error); }
+.mfoot .why.ok{ color:var(--ok); }
+.mfoot .btns{ margin-left:auto; display:flex; gap:8px; }
+.b{ font-size:12.5px; font-weight:600; padding:6px 15px; border-radius:7px; border:1px solid var(--border-strong);
+  background:var(--surface); color:var(--text-2); }
+.b.pri{ background:var(--accent-strong); border-color:var(--accent-strong); color:var(--on-accent); }
+.b.pri[disabled]{ background:var(--off-weak); border-color:transparent; color:var(--text-3); }
+
+/* ---- field kit, shared by every scheme ---- */
+.f{ display:flex; gap:14px; padding:7px 0; align-items:flex-start; }
+.f + .f{ border-top:1px solid var(--border); }
+.f.sub{ padding-left:16px; }
+.f.sub .fl{ color:var(--text-3); }
+.f.off{ opacity:.45; }
+.fl{ width:40%; flex:none; color:var(--text-2); padding-top:3px; }
+.fl .req{ font-style:normal; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--warn); margin-left:6px; }
+.fl .lock{ font-style:normal; font-size:10px; color:var(--text-3); margin-left:6px; }
+.fc{ flex:1; min-width:0; }
+.fh{ color:var(--text-3); font-size:11.5px; margin-top:3px; }
+.fb{ color:var(--error); font-size:11.5px; margin-top:3px; }
+.f.bad .ctl{ border-color:var(--error); }
+
+.ctl{ display:inline-flex; align-items:center; gap:6px; min-height:26px; padding:3px 9px; border-radius:6px;
+  border:1px solid var(--border-strong); background:var(--surface); color:var(--text); width:100%; }
+.ctl.num{ width:92px; }
+.ctl.ro{ background:var(--surface-2); color:var(--text-3); border-style:dashed; }
+.ctl.sel{ justify-content:space-between; }
+.ctl.sel i{ font-style:normal; color:var(--text-3); }
+.ctl.area{ display:block; min-height:42px; font-family:ui-monospace,Menlo,monospace; font-size:11px;
+  color:var(--text-2); white-space:nowrap; overflow:hidden; }
+.ctl.area.empty{ color:var(--text-3); font-style:italic; font-family:inherit; }
+.ctl.rep{ border-style:dashed; color:var(--text-2); justify-content:space-between; }
+.ctl.rep b{ color:var(--accent-p); }
+.sw{ display:inline-block; width:34px; height:19px; border-radius:999px; background:var(--off-weak);
+  position:relative; vertical-align:middle; }
+.sw:after{ content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%;
+  background:var(--surface); box-shadow:0 1px 2px rgba(0,0,0,.25); }
+.sw.on{ background:var(--accent-strong); }
+.sw.on:after{ left:17px; }
+.seg{ display:inline-flex; border:1px solid var(--border-strong); border-radius:7px; overflow:hidden; }
+.seg span{ padding:3px 11px; font-size:12px; color:var(--text-2); border-right:1px solid var(--border-strong); }
+.seg span:last-child{ border-right:0; }
+.seg span.on{ background:var(--accent-strong); color:var(--on-accent); font-weight:600; }
+.mbtn{ display:inline-block; padding:4px 11px; border-radius:6px; border:1px solid var(--accent-p);
+  color:var(--accent-p); font-weight:600; font-size:12px; }
+.chipsrow{ display:flex; gap:5px; flex-wrap:wrap; }
+.chipsrow span{ font-size:11.5px; padding:2px 8px; border-radius:999px; background:var(--surface-2); color:var(--text-2); }
+.seedrow{ display:flex; gap:5px; }
+.seedrow span{ width:46px; text-align:center; padding:3px 0; border:1px solid var(--border-strong);
+  border-radius:6px; font-family:ui-monospace,Menlo,monospace; font-size:11.5px; }
+.more{ color:var(--text-3); font-style:italic; font-size:12px; }
+
+.sechead{ display:flex; align-items:baseline; gap:9px; margin:20px 0 2px; }
+.sechead:first-child{ margin-top:0; }
+.sechead h4{ margin:0; font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text-2); }
+.sechead .n{ font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--text-3); }
+.sechead .adv{ font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--text-3); border:1px solid var(--border); border-radius:999px; padding:1px 7px; }
+.secnote{ color:var(--text-3); font-size:11.5px; margin:2px 0 6px; }
+.secwarn{ color:var(--warn); background:var(--warn-weak); border-radius:7px; padding:7px 10px;
+  font-size:12px; margin:6px 0; }
+
+/* ---- 01 ledger ---- */
+.ledger .body{ display:flex; }
+.ledger .flow{ flex:1; min-width:0; padding:14px 18px; max-height:520px; overflow:auto; }
+.ledger .idx{ width:186px; flex:none; border-left:1px solid var(--border); background:var(--surface-2);
+  padding:14px 12px; font-size:12px; }
+.ledger .idx .t{ font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); margin-bottom:8px; }
+.ledger .idx a{ display:flex; justify-content:space-between; gap:8px; padding:4px 7px; border-radius:6px;
+  color:var(--text-2); text-decoration:none; cursor:pointer; }
+.ledger .idx a:hover{ background:var(--surface); color:var(--text); }
+.ledger .idx a.on{ background:var(--accent-weak); color:var(--accent-p); font-weight:600; }
+.ledger .idx a .c{ font-family:ui-monospace,Menlo,monospace; font-size:11px; opacity:.7; }
+.ledger .idx a.err{ color:var(--error); }
+.folded{ border:1px dashed var(--border-strong); border-radius:8px; padding:9px 12px; color:var(--text-3);
+  font-size:12px; display:flex; justify-content:space-between; align-items:center; margin:6px 0; }
+.folded b{ color:var(--text-2); font-weight:600; }
+
+/* ---- 02 rail ---- */
+.rail .body{ display:flex; min-height:430px; }
+.rail .nav{ width:232px; flex:none; border-right:1px solid var(--border); background:var(--surface-2); padding:12px 10px; }
+.rail .nav .grp{ font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); margin:12px 0 5px 8px; }
+.rail .nav .grp:first-child{ margin-top:2px; }
+.rail .nav button{ display:flex; width:100%; align-items:center; gap:9px; padding:7px 9px; border:0;
+  border-radius:7px; background:none; font:inherit; font-size:12.5px; color:var(--text-2); cursor:pointer; text-align:left; }
+.rail .nav button:hover{ background:var(--surface); color:var(--text); }
+.rail .nav button.on{ background:var(--accent-weak); color:var(--accent-p); font-weight:600; }
+.rail .nav .dot{ width:7px; height:7px; border-radius:50%; background:var(--off-weak); flex:none; }
+.rail .nav .dot.err{ background:var(--error); }
+.rail .nav .dot.done{ background:var(--ok); }
+.rail .nav .c{ margin-left:auto; font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--text-3); }
+.rail .pane{ flex:1; min-width:0; padding:16px 20px; max-height:520px; overflow:auto; }
+.rail .pane .ph{ margin:0 0 3px; font-size:15px; font-weight:640; }
+.rail .pane .pn{ color:var(--text-3); font-size:12px; margin:0 0 14px; }
+
+/* ---- 03 stepper ---- */
+.step .bar{ display:flex; gap:0; padding:12px 18px 0; border-bottom:1px solid var(--border); background:var(--surface-2); }
+.step .bar button{ flex:1; border:0; background:none; font:inherit; cursor:pointer; padding:6px 4px 11px;
+  border-bottom:2px solid transparent; color:var(--text-3); font-size:12px; text-align:left; }
+.step .bar button .k{ display:block; font-family:ui-monospace,Menlo,monospace; font-size:10.5px; opacity:.75; }
+.step .bar button .t{ font-weight:600; color:var(--text-2); }
+.step .bar button.on{ border-bottom-color:var(--accent-p); }
+.step .bar button.on .t{ color:var(--accent-p); }
+.step .bar button.done .t{ color:var(--text-2); }
+.step .bar button.err .t{ color:var(--error); }
+.step .pane{ padding:18px 20px; max-height:470px; overflow:auto; }
+.step .pane h4.big{ margin:0 0 3px; font-size:16px; font-weight:640; letter-spacing:-.01em; }
+.step .pane p.pn{ color:var(--text-3); font-size:12px; margin:0 0 16px; }
+.picker{ display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:9px; }
+.pfam{ margin:0 0 4px; font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--text-3); }
+.pfam .sub{ font-weight:500; letter-spacing:0; text-transform:none; color:var(--text-3); opacity:.8; margin-left:8px; }
+.pitem{ border:1px solid var(--border); border-radius:8px; padding:8px 11px; display:flex; justify-content:space-between;
+  align-items:center; gap:8px; background:var(--surface); }
+.pitem.on{ border-color:var(--accent-p); background:var(--accent-weak); }
+.pitem .nm{ font-weight:600; }
+.pitem .ct{ font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--text-3); }
+.review{ border:1px solid var(--border); border-radius:9px; overflow:hidden; }
+.review .r{ display:flex; gap:12px; padding:9px 13px; border-bottom:1px solid var(--border); align-items:flex-start; }
+.review .r:last-child{ border-bottom:0; }
+.review .r .k{ width:32%; color:var(--text-2); flex:none; }
+.review .r .v{ flex:1; }
+
+/* ---- 04 bento ---- */
+/* Capped and scrolled, because the uncapped grid measures 1641px tall on VLESS
+   even at 1040px wide. See the cost note on sheet 04. */
+.bento .grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:11px; padding:14px; align-items:start;
+  max-height:560px; overflow:auto; }
+.card{ border:1px solid var(--border); border-radius:10px; padding:11px 13px; background:var(--surface);
+  grid-column:span 2; min-width:0; }
+.card.w3{ grid-column:span 3; }
+.card.w4{ grid-column:span 4; }
+.card.w6{ grid-column:span 6; }
+.card .ch{ display:flex; align-items:baseline; gap:8px; margin-bottom:7px; }
+.card .ch h4{ margin:0; font-size:12px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--text-2); }
+.card .ch .n{ font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--text-3); margin-left:auto; }
+.card.err{ border-color:var(--error); }
+.card .f{ padding:5px 0; }
+.card .fl{ width:44%; }
+
+/* ---- 05 split ---- */
+.split .body{ display:flex; min-height:430px; }
+.split .form{ flex:1; min-width:0; padding:14px 18px; max-height:520px; overflow:auto; }
+.split .out{ width:340px; flex:none; border-left:1px solid var(--border); background:var(--surface-2);
+  padding:14px 15px; max-height:520px; overflow:auto; }
+.out h5{ margin:0 0 6px; font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--text-3); }
+.out .blk{ margin-bottom:16px; }
+.out .runline{ font-family:ui-monospace,Menlo,monospace; font-size:11.5px; background:var(--surface);
+  border:1px solid var(--border); border-radius:8px; padding:9px 10px; color:var(--text-2); word-break:break-all; }
+.out .art{ display:flex; gap:10px; align-items:center; background:var(--surface); border:1px solid var(--border);
+  border-radius:8px; padding:9px 10px; }
+.out .qr{ width:46px; height:46px; flex:none; border-radius:5px;
+  background:
+    repeating-linear-gradient(0deg,var(--text) 0 3px,transparent 3px 6px),
+    repeating-linear-gradient(90deg,var(--text) 0 3px,transparent 3px 6px);
+  opacity:.55; }
+.gate{ border-radius:8px; padding:10px 11px; font-size:12px; }
+.gate.bad{ background:var(--error-weak); }
+.gate.good{ background:var(--ok-weak); color:var(--ok); }
+.gate .gh{ font-weight:700; color:var(--error); margin-bottom:6px; }
+.gate ol{ margin:0; padding-left:17px; color:var(--text-2); }
+.gate li{ margin-bottom:5px; }
+.gate li b{ color:var(--text); }
+.warnbox{ background:var(--warn-weak); color:var(--warn); border-radius:8px; padding:9px 11px; font-size:12px; margin-top:10px; }
+
+/* ---- comparison ---- */
+table.cmp{ border-collapse:collapse; width:100%; font-size:13px; }
+table.cmp th{ text-align:left; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  font-weight:700; padding:0 10px 8px 0; border-bottom:1px solid var(--rule-strong); vertical-align:bottom; }
+table.cmp td{ padding:9px 10px 9px 0; border-bottom:1px solid var(--rule); vertical-align:top; color:var(--ink-2); }
+table.cmp td.s{ color:var(--ink); font-weight:600; white-space:nowrap; }
+table.cmp .good{ color:var(--accent); font-weight:600; }
+table.cmp .poor{ color:var(--cut); font-weight:600; }
+.foot{ margin-top:56px; padding-top:20px; border-top:1px solid var(--rule); color:var(--ink-3); font-size:12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="mast-row">
+      <div>
+        <p class="stamp">vpn-ui redesign / sheet set 06</p>
+        <h1>The inbound form</h1>
+        <p>Five ways to rebuild Add and Edit Inbound, drawn over the surface as it was measured out of
+           <span class="mono">web/html/form/</span>: 24 protocols whose forms range from 23 fields to 195,
+           all of them rendering today into the same 520px column with no sections.</p>
+        <p>Every scheme below renders from one fixture file, so they can be compared like for like.
+           Switch the protocol and the mode with the controls that follow sheet 00.</p>
+      </div>
+      <button class="themebtn" id="themebtn" type="button">Theme: auto</button>
+    </div>
+  </header>
+
+  <!-- ================= sheet 00 ================= -->
+  <section class="sheet">
+    <div class="sheet-title">
+      <span class="sheet-no">00</span>
+      <h2>The surface being redesigned</h2>
+      <span class="thesis">Counted, not estimated. Every number is a-form-item occurrences in the partials a protocol can reach.</span>
+    </div>
+    <p class="lede">Reachable field count means every toggle expanded and one entry in each repeater. It is not
+       what you see at rest, it is what the dialog can grow to while you work in it. The eight Xray-native
+       protocols are large because transport, socket options, final mask, TLS and sniffing all stack on top of
+       the protocol form. The other sixteen carry no stream at all.</p>
+
+    <table class="inv" id="invtable"></table>
+
+    <ul class="facts">
+      <li data-n="01"><b>One column, no width.</b> The modal sets no <span class="mono">:width</span>, so every
+        protocol renders into ant's default 520px with an 8/14 label split. A 195-field form and a 23-field form
+        get the same container.</li>
+      <li data-n="02"><b>Add and Edit are different tasks.</b> The protocol select is
+        <span class="mono">:disabled="isEdit"</span>. On Add it is the one control that rewrites everything below
+        it, because setting the protocol replaces settings and stream wholesale. On Edit it can never change.</li>
+      <li data-n="03"><b>The save gate is silent.</b> <span class="mono">modalFormValid</span> disables the OK
+        button with no message: a missing certificate on OpenVPN, OpenConnect, SSTP or IKEv2, or any of the eight
+        distinct causes inside XHTTP's <span class="mono">hasCoreConfigProblem()</span>. The operator sees a dead
+        button and no reason.</li>
+      <li data-n="04"><b>Some blocks repeat, and that is the opening.</b> The same commerce block is on all 24
+        protocols, the same network handout on 9, the same device cap on 8, the same reachability row on 11, and
+        the same Content / File / Managed certificate switch on 4. Today each is re-declared per partial and drawn
+        as an undifferentiated run of rows.</li>
+      <li data-n="05"><b>Sniffing renders for everything.</b> Its collapse panel sits outside every
+        <span class="mono">v-if</span> in <span class="mono">form/inbound.html</span>, so a PPTP or GRE inbound
+        offers a sniffing panel that means nothing for it.</li>
+    </ul>
+  </section>
+
+  <!-- ================= fixture bar ================= -->
+  <div class="fixbar">
+    <span class="lbl">Fixture</span>
+    <div class="chips" id="protochips"></div>
+    <span class="lbl">Mode</span>
+    <div class="chips" id="modechips">
+      <button class="chip" type="button" data-mode="add" aria-pressed="true">Add</button>
+      <button class="chip" type="button" data-mode="edit" aria-pressed="false">Edit</button>
+    </div>
+  </div>
+  <p class="fixnote" id="fixnote"></p>
+
+  <!-- ================= sheets 01..05 ================= -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">01</span><h2>Ledger</h2>
+      <span class="thesis">One scroll, but ruled into named sections with a running index.</span></div>
+    <p class="lede">The smallest change that fixes the worst symptom. The stack stays a stack, so nothing about
+       field order or conditional rendering has to move, but every run of rows gets a heading, a count, and an
+       entry in an index that tracks position. Advanced groups arrive folded, stating what is inside them.</p>
+    <div class="framewrap">
+      <div class="sizetag"><span>640px</span><span class="rule"></span><span>up from 520</span></div>
+      <div class="frame ledger" id="s-ledger"></div>
+    </div>
+    <p class="note"><b>Cost:</b> the cheapest of the five. It is a wrapper plus headings around the existing
+       partials, and the index is derived from those headings. It does not reduce the 195 fields, it makes them
+       countable and navigable. If the answer has to ship in one pass, this is it.</p>
+  </section>
+
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">02</span><h2>Rail</h2>
+      <span class="thesis">Sections on the left, one section at a time on the right.</span></div>
+    <p class="lede">The same vocabulary the section tree already brought to Settings and Xray, applied to the
+       form. The rail carries per-section state: a red dot for a section holding the reason Save is disabled, a
+       filled dot for one the operator has visited. Only one section is in the viewport at a time, so the 195-field
+       case never renders as a wall.</p>
+    <div class="framewrap">
+      <div class="sizetag"><span>960px</span><span class="rule"></span><span>click a section</span></div>
+      <div class="frame rail" id="s-rail"></div>
+    </div>
+    <p class="note"><b>Cost:</b> the section list has to be authored per protocol, which is 24 small maps rather
+       than one. In exchange it is the only scheme where a small protocol and a huge one feel the same, and it
+       inherits the nav idiom the panel already shipped. Watch SSH: four sections, one of which holds two fields.</p>
+  </section>
+
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">03</span><h2>Stepper</h2>
+      <span class="thesis">Add is a sequence. Edit is the same sequence, unlocked.</span></div>
+    <p class="lede">Built around the fact that picking a protocol discards everything below it. Making that
+       choice step one costs nothing, because on step one there is nothing to lose. The steps are generated from
+       what the protocol actually has, so SSH gets three and VLESS six, and the last step is a review that states
+       what will be created and what is blocking it.</p>
+    <div class="framewrap">
+      <div class="sizetag"><span>720px</span><span class="rule"></span><span>click a step</span></div>
+      <div class="frame step" id="s-step"></div>
+    </div>
+    <p class="note"><b>Cost:</b> best first-run experience of the five and the worst for routine editing, where
+       a wizard stands between the operator and one field. It needs the Edit path to open unlocked on the section
+       that was clicked, or it becomes an obstacle. The protocol picker with families is worth stealing on its own,
+       whichever container wins.</p>
+  </section>
+
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">04</span><h2>Bento</h2>
+      <span class="thesis">Every concern a card, sized by weight, all on screen.</span></div>
+    <p class="lede">The direction the rest of the redesign is already on, applied here: no navigation at all,
+       a mosaic where a card's span reflects how much it carries. Editing one field means finding one card, and
+       the heavy cards stay stubs until opened, which is what keeps a 195-field protocol on one screen.</p>
+    <div class="framewrap">
+      <div class="sizetag"><span>1040px</span><span class="rule"></span><span>no navigation</span></div>
+      <div class="frame bento" id="s-bento"></div>
+    </div>
+    <p class="note"><b>Cost:</b> excellent for scanning an existing inbound, weakest for a first add, where a
+       mosaic gives no order to work through. Card spans have to be authored per protocol or the grid tears. And
+       it does not actually fit: laid out uncapped, VLESS measures <b>1641px of card height at 1040px wide</b>,
+       so even the widest scheme scrolls on the protocols that most needed the space. The grid above is capped at
+       560px to show what that really looks like.</p>
+  </section>
+
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">05</span><h2>Split</h2>
+      <span class="thesis">Form on the left, what it produces on the right.</span></div>
+    <p class="lede">The only scheme that answers fact 03 by construction. The right pane holds three things
+       that exist today only after saving: the listener the server will actually run, the artifact the customer
+       receives, and a ledger naming every reason Save is disabled, each pointing at the field that caused it.
+       Warnings that arrive late, like the IKEv2 iOS certificate check, land here too.</p>
+    <div class="framewrap">
+      <div class="sizetag"><span>1040px</span><span class="rule"></span><span>live outcome pane</span></div>
+      <div class="frame split" id="s-split"></div>
+    </div>
+    <p class="note"><b>Cost:</b> the outcome pane is new work with a real backend seam. The share link and the
+       .ovpn are generated in two places already (the JS model and Go), and a preview that drifts from what saving
+       produces is worse than no preview. The validation ledger alone, though, is portable to any of the other four.</p>
+  </section>
+
+  <!-- ================= comparison ================= -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">06</span><h2>Side by side</h2>
+      <span class="thesis">Judged on the two protocols that break layouts, and on the two tasks operators do.</span></div>
+    <table class="cmp">
+      <thead><tr>
+        <th>Scheme</th><th>First add</th><th>Change one field</th>
+        <th>VLESS, 195 fields</th><th>SSH, 25 fields</th><th>Says why Save is off</th><th>Build</th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="s">01 Ledger</td><td>Ordered but long</td><td class="good">Index jump</td>
+            <td>Still one scroll, now counted</td><td class="good">Unchanged</td><td>Footer line</td><td class="good">Smallest</td></tr>
+        <tr><td class="s">02 Rail</td><td class="good">Clear</td><td class="good">Two clicks</td>
+            <td class="good">Never a wall</td><td>Four thin sections</td><td class="good">Dot on the section</td><td>Medium</td></tr>
+        <tr><td class="s">03 Stepper</td><td class="good">Best</td><td class="poor">A wizard in the way</td>
+            <td class="good">Paced</td><td class="good">Three steps</td><td class="good">Review step</td><td>Medium</td></tr>
+        <tr><td class="s">04 Bento</td><td class="poor">No order to follow</td><td class="good">Best</td>
+            <td>Dense, needs 1040px</td><td class="poor">Sparse grid</td><td>Card border</td><td>Medium</td></tr>
+        <tr><td class="s">05 Split</td><td class="good">Guided by outcome</td><td>Good</td>
+            <td>Form half is still long</td><td class="good">Pane earns its width</td><td class="good">By construction</td><td class="poor">Largest</td></tr>
+      </tbody>
+    </table>
+    <p class="note"><b>If you want a recommendation:</b> 02 Rail as the container, with 05's validation ledger
+       docked in its footer and 03's family protocol picker used as the Add entry point. Rail matches the section
+       tree that just shipped, so the panel gains one navigation idiom instead of a second one. The ledger is the
+       part that fixes a real defect rather than a layout complaint, and it is portable, so it can land first and
+       independently. 04 Bento is the one to pick instead if editing an existing inbound is the common case rather
+       than creating one.</p>
+    <p class="note cut"><b>What none of these solve:</b> the field count itself. Sniffing on a PPTP inbound,
+       64 final-mask fields behind a stream protocol nobody masks, and 18 socket options on every one of the eight
+       Xray protocols are content problems, not layout problems. A container makes them navigable. Deciding that
+       an inbound should not offer them is a separate and more valuable piece of work.</p>
+  </section>
+
+  <p class="foot">Mockups only. Field names, counts and gating rules read out of web/html/form/ and
+     web/assets/js/model/inbound.js; sample values throughout.</p>
+</div>
+
+<script src="fixture.js"></script>
+<script>
+/* ==========================================================================
+   Renderers. Every scheme draws from PROTOCOLS in fixture.js, so switching the
+   fixture switches all five at once and they stay comparable.
+   ========================================================================== */
+
+const state = { proto: 'vless', mode: 'add', rail: null, step: 0, ledger: null };
+
+const esc = s => String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* ---- controls ---- */
+function ctl(f){
+  switch(f.t){
+    case 'switch': return '<span class="sw' + (f.v ? ' on' : '') + '"></span>';
+    case 'num':    return '<span class="ctl num">' + esc(f.v) + '</span>';
+    case 'select': return '<span class="ctl sel">' + esc(f.v) + '<i>v</i></span>';
+    case 'radio':  return seg(f.v);
+    case 'area':   return '<span class="ctl area' + (f.v ? '' : ' empty') + '">' + esc(f.v || 'empty') + '</span>';
+    case 'ro':     return '<span class="ctl ro">' + esc(f.v) + '</span>';
+    case 'btn':    return '<span class="mbtn">' + esc(f.l) + '</span>';
+    case 'check':  return '<span class="chipsrow">' + String(f.v).split(', ')
+                            .map(c => '<span>' + esc(c) + '</span>').join('') + '</span>';
+    case 'seed':   return '<span class="seedrow">' + String(f.v).split(', ')
+                            .map(c => '<span>' + esc(c) + '</span>').join('') + '</span>';
+    case 'repeat': return '<span class="ctl rep">' + esc(f.v) + ' <b>+</b></span>';
+    case 'more':   return '<span class="more">' + esc(f.v) + '</span>';
+    default:       return '<span class="ctl">' + esc(f.v) + '</span>';
+  }
+}
+
+/* A radio group, drawn from its selected value. The alternatives are illustrative:
+   the fixture stores what is chosen, not the whole option list. */
+const SEGS = {
+  'Reject': ['Accept','Reject'], 'Accept': ['Accept','Reject'],
+  'REALITY': ['None','TLS','REALITY'],
+  'Content': ['Content','File','Managed'],
+  'AEAD only': ['AEAD only','CBC only','Both'],
+  'PSK (shared secret)': ['EAP-MSCHAPv2','PSK','Certificate'],
+};
+function seg(v){
+  const opts = SEGS[v] || [v];
+  const on = SEGS[v] ? (v === 'PSK (shared secret)' ? 'PSK' : v) : v;
+  return '<span class="seg">' + opts.map(o =>
+    '<span class="' + (o === on ? 'on' : '') + '">' + esc(o) + '</span>').join('') + '</span>';
+}
+
+function row(f){
+  const cls = ['f', f.bad ? 'bad' : '', f.sub ? 'sub' : '', f.off ? 'off' : ''].filter(Boolean).join(' ');
+  const tags = (f.req ? '<i class="req">required</i>' : '')
+             + (f.lock ? '<i class="lock">locked on edit</i>' : '');
+  return '<div class="' + cls + '">'
+    + '<div class="fl">' + esc(f.l) + tags + '</div>'
+    + '<div class="fc">' + ctl(f)
+    + (f.h ? '<div class="fh">' + esc(f.h) + '</div>' : '')
+    + (f.bad ? '<div class="fb">' + esc(f.bad) + '</div>' : '')
+    + '</div></div>';
+}
+
+/* ---- derived ---- */
+function P(){ return PROTOCOLS[state.proto]; }
+function sections(){
+  return P().sections.filter(s => !(s.editOnly && state.mode === 'add'));
+}
+function problems(){
+  const out = [];
+  sections().forEach(s => s.fields.forEach(f => {
+    if (f.bad) out.push({ sec: s.title, field: f.l, why: f.bad });
+  }));
+  return out;
+}
+function secIsBad(s){ return s.fields.some(f => f.bad); }
+
+/* What the server ends up running, and what the customer is handed. Presentation
+   only, so it lives here rather than in the fixture. */
+const OUTCOME = {
+  vless: { run: 'xray inbound: 0.0.0.0:443 vless / xhttp / reality',
+           art: 'Share link and QR', give: 'vless://8f2c...@vpn.example.com:443?type=xhttp&security=reality#reality-443' },
+  openvpn: { run: 'openvpn: udp/1195 and tcp/1194, ccd per account',
+             art: 'client.ovpn profile', give: 'one file per account, generated on demand' },
+  ikev2: { run: 'charon: udp/500 and udp/4500 (NAT-T), PSK auth',
+           art: 'Username and password', give: 'the customer types these into the native client' },
+  ssh: { run: 'in-binary ssh gateway on 0.0.0.0:2222',
+         art: 'Username and password', give: 'ssh -D 1080 user@vpn.example.com -p 2222' },
+  gre: { run: 'ip link add gre1 type gre, ip protocol 47, ipsec required',
+         art: 'Peer router snippet', give: 'one stanza per peer router, keyed on its address' },
+};
+
+/* ==================== 01 ledger ==================== */
+function renderLedger(){
+  const secs = sections();
+  const probs = problems();
+  const active = state.ledger || secs[0].id;
+  const flow = secs.map(s => {
+    const head = '<div class="sechead" id="lg-' + s.id + '"><h4>' + esc(s.title) + '</h4>'
+      + '<span class="n">' + s.n + (s.n === 1 ? ' field' : ' fields') + '</span>'
+      + (s.adv ? '<span class="adv">advanced</span>' : '') + '</div>'
+      + (s.note ? '<div class="secnote">' + esc(s.note) + '</div>' : '')
+      + (s.warn ? '<div class="secwarn">' + esc(s.warn) + '</div>' : '');
+    if (s.adv) {
+      return head + '<div class="folded"><span><b>' + s.n + ' fields</b> folded, defaults are in force</span>'
+        + '<span>open</span></div>';
+    }
+    return head + s.fields.map(row).join('');
+  }).join('');
+  const idx = secs.map(s =>
+    '<a class="' + (s.id === active ? 'on ' : '') + (secIsBad(s) ? 'err' : '') + '" data-lg="' + s.id + '">'
+    + '<span>' + esc(s.title) + '</span><span class="c">' + s.n + '</span></a>').join('');
+  return chrome()
+    + '<div class="body"><div class="flow">' + flow + '</div>'
+    + '<div class="idx"><div class="t">On this form</div>' + idx
+    + '<div class="t" style="margin-top:14px">Total</div>'
+    + '<a><span>every field</span><span class="c">' + P().total + '</span></a></div></div>'
+    + foot(probs);
+}
+
+/* ==================== 02 rail ==================== */
+function renderRail(){
+  const secs = sections();
+  const probs = problems();
+  const cur = secs.find(s => s.id === state.rail) || secs[0];
+  const groups = [
+    ['Listener', ['identity','proto','transport','sockopt','mask']],
+    ['Security', ['security','auth']],
+    ['Policy',   ['access','quota','reach','sniff','ciphers','network','export']],
+  ];
+  let nav = '';
+  groups.forEach(([name, ids]) => {
+    const inGroup = secs.filter(s => ids.includes(s.id));
+    if (!inGroup.length) return;
+    nav += '<div class="grp">' + esc(name) + '</div>';
+    nav += inGroup.map(s =>
+      '<button type="button" data-rail="' + s.id + '" class="' + (s.id === cur.id ? 'on' : '') + '">'
+      + '<span class="dot ' + (secIsBad(s) ? 'err' : (s.id === cur.id ? 'done' : '')) + '"></span>'
+      + '<span>' + esc(s.title) + '</span><span class="c">' + s.n + '</span></button>').join('');
+  });
+  const pane = '<h4 class="ph">' + esc(cur.title) + '</h4>'
+    + '<p class="pn">' + esc(cur.note || (cur.n + ' fields on this protocol')) + '</p>'
+    + (cur.warn ? '<div class="secwarn">' + esc(cur.warn) + '</div>' : '')
+    + cur.fields.map(row).join('');
+  return chrome()
+    + '<div class="body"><div class="nav">' + nav + '</div><div class="pane">' + pane + '</div></div>'
+    + foot(probs);
+}
+
+/* ==================== 03 stepper ==================== */
+function steps(){
+  const secs = sections();
+  const pick = ids => secs.filter(s => ids.includes(s.id));
+  const list = [];
+  if (state.mode === 'add') list.push({ t: 'Protocol', picker: true, secs: [] });
+  list.push({ t: 'Listener', secs: pick(['identity','proto','transport','sockopt','mask']) });
+  const sec = pick(['security','auth','ciphers','network']);
+  if (sec.length) list.push({ t: 'Security', secs: sec });
+  list.push({ t: 'Policy', secs: pick(['access','quota','reach','sniff','export']) });
+  list.push({ t: 'Review', review: true, secs: [] });
+  return list.filter(s => s.picker || s.review || s.secs.length);
+}
+function renderStep(){
+  const st = steps();
+  const i = Math.min(state.step, st.length - 1);
+  const cur = st[i];
+  const probs = problems();
+  const bar = st.map((s, k) =>
+    '<button type="button" data-step="' + k + '" class="'
+    + (k === i ? 'on ' : '') + (k < i ? 'done ' : '')
+    + (s.review && probs.length ? 'err' : '') + '">'
+    + '<span class="k">step ' + (k + 1) + '</span><span class="t">' + esc(s.t) + '</span></button>').join('');
+
+  let pane;
+  if (cur.picker) {
+    pane = '<h4 class="big">What is this inbound?</h4>'
+      + '<p class="pn">Picking a protocol replaces every setting below it, which is free here and destructive later. '
+      + 'The number beside each is how many fields that protocol can render.</p>'
+      + FAMILIES.map(f =>
+          '<p class="pfam">' + esc(f.name) + '<span class="sub">' + esc(f.note) + '</span></p>'
+          + '<div class="picker" style="margin-bottom:14px">' + f.items.map(([nm, ct]) =>
+              '<div class="pitem ' + (nm.toLowerCase().startsWith(P().label.toLowerCase()) ? 'on' : '') + '">'
+              + '<span class="nm">' + esc(nm) + '</span><span class="ct">' + ct + '</span></div>').join('')
+          + '</div>').join('');
+  } else if (cur.review) {
+    const rows = [
+      ['Protocol', P().label + ' (' + esc(P().tagline) + ')'],
+      ['Listens on', OUTCOME[state.proto].run],
+      ['Customer gets', OUTCOME[state.proto].art],
+      ['Fields touched', sections().length + ' sections, ' + P().total + ' fields reachable'],
+    ].map(([k, v]) => '<div class="r"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>').join('');
+    pane = '<h4 class="big">Review</h4><p class="pn">Nothing is written until Create.</p>'
+      + '<div class="review">' + rows + '</div>' + gate(probs, true);
+  } else {
+    pane = '<h4 class="big">' + esc(cur.t) + '</h4><p class="pn">'
+      + cur.secs.length + ' section' + (cur.secs.length > 1 ? 's' : '') + ', '
+      + cur.secs.reduce((a, s) => a + s.n, 0) + ' fields</p>'
+      + cur.secs.map(s =>
+      '<div class="sechead"><h4>' + esc(s.title) + '</h4><span class="n">' + s.n + '</span>'
+      + (s.adv ? '<span class="adv">advanced</span>' : '') + '</div>'
+      + (s.note ? '<div class="secnote">' + esc(s.note) + '</div>' : '')
+      + (s.warn ? '<div class="secwarn">' + esc(s.warn) + '</div>' : '')
+      + (s.adv ? '<div class="folded"><span><b>' + s.n + ' fields</b> folded</span><span>open</span></div>'
+               : s.fields.map(row).join(''))).join('');
+  }
+  return chrome() + '<div class="bar">' + bar + '</div><div class="pane">' + pane + '</div>'
+    + foot(probs, i === st.length - 1 ? null : 'Next');
+}
+
+/* ==================== 04 bento ==================== */
+function renderBento(){
+  const secs = sections();
+  const probs = problems();
+  const span = s => s.n >= 30 ? 'w4' : (s.n >= 10 ? 'w3' : '');
+  const cards = secs.map(s =>
+    '<div class="card ' + span(s) + (secIsBad(s) ? ' err' : '') + '">'
+    + '<div class="ch"><h4>' + esc(s.title) + '</h4><span class="n">' + s.n + '</span></div>'
+    + (s.warn ? '<div class="secwarn">' + esc(s.warn) + '</div>' : '')
+    + (s.adv
+        ? '<div class="folded"><span><b>' + s.n + ' fields</b> folded</span><span>open</span></div>'
+        : s.fields.slice(0, 6).map(row).join('')
+          + (s.fields.length > 6 ? '<div class="f"><div class="fl"></div><div class="fc"><span class="more">'
+             + (s.n - 6) + ' more in this card</span></div></div>' : ''))
+    + '</div>').join('');
+  return chrome() + '<div class="grid">' + cards + '</div>' + foot(probs);
+}
+
+/* ==================== 05 split ==================== */
+function renderSplit(){
+  const secs = sections();
+  const probs = problems();
+  const o = OUTCOME[state.proto];
+  const form = secs.map(s =>
+    '<div class="sechead"><h4>' + esc(s.title) + '</h4><span class="n">' + s.n + '</span>'
+    + (s.adv ? '<span class="adv">advanced</span>' : '') + '</div>'
+    + (s.adv ? '<div class="folded"><span><b>' + s.n + ' fields</b> folded</span><span>open</span></div>'
+             : s.fields.slice(0, 5).map(row).join('')
+               + (s.fields.length > 5 ? '<div class="f"><div class="fl"></div><div class="fc"><span class="more">'
+                  + (s.n - 5) + ' more</span></div></div>' : ''))).join('');
+  const warn = secs.filter(s => s.warn).map(s => '<div class="warnbox">' + esc(s.warn) + '</div>').join('');
+  const out = '<div class="blk"><h5>What the server will run</h5>'
+      + '<div class="runline">' + esc(o.run) + '</div></div>'
+    + '<div class="blk"><h5>What the customer gets</h5><div class="art"><span class="qr"></span>'
+      + '<span><b>' + esc(o.art) + '</b><br><span style="color:var(--text-3)">' + esc(o.give) + '</span></span>'
+      + '</div></div>'
+    + '<div class="blk"><h5>Before you can save</h5>' + gate(probs, false) + warn + '</div>';
+  return chrome() + '<div class="body"><div class="form">' + form + '</div><div class="out">' + out + '</div></div>'
+    + foot(probs);
+}
+
+/* ---- shared chrome ---- */
+function chrome(){
+  const p = P();
+  const isAdd = state.mode === 'add';
+  return '<div class="mhead"><h3>' + (isAdd ? 'Add inbound' : 'Edit inbound') + '</h3>'
+    + '<span class="sub">' + esc(p.label) + ' / ' + esc(p.tagline)
+    + (isAdd ? '' : ' / id 14') + '</span>'
+    + '<span class="spacer"></span>'
+    + '<span class="sub">' + p.total + ' fields reachable</span></div>';
+}
+function gate(probs, big){
+  if (!probs.length) {
+    return '<div class="gate good">Nothing is blocking this. ' + (big ? 'Create' : 'Save') + ' is live.</div>';
+  }
+  return '<div class="gate bad"><div class="gh">' + probs.length + ' problem'
+    + (probs.length > 1 ? 's' : '') + ' block ' + (big ? 'Create' : 'Save') + '</div><ol>'
+    + probs.map(p => '<li><b>' + esc(p.sec) + ' / ' + esc(p.field) + '</b>: ' + esc(p.why) + '</li>').join('')
+    + '</ol></div>';
+}
+function foot(probs, nextLabel){
+  const bad = probs.length > 0;
+  const why = bad
+    ? '<span class="why">' + probs.length + ' field' + (probs.length > 1 ? 's' : '') + ' blocking. '
+      + esc(probs[0].sec) + ' / ' + esc(probs[0].field) + '</span>'
+    : '<span class="why ok">Ready to save.</span>';
+  const primary = nextLabel
+    ? '<button class="b pri">' + esc(nextLabel) + '</button>'
+    : '<button class="b pri" ' + (bad ? 'disabled' : '') + '>'
+      + (state.mode === 'add' ? 'Create' : 'Save') + '</button>';
+  return '<div class="mfoot">' + why + '<span class="btns">'
+    + '<button class="b">Close</button>' + primary + '</span></div>';
+}
+
+/* ---- sheet 00 table ---- */
+function renderInventory(){
+  const max = 195;
+  let html = '<thead><tr><th>Family</th><th>Protocols</th><th>Fields, smallest to largest</th><th></th></tr></thead><tbody>';
+  FAMILIES.forEach(f => {
+    const lo = Math.min.apply(null, f.items.map(i => i[1]));
+    const hi = Math.max.apply(null, f.items.map(i => i[1]));
+    html += '<tr><td class="fam">' + esc(f.name) + '<div style="color:var(--ink-3);font-size:12px">'
+      + esc(f.note) + '</div></td>'
+      + '<td>' + f.items.map(i => esc(i[0])).join(', ') + '</td>'
+      + '<td class="n">' + lo + ' to ' + hi + '</td>'
+      + '<td style="width:34%"><span class="bar" style="width:' + Math.round(hi / max * 100) + '%"></span></td></tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('invtable').innerHTML = html;
+}
+
+/* ---- fixture controls ---- */
+function renderChips(){
+  document.getElementById('protochips').innerHTML = Object.keys(PROTOCOLS).map(k => {
+    const p = PROTOCOLS[k];
+    return '<button class="chip" type="button" data-proto="' + k + '" aria-pressed="'
+      + (k === state.proto) + '">' + esc(p.label) + '<span class="ct">' + p.total + '</span></button>';
+  }).join('');
+  document.querySelectorAll('#modechips .chip').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode)));
+  const p = P();
+  document.getElementById('fixnote').innerHTML =
+    '<b>' + esc(p.label) + ' (' + esc(p.tagline) + ')</b>, ' + esc(p.family) + ', '
+    + p.total + ' reachable fields. ' + esc(p.why);
+}
+
+function renderAll(){
+  renderChips();
+  document.getElementById('s-ledger').innerHTML = renderLedger();
+  document.getElementById('s-rail').innerHTML   = renderRail();
+  document.getElementById('s-step').innerHTML   = renderStep();
+  document.getElementById('s-bento').innerHTML  = renderBento();
+  document.getElementById('s-split').innerHTML  = renderSplit();
+}
+
+document.addEventListener('click', e => {
+  const proto = e.target.closest('[data-proto]');
+  if (proto) { state.proto = proto.dataset.proto; state.rail = null; state.step = 0; state.ledger = null; return renderAll(); }
+  const mode = e.target.closest('[data-mode]');
+  if (mode) { state.mode = mode.dataset.mode; state.step = 0; return renderAll(); }
+  const rail = e.target.closest('[data-rail]');
+  if (rail) { state.rail = rail.dataset.rail; document.getElementById('s-rail').innerHTML = renderRail(); return; }
+  const step = e.target.closest('[data-step]');
+  if (step) { state.step = Number(step.dataset.step); document.getElementById('s-step').innerHTML = renderStep(); return; }
+  const lg = e.target.closest('[data-lg]');
+  if (lg) {
+    state.ledger = lg.dataset.lg;
+    document.getElementById('s-ledger').innerHTML = renderLedger();
+    const target = document.getElementById('lg-' + state.ledger);
+    if (target) target.scrollIntoView({ block: 'start' });
+    return;
+  }
+});
+
+/* ---- theme: auto, then light, then dark ---- */
+const themebtn = document.getElementById('themebtn');
+const modes = ['auto', 'light', 'dark'];
+let ti = 0;
+themebtn.addEventListener('click', () => {
+  ti = (ti + 1) % modes.length;
+  const m = modes[ti];
+  if (m === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', m);
+  themebtn.textContent = 'Theme: ' + m;
+});
+
+renderInventory();
+renderAll();
+</script>
+</body>
+</html>

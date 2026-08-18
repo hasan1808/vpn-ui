@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/hasan1808/pro-ui/xray"
@@ -207,6 +208,44 @@ func TestApplyVpnOutboundsDropsWhatCancelsThePin(t *testing.T) {
 	}
 	if got := sockoptOf(t, ob)["interface"]; got != "tun9" {
 		t.Errorf("interface = %v, want tun9", got)
+	}
+}
+
+// The same deletion in the case that is now the SUPPORTED one: the dialerProxy names the
+// tunnel's own carrier, which is how an operator asks for a chain since the Dialer Proxy
+// is the single control for it.
+//
+// It is consumed by the PANEL, which turns it into the ip rules that steer this tunnel's
+// outer transport into the carrier's table (vpnoutvia.go), and it must still never reach
+// the core: to Xray a dialerProxy means "hand the payload to that outbound", which cancels
+// the interface pin, so emitting it would send the tunnel's traffic out of the carrier's
+// tag with the tunnel itself skipped. The two mechanisms mean opposite things by the same
+// word, and this is the line between them.
+func TestApplyVpnOutboundsDropsTheCarrierDialerProxy(t *testing.T) {
+	pinAnyIface(t)
+	cfg := &xray.Config{OutboundConfigs: []byte(`[{
+		"tag":"wg-a",
+		"protocol":"freedom",
+		"streamSettings":{"sockopt":{"dialerProxy":"gre-b","mark":3}}
+	}]`)}
+
+	if err := applyVpnOutboundsWith(cfg, []VpnOutboundConfig{
+		{Tag: "wg-a", Kind: VpnOutWireguard, Enable: true, Iface: "wg0", Via: "gre-b"},
+		{Tag: "gre-b", Kind: VpnOutGre, Enable: true, Iface: "gre-b0"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sockopt := sockoptOf(t, outboundsByTag(t, cfg.OutboundConfigs)["wg-a"])
+
+	if proxy, still := sockopt["dialerProxy"]; still {
+		t.Errorf("dialerProxy = %v survived on a carried tunnel; the carry is routing rules, "+
+			"and the key in the config cancels the interface pin instead of adding to it", proxy)
+	}
+	if got := sockopt["interface"]; got != "wg0" {
+		t.Errorf("interface = %v, want the carried tunnel still pinned to its own device wg0", got)
+	}
+	if got := sockopt["mark"]; got != float64(3) {
+		t.Errorf("mark = %v, want the operator's other sockopts untouched", got)
 	}
 }
 
@@ -495,6 +534,195 @@ func TestApplyVpnOutboundsSurvivesABadPolicy(t *testing.T) {
 			ob := outboundsByTag(t, cfg.OutboundConfigs)["vpn1"]
 			if got := sockoptOf(t, ob)["interface"]; got != "ppp0" {
 				t.Fatalf("interface = %v, want the tunnel pinned regardless of the policy block", got)
+			}
+		})
+	}
+}
+
+// ---- the outbound TEST runs the same synthesis as the live config -----------------
+//
+// A test that measures something other than what will run is worse than no test: it is
+// the tool an operator reaches for to confirm there is no leak. The outbound test used
+// to copy the browser's row verbatim, and the row is not the outbound. Measured on a
+// live tunnel with the shipped core, one test config per case:
+//
+//	pin only ............... 65.109.217.240  FI  (the tunnel, correct)
+//	pin + dialerProxy ...... 212.8.240.13    NL  (the proxy: the tunnel was skipped)
+//	no pin ................. 216.147.121.163 TJ  (the host's own WAN, silently)
+//	pin to a dead device ... 216.147.121.163 TJ  (the same leak, no error anywhere)
+//
+// The first is what the live config does. The other three are what the test did, and
+// each of them reports SUCCESS.
+
+// testOutbounds is the browser's outbound array as createTestConfig receives it: the
+// generic []any of decoded JSON, not typed structs.
+func testOutbounds(t *testing.T, raw string) []any {
+	t.Helper()
+	var out []any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("bad test fixture: %v", err)
+	}
+	return out
+}
+
+// The row the browser posts for a VPN tunnel carries the operator's dialerProxy, and
+// the pin is a stale copy of whatever device the tunnel had when the row was written.
+// Both have to be corrected before the test process runs, exactly as they are for the
+// live core.
+func TestCreateTestConfigPinsTheTunnelAndDropsDialerProxy(t *testing.T) {
+	pinAnyIface(t)
+	// What xray.html posts: templateSettings.outbounds, verbatim. The tunnel row is a
+	// freedom outbound whose sockopt the operator has edited, and "socksout" is the
+	// dialer they picked from the dropdown beside it.
+	browserRows := testOutbounds(t, `[
+		{"tag":"direct","protocol":"freedom","settings":{"domainStrategy":"AsIs"}},
+		{"tag":"socksout","protocol":"socks","settings":{"servers":[{"address":"127.0.0.1","port":10808}]}},
+		{
+			"tag":"fi_tcp",
+			"protocol":"freedom",
+			"settings":{"domainStrategy":"UseIP"},
+			"streamSettings":{"sockopt":{
+				"interface":"ovpnc-stale",
+				"dialerProxy":"socksout",
+				"mark":42
+			}},
+			"mux":{"enabled":true,"concurrency":8}
+		}
+	]`)
+
+	cfg := (&OutboundService{}).createTestConfig("fi_tcp", browserRows, 31801,
+		[]VpnOutboundConfig{{Tag: "fi_tcp", Kind: VpnOutOpenVPN, Enable: true, Iface: "ovpnc-fi_tcp"}}, nil)
+
+	ob := outboundsByTag(t, cfg.OutboundConfigs)["fi_tcp"]
+	if ob == nil {
+		t.Fatal("the tested tunnel is not in the test config at all")
+	}
+	sockopt := sockoptOf(t, ob)
+	if got := sockopt["interface"]; got != "ovpnc-fi_tcp" {
+		// The LIVE device, not the one the row remembered. A stale pin does not fail,
+		// it leaves through the host's own WAN with nothing in the log.
+		t.Errorf("interface = %v, want the tunnel's live device ovpnc-fi_tcp", got)
+	}
+	if proxy, set := sockopt["dialerProxy"]; set {
+		t.Errorf("dialerProxy survived into the test config as %v: it cancels the interface "+
+			"pin, so the test would report the proxy's exit address for a tunnel that egresses "+
+			"somewhere else", proxy)
+	}
+	if got := sockopt["mark"]; got != float64(42) {
+		t.Errorf("mark = %v, want the operator's own sockopts carried across unchanged", got)
+	}
+	if _, set := ob["mux"]; set {
+		t.Errorf("mux survived into the test config: it rewrites the destination to "+
+			"v1.mux.cool:9527, which a pinned freedom outbound cannot resolve, so the test "+
+			"would fail an outbound that works. Outbound: %v", ob)
+	}
+	if got := ob["protocol"]; got != "freedom" {
+		t.Errorf("protocol = %v, want freedom", got)
+	}
+	// The other rows are the operator's and must arrive untouched, since the tested
+	// outbound may legitimately depend on one.
+	if socksout := outboundsByTag(t, cfg.OutboundConfigs)["socksout"]; socksout == nil {
+		t.Error("the other outbounds were dropped from the test config")
+	}
+}
+
+// The operator's actual state: the tunnel is in the vpnOutbounds setting and NOT in the
+// saved template, because raising a tunnel writes the row into the page in memory and
+// the Xray page's own Save is what would persist it. The test still has to work, and it
+// still has to be pinned.
+func TestCreateTestConfigAppendsATunnelWithNoRow(t *testing.T) {
+	pinAnyIface(t)
+	rows := testOutbounds(t, `[{"tag":"direct","protocol":"freedom"}]`)
+
+	cfg := (&OutboundService{}).createTestConfig("fi_tcp", rows, 31801,
+		[]VpnOutboundConfig{{Tag: "fi_tcp", Kind: VpnOutOpenVPN, Enable: true, Iface: "ovpnc-fi_tcp"}}, nil)
+
+	ob := outboundsByTag(t, cfg.OutboundConfigs)["fi_tcp"]
+	if ob == nil {
+		t.Fatal("a tunnel with no template row is missing from the test config, so the " +
+			"route rule points at a tag that does not exist")
+	}
+	if got := sockoptOf(t, ob)["interface"]; got != "ovpnc-fi_tcp" {
+		t.Errorf("interface = %v, want ovpnc-fi_tcp", got)
+	}
+}
+
+// The SSH tunnels get the same treatment, in their smaller form. An SSH row is a socks
+// outbound aimed at a loopback port the panel allocated, and the port in the row is a copy
+// that goes stale the first time the tunnel comes back on a different one. Testing the copy
+// is not a connection error: it is a successful test of whatever else took that number.
+func TestCreateTestConfigRepointsAnSshTunnel(t *testing.T) {
+	pinAnyIface(t)
+	rows := testOutbounds(t, `[
+		{"tag":"jump","protocol":"socks","settings":{"servers":[{"address":"127.0.0.1","port":10810}]}}
+	]`)
+
+	cfg := (&OutboundService{}).createTestConfig("jump", rows, 31801, nil,
+		[]SshOutboundConfig{{Tag: "jump", SocksPort: 10877}})
+
+	ob := outboundsByTag(t, cfg.OutboundConfigs)["jump"]
+	settings, _ := ob["settings"].(map[string]any)
+	servers, _ := settings["servers"].([]any)
+	if len(servers) != 1 {
+		t.Fatalf("the ssh row was not resynthesized: %v", ob)
+	}
+	server, _ := servers[0].(map[string]any)
+	if got := server["port"]; got != float64(10877) {
+		t.Fatalf("port = %v, want the port the tunnel is actually listening on (10877)", got)
+	}
+}
+
+// Fail CLOSED, in the test as in the live config. A tunnel whose device is gone must not
+// be tested as a plain freedom outbound: that is not a test failure, it is a successful
+// measurement of the host's own internet connection presented as the tunnel's.
+func TestCreateTestConfigBlackholesADeadTunnel(t *testing.T) {
+	prev := vpnOutIfaceGone
+	vpnOutIfaceGone = func(iface string) bool { return iface == "ovpnc-gone" }
+	t.Cleanup(func() { vpnOutIfaceGone = prev })
+
+	rows := testOutbounds(t, `[
+		{"tag":"fi_tcp","protocol":"freedom","settings":{"domainStrategy":"UseIP"},
+		 "streamSettings":{"sockopt":{"interface":"ovpnc-gone"}}}
+	]`)
+
+	cfg := (&OutboundService{}).createTestConfig("fi_tcp", rows, 31801,
+		[]VpnOutboundConfig{{Tag: "fi_tcp", Kind: VpnOutOpenVPN, Enable: true, Iface: "ovpnc-gone"}}, nil)
+
+	ob := outboundsByTag(t, cfg.OutboundConfigs)["fi_tcp"]
+	if got := ob["protocol"]; got != "blackhole" {
+		t.Fatalf("protocol = %v, want blackhole: a freedom outbound pinned to a device that is "+
+			"gone is an UNBOUND socket, and every byte leaves through the host's own WAN", got)
+	}
+}
+
+// And the operator is told which of the three it was, rather than being handed the
+// blackhole's "Request failed".
+func TestVpnOutNotTestable(t *testing.T) {
+	prev := vpnOutIfaceGone
+	vpnOutIfaceGone = func(iface string) bool { return iface == "ovpnc-gone" }
+	t.Cleanup(func() { vpnOutIfaceGone = prev })
+
+	cases := []struct {
+		name   string
+		tunnel VpnOutboundConfig
+		want   string // a phrase the message must carry, "" for "no refusal"
+	}{
+		{"up", VpnOutboundConfig{Tag: "t", Enable: true, Iface: "ovpnc-t"}, ""},
+		{"disabled", VpnOutboundConfig{Tag: "t", Enable: false, Iface: "ovpnc-t"}, "switched off"},
+		{"never came up", VpnOutboundConfig{Tag: "t", Enable: true, Iface: ""}, "no network device"},
+		{"device gone", VpnOutboundConfig{Tag: "t", Enable: true, Iface: "ovpnc-gone"}, "is down"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := vpnOutNotTestable(tc.tunnel)
+			if tc.want == "" {
+				if got != "" {
+					t.Fatalf("a live tunnel was refused: %s", got)
+				}
+				return
+			}
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("message %q does not say %q", got, tc.want)
 			}
 		})
 	}

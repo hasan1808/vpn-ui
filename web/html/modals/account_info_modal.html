@@ -1,0 +1,480 @@
+{{define "modals/accountInfoModal"}}
+<!--
+  Account Info: the whole account in one place.
+
+  Everything else on the Clients page is per-MEMBERSHIP. The icon row inside the
+  expander speaks for one inbound, and the "More Information" modal it opens is
+  inbound-centric: an account on six inbounds needs six visits to see itself, and
+  the subscription URL, which belongs to the account, is reprinted inside each one.
+
+  This is the other half: the account pinned on the left (identity, health, quota,
+  runway, its one subscription with its QR, and the exports that cover everything),
+  with the memberships on the right, each opening to whatever that protocol
+  actually gives the customer.
+
+  The artifacts are NOT rendered from a second implementation. AccountExport.
+  buildCards() already normalises every protocol family into one card shape for the
+  TXT and PDF exports; this renders the same cards on screen, so the panel can never
+  disagree with the file it just produced. That is also why a row fetches on expand
+  rather than up front: WireGuard, AmneziaWG and SSH cards come from the backend.
+-->
+<a-modal id="account-info-modal" v-model="accountInfoModal.visible"
+  :title='accountInfoModal.row ? accountInfoModal.row.email : "{{ i18n "pages.clients.accountInfo" }}"'
+  :closable="true" :mask-closable="true" :class="themeSwitcher.currentTheme"
+  :footer="null" :width="1000">
+  <div class="ai-dos" v-if="accountInfoModal.row">
+
+    <!-- ============ the account, pinned ============ -->
+    <div class="ai-side">
+      <div class="ai-who">
+        <div class="ai-av">[[ initials ]]</div>
+        <div class="ai-who-t">
+          <div class="ai-email">[[ row.email ]]</div>
+          <div class="ai-sub-note" v-if="row.comment">[[ row.comment ]]</div>
+        </div>
+      </div>
+
+      <div class="ai-chips">
+        <span class="ai-chip" :class="row.enable ? 'ok' : 'err'">
+          [[ row.enable ? '{{ i18n "enable" }}' : '{{ i18n "disabled" }}' ]]
+        </span>
+        <span class="ai-chip ok" v-if="isOnline">{{ i18n "online" }}</span>
+        <span class="ai-chip warn" v-if="frozen">{{ i18n "pages.client.frozen" }}</span>
+      </div>
+
+      <!-- The account's one subscription. It is per ACCOUNT, not per membership:
+           a single subId is projected onto every inbound serving it. -->
+      <template v-if="subSettings.enable && row.subId">
+        <div class="ai-lbl">{{ i18n "pages.settings.subSettings" }}</div>
+        <div class="ai-qr-wrap">
+          <canvas id="ai-sub-qr" class="ai-zoomable" @click="openZoom(subLink, '{{ i18n "pages.settings.subSettings" }}')"></canvas>
+        </div>
+        <div class="ai-link">[[ subLink ]]</div>
+        <div class="ai-btns">
+          <a-button size="small" type="primary" @click="copy(subLink)">{{ i18n "copy" }}</a-button>
+          <a-button size="small" @click="saveQr()">{{ i18n "download" }}</a-button>
+          <a-button size="small" v-if="subJsonLink" @click="copy(subJsonLink)">JSON</a-button>
+          <a-button size="small" v-if="subClashLink" @click="copy(subClashLink)">Clash</a-button>
+        </div>
+        <div class="ai-hint" v-if="subGap">[[ subGap ]]</div>
+        <div class="ai-sep"></div>
+      </template>
+
+      <div class="ai-meter">
+        <div class="ai-meter-h">
+          <span class="ai-lbl">{{ i18n "pages.clients.quota" }}</span>
+          <span class="ai-meter-v">[[ usedText ]] / [[ totalText ]]</span>
+        </div>
+        <div class="ai-bar"><i :style="{ width: quotaPct + '%' }"></i></div>
+      </div>
+      <div class="ai-meter">
+        <div class="ai-meter-h">
+          <span class="ai-lbl">{{ i18n "pages.clients.summaryExpires" }}</span>
+          <span class="ai-meter-v">[[ expiryText ]]</span>
+        </div>
+        <div class="ai-bar"><i class="warn" :style="{ width: runwayPct + '%' }"></i></div>
+      </div>
+
+      <div class="ai-sep"></div>
+      <div class="ai-kv">
+        <span class="k">{{ i18n "pages.clients.summaryInbounds" }}</span>
+        <span class="v">[[ memberships.length ]]</span>
+      </div>
+      <div class="ai-kv" v-if="row.limitIp > 0">
+        <span class="k">{{ i18n "pages.clients.ipLimit" }}</span>
+        <span class="v">[[ row.limitIp ]]</span>
+      </div>
+      <div class="ai-kv" v-if="row.tgId">
+        <span class="k">{{ i18n "pages.clients.telegramId" }}</span>
+        <span class="v">[[ row.tgId ]]</span>
+      </div>
+      <div class="ai-sep"></div>
+
+      <!-- Covers every membership at once: accountTargets() fans the export out
+           over all of them, so the file carries every protocol the customer was
+           sold. Not instant, hence the spinner: the cards fetch per membership. -->
+      <div class="ai-btns">
+        <a-button size="small" type="primary" icon="file-text"
+          :loading="exporting === 'txt'" @click="exportAll('txt')">
+          {{ i18n "pages.inbounds.exportTxt" }}
+        </a-button>
+        <a-button size="small" type="primary" icon="file-pdf"
+          :loading="exporting === 'pdf'" @click="exportAll('pdf')">
+          {{ i18n "pages.inbounds.exportPdf" }}
+        </a-button>
+      </div>
+    </div>
+
+    <!-- ============ the memberships ============ -->
+    <div class="ai-mem">
+      <div class="ai-mem-head">
+        <span class="ai-lbl">{{ i18n "menu.inbounds" }}</span>
+        <span class="ai-chip">[[ memberships.length ]]</span>
+      </div>
+
+      <div v-if="!memberships.length" class="ai-empty">
+        {{ i18n "pages.clients.noInbounds" }}
+      </div>
+
+      <div class="ai-item" v-for="m in memberships" :key="m.record.id"
+        :class="{ open: accountInfoModal.open === m.record.id, off: !m.enabled }">
+        <div class="ai-item-h" @click="toggle(m.record.id)">
+          <span class="ai-lamp" :class="m.lamp"></span>
+          <span class="ai-item-nm">[[ m.record.remark || ('#' + m.record.id) ]]</span>
+          <span class="ai-item-pr">[[ ProtocolLabels[m.record.protocol] || m.record.protocol ]]</span>
+          <span class="ai-item-sp"></span>
+          <span class="ai-chip err" v-if="!m.enabled">{{ i18n "disabled" }}</span>
+          <span class="ai-item-use">[[ m.used ]]</span>
+          <!-- This membership only. The pair on the left is the whole account. -->
+          <span class="ai-item-exp" @click.stop>
+            <a-tooltip>
+              <template slot="title">{{ i18n "pages.inbounds.exportTxt" }}</template>
+              <a-button size="small" icon="file-text"
+                @click="app.exportClientTxt(m.record, m.client)"></a-button>
+            </a-tooltip>
+            <a-tooltip>
+              <template slot="title">{{ i18n "pages.inbounds.exportPdf" }}</template>
+              <a-button size="small" icon="file-pdf"
+                @click="app.exportClientPdf(m.record, m.client)"></a-button>
+            </a-tooltip>
+          </span>
+          <a-icon class="ai-chev" :type="accountInfoModal.open === m.record.id ? 'down' : 'right'"></a-icon>
+        </div>
+
+        <div class="ai-item-b" v-if="accountInfoModal.open === m.record.id">
+          <a-spin :spinning="!!accountInfoModal.loading[m.record.id]">
+            <div v-if="cardsFor(m.record.id).length === 0 && !accountInfoModal.loading[m.record.id]"
+              class="ai-none">{{ i18n "pages.clients.nothingToHandOver" }}</div>
+
+            <div class="ai-card" v-for="(card, ci) in cardsFor(m.record.id)" :key="ci">
+              <div class="ai-card-t" v-if="cardsFor(m.record.id).length > 1">[[ card.remark ]]</div>
+
+              <!-- A scannable payload: a share link, or a WireGuard/AmneziaWG .conf.
+                   The QR carries whichever it is, exactly as the PDF draws it. -->
+              <div class="ai-art" v-if="card.qr">
+                <canvas :id="'ai-qr-' + m.record.id + '-' + ci" class="ai-art-qr ai-zoomable"
+                  @click="openZoom(card.qr, m.record.remark || ('#' + m.record.id))"></canvas>
+                <div class="ai-art-body">
+                  <a-textarea v-if="card.configText" :value="card.configText" read-only
+                    :auto-size="{ minRows: 5, maxRows: 12 }"
+                    :style="{ fontFamily: 'monospace', fontSize: '11px' }"></a-textarea>
+                  <div class="ai-link" v-else>[[ card.link ]]</div>
+                  <div class="ai-btns">
+                    <a-button size="small" type="primary"
+                      @click="copy(card.configText || card.link)">{{ i18n "copy" }}</a-button>
+                    <a-button size="small" v-if="card.configText"
+                      @click="download(card.configText, (card.remark || 'config') + '.conf')">
+                      {{ i18n "download" }}
+                    </a-button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- No importable payload: the dial-in VPNs authenticate with what
+                   the operator reads out. hideUserPass is set for ikev2 on psk or
+                   eap-tls, where the pair authenticates nothing next to the key. -->
+              <div v-else class="ai-creds">
+                <div class="ai-kv" v-if="card.server">
+                  <span class="k">{{ i18n "pages.xray.outbound.address" }}</span>
+                  <span class="v mono">[[ card.server ]][[ card.port ? ':' + card.port : '' ]]</span>
+                </div>
+                <div class="ai-kv" v-if="card.username && !card.hideUserPass">
+                  <span class="k">{{ i18n "username" }}</span>
+                  <span class="v mono">[[ card.username ]]</span>
+                </div>
+                <div class="ai-kv" v-if="card.password && !card.hideUserPass">
+                  <span class="k">{{ i18n "password" }}</span>
+                  <span class="v mono">[[ card.password ]]</span>
+                </div>
+                <div class="ai-kv" v-if="card.uuid">
+                  <span class="k">ID</span><span class="v mono">[[ card.uuid ]]</span>
+                </div>
+                <div class="ai-kv" v-if="card.psk">
+                  <span class="k">PSK</span><span class="v mono">[[ card.psk ]]</span>
+                </div>
+                <div class="ai-kv" v-if="card.remoteId">
+                  <span class="k">Remote ID</span><span class="v mono">[[ card.remoteId ]]</span>
+                </div>
+                <div class="ai-btns" v-if="credText(card)">
+                  <a-button size="small" type="primary" @click="copy(credText(card))">{{ i18n "copy" }}</a-button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Everything the old per-membership modal was for, kept where the
+                 membership already is rather than behind a second window. -->
+            <div class="ai-lbl ai-more">{{ i18n "info" }}</div>
+            <div class="ai-kv">
+              <span class="k">{{ i18n "pages.inbounds.protocol" }}</span>
+              <span class="v">[[ ProtocolLabels[m.record.protocol] || m.record.protocol ]]</span>
+            </div>
+            <div class="ai-kv">
+              <span class="k">{{ i18n "pages.xray.outbound.address" }}</span>
+              <span class="v mono">[[ m.record.address ]]:[[ m.record.port ]]</span>
+            </div>
+            <div class="ai-kv" v-if="firstCard(m.record.id) && firstCard(m.record.id).network">
+              <span class="k">{{ i18n "transmission" }}</span>
+              <span class="v">[[ firstCard(m.record.id).network ]]</span>
+            </div>
+            <div class="ai-kv">
+              <span class="k">{{ i18n "pages.clients.summaryUsed" }}</span>
+              <span class="v">[[ m.used ]]</span>
+            </div>
+          </a-spin>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The enlarged code. A QR at 104px in a list is there to be recognised, not
+       scanned; this is the one that gets pointed at with a phone across a desk.
+       Nested inside the same root so it shares this modal's Vue instance. -->
+  <a-modal id="account-info-zoom" v-model="accountInfoModal.zoom.visible"
+    :title="accountInfoModal.zoom.title" :closable="true" :mask-closable="true"
+    :class="themeSwitcher.currentTheme" :footer="null" :width="380">
+    <div class="ai-zoom-body">
+      <canvas id="ai-zoom-qr"></canvas>
+      <div class="ai-link ai-zoom-link">[[ accountInfoModal.zoom.value ]]</div>
+      <div class="ai-btns">
+        <a-button size="small" type="primary" @click="copy(accountInfoModal.zoom.value)">{{ i18n "copy" }}</a-button>
+        <a-button size="small" @click="saveZoomQr()">{{ i18n "download" }}</a-button>
+      </div>
+    </div>
+  </a-modal>
+</a-modal>
+
+<script>
+  // Plain object, mirrored into the Vue instance's data, exactly like infoModal and
+  // qrModal: callers reach it as a global rather than through a ref.
+  const accountInfoModal = {
+    visible: false,
+    row: null,
+    // Which membership is expanded, by inbound id. One at a time.
+    open: null,
+    // inboundId -> cards[]. Written by REPLACING the object: $set on a key that is
+    // already present does not make it reactive, and these keys arrive over time.
+    cards: {},
+    loading: {},
+    // The enlarged QR. Declared up front so it is reactive from the start.
+    zoom: { visible: false, value: '', title: '' },
+
+    show(row) {
+      this.row = row;
+      this.open = null;
+      this.cards = {};
+      this.loading = {};
+      this.zoom = { visible: false, value: '', title: '' };
+      this.visible = true;
+    },
+    close() {
+      this.visible = false;
+      this.row = null;
+    },
+  };
+
+  const accountInfoModalApp = new Vue({
+    delimiters: ['[[', ']]'],
+    el: '#account-info-modal',
+    data: {
+      themeSwitcher,
+      accountInfoModal,
+      // The owning page. Every lookup here (inbounds, stats, exports) belongs to it.
+      app: null,
+      exporting: '',
+    },
+    computed: {
+      row() { return this.accountInfoModal.row; },
+      subSettings() { return (this.app && this.app.subSettings) || { enable: false }; },
+      initials() {
+        const e = (this.row && this.row.email) || '';
+        return e.slice(0, 2).toUpperCase();
+      },
+      frozen() {
+        return !!(this.app && this.row && this.app.isAccountFrozen(this.row));
+      },
+      isOnline() {
+        if (!this.app || !this.row) return false;
+        const set = this.app.onlineClients || [];
+        return set.includes(this.row.email);
+      },
+      // One row per inbound serving the account, carrying the client entry that
+      // inbound holds for it. accountClientIn returns an array because a legacy
+      // inbound can hold more than one entry for the same email.
+      memberships() {
+        if (!this.app || !this.row) return [];
+        const out = [];
+        (this.app.accountInbounds(this.row) || []).forEach(record => {
+          (this.app.accountClientIn(this.row, record) || []).forEach(client => {
+            out.push({
+              record: record,
+              client: client,
+              enabled: this.app.membershipEnabled(this.row, record),
+              lamp: this.app.membershipLampClass(record, client.email),
+              used: SizeFormatter.sizeFormat(this.app.getInboundSumStats(record, client.email) || 0),
+            });
+          });
+        });
+        return out;
+      },
+      subLink() {
+        if (!this.row || !this.row.subId) return '';
+        return (this.subSettings.subURI || '') + this.row.subId;
+      },
+      subJsonLink() {
+        if (!this.row || !this.row.subId || !this.subSettings.subJsonURI) return '';
+        return this.subSettings.subJsonURI + this.row.subId;
+      },
+      subClashLink() {
+        if (!this.row || !this.row.subId || !this.subSettings.subClashURI) return '';
+        return this.subSettings.subClashURI + this.row.subId;
+      },
+      // The subscription does not reach every membership: GRE has no entry in it at
+      // all. Saying so beats a badge claiming full coverage.
+      subGap() {
+        const gre = this.memberships.filter(m => m.record.protocol === Protocols.GRE).length;
+        if (!gre) return '';
+        return '{{ i18n "pages.clients.subGap" }}';
+      },
+      usedBytes() { return this.row ? ((this.row.up || 0) + (this.row.down || 0)) : 0; },
+      usedText() { return SizeFormatter.sizeFormat(this.usedBytes); },
+      totalText() {
+        if (!this.row || !this.row.totalGB) return '{{ i18n "pages.clients.summaryUnlimited" }}';
+        return SizeFormatter.sizeFormat(this.row.totalGB);
+      },
+      quotaPct() {
+        if (!this.row || !this.row.totalGB) return 0;
+        return Math.min(100, Math.round(this.usedBytes / this.row.totalGB * 100));
+      },
+      daysLeft() {
+        if (!this.row || !this.row.expiryTime) return null;
+        // Negative means a delayed start: the clock has not begun, so the number of
+        // days is the duration itself rather than a distance from now.
+        if (this.row.expiryTime < 0) return Math.floor(-this.row.expiryTime / 86400000);
+        const ms = this.row.expiryTime - new Date().getTime();
+        return Math.ceil(ms / 86400000);
+      },
+      expiryText() {
+        if (this.daysLeft === null) return '{{ i18n "pages.clients.summaryNever" }}';
+        if (this.daysLeft <= 0) return '{{ i18n "pages.settings.ssl.expired" }}';
+        return this.daysLeft + ' {{ i18n "pages.clients.summaryDays" }}';
+      },
+      runwayPct() {
+        if (this.daysLeft === null) return 100;
+        return Math.max(0, Math.min(100, Math.round(this.daysLeft / 30 * 100)));
+      },
+    },
+    methods: {
+      cardsFor(id) { return this.accountInfoModal.cards[id] || []; },
+      firstCard(id) { return this.cardsFor(id)[0] || null; },
+
+      toggle(id) {
+        if (this.accountInfoModal.open === id) {
+          this.accountInfoModal.open = null;
+          return;
+        }
+        this.accountInfoModal.open = id;
+        if (!this.accountInfoModal.cards[id]) this.loadCards(id);
+      },
+
+      // One membership's artifacts, from the same builder the exports use. Fetched
+      // on expand rather than on open: wg-c, awg and ssh each cost a round trip, so
+      // building all six up front would open the modal on a row of spinners.
+      async loadCards(id) {
+        const m = this.accountInfoModal;
+        m.loading = Object.assign({}, m.loading, { [id]: true });
+        let cards = [];
+        try {
+          cards = await AccountExport.buildCards(this.app, [{ inboundId: id, email: this.row.email }]);
+        } catch (e) {
+          console.error('account info: could not build cards for inbound ' + id, e);
+          cards = [];
+        }
+        m.cards = Object.assign({}, m.cards, { [id]: cards });
+        m.loading = Object.assign({}, m.loading, { [id]: false });
+        this.$nextTick(() => this.renderQrs());
+      },
+
+      async exportAll(kind) {
+        if (!this.app || !this.row) return;
+        this.exporting = kind;
+        try {
+          const targets = this.app.accountTargets(this.row);
+          if (kind === 'txt') await this.app.exportTxt(targets, this.row.email);
+          else await this.app.exportPdf(targets, this.row.email);
+        } finally {
+          this.exporting = '';
+        }
+      },
+
+      // The credential rows as one block, so an operator can paste the lot into a
+      // message instead of copying four fields one at a time.
+      credText(card) {
+        const rows = [];
+        if (card.server) rows.push(card.server + (card.port ? ':' + card.port : ''));
+        if (card.username && !card.hideUserPass) rows.push(card.username);
+        if (card.password && !card.hideUserPass) rows.push(card.password);
+        if (card.uuid) rows.push(card.uuid);
+        if (card.psk) rows.push('PSK: ' + card.psk);
+        if (card.remoteId) rows.push('Remote ID: ' + card.remoteId);
+        return rows.join('\n');
+      },
+
+      // Delegated rather than reimplemented: the page's copyText already owns the
+      // execCommand fallback (the panel is often served over plain http, where
+      // navigator.clipboard does not exist) and the success toast.
+      copy(text) {
+        if (this.app) this.app.copyText(text);
+      },
+      download(text, name) {
+        FileManager.downloadTextFile(text, name, { type: 'text/plain' });
+      },
+      openZoom(value, title) {
+        if (!value) return;
+        this.accountInfoModal.zoom = { visible: true, value: value, title: title || '' };
+        this.$nextTick(() => this.qr('#ai-zoom-qr', value, 620));
+      },
+      saveZoomQr() { this.saveCanvas('#ai-zoom-qr', this.accountInfoModal.zoom.title || 'qr'); },
+      saveQr() { this.saveCanvas('#ai-sub-qr', this.row ? this.row.email : 'subscription'); },
+      saveCanvas(selector, name) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const a = document.createElement('a');
+        a.href = el.toDataURL('image/png');
+        a.download = String(name).replace(/[^\w.@-]+/g, '_') + '.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      },
+
+      // a-modal portals its body to the document root, so the canvases are looked up
+      // on the document rather than through this.$el. Same as wgcConfigModal.
+      qr(selector, value, size) {
+        const el = document.querySelector(selector);
+        if (!el || !value) return;
+        new QRious({
+          element: el, size: size || 320, value: value,
+          background: 'white', backgroundAlpha: 1, foreground: 'black',
+          padding: 8, level: 'L',
+        });
+      },
+      renderQrs() {
+        if (!this.accountInfoModal.visible) return;
+        // The zoom canvas is remounted by every re-render of this root, so it has to
+        // be redrawn here too or it goes blank the moment anything else updates.
+        if (this.accountInfoModal.zoom.visible) {
+          this.qr('#ai-zoom-qr', this.accountInfoModal.zoom.value, 620);
+        }
+        this.qr('#ai-sub-qr', this.subLink, 300);
+        const id = this.accountInfoModal.open;
+        if (id == null) return;
+        this.cardsFor(id).forEach((card, ci) => {
+          if (card.qr) this.qr('#ai-qr-' + id + '-' + ci, card.qr, 300);
+        });
+      },
+    },
+    updated() {
+      if (this.accountInfoModal.visible) this.$nextTick(() => this.renderQrs());
+    },
+  });
+</script>
+{{end}}

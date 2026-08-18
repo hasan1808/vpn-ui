@@ -39,12 +39,17 @@ import (
 //   - FOU needs GRO OFF on the interface that RECEIVES the encapsulated packets, or nearly
 //     every segment is lost while a trickle survives. See greOutEnsureFou.
 //
-// THE DEVICE NAME MUST NOT START WITH "gre". GreService.removeStaleLinks deletes every
-// netlink.Gretun whose name starts with greP2pPrefix ("gre") and is not in the plan it just
-// computed from the inbounds table, and it runs on EVERY traffic-job tick. An outbound
-// tunnel is not in that plan and never will be, so a name like "gre-out0" would be silently
-// deleted within seconds of coming up. Hence the "cgre" prefix (client GRE), which that
-// prefix scan does not match.
+// THE DEVICE NAME MUST NOT LOOK LIKE A SERVER-SIDE GRE NAME. GreService.removeStaleLinks
+// deletes every GRE netdev it considers its own that is not in the plan it just computed
+// from the inbounds table, and it runs on EVERY traffic-job tick. An outbound tunnel is not
+// in that plan and never will be, so a matching name would be silently deleted within
+// seconds of coming up. Hence the "cgre" prefix (client GRE).
+//
+// The rule that decides this is no longer a prefix scan: ownership is now the anchored name
+// shapes in ifaceown.go (gre<id>_<slot>_<peer>, gre<8 hex>, grecat<4 hex>) plus a link-type
+// check plus the ownership manifest. "cgre0" fails all three shapes, so it is safe for the
+// same reason an operator's own "gre1" now is. Keep any new client-side name outside those
+// shapes and add a case to ifaceown_test.go's ours-vs-theirs table.
 //
 // THE DEVICE MTU IS THE MSS CLAMP HERE, and that is why the per-encapsulation defaults are
 // copied from the server side rather than left to the kernel. The inbound path needs TWO
@@ -135,6 +140,11 @@ type greOutSettings struct {
 // greOutDriver implements VpnOutDriver for kind "gre".
 type greOutDriver struct{}
 
+// Asserted on the VALUE, which is what init registers below: an optional interface is found
+// by a type assertion on the stored driver, so a method the value does not carry would leave
+// the carrier gate unasked and a raw-GRE tunnel accepted onto a carrier that swallows it.
+var _ VpnOutCarriable = greOutDriver{}
+
 func init() { RegisterVpnOutDriver(VpnOutGre, greOutDriver{}) }
 
 // SecretKeys names the one field here that must never reach the browser.
@@ -210,6 +220,121 @@ func greOutParse(cfg VpnOutboundConfig) (*greOutSettings, error) {
 		return nil, fmt.Errorf("gre outbound: unreadable settings: %w", err)
 	}
 	return st, nil
+}
+
+// ServerHost names the far end of the GRE tunnel, so this one can be carried inside
+// another.
+//
+// The same address whichever mode is in use: FOU wraps the GRE in UDP to the same
+// remote, and IPsec's ESP is negotiated with the same peer. What changes is the
+// protocol number on the wire, and a rule does not select on that.
+func (greOutDriver) ServerHost(cfg VpnOutboundConfig) (string, error) {
+	st, err := greOutParse(cfg)
+	if err != nil {
+		return "", err
+	}
+	return st.Server, nil
+}
+
+// CarriableOverProxy answers the one question a carrier that reaches an XRAY OUTBOUND can
+// be asked: does this tunnel, as configured, put anything but TCP and UDP on the wire?
+//
+// Raw GRE is IP protocol 47, the tun the framework puts in front of an Xray outbound
+// dispatches TCP and UDP and nothing else, and a raw protocol is SWALLOWED rather than
+// rejected - measured, the packets are counted on the device's RX and none leave, with
+// nothing logged. So a tunnel accepted in that shape has a netdev that is up, counters that
+// climb on transmit, and carries not one packet.
+//
+// Two settings each turn the wire into UDP, and either is enough:
+//
+//	FOU    wraps the same GRE in UDP to the same server
+//	IPsec  is ESP, IP protocol 50, but greOutBuildIpsecConf FORCES UDP encapsulation for a
+//	       carried tunnel, so its ESP travels inside UDP 4500 (proven, not assumed: see
+//	       greOutRequireEncap, which fails the bring-up when charon did not fake the NAT-D)
+//
+// The two TOGETHER are refused, and that is not a carrier limitation but a defect in this
+// driver that the carrier question happens to expose: the child SA is narrowed to protocol 47
+// (`local_ts = dynamic[gre]`) while FOU makes every outgoing packet UDP, so nothing the
+// tunnel sends can match the IPsec policy and the ESP protects none of it. That combination
+// is broken the same way without a carrier; refusing it here at least stops the panel
+// carrying it and calling it encrypted.
+//
+// The outer SOURCE address is deliberately NOT one of the reasons above, and that is worth
+// saying because it looks like one: greOutLocal bakes this host's own address into the
+// netdev as `local`, and nothing in the carry path rewrites it. A carrier that is an Xray
+// outbound does not care. The tun TERMINATES the datagram and the core re-originates it out
+// of the carrier outbound, so the source becomes the carrier's for free, with no SNAT
+// anywhere. Refusing FOU over that would be refusing the one shape that works.
+//
+// What no gate on this side can see is where the far side then sends its replies: a FOU peer
+// transmits to the `remote` in its own config, so a statically configured one keeps
+// answering to this host's own address. That is the far side's configuration rather than a
+// property of the carrier, which is why it is written down here and not refused.
+//
+// A device carrier (another VPN tunnel, or a freedom outbound pinned to an interface) is
+// never asked any of this: steering into a netdev is L4-agnostic and takes GRE and ESP whole.
+// The raw-mode refusals name it for exactly that reason. The FOU-plus-IPsec one deliberately
+// does NOT: a device carrier would move that tunnel happily and it would still be
+// unencrypted, so offering it there would answer the wrong question.
+func (greOutDriver) CarriableOverProxy(cfg VpnOutboundConfig) (bool, string) {
+	st, err := greOutParse(cfg)
+	if err != nil {
+		// An unreadable blob means the shape is unknown, and unknown has to refuse: the
+		// carrier is chosen at save time, and a wrong yes is a tunnel that reports itself
+		// healthy while dropping everything.
+		return false, err.Error()
+	}
+	return greOutCarriable(st, (&GreService{}).FouAvailable())
+}
+
+// greOutCarriable is that decision with the host taken out of it, so every shape is pinned
+// by a test on any kernel.
+//
+// fouUsable is what the kernel probe answered, and it is consulted for one reason: "turn on
+// UDP encapsulation" is half of what the raw-mode refusal offers, and on a kernel with no fou
+// module that is advice the operator cannot take. Validate refuses a save that turns FOU on
+// there ("this kernel has no FOU support"), so without this they would be sent from one
+// refusal straight into another.
+//
+// The other half of the advice, IPsec, gets no probe on purpose. Nothing refuses that save:
+// charon comes from the bundle when there is one for this architecture and from the host's
+// PATH when there is not (charonBin), so "can this box raise an SA" is not answerable here.
+// If it turns out it cannot, greOutRequireEncap says so at bring-up in its own words, which
+// is a failure the operator can act on rather than a wall they cannot get past.
+func greOutCarriable(st *greOutSettings, fouUsable bool) (bool, string) {
+	// Asked first because it is the one answer that is about neither the carrier nor the
+	// wire: these two settings cancel each other, and a tunnel in this shape is unencrypted
+	// however it is carried.
+	if st.IpsecEnable && st.FouEnable {
+		return false, "UDP encapsulation (FOU) and IPsec are both on, and as this driver renders them they " +
+			"cancel: the child SA is narrowed to IP protocol 47 (local_ts = dynamic[gre]) while FOU puts the " +
+			"GRE inside UDP, so nothing this tunnel sends can ever match the IPsec policy and the ESP protects " +
+			"none of it. Rather than carry that and call it encrypted, turn one of them off: FOU alone is UDP " +
+			"on the wire, and IPsec alone is forced into UDP 4500 while a tunnel is carried"
+	}
+	// ESP is IP protocol 50 and a carrier would drop it, which is exactly why the connection
+	// file carries `encap = yes` for a carried tunnel and why Up reads the negotiated state
+	// back before it returns. Nothing raw is left on the wire once that holds.
+	if st.IpsecEnable {
+		return true, ""
+	}
+	if !st.FouEnable {
+		if !fouUsable {
+			return false, "raw GRE is IP protocol 47, and an Xray outbound carries a tunnel through a tun " +
+				"that dispatches TCP and UDP only, so every packet would vanish into the carrier unlogged " +
+				"while the netdev still looked healthy. This kernel has no FOU support (module 'fou'), so " +
+				"UDP encapsulation cannot be turned on here: turn on IPsec instead, which is forced into " +
+				"UDP 4500 while a tunnel is carried, or carry this one as it is with a VPN tunnel or a " +
+				"freedom outbound pinned to an interface, which steer into a device and take raw GRE whole"
+		}
+		return false, "raw GRE is IP protocol 47, and an Xray outbound carries a tunnel through a tun that " +
+			"dispatches TCP and UDP only, so every packet would vanish into the carrier unlogged while the " +
+			"netdev still looked healthy. Either setting fixes it: turn on UDP encapsulation (FOU) and the " +
+			"same tunnel reaches the same server as UDP, or turn on IPsec, whose ESP is forced into UDP 4500 " +
+			"while a tunnel is carried. Failing both, carry it as it is with a VPN tunnel or a freedom " +
+			"outbound pinned to an interface, which steer into a device and take raw GRE whole"
+	}
+	return true, ""
 }
 
 // greOutMtu is the inner MTU for this tunnel: the operator's value, else the largest that
@@ -425,12 +550,25 @@ func (greOutDriver) Up(cfg VpnOutboundConfig) (string, error) {
 	}
 
 	if st.IpsecEnable {
-		if err := greOutSyncIpsec(cfg.Tag, st, local, remote); err != nil {
+		if err := greOutSyncIpsec(cfg.Tag, st, local, remote, cfg.CarriedOverProxy); err != nil {
 			// Not fatal: the netdev exists and is the promise Up owes the framework, charon
 			// keeps retrying on its own, and Status reports the SA as down. Failing here
 			// instead would delete a tunnel that is one reachable responder away from
 			// working.
 			logger.Warning("gre outbound: IPsec setup for", cfg.Tag, "failed:", err)
+		}
+		// Carried over an Xray outbound, the encapsulation is not a preference, it is the
+		// only reason the ESP can travel at all, so it is PROVEN before this returns. See
+		// greOutRequireEncap for the silence it is proving against.
+		if cfg.CarriedOverProxy {
+			if err := greOutRequireEncap(cfg.Tag, remote); err != nil {
+				// Take it back down, the way the PPTP driver does after a failed dial: Save
+				// does not persist a config whose Up failed, so nothing here would ever be
+				// reconciled away, and a loaded connection keeps charon re-establishing an SA
+				// that cannot carry a packet.
+				_ = (greOutDriver{}).Down(cfg)
+				return "", err
+			}
 		}
 	} else {
 		greOutRemoveIpsec(cfg.Tag)
@@ -700,8 +838,8 @@ func greOutIpsecConfPath(tag string) string {
 	return fmt.Sprintf("%s/%s.conf", swanctlConfDir, greOutIpsecConn(tag))
 }
 
-func greOutSyncIpsec(tag string, st *greOutSettings, local, remote net.IP) error {
-	if err := greOutWriteIpsecConf(tag, st, local, remote); err != nil {
+func greOutSyncIpsec(tag string, st *greOutSettings, local, remote net.IP, carried bool) error {
+	if err := greOutWriteIpsecConf(tag, st, local, remote, carried); err != nil {
 		return err
 	}
 	if err := writeCharonConf(); err != nil {
@@ -713,7 +851,21 @@ func greOutSyncIpsec(tag string, st *greOutSettings, local, remote net.IP) error
 	return reloadCharon()
 }
 
-func greOutWriteIpsecConf(tag string, st *greOutSettings, local, remote net.IP) error {
+// greOutWriteIpsecConf puts this tunnel's connection on disk. 0600: it holds the PSK.
+func greOutWriteIpsecConf(tag string, st *greOutSettings, local, remote net.IP, carried bool) error {
+	_ = os.MkdirAll(swanctlConfDir, 0755)
+	return os.WriteFile(greOutIpsecConfPath(tag),
+		[]byte(greOutBuildIpsecConf(tag, st, local, remote, carried)), 0600)
+}
+
+// greOutBuildIpsecConf renders that connection.
+//
+// Split from the write so the rendered text can be pinned by a test with no filesystem, no
+// charon and no root, which matters most for the one line that is conditional: writing a real
+// connection file into /etc/swanctl from a test would also hand it to any charon running on
+// the same box. `carried` is VpnOutboundConfig.CarriedOverProxy and decides that line,
+// `encap = yes`.
+func greOutBuildIpsecConf(tag string, st *greOutSettings, local, remote net.IP, carried bool) string {
 	esc := strings.ReplaceAll(st.IpsecPsk, `\`, `\\`)
 	esc = strings.ReplaceAll(esc, `"`, `\"`)
 	conn := greOutIpsecConn(tag)
@@ -721,9 +873,8 @@ func greOutWriteIpsecConf(tag string, st *greOutSettings, local, remote net.IP) 
 	if localID == "" {
 		localID = local.String()
 	}
-	_ = os.MkdirAll(swanctlConfDir, 0755)
 	var b strings.Builder
-	b.WriteString("# Auto-generated by pro-ui GRE outbound (ESP transport, initiator) - do not edit\n")
+	b.WriteString("# Auto-generated by vpn-ui GRE outbound (ESP transport, initiator) - do not edit\n")
 	b.WriteString("connections {\n")
 	b.WriteString(fmt.Sprintf("    %s {\n", conn))
 	// 0 (the default when the operator says nothing) accepts either version as responder and
@@ -737,6 +888,21 @@ func greOutWriteIpsecConf(tag string, st *greOutSettings, local, remote net.IP) 
 	b.WriteString("        reauth_time = 0s\n")
 	b.WriteString("        dpd_delay = 30s\n")
 	b.WriteString("        fragmentation = yes\n")
+	// UDP encapsulation, forced, and ONLY while an Xray outbound is carrying this tunnel.
+	//
+	// Uncarried, raw ESP is the right thing on the wire and this line would change what
+	// leaves the box for operators who asked for nothing. Carried, ESP is IP protocol 50 and
+	// the carrier tun dispatches TCP and UDP only, so the SA would install, the panel would
+	// call the tunnel up, and every encrypted packet would be dropped by the carrier with
+	// nothing logged. `encap = yes` makes charon fake the NAT-D payloads, so the same SA is
+	// installed as UDP-encapsulated ESP on port 4500 and rides the carrier like any other
+	// datagram. Same line, same reason, as the IKEv2 and L2TP client drivers.
+	//
+	// It is a REQUEST, not a fact: greOutRequireEncap reads back what charon negotiated,
+	// because with version = 1 this line can be accepted and then quietly not applied.
+	if carried {
+		b.WriteString("        encap = yes\n")
+	}
 	// The same wide list the responder side offers, for the same reason: the far side may be
 	// a consumer router with a narrow, dated set, and a strict list shows up as
 	// NO_PROPOSAL_CHOSEN with nothing else to go on.
@@ -781,7 +947,7 @@ func greOutWriteIpsecConf(tag string, st *greOutSettings, local, remote net.IP) 
 	b.WriteString(fmt.Sprintf("        secret = \"%s\"\n", esc))
 	b.WriteString("    }\n")
 	b.WriteString("}\n")
-	return os.WriteFile(greOutIpsecConfPath(tag), []byte(b.String()), 0600)
+	return b.String()
 }
 
 // greOutRemoveIpsec drops the connection and its key, then reloads so charon stops offering
@@ -806,11 +972,21 @@ func greOutRemoveIpsec(tag string) {
 // swanctl prints one block per IKE_SA headed by "<connection>: #<id>, ESTABLISHED, ...", and
 // the child lines beneath it are indented, so a prefix match on the raw line identifies the
 // block without the sub-line ambiguity ikev2.go documents.
+//
+// The encapsulation is reported and NOT judged, for the reason the IKEv2 driver's Status
+// gives: this is served from the stored list, where CarriedOverProxy is always false (it is
+// json:"-", derived per raise), so a test on it here would read as a guard and never fire.
+// greOutRequireEncap is where the flag is real, and it refuses rather than reports.
 func greOutIpsecUp(tag string) (bool, string) {
 	if !procMgr.IsRunning(ikev2ProcName) {
 		return false, "charon is not running"
 	}
-	out, err := exec.Command(swanctlBin(), "--list-sas").CombinedOutput()
+	// --noblock: a plain `swanctl --list-sas` WAITS on any IKE_SA that is checked out, and on
+	// this shared charon that includes an inbound IKEv2 client sitting mid-authentication
+	// against the panel's own RADIUS server (ikev2.go documents the deadlock from the other
+	// side). This runs inside the panel's status handler, so a blocking listing would stall an
+	// HTTP request behind an unrelated client's login.
+	out, err := exec.Command(swanctlBin(), "--list-sas", "--noblock").CombinedOutput()
 	if err != nil {
 		return false, "cannot query charon"
 	}
@@ -829,6 +1005,11 @@ func greOutIpsecUp(tag string) (bool, string) {
 		// authenticated and then failed to agree on a child, which from the data plane's
 		// point of view is the same as no IPsec at all.
 		if inBlock && strings.Contains(ln, "INSTALLED") {
+			if ipsecOutEncapInstalled(ln) {
+				// Read off the CHILD line rather than the whole listing, which would answer
+				// for whichever unrelated connection happened to be encapsulated.
+				return true, "child SA installed, ESP in UDP"
+			}
 			return true, "child SA installed"
 		}
 	}
@@ -836,4 +1017,75 @@ func greOutIpsecUp(tag string) (bool, string) {
 		return false, "IKE SA up but no child SA installed"
 	}
 	return false, "no SA"
+}
+
+// greOutIpsecEncapTimeout bounds the wait for a CARRIED tunnel's SA.
+//
+// It is a boot cost as well as a save cost: InitVpnOutbound raises tunnels one at a time
+// before Xray starts, so an unreachable peer delays the whole panel by this much. Sized like
+// the L2TP client's equivalent and for the same reason - an IKE exchange over a healthy link
+// is well under a second, so this only bites when something is actually wrong.
+const greOutIpsecEncapTimeout = 15 * time.Second
+
+// greOutIpsecEncapState reports whether this connection has an installed child SA, and
+// whether its ESP travels inside UDP.
+//
+// Scoped with --ike to this connection, so "INSTALLED" and the encapsulation mark both
+// answer for OUR SA and not for whichever other tunnel shares this charon. --noblock for the
+// deadlock documented on greOutIpsecUp, and it matters more here: this is polled from inside
+// the panel's save handler.
+//
+// The mark itself comes from ipsecOutEncapInstalled, which the IKEv2 driver owns and the
+// L2TP client already shares. Deliberately not re-derived here: swanctl RENDERS the vici
+// `encap` attribute as a "-in-UDP" suffix on the child line rather than naming it, and a
+// second private copy of that knowledge is a second thing to get wrong when the bundled
+// strongSwan changes its format string.
+func greOutIpsecEncapState(conn string) (installed, encap bool) {
+	out, err := exec.Command(swanctlBin(), "--list-sas", "--noblock", "--ike", conn).CombinedOutput()
+	if err != nil {
+		return false, false
+	}
+	s := string(out)
+	return strings.Contains(s, "ESTABLISHED") && strings.Contains(s, "INSTALLED"), ipsecOutEncapInstalled(s)
+}
+
+// greOutRequireEncap proves that the `encap = yes` this tunnel asked for was actually
+// negotiated, and fails the bring-up when it was not.
+//
+// The hole it closes is IKEv1's, and it is silent in the worst possible way. charon fakes the
+// NAT-D payloads only when the peer offered a NAT-T vendor ID; strongSwan's IKEv1 NAT-D path
+// returns early when it did not, so COND_NAT_FAKE is never set and the child installs as RAW
+// ESP, IP protocol 50, with the connection file still saying encap. Nothing else notices: the
+// listing says ESTABLISHED and INSTALLED, greOutIpsecUp returns true, Status calls the tunnel
+// healthy, and the carrier drops every packet because a tun dispatches TCP and UDP only.
+// Reachable from this driver because ipsecIkeVersion exposes version 1; IKEv2 negotiates NAT
+// detection as part of the protocol and has no equivalent gap.
+//
+// Only ever called for a carried tunnel, which is also why it is strict about a slow peer
+// where the rest of this driver is tolerant. Uncarried, a pending SA is fine: the netdev is
+// the promise Up owes the framework and charon keeps retrying behind it. Carried, an SA
+// nobody could read back is indistinguishable from the raw-ESP failure above, and the save
+// dialog is the only place an operator will ever be told. Nothing regresses by being strict:
+// a carried GRE-over-IPsec tunnel is a shape this panel refused outright until now.
+func greOutRequireEncap(tag string, remote net.IP) error {
+	conn := greOutIpsecConn(tag)
+	deadline := time.Now().Add(greOutIpsecEncapTimeout)
+	for {
+		if installed, encap := greOutIpsecEncapState(conn); installed {
+			if !encap {
+				return fmt.Errorf("the IPsec SA to %s established without UDP encapsulation, so its ESP is raw "+
+					"IP protocol 50: the peer does not negotiate NAT traversal, and an Xray outbound carries TCP "+
+					"and UDP only. Set the IKE version to 2 if the peer speaks it, or carry this tunnel with "+
+					"another VPN tunnel or a freedom outbound pinned to an interface, which steer packets into a "+
+					"device and take ESP whole", remote)
+			}
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("the IPsec SA to %s did not establish within %s, so there is no way to tell whether "+
+				"its ESP would be UDP-encapsulated, and an Xray outbound carries TCP and UDP only: check the "+
+				"pre-shared key, and that UDP 500 and 4500 reach the peer through the carrier", remote, greOutIpsecEncapTimeout)
+		}
+		time.Sleep(time.Second)
+	}
 }

@@ -107,8 +107,8 @@ var AllPermissions = []PermissionDef{
 	{PermXraySettings, "accessXraySettings"},
 	{PermPanelSettings, "accessPanelSettings"},
 	{PermManageResellers, "manageResellers"},
-	{PermOverviewManage, "manageOverview"},
 	{PermAccessOverview, "accessOverview"},
+	{PermOverviewManage, "manageOverview"},
 }
 
 // Has reports whether every bit in q is set in p.

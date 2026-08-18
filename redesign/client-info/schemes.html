@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account Info: five panels</title>
+<style>
+:root{
+  --paper:#eceef1; --sheet:#fff; --ink:#131a23; --ink-2:#4e5b6a; --ink-3:#7b8796;
+  --rule:#d5dce3; --rule-strong:#b9c3cd; --accent:#00705e; --accent-weak:rgba(0,112,94,.10);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --paper:#0d1117; --sheet:#141a22; --ink:rgba(255,255,255,.90); --ink-2:rgba(255,255,255,.62);
+  --ink-3:rgba(255,255,255,.45); --rule:#28313d; --rule-strong:#3a4553;
+  --accent:#3fd2b0; --accent-weak:rgba(63,210,176,.13); color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --paper:#0d1117; --sheet:#141a22; --ink:rgba(255,255,255,.90); --ink-2:rgba(255,255,255,.62);
+  --ink-3:rgba(255,255,255,.45); --rule:#28313d; --rule-strong:#3a4553;
+  --accent:#3fd2b0; --accent-weak:rgba(63,210,176,.13); color-scheme:dark;
+}
+*{box-sizing:border-box;}
+body{ margin:0; background:var(--paper); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,Arial,sans-serif;
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+.wrap{ max-width:1120px; margin:0 auto; padding:0 20px 90px; }
+.mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+
+.top{ padding:48px 0 22px; display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+.top h1{ font-size:27px; margin:0 0 6px; font-weight:650; letter-spacing:-.015em; }
+.top p{ margin:0; color:var(--ink-2); font-size:14px; max-width:64ch; }
+.stamp{ font-size:10.5px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-3); }
+.themebtn{ font:inherit; font-size:12.5px; font-weight:600; padding:7px 13px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--rule-strong); background:var(--sheet); color:var(--ink-2); }
+.themebtn:hover{ border-color:var(--accent); color:var(--accent); }
+
+.blk{ margin-top:44px; }
+.hd{ display:flex; align-items:baseline; gap:12px; margin-bottom:6px; }
+.hd .n{ font-family:ui-monospace,Menlo,monospace; font-size:12px; font-weight:700; color:var(--ink-3); letter-spacing:.1em; }
+.hd h2{ margin:0; font-size:19px; font-weight:640; letter-spacing:-.01em; }
+.hd .tag{ margin-inline-start:auto; font-size:12px; color:var(--ink-3); }
+.sub{ color:var(--ink-2); font-size:13.5px; margin:0 0 14px; max-width:80ch; }
+.sub b{ color:var(--ink); }
+.cost{ font-size:12px; color:var(--ink-3); margin-top:10px; }
+.cost b{ color:var(--ink-2); }
+
+/* ============ panel palette (tokens.css) ============ */
+.frame{
+  --bg:#f4f6f8; --surface:#fff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --brand:#008771; --brand-strong:#00806b; --brand-weak:#e2f2ee; --on-brand:#fff;
+  --ok:#1c7a45; --ok-weak:rgba(28,122,69,.10);
+  --warn:#8a6008; --warn-weak:rgba(138,96,8,.12);
+  --err:#b3261e; --err-weak:rgba(179,38,30,.10);
+  border:1px solid var(--rule-strong); border-radius:12px; overflow:hidden;
+  background:var(--bg); color:var(--text); font-size:13px; position:relative;
+  box-shadow:0 1px 2px rgba(0,0,0,.05),0 14px 32px -20px rgba(0,0,0,.4);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .frame{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --brand:#1bbf9f; --brand-strong:#1bbf9f; --brand-weak:rgba(27,191,159,.14); --on-brand:#071a16;
+  --ok:#4fd08d; --ok-weak:rgba(79,208,141,.13); --warn:#e0a94a; --warn-weak:rgba(224,169,74,.14);
+  --err:#f2837a; --err-weak:rgba(242,131,122,.13); } }
+:root[data-theme="dark"] .frame{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --brand:#1bbf9f; --brand-strong:#1bbf9f; --brand-weak:rgba(27,191,159,.14); --on-brand:#071a16;
+  --ok:#4fd08d; --ok-weak:rgba(79,208,141,.13); --warn:#e0a94a; --warn-weak:rgba(224,169,74,.14);
+  --err:#f2837a; --err-weak:rgba(242,131,122,.13);
+}
+.pad{ padding:16px; }
+
+/* shared atoms */
+.qr{ border-radius:9px; border:1px solid var(--border); background-color:#fff;
+  background-image:repeating-linear-gradient(90deg,#0b1a17 0 5px,transparent 5px 10px),
+                   repeating-linear-gradient(0deg,#0b1a17 0 5px,transparent 5px 10px);
+  background-size:10px 10px; background-position:3px 3px; flex:none; }
+.b{ font:inherit; font-size:11px; font-weight:640; padding:5px 10px; border-radius:7px; cursor:pointer;
+  border:1px solid var(--border-strong); background:var(--surface); color:var(--text-2); }
+.b:hover{ border-color:var(--brand); color:var(--brand); }
+.b.p{ background:var(--brand-strong); border-color:var(--brand-strong); color:var(--on-brand); }
+.bs{ display:flex; gap:6px; flex-wrap:wrap; }
+.chip{ font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap;
+  background:var(--surface-2); color:var(--text-2); display:inline-block; }
+.chip.ok{ background:var(--ok-weak); color:var(--ok); }
+.chip.warn{ background:var(--warn-weak); color:var(--warn); }
+.chip.err{ background:var(--err-weak); color:var(--err); }
+.chip.br{ background:var(--brand-weak); color:var(--brand); }
+.link{ font-family:ui-monospace,Menlo,monospace; font-size:11px; background:var(--bg);
+  border:1px solid var(--border); border-radius:7px; padding:8px 10px; color:var(--text-2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lbl{ font-size:10px; letter-spacing:.1em; text-transform:uppercase; font-weight:700; color:var(--text-3); }
+.kv{ display:flex; gap:10px; padding:5px 0; border-top:1px solid var(--border); font-size:12px; }
+.kv:first-of-type{ border-top:none; }
+.kv .k{ flex:0 0 118px; color:var(--text-3); }
+.kv .v{ flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.dim{ color:var(--text-3); font-size:11.5px; font-style:italic; }
+.bar{ height:5px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.bar i{ display:block; height:100%; background:var(--brand-strong); }
+.bar i.w{ background:var(--warn); }
+.dot{ width:8px; height:8px; border-radius:50%; flex:none; background:var(--ok); }
+.dot.warn{ background:var(--warn); } .dot.err{ background:var(--err); }
+.card{ background:var(--surface); border:1px solid var(--border); border-radius:11px; }
+
+/* ---------- 01 One Scan ---------- */
+.os-hero{ display:flex; gap:20px; align-items:center; padding:18px; background:var(--surface);
+  border:1px solid var(--border); border-radius:12px; }
+.os-rows .r{ display:flex; align-items:center; gap:10px; padding:10px 12px; border-top:1px solid var(--border); cursor:pointer; }
+.os-rows .r:hover{ background:var(--surface-2); }
+.os-rows .nm{ font-weight:620; font-size:12.5px; flex:0 0 140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.os-rows .pr{ font-size:10.5px; color:var(--text-3); flex:0 0 84px; }
+.os-rows .kd{ font-size:10.5px; color:var(--text-3); flex:1 1 auto; }
+.os-exp{ padding:12px; background:var(--bg); border-top:1px solid var(--border); }
+
+/* ---------- 02 Bento ---------- */
+.bento{ display:grid; grid-template-columns:repeat(4,1fr); gap:11px; }
+.bento .t{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:13px; }
+.bento .t.sub{ grid-column:span 2; grid-row:span 2; display:flex; flex-direction:column; gap:10px; }
+.bento .t.wide{ grid-column:span 2; }
+.bento .big{ font-size:22px; font-weight:680; letter-spacing:-.02em; }
+.bento .mem{ display:flex; flex-direction:column; gap:6px; cursor:pointer; }
+.bento .mem:hover{ border-color:var(--brand); }
+.bento .mem .h{ display:flex; align-items:center; gap:7px; }
+.bento .mem .nm{ font-weight:640; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ---------- 03 Ledger ---------- */
+.lg-band{ display:flex; align-items:center; gap:16px; padding:13px 15px; background:var(--surface);
+  border:1px solid var(--border); border-radius:11px; margin-bottom:11px; flex-wrap:wrap; }
+.lg-tbl{ width:100%; border-collapse:collapse; background:var(--surface); font-size:12.5px;
+  border:1px solid var(--border); border-radius:11px; overflow:hidden; }
+.lg-tbl th{ background:var(--bg); font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); font-weight:700; text-align:start; padding:9px 11px; border-bottom:1px solid var(--border); }
+.lg-tbl td{ padding:9px 11px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.lg-tbl tr:last-child td{ border-bottom:none; }
+.lg-tbl tr.x:hover td{ background:var(--surface-2); cursor:pointer; }
+.lg-tbl td.exp{ background:var(--bg); }
+
+/* ---------- 04 Dossier ---------- */
+.dos{ display:grid; grid-template-columns:296px 1fr; gap:14px; align-items:start; }
+@media (max-width:820px){ .dos{ grid-template-columns:1fr; } }
+.dos-l{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:15px; }
+.acc-item{ border:1px solid var(--border); border-radius:10px; background:var(--surface); margin-bottom:8px; overflow:hidden; }
+.acc-h{ display:flex; align-items:center; gap:9px; padding:10px 12px; cursor:pointer; }
+.acc-h:hover{ background:var(--surface-2); }
+.acc-h .nm{ font-weight:640; font-size:12.5px; }
+.acc-b{ padding:12px; border-top:1px solid var(--border); background:var(--bg); }
+
+/* ---------- 05 Carousel ---------- */
+.film{ display:flex; gap:9px; overflow-x:auto; padding:2px 2px 10px; }
+.fi{ flex:none; width:104px; border:1px solid var(--border); border-radius:10px; background:var(--surface);
+  padding:8px; cursor:pointer; text-align:center; }
+.fi:hover{ border-color:var(--brand); }
+.fi.on{ border-color:var(--brand); background:var(--brand-weak); }
+.fi .th{ width:100%; aspect-ratio:1; border-radius:6px; margin-bottom:6px; }
+.fi .nm{ font-size:10.5px; font-weight:640; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fi .st{ font-size:9.5px; color:var(--text-3); }
+.stagebig{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px;
+  display:flex; gap:20px; align-items:flex-start; min-height:258px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div>
+      <div class="stamp">vpn-ui / account info / five panels</div>
+      <h1>Five panels, drawn full size</h1>
+      <p>Every one carries the same content: identity, health, quota, expiry, <b>subscription link and its QR</b>,
+         every membership's own artifact, and a way into More Information. They differ in shape, not in what they hold.</p>
+    </div>
+    <button class="themebtn" id="theme">Theme: system</button>
+  </div>
+
+  <!-- 01 -->
+  <div class="blk">
+    <div class="hd"><span class="n">01</span><h2>One Scan</h2><span class="tag">the subscription is the product</span></div>
+    <p class="sub">Most customers need one thing: the subscription. So it is the whole top of the panel, QR at 176px,
+      with JSON and Clash beside it. Health rides in a thin bar under it, and the six memberships are one line each
+      until you want one. <b>More Information</b> opens inside the row.</p>
+    <div class="frame"><div class="pad" id="s1"></div></div>
+    <p class="cost"><b>Cost:</b> lowest. One hero block, one row list, one expander.</p>
+  </div>
+
+  <!-- 02 -->
+  <div class="blk">
+    <div class="hd"><span class="n">02</span><h2>Bento</h2><span class="tag">everything at once, nothing nested</span></div>
+    <p class="sub">The panel's own mosaic language from <span class="mono">redesign/bento.html</span>. The subscription
+      is the feature tile with its QR; quota, runway and health are their own tiles; each membership is a tile showing
+      what it gives. Nothing is hidden behind anything. <b>More Information</b> flips a tile.</p>
+    <div class="frame"><div class="pad" id="s2"></div></div>
+    <p class="cost"><b>Cost:</b> low, and it reuses a grid the panel already ships.</p>
+  </div>
+
+  <!-- 03 -->
+  <div class="blk">
+    <div class="hd"><span class="n">03</span><h2>Ledger</h2><span class="tag">a table, because the panel is tables</span></div>
+    <p class="sub">One band across the top holds identity, quota, runway and the subscription with a QR button. Below it
+      the memberships are a real table: status, inbound, protocol, used, what it gives, actions. Sortable, scannable,
+      and it does not get worse when an account has twenty inbounds. <b>More Information</b> expands the row.</p>
+    <div class="frame"><div class="pad" id="s3"></div></div>
+    <p class="cost"><b>Cost:</b> low. It is an <span class="mono">a-table</span>, which every other page already is.</p>
+  </div>
+
+  <!-- 04 -->
+  <div class="blk">
+    <div class="hd"><span class="n">04</span><h2>Dossier</h2><span class="tag">the account is pinned, the list moves</span></div>
+    <p class="sub">A fixed left panel holds everything that is true of the account: who, health, quota, runway, and the
+      subscription with its QR, always on screen. The right side is the memberships as an accordion, each opening to its
+      own artifact. <b>More Information</b> is the second half of an opened item.</p>
+    <div class="frame"><div class="pad" id="s4"></div></div>
+    <p class="cost"><b>Cost:</b> low-medium. Two columns, one accordion.</p>
+  </div>
+
+  <!-- 05 -->
+  <div class="blk">
+    <div class="hd"><span class="n">05</span><h2>Carousel</h2><span class="tag">one thing at a time, at full size</span></div>
+    <p class="sub">A filmstrip of thumbnails, and the subscription is the first frame. Whatever you pick fills the stage
+      underneath at full size, so a QR is big enough to scan across a desk and a config is big enough to read.
+      <b>More Information</b> is a toggle on the stage.</p>
+    <div class="frame"><div class="pad" id="s5"></div></div>
+    <p class="cost"><b>Cost:</b> low. A strip, a stage, one selection.</p>
+  </div>
+
+  <div class="blk">
+    <div class="hd"><span class="n">06</span><h2>Notes</h2></div>
+    <p class="sub">
+      The subscription is per account and covers <b>5 of 6</b> inbounds here: GRE has no subscription entry at all, and the
+      credential VPNs appear in it only as a connection card that carries the endpoint and quota but cannot be dialled.
+      Every panel above says so next to the link rather than claiming full coverage.
+      Two memberships are deliberately broken in this fixture: IKEv2 has moved 0 B since it was created, and GRE is
+      switched off on its own inbound while the account is enabled.
+    </p>
+  </div>
+</div>
+
+<script>
+const A={ email:'k7m2x9qp4', ini:'K7', used:47.2, total:120, days:21, created:'2026-06-12',
+  sub:'https://de1.example-node.net:2097/sub/7f3a9c2e5b18d04a' };
+const PCT=Math.round(A.used/A.total*100);
+
+const M=[
+ {id:'m1',nm:'DE-Frankfurt-01',pr:'VLESS',kind:'Link',h:'ok',vd:'healthy',used:'31.4 GB',pct:66,
+  uri:'vless://a3f19c7e-6b48-4d2a-9f05-8c71e2b0d4a6@de1.example-node.net:11645?type=tcp&security=reality&pbk=Zx1Qn8dKt7Ry4Uw2Fm6Bp0&fp=chrome&sni=www.cloudflare.com&sid=6ba85179&flow=xtls-rprx-vision#k7m2x9qp4',
+  tech:[['Address','de1.example-node.net'],['Port','11645'],['Security','reality'],['SNI','www.cloudflare.com'],['Flow','xtls-rprx-vision'],['UUID','a3f19c7e-6b48-4d2a-9f05-8c71e2b0d4a6']]},
+ {id:'m2',nm:'DE-Frankfurt-WG',pr:'WireGuard',kind:'2 config files',h:'ok',vd:'healthy',used:'12.8 GB',pct:27,
+  conf:'[Interface]\nPrivateKey = 8Jq2...redacted\nAddress = 10.12.4.7/32\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = Rk9v...redacted\nEndpoint = de1.example-node.net:51820\nAllowedIPs = 0.0.0.0/0',
+  tech:[['Endpoint','de1.example-node.net:51820'],['Address','10.12.4.7/32'],['Devices','phone, laptop'],['Keys','server-minted']]},
+ {id:'m3',nm:'NL-Ams-L2TP',pr:'L2TP/IPsec',kind:'Credentials',h:'ok',vd:'healthy',used:'2.9 GB',pct:6,
+  creds:[['Server','nl1.example-node.net'],['Username','k7m2x9qp4'],['Password','Tq7-vR2mLp9x']],
+  tech:[['Server','nl1.example-node.net'],['IPsec PSK','shared, inbound-wide'],['MTU','1400']]},
+ {id:'m4',nm:'NL-Ams-IKEv2',pr:'IKEv2 (PSK)',kind:'Pre-shared key',h:'warn',vd:'never connected',used:'0 B',pct:0,
+  creds:[['Server','nl1.example-node.net'],['Remote ID','vpn.example.com'],['PSK','9dK2mQ7vXr4Tb1Ns']],
+  note:'0 bytes since it was created 21 days ago. Almost always a client that never completed a handshake.',
+  tech:[['Auth','PSK'],['Remote ID','vpn.example.com'],['Username','withheld: the PSK is the credential'],['Proposal','aes256-sha256-modp2048']]},
+ {id:'m5',nm:'TG-Relay',pr:'MTProto',kind:'3 links',h:'ok',vd:'healthy',used:'118 MB',pct:1,modes:true,
+  links:[['Classic','tg://proxy?server=tg.example-node.net&port=443&secret=dd7f3a9c2e5b18d04a'],
+         ['DD (Secure)','tg://proxy?server=tg.example-node.net&port=443&secret=dd8e1b4c7a2f95d603'],
+         ['FakeTLS (EE)','tg://proxy?server=tg.example-node.net&port=443&secret=ee5c9d2a7b4e18f036']],
+  tech:[['Relay','tg.example-node.net:443'],['Modes','classic, secure, faketls'],['FakeTLS domain','www.cloudflare.com']]},
+ {id:'m6',nm:'Router-GRE',pr:'GRE',kind:'Nothing to give',h:'err',vd:'disabled here',used:'0 B',pct:0,
+  note:'Switched off on this inbound while the account itself is enabled.',
+  tech:[['Local','10.200.0.1/30'],['Remote','10.200.0.2/30'],['Peer','203.0.113.44'],['MSS clamp','1360']]},
+];
+const BAD=M.filter(m=>m.h!=='ok').length;
+
+/* ---------- shared pieces ---------- */
+const subQR = s => `<div class="qr" style="width:${s}px;height:${s}px;"></div>`;
+
+const subBlock = (size, stacked) => `
+  <div style="display:flex;gap:14px;align-items:${stacked?'flex-start':'center'};${stacked?'flex-direction:column;':''}">
+    ${subQR(size)}
+    <div style="flex:1 1 auto;min-width:0;width:100%;">
+      <div class="lbl" style="margin-bottom:5px;">Subscription</div>
+      <div class="link">${A.sub}</div>
+      <div class="bs" style="margin-top:8px;">
+        <button class="b p">Copy link</button><button class="b">Save QR</button>
+        <button class="b">JSON</button><button class="b">Clash</button>
+      </div>
+      <div class="dim" style="margin-top:7px;">Covers 5 of 6 inbounds. GRE has no subscription entry.</div>
+    </div>
+  </div>`;
+
+function artifact(m){
+  if(m.modes) return m.links.map(([l,u])=>`
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+      ${subQR(56)}
+      <div style="flex:1 1 auto;min-width:0;"><div class="lbl" style="margin-bottom:4px;">${l}</div><div class="link">${u}</div></div>
+    </div>`).join('');
+  if(m.uri) return `<div style="display:flex;gap:12px;align-items:flex-start;">
+      ${subQR(96)}
+      <div style="flex:1 1 auto;min-width:0;"><div class="link">${m.uri}</div>
+        <div class="bs" style="margin-top:8px;"><button class="b p">Copy</button><button class="b">Enlarge QR</button></div></div></div>`;
+  if(m.conf) return `<div style="display:flex;gap:12px;align-items:flex-start;">
+      ${subQR(96)}
+      <div style="flex:1 1 auto;min-width:0;">
+        <div class="link" style="white-space:pre;line-height:1.5;max-height:92px;overflow:auto;">${m.conf}</div>
+        <div class="bs" style="margin-top:8px;"><button class="b p">Download phone.conf</button><button class="b">laptop.conf</button></div></div></div>`;
+  if(m.creds) return m.creds.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v mono">${v}</span></div>`).join('')
+    +`<div class="bs" style="margin-top:9px;"><button class="b p">Copy all</button></div>`;
+  return `<div class="dim">Nothing portable: GRE's peer is a router. Its Mikrotik and Linux recipes live in the GRE Setup modal.</div>`;
+}
+const techList = m => m.tech.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v mono">${v}</span></div>`).join('');
+const noteBlk = m => m.note?`<div class="chip ${m.h}" style="margin-bottom:9px;white-space:normal;line-height:1.45;">${m.note}</div>`:'';
+
+const healthBar = () => `
+  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <div style="flex:1 1 150px;min-width:120px;">
+      <div style="display:flex;justify-content:space-between;"><span class="lbl">Quota</span><span style="font-size:11px;color:var(--text-3)">${A.used} / ${A.total} GB</span></div>
+      <div class="bar" style="margin-top:4px;"><i style="width:${PCT}%"></i></div>
+    </div>
+    <div style="flex:1 1 150px;min-width:120px;">
+      <div style="display:flex;justify-content:space-between;"><span class="lbl">Runway</span><span style="font-size:11px;color:var(--text-3)">${A.days} days</span></div>
+      <div class="bar" style="margin-top:4px;"><i class="w" style="width:${A.days/30*100}%"></i></div>
+    </div>
+    ${BAD?`<span class="chip warn">${BAD} need attention</span>`:''}
+  </div>`;
+
+/* ============ 01 One Scan ============ */
+(function(){
+  const el=document.getElementById('s1'); let open=null;
+  function draw(){
+    el.innerHTML=`
+      <div style="display:flex;align-items:center;gap:11px;margin-bottom:12px;">
+        <div style="width:38px;height:38px;border-radius:10px;background:var(--brand-weak);color:var(--brand);
+          display:flex;align-items:center;justify-content:center;font-weight:800;">${A.ini}</div>
+        <div><div style="font-size:15px;font-weight:660;">${A.email}</div>
+          <div style="font-size:11px;color:var(--text-3);">6 inbounds &middot; created ${A.created}</div></div>
+        <span class="chip ok">online</span><span class="chip br">enabled</span>
+      </div>
+      <div class="os-hero">${subBlock(176)}</div>
+      <div style="margin:13px 0 11px;">${healthBar()}</div>
+      <div class="card os-rows">
+        <div style="padding:10px 12px;" class="lbl">Per inbound</div>
+        ${M.map(m=>`
+          <div class="r" data-r="${m.id}">
+            <span class="dot ${m.h==='ok'?'':m.h}"></span>
+            <span class="nm">${m.nm}</span>
+            <span class="pr">${m.pr}</span>
+            <span class="kd">${m.kind}${m.h!=='ok'?` &middot; <span style="color:var(--${m.h})">${m.vd}</span>`:''}</span>
+            <span style="font-size:11px;color:var(--text-3);">${m.used}</span>
+            <button class="b">Copy</button>
+            <span style="color:var(--text-3);">${open===m.id?'&#9662;':'&#9656;'}</span>
+          </div>
+          ${open===m.id?`<div class="os-exp">${noteBlk(m)}${artifact(m)}
+            <div class="lbl" style="margin:12px 0 6px;">More information</div>${techList(m)}</div>`:''}`).join('')}
+      </div>`;
+    el.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{open=open===b.dataset.r?null:b.dataset.r;draw();});
+  }
+  draw();
+})();
+
+/* ============ 02 Bento ============ */
+(function(){
+  const el=document.getElementById('s2'); let flip=null;
+  function draw(){
+    el.innerHTML=`
+      <div class="bento">
+        <div class="t sub">
+          <div style="display:flex;align-items:center;gap:9px;">
+            <div style="width:32px;height:32px;border-radius:9px;background:var(--brand-weak);color:var(--brand);
+              display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;">${A.ini}</div>
+            <div><div style="font-weight:660;font-size:13.5px;">${A.email}</div>
+              <div style="font-size:10.5px;color:var(--text-3);">6 inbounds</div></div>
+            <span class="chip ok" style="margin-inline-start:auto;">online</span>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center;">
+            ${subQR(120)}
+            <div style="flex:1 1 auto;min-width:0;">
+              <div class="lbl" style="margin-bottom:5px;">Subscription</div>
+              <div class="link">${A.sub}</div>
+              <div class="bs" style="margin-top:7px;"><button class="b p">Copy</button><button class="b">Save QR</button></div>
+              <div class="bs" style="margin-top:5px;"><button class="b">JSON</button><button class="b">Clash</button></div>
+            </div>
+          </div>
+          <div class="dim">Covers 5 of 6 inbounds. GRE has no subscription entry.</div>
+        </div>
+
+        <div class="t"><div class="lbl">Quota</div><div class="big">${PCT}%</div>
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:6px;">${A.used} of ${A.total} GB</div>
+          <div class="bar"><i style="width:${PCT}%"></i></div></div>
+        <div class="t"><div class="lbl">Runway</div><div class="big">${A.days}d</div>
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:6px;">of a 30 day cycle</div>
+          <div class="bar"><i class="w" style="width:${A.days/30*100}%"></i></div></div>
+        <div class="t wide" style="display:flex;align-items:center;gap:10px;">
+          <span class="chip warn">${BAD} need attention</span>
+          <span style="font-size:11.5px;color:var(--text-2);">IKEv2 never connected &middot; GRE disabled on its inbound</span>
+        </div>
+
+        ${M.map(m=>`
+          <div class="t mem" data-m="${m.id}">
+            <div class="h"><span class="dot ${m.h==='ok'?'':m.h}"></span><span class="nm">${m.nm}</span>
+              <span style="margin-inline-start:auto;font-size:10.5px;color:var(--text-3);">${m.used}</span></div>
+            ${flip===m.id
+              ? `<div style="font-size:10.5px;">${m.tech.slice(0,3).map(([k,v])=>`<div style="display:flex;gap:6px;"><span style="color:var(--text-3);flex:0 0 62px;">${k}</span><span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${v}</span></div>`).join('')}</div>`
+              : `<div style="font-size:10.5px;color:var(--text-3);">${m.pr}</div>
+                 <div class="chip" style="align-self:flex-start;">${m.kind}</div>
+                 ${m.h!=='ok'?`<div class="chip ${m.h}" style="align-self:flex-start;">${m.vd}</div>`:''}`}
+            <div class="bs" style="margin-top:auto;">
+              ${m.kind==='Nothing to give'?'<button class="b">Setup</button>':'<button class="b p">Copy</button>'}
+              <button class="b">${flip===m.id?'Back':'Info'}</button></div>
+          </div>`).join('')}
+      </div>`;
+    el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{flip=flip===b.dataset.m?null:b.dataset.m;draw();});
+  }
+  draw();
+})();
+
+/* ============ 03 Ledger ============ */
+(function(){
+  const el=document.getElementById('s3'); let open=null;
+  function draw(){
+    el.innerHTML=`
+      <div class="lg-band">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:34px;height:34px;border-radius:9px;background:var(--brand-weak);color:var(--brand);
+            display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;">${A.ini}</div>
+          <div><div style="font-weight:660;font-size:14px;">${A.email}</div>
+            <div style="font-size:10.5px;color:var(--text-3);">6 inbounds &middot; created ${A.created}</div></div>
+        </div>
+        <span class="chip ok">online</span>
+        <div style="flex:1 1 130px;min-width:110px;">
+          <div style="display:flex;justify-content:space-between;"><span class="lbl">Quota</span><span style="font-size:10.5px;color:var(--text-3)">${A.used}/${A.total} GB</span></div>
+          <div class="bar" style="margin-top:3px;"><i style="width:${PCT}%"></i></div></div>
+        <div style="flex:1 1 130px;min-width:110px;">
+          <div style="display:flex;justify-content:space-between;"><span class="lbl">Runway</span><span style="font-size:10.5px;color:var(--text-3)">${A.days} days</span></div>
+          <div class="bar" style="margin-top:3px;"><i class="w" style="width:${A.days/30*100}%"></i></div></div>
+        <span class="chip warn">${BAD} need attention</span>
+        <div style="flex:1 1 260px;min-width:220px;display:flex;gap:9px;align-items:center;">
+          ${subQR(52)}
+          <div style="flex:1 1 auto;min-width:0;">
+            <div class="lbl" style="margin-bottom:3px;">Subscription &middot; 5 of 6 inbounds</div>
+            <div class="link">${A.sub}</div>
+            <div class="bs" style="margin-top:5px;"><button class="b p">Copy</button><button class="b">Save QR</button><button class="b">JSON</button><button class="b">Clash</button></div>
+          </div>
+        </div>
+      </div>
+      <table class="lg-tbl">
+        <thead><tr><th style="width:26px;"></th><th>Inbound</th><th>Protocol</th><th>Used</th><th>What it gives</th><th>State</th><th style="text-align:end;">Actions</th></tr></thead>
+        <tbody>
+          ${M.map(m=>`
+            <tr class="x" data-r="${m.id}">
+              <td><span class="dot ${m.h==='ok'?'':m.h}"></span></td>
+              <td style="font-weight:620;">${m.nm}</td>
+              <td style="color:var(--text-3);">${m.pr}</td>
+              <td>${m.used}</td>
+              <td><span class="chip">${m.kind}</span></td>
+              <td>${m.h==='ok'?'<span style="color:var(--ok)">healthy</span>':`<span style="color:var(--${m.h})">${m.vd}</span>`}</td>
+              <td style="text-align:end;white-space:nowrap;">
+                ${m.kind==='Nothing to give'?'<button class="b">Setup</button>':'<button class="b p">Copy</button>'}
+                <button class="b">${open===m.id?'Hide':'Info'}</button></td>
+            </tr>
+            ${open===m.id?`<tr><td class="exp" colspan="7">${noteBlk(m)}${artifact(m)}
+              <div class="lbl" style="margin:12px 0 6px;">More information</div>${techList(m)}</td></tr>`:''}`).join('')}
+        </tbody>
+      </table>`;
+    el.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{open=open===b.dataset.r?null:b.dataset.r;draw();});
+  }
+  draw();
+})();
+
+/* ============ 04 Dossier ============ */
+(function(){
+  const el=document.getElementById('s4'); let open='m4';
+  function draw(){
+    el.innerHTML=`<div class="dos">
+      <div class="dos-l">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="width:38px;height:38px;border-radius:10px;background:var(--brand-weak);color:var(--brand);
+            display:flex;align-items:center;justify-content:center;font-weight:800;">${A.ini}</div>
+          <div><div style="font-weight:660;font-size:14px;">${A.email}</div>
+            <div style="font-size:10.5px;color:var(--text-3);">created ${A.created}</div></div>
+        </div>
+        <div class="bs" style="margin-bottom:12px;"><span class="chip ok">online</span><span class="chip br">enabled</span>
+          ${BAD?`<span class="chip warn">${BAD} need attention</span>`:''}</div>
+        ${subBlock(150,true)}
+        <div style="border-top:1px solid var(--border);margin:13px 0;"></div>
+        <div style="margin-bottom:9px;">
+          <div style="display:flex;justify-content:space-between;"><span class="lbl">Quota</span><span style="font-size:11px;color:var(--text-3)">${A.used} / ${A.total} GB</span></div>
+          <div class="bar" style="margin-top:4px;"><i style="width:${PCT}%"></i></div></div>
+        <div>
+          <div style="display:flex;justify-content:space-between;"><span class="lbl">Runway</span><span style="font-size:11px;color:var(--text-3)">${A.days} days</span></div>
+          <div class="bar" style="margin-top:4px;"><i class="w" style="width:${A.days/30*100}%"></i></div></div>
+        <div style="border-top:1px solid var(--border);margin:13px 0;"></div>
+        <div class="kv"><span class="k">Inbounds</span><span class="v">6</span></div>
+        <div class="kv"><span class="k">IP limit</span><span class="v">3 devices</span></div>
+        <div class="kv"><span class="k">Reset</span><span class="v">monthly</span></div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:8px;">Memberships</div>
+        ${M.map(m=>`
+          <div class="acc-item">
+            <div class="acc-h" data-r="${m.id}">
+              <span class="dot ${m.h==='ok'?'':m.h}"></span>
+              <span class="nm">${m.nm}</span>
+              <span style="font-size:10.5px;color:var(--text-3);">${m.pr}</span>
+              <span class="chip" style="margin-inline-start:auto;">${m.kind}</span>
+              <span style="font-size:10.5px;color:var(--text-3);">${m.used}</span>
+              <span style="color:var(--text-3);">${open===m.id?'&#9662;':'&#9656;'}</span>
+            </div>
+            ${open===m.id?`<div class="acc-b">${noteBlk(m)}${artifact(m)}
+              <div class="lbl" style="margin:12px 0 6px;">More information</div>${techList(m)}</div>`:''}
+          </div>`).join('')}
+      </div>
+    </div>`;
+    el.querySelectorAll('[data-r]').forEach(b=>b.onclick=()=>{open=open===b.dataset.r?null:b.dataset.r;draw();});
+  }
+  draw();
+})();
+
+/* ============ 05 Carousel ============ */
+(function(){
+  const el=document.getElementById('s5'); let sel='sub', tech=false;
+  function draw(){
+    const m=sel==='sub'?null:M.find(x=>x.id===sel);
+    el.innerHTML=`
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:11px;">
+        <div style="width:34px;height:34px;border-radius:9px;background:var(--brand-weak);color:var(--brand);
+          display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;">${A.ini}</div>
+        <div><div style="font-weight:660;font-size:14px;">${A.email}</div>
+          <div style="font-size:10.5px;color:var(--text-3);">6 inbounds &middot; ${A.used}/${A.total} GB &middot; ${A.days} days left</div></div>
+        <span class="chip ok">online</span>
+        ${BAD?`<span class="chip warn">${BAD} need attention</span>`:''}
+      </div>
+      <div class="film">
+        <div class="fi ${sel==='sub'?'on':''}" data-t="sub">
+          <div class="th qr"></div><div class="nm">Subscription</div><div class="st">all apps</div></div>
+        ${M.map(m=>`<div class="fi ${sel===m.id?'on':''}" data-t="${m.id}">
+          <div class="th ${m.kind==='Nothing to give'?'':'qr'}" style="${m.kind==='Nothing to give'?'border:1px dashed var(--border-strong);background:repeating-linear-gradient(45deg,transparent 0 6px,var(--border) 6px 7px);':''}"></div>
+          <div class="nm">${m.nm}</div>
+          <div class="st" style="${m.h!=='ok'?`color:var(--${m.h})`:''}">${m.h==='ok'?m.pr:m.vd}</div></div>`).join('')}
+      </div>
+      <div class="stagebig">
+        ${sel==='sub'
+          ? `${subQR(212)}
+             <div style="flex:1 1 auto;min-width:0;">
+               <div style="font-size:16px;font-weight:660;margin-bottom:3px;">Subscription</div>
+               <div class="dim" style="margin-bottom:11px;">One link, every app. Covers 5 of 6 inbounds: GRE has no subscription entry.</div>
+               <div class="link">${A.sub}</div>
+               <div class="bs" style="margin-top:10px;">
+                 <button class="b p">Copy link</button><button class="b">Save QR</button>
+                 <button class="b">JSON</button><button class="b">Clash</button></div>
+               <div class="lbl" style="margin:16px 0 6px;">Also in this account</div>
+               <div style="font-size:12px;color:var(--text-2);">6 memberships, ${BAD} needing attention.</div>
+             </div>`
+          : `<div style="flex:1 1 auto;min-width:0;">
+               <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:3px;">
+                 <span style="font-size:16px;font-weight:660;">${m.nm}</span>
+                 <span class="chip">${m.pr}</span>
+                 ${m.h!=='ok'?`<span class="chip ${m.h}">${m.vd}</span>`:''}
+                 <button class="b" data-tech style="margin-inline-start:auto;">${tech?'Artifact':'More information'}</button>
+               </div>
+               <div class="dim" style="margin-bottom:11px;">${m.kind} &middot; ${m.used} used</div>
+               ${noteBlk(m)}
+               ${tech?techList(m):artifact(m)}
+             </div>`}
+      </div>`;
+    el.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{sel=b.dataset.t;tech=false;draw();});
+    el.querySelectorAll('[data-tech]').forEach(b=>b.onclick=()=>{tech=!tech;draw();});
+  }
+  draw();
+})();
+
+/* theme */
+(function(){
+  const b=document.getElementById('theme');
+  const o=['system','light','dark'], n={system:'Theme: system',light:'Theme: light',dark:'Theme: dark'};
+  let i=0;
+  b.onclick=()=>{ i=(i+1)%o.length; const t=o[i];
+    if(t==='system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme',t);
+    b.textContent=n[t]; };
+})();
+</script>
+</body>
+</html>

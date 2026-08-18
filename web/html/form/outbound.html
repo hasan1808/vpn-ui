@@ -386,9 +386,12 @@
           </a-select>
         </a-form-item>
         <a-form-item label="MTU">
+          <!-- :min, not min. The string form is an HTML attribute antd's
+               InputNumber never reads, so this box had no lower bound at all
+               while every field in the VPN block below is bound with :min. -->
           <a-input-number
             v-model.number="outbound.settings.mtu"
-            min="0"
+            :min="0"
           ></a-input-number>
         </a-form-item>
         <a-form-item label="Workers">
@@ -666,11 +669,19 @@
               >{{ i18n "pages.xray.outbound.vpnOutClear" }}</a-button
             >
           </template>
+          <!-- The placeholder is what a BLANK number resolves to on the Go side, and
+               blank is a real answer for most of them: settingsPayload() drops an
+               empty number from the POST precisely so the driver applies its own
+               default. Bound here because it was not, which made every `placeholder`
+               in VPN_OUT_KINDS dead text for a number field: the MTU boxes offered no
+               hint at all, and the operator's only way to learn the default was to
+               type a wrong value and read the error. -->
           <a-input-number
             v-else-if="f.type === 'number'"
             v-model.number="outbound.settings.params[f.name]"
             :min="f.min"
             :max="f.max"
+            :placeholder="f.placeholder"
           ></a-input-number>
           <a-switch
             v-else-if="f.type === 'switch'"
@@ -2114,6 +2125,35 @@
         <a-switch v-model="outbound.stream.sockoptSwitch"></a-switch>
       </a-form-item>
       <template v-if="outbound.stream.sockoptSwitch">
+        <!-- THE one chaining control, offered on every outbound including a VPN
+             tunnel, because "send this through that" is one question and deserves
+             one answer. It means the same thing everywhere and is delivered two
+             different ways:
+
+             On an ordinary outbound Xray handles it. DialSystem returns redirect()
+             into the named tag's handler, which dials with THAT outbound's
+             streamSettings, so naming a tunnel here sends this outbound through the
+             tunnel's device. Measured on this box: a freedom outbound with
+             dialerProxy set to a live OpenVPN tunnel's tag exited at the tunnel's
+             address, not the host's.
+
+             On a VPN tunnel row, and on an SSH tunnel row, the panel handles it,
+             because Xray cannot: the tunnel's outer transport is dialled by a client
+             daemon, not by the core. Saving posts this value as the tunnel's `via`,
+             and the panel installs the ip rules that steer that daemon's packets into
+             the carrier's table (web/service/vpnoutvia.go). The key itself is stripped
+             from the emitted config, where it would cancel the interface pin -
+             deliberate, and explained at vpnOutStreamSettings.
+
+             ANY tag may be named here now, not only another tunnel. The panel resolves
+             it to a device three ways (web/service/vpnoutcarrier.go): a tunnel uses its
+             own netdev; a freedom outbound with an Interface is already a device; and
+             any other outbound gets a tun device the core attaches to, whose traffic
+             leaves through that outbound. The first two carry anything, including GRE
+             and ESP. The third carries TCP and UDP only, which is measured, so a tunnel
+             whose outer transport is neither is refused at save, naming the protocol
+             and what to change - PPTP's data channel is raw GRE and has no such
+             setting, so for PPTP the answer is one of the first two. -->
         <a-form-item label="Dialer Proxy">
           <a-select
             v-model="outbound.stream.sockopt.dialerProxy"
@@ -2140,13 +2180,28 @@
             :min="0"
           ></a-input-number>
         </a-form-item>
+        <!-- Disabled while a dialerProxy is set, because it is not merely
+             outranked, it is never read: DialSystem returns redirect() as soon as
+             it sees a dialerProxy, and effectiveSystemDialer.Dial - the only caller
+             of applyOutboundSocketOptions, which is the only place SO_BINDTODEVICE
+             happens - is below that return. Measured on this box: interface alone
+             exits 216.147.121.163 (the host WAN device it names), the same
+             interface plus a dialerProxy exits 65.109.217.240 (the dialerProxy's
+             tunnel). An enabled field that silently does nothing is the trap. -->
         <a-form-item
           v-if="!isVpnProtocol(outbound.protocol)"
           label="Interface Name"
         >
           <a-input
             v-model.trim="outbound.stream.sockopt.interfaceName"
+            :disabled="!!outbound.stream.sockopt.dialerProxy"
           ></a-input>
+          <div
+            v-if="!!outbound.stream.sockopt.dialerProxy"
+            :style="{ opacity: 0.65, fontSize: '12px', lineHeight: '1.5', marginTop: '4px' }"
+          >
+            {{ i18n "pages.xray.outbound.interfaceIgnoredByDialerProxy" }}
+          </div>
         </a-form-item>
         <a-form-item label="Route Mark">
           <a-input-number

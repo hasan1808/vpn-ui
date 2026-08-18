@@ -246,19 +246,14 @@
             </a-textarea>
         </a-form>
     </a-form-item>
-    <a-form-item v-if="inbound.canEnableTlsFlow()" label="Flow">
-        <a-select
-            v-model="client.flow"
-            :dropdown-class-name="themeSwitcher.currentTheme"
-        >
-            <a-select-option value="" selected
-                >{{ i18n "none" }}</a-select-option
-            >
-            <a-select-option v-for="key in TLS_FLOW_CONTROL" :value="key"
-                >[[ key ]]</a-select-option
-            >
-        </a-select>
-    </a-form-item>
+    <!-- The per-client Flow picker used to sit here. It is gone rather than merely
+         hidden: flow now belongs to the inbound (form/protocol/vless.html) and every
+         client entry is a mirror of that one value, so a picker here would let an
+         operator choose something the next save silently overwrites. It was only
+         ever reachable for the seed client of a NEW vless inbound anyway, since the
+         clients moved to their own page and vless.html lists them read-only once the
+         inbound exists, which is what left an existing inbound with no way to turn
+         vision on at all. -->
     <a-form-item>
         <template slot="label">
             <a-tooltip>
@@ -402,146 +397,13 @@
         </a-form-item>
     </template>
 
-    <!-- MTProto Proxy: per-account settings. These are per CLIENT, not per inbound,
-         because the proxy keys them off the authenticated secret rather than the
-         socket, so one inbound can serve accounts with different modes and links. -->
+    <!-- MTProto Proxy: the ONE per-account setting left. Connection modes, the FakeTLS
+         domain, the ad tag and the device cap all belong to the inbound now (see
+         form/protocol/mtproto.html), because the proxy applies them process-wide
+         however they are stored. External Proxy is genuinely per account: it only
+         picks which relay endpoint this account's links advertise. -->
     <template v-if="inbound.protocol === Protocols.MTPROTO">
-        <a-divider>MTProto Proxy</a-divider>
-
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        The original obfuscated transport (no secret prefix). Widely
-                        supported but the easiest for DPI to fingerprint. Off means the
-                        proxy refuses this account's plain secret.
-                    </template>
-                    Classic Mode
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <!--
-                Guarded rather than v-model: an account with every mode off cannot be
-                dialed by anything, so the backend drops it from the proxy config
-                entirely. Refusing the last one here (instead of warning after the
-                fact) keeps that state unreachable. See the sibling switches.
-            -->
-            <a-switch
-                :checked="client.modeClassic"
-                @change="v => v || client.modeSecure || client.modeTls
-                    ? client.modeClassic = v
-                    : $message.warning(MTPROTO_LAST_MODE_WARNING)"
-            ></a-switch>
-        </a-form-item>
-
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        Random-padding mode ("dd" secret prefix). Hides packet-length
-                        patterns from DPI.
-                    </template>
-                    Secure Mode (dd)
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-switch
-                :checked="client.modeSecure"
-                @change="v => v || client.modeClassic || client.modeTls
-                    ? client.modeSecure = v
-                    : $message.warning(MTPROTO_LAST_MODE_WARNING)"
-            ></a-switch>
-        </a-form-item>
-
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        FakeTLS ("ee" secret prefix): traffic looks like an ordinary
-                        HTTPS session to the domain below. The most censorship-resistant
-                        mode.
-                    </template>
-                    FakeTLS Mode (ee)
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-switch
-                :checked="client.modeTls"
-                @change="v => v || client.modeClassic || client.modeSecure
-                    ? client.modeTls = v
-                    : $message.warning(MTPROTO_LAST_MODE_WARNING)"
-            ></a-switch>
-        </a-form-item>
-
-        <a-form-item v-if="client.modeTls">
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        The domain this account's FakeTLS link impersonates, encoded into
-                        its ee secret. Pick a real, reachable HTTPS site that is plausible
-                        for the user and not itself blocked. Changing it invalidates the
-                        ee link already handed out.
-                    </template>
-                    FakeTLS Domain
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input
-                v-model.trim="client.tlsDomain"
-                placeholder="www.google.com"
-            ></a-input>
-        </a-form-item>
-
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        Max simultaneous client IPs for this account, enforced by the
-                        proxy itself (the excess connection is refused). 0 means no
-                        limit. Named for what it counts: devices sharing one IP behind
-                        NAT count as one, so this caps addresses, not devices.
-                    </template>
-                    IP Limit
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                v-model.number="client.userLimit"
-                :min="0"
-                :max="64"
-            ></a-input-number>
-        </a-form-item>
-
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        Promote a sponsored channel for this account with a tag from
-                        @MTProxybot. Read the warning before enabling: it turns Xray
-                        routing off for every account on this inbound.
-                    </template>
-                    Ad Tag
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-switch v-model="client.adtagEnable"></a-switch>
-        </a-form-item>
-
-        <a-alert
-            v-if="client.adtagEnable"
-            type="warning"
-            show-icon
-            :style="{ marginBottom: '16px' }"
-            message="Ad Tag turns off Xray routing for the WHOLE inbound"
-            description="An ad tag only counts if traffic goes through Telegram's middle-proxy relays, and that path is a property of the proxy process, not of one account. So enabling it here also stops every OTHER account on this inbound from being routed through Xray: they all egress directly from this server instead. Telegram derives the middle-proxy key from this server's own outgoing IP and port, which any proxied egress would change. Everything else (usage, quota, IP Limit, per-account modes) works the same either way."
-        ></a-alert>
-
-        <a-form-item v-if="client.adtagEnable" label="Ad Tag">
-            <a-input
-                v-model.trim="client.adtag"
-                placeholder="32 hex characters from @MTProxybot"
-            ></a-input>
-        </a-form-item>
+        <div class="bo-if-sub">MTProto Proxy</div>
 
         <a-form-item>
             <template slot="label">
@@ -549,7 +411,8 @@
                     <template slot="title">
                         Hand out links pointing at a relay/CDN host:port instead of this
                         server's own address. Affects this account's links only; the proxy
-                        itself is unchanged.
+                        itself is unchanged. Set here it REPLACES the inbound's own
+                        External Proxy for this account; leave it off to use that.
                     </template>
                     External Proxy
                     <a-icon type="question-circle"></a-icon>

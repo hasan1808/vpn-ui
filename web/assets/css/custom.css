@@ -2124,12 +2124,6 @@ li.ant-calendar-time-picker-select-option-selected {
   font-weight:500;
 }
 
-.client-popup-item {
-  display:flex;
-  align-items:center;
-  gap:5px;
-}
-
 .online-animation .ant-badge-status-dot {
   animation:onlineAnimation 1.2s linear infinite;
 }

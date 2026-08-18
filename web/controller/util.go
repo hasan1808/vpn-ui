@@ -113,7 +113,6 @@ func html(c *gin.Context, name string, title string, data gin.H) {
 	data["host"] = browserHost(c)
 	data["request_uri"] = c.Request.RequestURI
 	data["base_path"] = c.GetString("base_path")
-	data["cur_ver"] = config.GetVersion()
 	// Every page funnels through here and includes the sidebar with the dot, so
 	// putting the caller's permissions in once makes them available panel-wide with
 	// no round trip and no nav flicker on first paint.
@@ -165,6 +164,12 @@ func templatePerms(c *gin.Context) map[string]bool {
 		perms[d.Slug] = user.Can(d.Bit)
 	}
 	perms["superAdmin"] = user.IsSuperAdmin
+	// The overview asks two questions -- "may this page be opened?" and "may it
+	// act?" -- and the two roles answer them from different columns: an admin from
+	// the permission bits, a reseller from their profile, whose stored mask Can()
+	// ignores by design. Resolving that here keeps it out of the templates, which
+	// would otherwise have to spell the disjunction at every control and at the nav
+	// entry, and would get it wrong once.
 	if user.IsReseller {
 		perms["accessOverview"], perms["manageOverview"] = resellerOverviewGrants(user)
 	}
@@ -229,9 +234,14 @@ func templateReseller(c *gin.Context) map[string]any {
 }
 
 // getContext adds version and other context data to the provided gin.H.
+//
+// cur_ver is the release version, shown to the operator. asset_ver is what the
+// `assets/...?` query strings carry: a separate value because it has to change on
+// every build whose assets differ, which the release version does not.
 func getContext(h gin.H) gin.H {
 	a := gin.H{
-		"cur_ver": config.GetVersion(),
+		"cur_ver":   config.GetVersion(),
+		"asset_ver": config.GetAssetVersion(),
 	}
 	for key, value := range h {
 		a[key] = value

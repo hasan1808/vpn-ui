@@ -23,7 +23,8 @@ import (
 // systemd path exactly as before — byte-for-byte unchanged.
 
 const (
-	// ipsecConnName is the connection GenerateIPsecConfig writes (conn l2tp-psk).
+	// ipsecConnName is the panel-wide connection GenerateIPsecConfig writes (conn
+	// l2tp-psk), and the prefix of the per-inbound ones (conn l2tp-psk-<id>).
 	ipsecConnName = "l2tp-psk"
 	// plutoCtl is the bundled pluto's control socket; DEFAULT_RUNDIR=/run/pluto is
 	// compiled into pluto, and addconn/whack talk to this socket.
@@ -143,13 +144,42 @@ func startBundledPluto() error {
 
 	// Loading a conn needs pluto's control socket, which appears ~1s after start.
 	if waitForPath(plutoCtl, 8*time.Second) {
-		if out, err := exec.Command(backend.IpsecBundled, "auto", "--add", ipsecConnName).CombinedOutput(); err != nil {
-			logger.Warning("bundled ipsec auto --add:", err, strings.TrimSpace(string(out)))
+		// EVERY conn in the file, not the one name this used to hardcode: L2TP writes
+		// one connection per inbound when each has its own listen address, and
+		// `auto --add l2tp-psk` against a file that only holds l2tp-psk-3 and l2tp-psk-4
+		// loads nothing at all ("no connection named"). Read back what was written
+		// rather than recomputing it, so an operator override is loaded too.
+		conf, _ := os.ReadFile("/etc/ipsec.conf")
+		for _, name := range ipsecConnNames(string(conf)) {
+			if out, err := exec.Command(backend.IpsecBundled, "auto", "--add", name).CombinedOutput(); err != nil {
+				logger.Warning("bundled ipsec auto --add", name+":", err, strings.TrimSpace(string(out)))
+			}
 		}
 	} else {
 		logger.Warning("bundled pluto: control socket never appeared at", plutoCtl)
 	}
 	return nil
+}
+
+// ipsecConnNames lists the connections defined in an ipsec.conf, in file order. Falls
+// back to the panel-wide name when the file could not be read or defines nothing, so a
+// missing file behaves exactly as the hardcoded name did.
+func ipsecConnNames(conf string) []string {
+	var out []string
+	for _, line := range strings.Split(conf, "\n") {
+		// `conn` is only a section header at column 0; the keywords inside a stanza are
+		// indented, and `config setup` is not a conn.
+		if !strings.HasPrefix(line, "conn ") {
+			continue
+		}
+		if name := strings.TrimSpace(strings.TrimPrefix(line, "conn ")); name != "" {
+			out = append(out, name)
+		}
+	}
+	if len(out) == 0 {
+		return []string{ipsecConnName}
+	}
+	return out
 }
 
 // stopBundledPluto stops the panel-managed pluto child (best-effort clean IKE

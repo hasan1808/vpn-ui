@@ -52,7 +52,11 @@ var knownMissing = keySet(
 	"pages.index.updateNow", "pages.index.updateConfirm", "pages.index.updateStarted",
 	"pages.index.updateDownloading", "pages.index.updateInstalling", "pages.index.updateRestarting",
 	"pages.index.updateCancel", "pages.index.panelUpdate",
-	"pages.index.updateCancelling",
+	"pages.index.updateCancelling", "pages.index.updateFailed",
+	"pages.index.geofileAutoUpdate", "pages.index.geofileAutoUpdateDesc",
+	"pages.index.geofileRestarting", "pages.index.geofileRunDone",
+	"pages.index.geofileRunStarting",
+	"pages.index.geofileRunFailed",
 	"pages.index.updateFromFile", "pages.index.updateUploading", "pages.index.updateStaged",
 	"pages.index.updateChecking",
 	"pages.index.manualUpdate", "pages.index.updateFromUrl",
@@ -66,14 +70,6 @@ var knownMissing = keySet(
 	"pages.index.virtualized", "pages.index.virtYes", "pages.index.virtNo",
 	"pages.index.panelLocation", "pages.index.panelLocationError",
 	"pages.index.virtContainer",
-	// The outbound connectivity card + auto-test: newly added, only en_US + fa_IR
-	// translated so far; the English fallback carries the rest.
-	"pages.index.outbounds", "pages.index.outboundTestAll",
-	"pages.xray.outbound.testAll",
-
-	// The VPN-tunnel IPv6 master switch (phase 1 groundwork): only en_US + fa_IR
-	// translated so far; the English fallback carries the rest.
-	"pages.settings.vpnIpv6", "pages.settings.vpnIpv6Desc",
 
 	"pages.core.absent", "pages.core.actions", "pages.core.consoleTitle",
 	"pages.core.cores", "pages.core.disabled", "pages.core.editConfig",
@@ -123,13 +119,11 @@ var knownMissing = keySet(
 	"pages.settings.service.statusDesc", "pages.settings.service.unit",
 	"pages.settings.service.unitDesc", "pages.settings.serviceSettings",
 
-	// Subscription output templates: newly added, only en_US + fa_IR translated
-	// so far; the English fallback carries the rest until translations land.
-	"pages.settings.subTemplate", "pages.settings.subTemplateDesc",
-	"pages.settings.subTemplateCustom", "pages.settings.subTemplatePreview",
-	"pages.settings.subTemplatePreviewDesc", "pages.settings.subTemplatePreviewAccount",
-	"pages.settings.subTemplateNoAccounts", "pages.settings.subCustomTemplate",
-	"pages.settings.subCustomTemplateDesc", "pages.settings.subTemplateVars",
+	"pages.resellers.deleteHasAccounts", "pages.resellers.deleteKeep",
+	"pages.resellers.deleteKeepDesc", "pages.resellers.deleteCascade",
+	"pages.resellers.deleteCascadeDesc",
+	"pages.resellers.allowOverviewManage", "pages.resellers.allowOverviewManageDesc",
+	"pages.admins.accessOverview", "pages.admins.manageOverview",
 
 	"pages.index.importForeignTitle", "pages.index.importForeignDesc",
 	"pages.index.importForeignConfirm",
@@ -154,6 +148,20 @@ var knownMissing = keySet(
 	// the stats switches the tunnels force on).
 	"pages.xray.outbound.vpnOutNoDriver", "pages.xray.outbound.vpnOutOpenCore",
 	"pages.xray.outbound.vpnOutSendThroughHelp",
+	// Dialling an OpenVPN tunnel through a SOCKS5 proxy: a proxy the client dials
+	// itself, which is the other half of the Dialer Proxy beside it.
+	"pages.xray.outbound.vpnOutSocksProxy", "pages.xray.outbound.vpnOutSocksProxyHelp",
+	"pages.xray.outbound.vpnOutSocksProxyPort", "pages.xray.outbound.vpnOutSocksProxyUser",
+	"pages.xray.outbound.vpnOutSocksProxyPass",
+	// The same feature for the two TLS-carried tunnels, whose clients have their own
+	// proxy support because a proxy-carried tunnel cannot be chained by routing.
+	// OpenConnect takes either scheme; the SSTP client takes HTTP CONNECT only and
+	// says so, because it accepts a socks URL and then fails as an unreachable proxy.
+	"pages.xray.outbound.vpnOutProxyHost", "pages.xray.outbound.vpnOutProxyType",
+	"pages.xray.outbound.vpnOutOcProxyHelp", "pages.xray.outbound.vpnOutProxyHelp",
+	// A dialer proxy cancels the interface pin beside it rather than composing with
+	// it, so that field is disabled and says why.
+	"pages.xray.outbound.interfaceIgnoredByDialerProxy",
 	"pages.xray.outbound.vpnOutImport", "pages.xray.outbound.vpnOutImportPick",
 	"pages.xray.outbound.vpnOutImportDone", "pages.xray.outbound.vpnOutImportEmpty",
 	"pages.xray.outbound.vpnOutImportUnreadable", "pages.xray.outbound.vpnOutImportMalformed",
@@ -195,6 +203,11 @@ var knownMissing = keySet(
 	"pages.xray.outbound.vpnOutAuthGroup", "pages.xray.outbound.vpnOutTotpSecret",
 	"pages.xray.outbound.vpnOutKeyPassword", "pages.xray.outbound.vpnOutNoDtls",
 	"pages.xray.outbound.vpnOutServerCert", "pages.xray.outbound.vpnOutOcProtocol",
+
+	// Bulk membership: adding the selected accounts to, or removing them from, a
+	// set of inbounds (component/bulkOpsModal).
+	"pages.inbounds.opAddInbounds", "pages.inbounds.opRemoveInbounds",
+	"pages.inbounds.bulkMembershipDesc", "pages.inbounds.bulkMembershipNoInbound",
 )
 
 // flattenKeys collapses nested TOML tables into dotted keys (e.g. "pages.core.title").

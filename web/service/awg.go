@@ -503,6 +503,9 @@ func (s *AwgService) rememberObfs(iface string, obfs awgObfs) {
 func (s *AwgService) ensureLink(iface string, mtu int, blockNet net.IP, prefix int) error {
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
+		// See wg-c's ensureLink: claimed before the LinkAdd so ownership is a record
+		// rather than an inference from the name.
+		ownIfaceCreated(iface, "awg")
 		la := netlink.NewLinkAttrs()
 		la.Name = iface
 		if mtu > 0 {
@@ -517,6 +520,8 @@ func (s *AwgService) ensureLink(iface string, mtu int, blockNet net.IP, prefix i
 		if link, err = netlink.LinkByName(iface); err != nil {
 			return err
 		}
+	} else if ownForbidsDelete(ownIface, iface) {
+		return fmt.Errorf("%s already exists and was not created by vpn-ui; not touching it", iface)
 	}
 	if blockNet != nil {
 		v4 := blockNet.To4()
@@ -531,6 +536,11 @@ func (s *AwgService) ensureLink(iface string, mtu int, blockNet net.IP, prefix i
 	return netlink.LinkSetUp(link)
 }
 
+// removeStaleLinks deletes every awg<id> interface not present in keep.
+//
+// Same fix as wg-c's: this matched a bare name prefix with no link-type check, so anything
+// at all on the host called "awg<something>" was deleted on the next reconcile tick. See
+// awgOwnsLink in ifaceown.go for the ownership test that replaced it.
 func (s *AwgService) removeStaleLinks(keep map[string]bool) {
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -538,8 +548,11 @@ func (s *AwgService) removeStaleLinks(keep map[string]bool) {
 	}
 	for _, l := range links {
 		name := l.Attrs().Name
-		if strings.HasPrefix(name, awgIfacePrefix) && !keep[name] {
-			_ = netlink.LinkDel(l)
+		if keep[name] || !awgOwnsLink(l) {
+			continue
+		}
+		if err := netlink.LinkDel(l); err == nil {
+			ownRemoveEntry(ownIface, name)
 		}
 	}
 }
@@ -550,11 +563,7 @@ func (s *AwgService) SetupRouting() error {
 	s.runCmd("sysctl", "-w", "net.ipv4.ip_forward=1")
 	s.runCmd("modprobe", amneziawgModule)
 
-	output, _ := exec.Command("ip", "rule", "show").Output()
-	if !strings.Contains(string(output), "fwmark 0x1 lookup 100") {
-		s.runCmd("ip", "rule", "add", "fwmark", "1", "lookup", "100")
-	}
-	s.runCmd("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", "100")
+	ensureVpnPolicyRoute(s.runCmd)
 	return s.nftService.ApplyNftRules()
 }
 
@@ -571,13 +580,16 @@ func (s *AwgService) AmneziawgAvailable() bool {
 }
 
 // AnyInterfaceUp reports whether at least one awg interface exists and is up.
+//
+// Ownership-checked like the stale-link sweep: a prefix match let an operator's own "awg0"
+// make the status row claim the AmneziaWG core was running.
 func (s *AwgService) AnyInterfaceUp() bool {
 	links, err := netlink.LinkList()
 	if err != nil {
 		return false
 	}
 	for _, l := range links {
-		if strings.HasPrefix(l.Attrs().Name, awgIfacePrefix) && l.Attrs().Flags&net.FlagUp != 0 {
+		if awgOwnsLink(l) && l.Attrs().Flags&net.FlagUp != 0 {
 			return true
 		}
 	}
@@ -603,6 +615,12 @@ type AwgClientConfig struct {
 	Remark      string `json:"remark"`
 	PublicKey   string `json:"publicKey"`
 	Config      string `json:"config"`
+	// PreSharedKey is this device's own preshared key, empty when PSK is off. See
+	// WgcClientConfig, same field for the same reason.
+	PreSharedKey string `json:"psk"`
+	// Host/Port mirror this config's own Endpoint= — see WgcClientConfig, same reason.
+	Host string `json:"host"`
+	Port int    `json:"port"`
 }
 
 func (o *awgSettings) dnsList() string {
@@ -673,6 +691,11 @@ func (s *AwgService) RenderClientConfigs(inbound *model.Inbound, email, endpoint
 				continue
 			}
 			cidr := ips[d] + "/32"
+			// Per device, not per endpoint: see WgcService.RenderClientConfigs.
+			psk := ""
+			if settings.PskEnable && strings.TrimSpace(dev.Psk) != "" {
+				psk = dev.Psk
+			}
 			for ti, t := range targets {
 				var b strings.Builder
 				b.WriteString("[Interface]\n")
@@ -692,8 +715,8 @@ func (s *AwgService) RenderClientConfigs(inbound *model.Inbound, email, endpoint
 				b.WriteString("H4 = " + obfs.H4 + "\n")
 				b.WriteString("\n[Peer]\n")
 				b.WriteString("PublicKey = " + settings.ServerPubKey + "\n")
-				if settings.PskEnable && strings.TrimSpace(dev.Psk) != "" {
-					b.WriteString("PresharedKey = " + dev.Psk + "\n")
+				if psk != "" {
+					b.WriteString("PresharedKey = " + psk + "\n")
 				}
 				b.WriteString(fmt.Sprintf("Endpoint = %s:%d\n", t.host, t.port))
 				b.WriteString("AllowedIPs = 0.0.0.0/0\n")
@@ -711,11 +734,14 @@ func (s *AwgService) RenderClientConfigs(inbound *model.Inbound, email, endpoint
 					remark += t.remark
 				}
 				out = append(out, AwgClientConfig{
-					DeviceIndex: d*len(targets) + ti,
-					IP:          cidr,
-					Remark:      remark,
-					PublicKey:   dev.PubKey,
-					Config:      b.String(),
+					DeviceIndex:  d*len(targets) + ti,
+					IP:           cidr,
+					Remark:       remark,
+					PublicKey:    dev.PubKey,
+					Config:       b.String(),
+					PreSharedKey: psk,
+					Host:         t.host,
+					Port:         t.port,
 				})
 			}
 		}

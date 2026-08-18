@@ -47,70 +47,145 @@
                 </a-card>
               </a-col>
               <a-col>
-                <a-tabs default-active-key="1">
-                  <a-tab-pane key="1" :style="{ paddingTop: '20px' }">
-                    <template #tab>
-                      <a-icon type="setting"></a-icon>
-                      <span>{{ i18n "pages.settings.panelSettings" }}</span>
-                    </template>
-                    {{ template "settings/panel/general" . }}
-                  </a-tab-pane>
-                  <a-tab-pane key="2" :style="{ paddingTop: '20px' }">
-                    <template #tab>
-                      <a-icon type="safety"></a-icon>
-                      <span>{{ i18n "pages.settings.securitySettings" }}</span>
-                    </template>
-                    {{ template "settings/panel/security" . }}
-                  </a-tab-pane>
-                  <a-tab-pane key="3" :style="{ paddingTop: '20px' }">
-                    <template #tab>
-                      <a-icon type="message"></a-icon>
-                      <span>{{ i18n "pages.settings.TGBotSettings" }}</span>
-                    </template>
-                    {{ template "settings/panel/telegram" . }}
-                  </a-tab-pane>
-                  <a-tab-pane key="4" :style="{ paddingTop: '20px' }">
-                    <template #tab>
-                      <a-icon type="cloud-server"></a-icon>
-                      <span>{{ i18n "pages.settings.subSettings" }}</span>
-                    </template>
-                    {{ template "settings/panel/subscription/general" . }}
-                  </a-tab-pane>
-                  <a-tab-pane key="5" v-if="allSetting.subJsonEnable || allSetting.subClashEnable" :style="{ paddingTop: '20px' }">
-                    <template #tab>
-                      <a-icon type="code"></a-icon>
-                      <span>{{ i18n "pages.settings.subSettings" }} (Formats)</span>
-                    </template>
-                    {{ template "settings/panel/subscription/json" . }}
-                  </a-tab-pane>
-                  <a-tab-pane key="6" :style="{ paddingTop: '20px' }">
-                    <template #tab>
-                      <a-icon type="cluster"></a-icon>
-                      <span>{{ i18n "pages.settings.serviceSettings" }}</span>
-                    </template>
-                    {{ template "settings/panel/service" . }}
-                  </a-tab-pane>
-                </a-tabs>
+                {{/*
+                  The section tree. Each entry below is one of the a-tab-panes
+                  this replaced, with its key, its icon and its label unchanged.
+                  The second level is not written here: SectionNavMixin reads it
+                  back out of each section's rendered a-collapse headers, so the
+                  panels stay the single source of their own names.
+                */}}
+                <div class="bo-secnav-layout">
+                  <nav class="bo-secnav" aria-label='{{ i18n "menu.settings"}}'>
+                    <div>
+                      <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === '1' }"
+                        :aria-current="sectionKey === '1'"
+                        @click="selectSection('1')">
+                        <a-icon type="setting"></a-icon>
+                        <span class="bo-secnav-label">{{ i18n "pages.settings.panelSettings" }}</span>
+                        <a-icon type="right" class="bo-secnav-chev"></a-icon>
+                      </button>
+                      <div class="bo-secnav-subs" v-if="sectionKey === '1'">
+                        <button type="button" class="bo-secnav-sub" v-for="s in sectionSubList" :key="s.i"
+                          :class="{ 'is-active': sectionSub === String(s.i) }"
+                          @click="gotoSectionSub(s.i)" v-text="s.label"></button>
+                      </div>
+                    </div>
+                    <div>
+                      <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === '2' }"
+                        :aria-current="sectionKey === '2'"
+                        @click="selectSection('2')">
+                        <a-icon type="safety"></a-icon>
+                        <span class="bo-secnav-label">{{ i18n "pages.settings.securitySettings" }}</span>
+                        <a-icon type="right" class="bo-secnav-chev"></a-icon>
+                      </button>
+                      <div class="bo-secnav-subs" v-if="sectionKey === '2'">
+                        <button type="button" class="bo-secnav-sub" v-for="s in sectionSubList" :key="s.i"
+                          :class="{ 'is-active': sectionSub === String(s.i) }"
+                          @click="gotoSectionSub(s.i)" v-text="s.label"></button>
+                      </div>
+                    </div>
+                    <div>
+                      <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === '3' }"
+                        :aria-current="sectionKey === '3'"
+                        @click="selectSection('3')">
+                        <a-icon type="message"></a-icon>
+                        <span class="bo-secnav-label">{{ i18n "pages.settings.TGBotSettings" }}</span>
+                        <a-icon type="right" class="bo-secnav-chev"></a-icon>
+                      </button>
+                      <div class="bo-secnav-subs" v-if="sectionKey === '3'">
+                        <button type="button" class="bo-secnav-sub" v-for="s in sectionSubList" :key="s.i"
+                          :class="{ 'is-active': sectionSub === String(s.i) }"
+                          @click="gotoSectionSub(s.i)" v-text="s.label"></button>
+                      </div>
+                    </div>
+                    <div>
+                      <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === '4' }"
+                        :aria-current="sectionKey === '4'"
+                        @click="selectSection('4')">
+                        <a-icon type="cloud-server"></a-icon>
+                        <span class="bo-secnav-label">{{ i18n "pages.settings.subSettings" }}</span>
+                        <a-icon type="right" class="bo-secnav-chev"></a-icon>
+                      </button>
+                      <div class="bo-secnav-subs" v-if="sectionKey === '4'">
+                        <button type="button" class="bo-secnav-sub" v-for="s in sectionSubList" :key="s.i"
+                          :class="{ 'is-active': sectionSub === String(s.i) }"
+                          @click="gotoSectionSub(s.i)" v-text="s.label"></button>
+                      </div>
+                    </div>
+                    <div v-if="allSetting.subJsonEnable || allSetting.subClashEnable">
+                      <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === '5' }"
+                        :aria-current="sectionKey === '5'"
+                        @click="selectSection('5')">
+                        <a-icon type="code"></a-icon>
+                        <span class="bo-secnav-label">{{ i18n "pages.settings.subSettings" }} (Formats)</span>
+                        <a-icon type="right" class="bo-secnav-chev"></a-icon>
+                      </button>
+                      <div class="bo-secnav-subs" v-if="sectionKey === '5'">
+                        <button type="button" class="bo-secnav-sub" v-for="s in sectionSubList" :key="s.i"
+                          :class="{ 'is-active': sectionSub === String(s.i) }"
+                          @click="gotoSectionSub(s.i)" v-text="s.label"></button>
+                      </div>
+                    </div>
+                    <div>
+                      <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === '6' }"
+                        :aria-current="sectionKey === '6'"
+                        @click="selectSection('6')">
+                        <a-icon type="cluster"></a-icon>
+                        <span class="bo-secnav-label">{{ i18n "pages.settings.serviceSettings" }}</span>
+                        <a-icon type="right" class="bo-secnav-chev"></a-icon>
+                      </button>
+                      <div class="bo-secnav-subs" v-if="sectionKey === '6'">
+                        <button type="button" class="bo-secnav-sub" v-for="s in sectionSubList" :key="s.i"
+                          :class="{ 'is-active': sectionSub === String(s.i) }"
+                          @click="gotoSectionSub(s.i)" v-text="s.label"></button>
+                      </div>
+                    </div>
+                    {{/* The SSL manager is not a stack of collapse panels, so it
+                         has no second level and carries no chevron. */}}
+                    <div>
+                      <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === '7' }"
+                        :aria-current="sectionKey === '7'"
+                        @click="selectSection('7')">
+                        <a-icon type="safety-certificate"></a-icon>
+                        <span class="bo-secnav-label">{{ i18n "pages.settings.sslSettings" }}</span>
+                      </button>
+                    </div>
+                  </nav>
+                  <div class="bo-secpanes">
+                    <div v-if="sectionMounted['1']" v-show="sectionKey === '1'" data-section="1" :style="{ paddingTop: '20px' }">
+                      {{ template "settings/panel/general" . }}
+                    </div>
+                    <div v-if="sectionMounted['2']" v-show="sectionKey === '2'" data-section="2" :style="{ paddingTop: '20px' }">
+                      {{ template "settings/panel/security" . }}
+                    </div>
+                    <div v-if="sectionMounted['3']" v-show="sectionKey === '3'" data-section="3" :style="{ paddingTop: '20px' }">
+                      {{ template "settings/panel/telegram" . }}
+                    </div>
+                    <div v-if="sectionMounted['4']" v-show="sectionKey === '4'" data-section="4" :style="{ paddingTop: '20px' }">
+                      {{ template "settings/panel/subscription/general" . }}
+                    </div>
+                    <div v-if="(allSetting.subJsonEnable || allSetting.subClashEnable) && sectionMounted['5']" v-show="sectionKey === '5'" data-section="5" :style="{ paddingTop: '20px' }">
+                      {{ template "settings/panel/subscription/json" . }}
+                    </div>
+                    <div v-if="sectionMounted['6']" v-show="sectionKey === '6'" data-section="6" :style="{ paddingTop: '20px' }">
+                      {{ template "settings/panel/service" . }}
+                    </div>
+                    <div v-if="sectionMounted['7']" v-show="sectionKey === '7'" data-section="7" :style="{ paddingTop: '20px' }">
+                      {{ template "settings/panel/ssl" . }}
+                    </div>
+                  </div>
+                </div>
               </a-col>
             </a-row>
           </template>
         </transition>
       </a-spin>
-      <a-modal v-model="subPreviewVisible"
-        :title="'{{ i18n "pages.settings.subTemplatePreview" }}'"
-        :footer="null" :width="720" :mask-closable="true">
-        <div style="margin-bottom: 4px; font-size: 12px; opacity: 0.7;">
-          {{ i18n "pages.settings.subTemplatePreviewAccount" }}: [[
-            subPreviewSubId ]]
-        </div>
-        <pre
-          style="white-space: pre-wrap; word-break: break-all; max-height: 60vh; overflow: auto; margin: 8px 0 0; padding: 12px; background: rgba(0,0,0,0.04); border-radius: 6px; font-size: 12px; line-height: 1.5;">[[ subPreviewContent ]]</pre>
-      </a-modal>
 {{template "page/shell_end" . }}
 {{template "page/body_scripts" .}}
-<script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/otpauth/otpauth.umd.min.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/js/model/setting.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .asset_ver }}"></script>
+<script src="{{ .base_path }}assets/otpauth/otpauth.umd.min.js?{{ .asset_ver }}"></script>
+<script src="{{ .base_path }}assets/js/model/setting.js?{{ .asset_ver }}"></script>
+<script src="{{ .base_path }}assets/js/util/section-nav.js?{{ .asset_ver }}"></script>
 {{template "component/aSidebar" .}}
 {{template "component/aThemeSwitch" .}}
 {{template "component/aSettingListItem" .}}
@@ -118,19 +193,12 @@
 <script>
   const app = new Vue({
     delimiters: ['[[', ']]'],
-    mixins: [MediaQueryMixin],
+    mixins: [MediaQueryMixin, SectionNavMixin],
     el: '#app',
     data: {
       themeSwitcher,
       pageTitle: '{{ i18n "menu.settings"}}',
       pageClass: 'settings-page',
-      mobileMenuOpen: false,
-      sidebarHidden: window.__sidebarHidden || false,
-      langOpen: false,
-      currentLang: window.__langData.currentLang,
-      supportedLangs: window.__langData.supportedLangs,
-      currentLangName: window.__langData.currentLangName,
-      setLang: window.__langData.setLang,
       // The caller's own 2FA state, rendered server-side. Not part of allSetting:
       // 2FA is per-admin now, and the settings blob goes to every logged-in admin.
       twoFactorEnable: {{ .two_factor }},
@@ -141,11 +209,6 @@
       oldAllSetting: new AllSetting(),
       allSetting: new AllSetting(),
       saveBtnDisable: true,
-      lastSavedSubTemplate: null,
-      subPreviewVisible: false,
-      subPreviewLoading: false,
-      subPreviewContent: '',
-      subPreviewSubId: '',
       entryHost: null,
       entryPort: null,
       entryProtocol: null,
@@ -155,12 +218,71 @@
       serviceSaving: false,
       serviceLog: '',
       serviceLogLoading: false,
-      vpnProxyLoading: false,
-      tgTestLoading: false,
       serviceLogAuto: false,
       serviceLogTimer: null,
-      acmeIssuing: false,
-      acmeResult: null,
+      // The SSL certificate manager's whole client state. One object so the
+      // panel's dozen fields do not spread across the page's data block, and so
+      // a reset is one assignment.
+      ssl: {
+        loading: false,
+        // busy covers the one-shot mutations that are not a background run: the
+        // three switches and a delete. Kept apart from `running`, which means an
+        // operation is in flight server-side.
+        busy: false,
+        // Set while the host is being probed for a suggested validation method,
+        // between pressing the button and the confirmation opening.
+        suggesting: false,
+        status: null,
+        // The names typed into the last row of the table. One certificate can
+        // cover several, and Let's Encrypt meters the EXACT set, so they are
+        // gathered before anything is asked of a CA rather than one at a time.
+        newNames: [],
+        // The nickname editor: which row it is for, and what is being typed.
+        // Copied in when it opens so a status refresh landing behind it cannot
+        // change what is being edited.
+        nick: { open: false, profile: '', forName: '', value: '' },
+        // The key algorithm the next certificate will carry, and the gear that
+        // sets it. RSA-2048 by default for client compatibility, not for
+        // cryptography: legacy Windows is exactly the audience for the SSTP and
+        // IKEv2 consumers on this box.
+        keyType: '2048',
+        keyOpen: false,
+        // The one confirmation, in two modes. Everything it needs is copied in
+        // when it opens, so a status poll landing behind it cannot change what the
+        // operator is agreeing to.
+        modal: {
+          visible: false,
+          mode: '',          // 'issue' | 'renew'
+          profile: '',
+          identifiers: [],
+          challenge: '',
+          keyType: '',
+          reason: '',
+          warnings: [],
+          needsToken: false,
+          blocked: false,
+          // Write-only, like the field it feeds: no endpoint returns a token and
+          // nothing stores one, so this is blank again after every reload.
+          token: '',
+          // The services on this host that can only take a new certificate by
+          // restarting, as a printable list. Empty means the consent row is never
+          // rendered, which is most hosts.
+          disruptive: '',
+          applyDisruptive: false,
+        },
+        op: '',
+        running: false,
+        done: false,
+        failed: false,
+        summary: '',
+        steps: [],
+        stamps: [],
+        expanded: {},
+        timer: null,
+        // The log window. The page shows a bar and one sentence; the full step
+        // list lives behind this and stays live while it is open.
+        logOpen: false,
+      },
       lang: LanguageManager.getLanguage(),
       inboundOptions: [],
       remarkModels: { i: 'Inbound', e: 'Email', o: 'Other' },
@@ -249,57 +371,6 @@
       }
     },
     methods: {
-      toggleSidebar() {
-        if (this.isMobile) {
-          this.mobileMenuOpen = !this.mobileMenuOpen;
-          return;
-        }
-        this.sidebarHidden = !this.sidebarHidden;
-        localStorage.setItem('isSidebarHidden', this.sidebarHidden);
-      },
-      async useVpnProxy() {
-        this.vpnProxyLoading = true;
-        try {
-          const res = await axios.get('panel/api/server/getConfigJson');
-          if (!res.data.success) {
-            this.$message.error('Failed to load Xray config');
-            return;
-          }
-          const config = res.data.obj;
-          if (!config || !config.inbounds) {
-            this.$message.warning('No inbounds found in Xray config');
-            return;
-          }
-          const socksIn = config.inbounds.find(function(inb) {
-            return inb.protocol === 'socks';
-          });
-          if (!socksIn) {
-            this.$message.warning('No SOCKS inbound found. Create a SOCKS inbound first.');
-            return;
-          }
-          this.allSetting.tgBotProxy = 'socks5://127.0.0.1:' + socksIn.port;
-          this.$message.success('Proxy set to socks5://127.0.0.1:' + socksIn.port);
-        } catch (e) {
-          this.$message.error('Error: ' + (e.message || 'Unknown error'));
-        } finally {
-          this.vpnProxyLoading = false;
-        }
-      },
-      async testTgBot() {
-        this.tgTestLoading = true;
-        try {
-          const res = await axios.post('panel/api/tgbot/test');
-          if (res.data.success) {
-            this.$message.success('Test message sent to admin chats!');
-          } else {
-            this.$message.error(res.data.msg || 'Failed to send test message');
-          }
-        } catch (e) {
-          this.$message.error('Error: ' + (e.response?.data?.msg || e.message || 'Unknown error'));
-        } finally {
-          this.tgTestLoading = false;
-        }
-      },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;
       },
@@ -338,7 +409,6 @@
 
           this.oldAllSetting = new AllSetting(msg.obj);
           this.allSetting = new AllSetting(msg.obj);
-          this.lastSavedSubTemplate = this.allSetting.subTemplate;
           app.changeRemarkSample();
           this.saveBtnDisable = true;
         }
@@ -386,6 +456,725 @@
           await this.loadServiceLog();
         }
       },
+      // ---------------------------------------------------------------------
+      // SSL certificate manager
+      //
+      // THE PAGE IS A TABLE and nothing else, so this layer is a row model, four
+      // actions and one confirmation. There is no selected certificate, so no
+      // method here reads or writes a selection, and every action is passed the
+      // row it was invoked from.
+      //
+      // Every translated string a Vue expression needs comes from a METHOD here,
+      // NEVER from an i18n action pasted into the template's expression.
+      //
+      // THE TRAP, and it fails silently: in HTML text or an attribute, Go's
+      // html/template escapes an apostrophe to &#39;. The browser decodes that
+      // back to a quote before Vue ever sees it, so a translation containing one
+      // (English alone has "Let's Encrypt" several times here) closes the string
+      // literal early and the expression stops parsing. The production Vue build
+      // strips compile warnings, so the render function silently becomes a no-op,
+      // Vue replaces #app with an empty comment, and the WHOLE settings page goes
+      // blank with nothing in the console. Inside a <script> block, which is where
+      // these live, Go escapes for JavaScript instead and the quote survives.
+      // ---------------------------------------------------------------------
+      async loadSslStatus() {
+        this.ssl.loading = true;
+        // No profile parameter. The page draws every certificate the host holds,
+        // so it asks for the whole picture; the per-profile fields in the reply
+        // are what each row is built from.
+        const msg = await HttpUtil.get('/panel/setting/ssl/status');
+        this.ssl.loading = false;
+        if (!msg || !msg.success || !msg.obj) return;
+        this.ssl.status = msg.obj;
+      },
+      // --- The row model ------------------------------------------------------
+      // One row per certificate this panel manages.
+      //
+      // ONLY managed ones, because certificates installed by deploy.sh and the
+      // vpn-ui.sh menu are taken over at startup now (main.go, before the TLS
+      // listener is built) rather than waiting behind a button on this page.
+      //
+      // NOT ADOPTED FROM HERE, deliberately. The TLS reloader is pinned to the
+      // path it was constructed with for the life of the process, so adopting from
+      // a running panel would rewrite the setting without moving the listener: the
+      // panel would keep serving the old path while its renewals went into the
+      // store. Anything that turns up after boot is taken over on the next start,
+      // which is the same moment it could begin being served anyway.
+      //
+      // A profile holding nothing is deliberately not a row either. It is a
+      // directory waiting for an issuance, and drawing it would put "no
+      // certificate yet" in a table of certificates.
+      sslRows() {
+        const st = this.ssl.status;
+        if (!st) return [];
+        const rows = [];
+
+        (st.profiles || []).forEach(p => {
+          if (!p.active) return;
+          const a = p.active;
+          const ids = a.identifiers || [];
+          rows.push({
+            key: 'p:' + p.name,
+            kind: 'managed',
+            profile: p.name === 'default' ? '' : p.name,
+            name: ids.length ? ids[0] : p.name,
+            title: ids.join(', '),
+            extraNames: Math.max(0, ids.length - 1),
+            identifiers: ids,
+            issuer: a.issuer || '',
+            nickname: p.nickname || '',
+            level: this.sslHealthLevel(a),
+            health: this.sslHealthText(a),
+            lifePct: this.sslLifePct(a),
+            staging: !!a.staging,
+            selfSigned: !!a.selfSigned,
+            keyMismatch: !a.keyMatchesLeaf,
+            chainIncomplete: !a.hasIntermediates,
+            usedByPanel: !!p.usedByPanel,
+            usedBySub: !!p.usedBySub,
+            // Absent means ON, matching the server: every certificate that existed
+            // before the toggle did keeps renewing.
+            autoRenew: p.autoRenew !== false,
+            // Only a certificate that is actually usable can be assigned, and the
+            // server refuses the rest anyway. Disabling the switch says so before
+            // the click instead of after it.
+            assignable: true,
+            // The default profile is where issuance lands and the service refuses
+            // to remove it, so the menu item is dead rather than misleading.
+            deletable: p.name !== 'default',
+          });
+        });
+
+        return rows;
+      },
+      sslMoreNames(row) {
+        return '{{ i18n "pages.settings.ssl.cardMoreNames" }}'.replace('{n}', row.extraNames);
+      },
+      sslNewPlaceholder() {
+        return '{{ i18n "pages.settings.ssl.newPlaceholder" }}';
+      },
+      // --- The key algorithm --------------------------------------------------
+      // Four values, and they are the ones acme.sh actually accepts: it decides
+      // RSA vs EC by exclusion, so a spelling outside this set becomes a request
+      // for a curve openssl does not know.
+      sslKeyOptions() {
+        return [
+          { value: '2048', title: 'RSA 2048', desc: '{{ i18n "pages.settings.ssl.keyRsa2048" }}' },
+          { value: '4096', title: 'RSA 4096', desc: '{{ i18n "pages.settings.ssl.keyRsa4096" }}' },
+          { value: 'ec-256', title: 'ECDSA P-256', desc: '{{ i18n "pages.settings.ssl.keyEc256" }}' },
+          { value: 'ec-384', title: 'ECDSA P-384', desc: '{{ i18n "pages.settings.ssl.keyEc384" }}' },
+        ];
+      },
+      sslKeyTitle() {
+        return '{{ i18n "pages.settings.ssl.keyTitle" }}';
+      },
+      // The gear says what it currently holds, so the choice is visible without
+      // opening it.
+      sslKeyTypeTip() {
+        const opt = this.sslKeyOptions().find(o => o.value === this.ssl.keyType);
+        return this.sslKeyTitle() + ': ' + (opt ? opt.title : this.ssl.keyType);
+      },
+      // How much of the certificate's own life is left, as a percentage, so a
+      // deliberately short-lived certificate (an IP one lasts about six days)
+      // reads on the same bar as a 90-day one.
+      sslLifePct(info) {
+        if (!info) return 0;
+        const total = (info.lifetimeNanos || 0);
+        const left = (info.remainingNanos || 0);
+        if (total <= 0) return left > 0 ? 100 : 0;
+        return Math.max(0, Math.min(100, Math.round((left / total) * 100)));
+      },
+      // --- Getting one --------------------------------------------------------
+      // Ask the host how it would prove these names, then show the answer. This
+      // is what replaced the four-option validation chooser: the same decision,
+      // made from a probe instead of from the operator.
+      async sslAskIssue() {
+        const names = (this.ssl.newNames || []).map(n => String(n).trim()).filter(Boolean);
+        if (!names.length) return;
+        this.ssl.suggesting = true;
+        const msg = await HttpUtil.post('/panel/setting/ssl/suggest', { identifiers: names });
+        this.ssl.suggesting = false;
+        if (!msg || !msg.success || !msg.obj) return;
+        const s = msg.obj;
+        const m = {
+          visible: false,
+          mode: 'issue',
+          profile: s.profile || '',
+          identifiers: s.identifiers || names,
+          challenge: s.challenge || '',
+          keyType: this.ssl.keyType,
+          reason: s.reason || '',
+          warnings: s.warnings || [],
+          needsToken: !!s.needsToken,
+          blocked: !!s.blocked,
+          token: '',
+          // A certificate that does not exist yet has no consumers, so there is
+          // nothing here that could need restarting.
+          disruptive: '',
+          applyDisruptive: false,
+        };
+        this.ssl.modal = m;
+
+        // THE CONFIRMATION IS NOT AN INFORMATION SCREEN. It opens only when it has
+        // something to ASK for, which is one of three things:
+        //   - a wildcard, which needs its own explanation (DNS-01 only, and it does
+        //     not cover the bare domain, which is the expensive surprise),
+        //   - a Cloudflare token, without which the run cannot start at all,
+        //   - a blocked suggestion, where the reason is the whole answer.
+        // Everything else was a paragraph restating what the button already said,
+        // in front of an operator who had already decided.
+        const wildcard = (m.identifiers || []).some(id => String(id).indexOf('*.') === 0);
+        if (wildcard || m.needsToken || m.blocked) {
+          this.ssl.modal.visible = true;
+          return;
+        }
+        this.sslStart('issue', m);
+      },
+      // Renewing is free and exempt from every Let's Encrypt rate limit, so the
+      // confirmation has only one thing to establish: whether anything on this
+      // host can pick the new certificate up only by restarting.
+      async sslAskRenew(row) {
+        this.ssl.busy = true;
+        const msg = await HttpUtil.get('/panel/setting/ssl/consumers', { profile: row.profile });
+        this.ssl.busy = false;
+        const list = (msg && msg.success && msg.obj) || [];
+        const disruptive = list.filter(c => c && c.disruptive).map(c => c.label).join(', ');
+        this.ssl.modal = {
+          visible: true,
+          mode: 'renew',
+          profile: row.profile,
+          identifiers: row.identifiers,
+          challenge: '',
+          // Never sent on a renew: acme.sh recorded Le_Keylength at issue time and
+          // reads it back itself, so naming one here could only contradict it.
+          keyType: '',
+          // Never guessed here: a renewal replays whatever acme.sh recorded when
+          // the certificate was first issued, so naming a method would describe
+          // something that is not going to happen.
+          reason: '{{ i18n "pages.settings.ssl.renewReason" }}',
+          warnings: [],
+          needsToken: false,
+          blocked: false,
+          token: '',
+          disruptive: disruptive,
+          applyDisruptive: false,
+        };
+      },
+      sslModalTitle() {
+        return this.ssl.modal.mode === 'renew'
+          ? '{{ i18n "pages.settings.ssl.renew" }}'
+          : '{{ i18n "pages.settings.ssl.getCert" }}';
+      },
+      sslModalOkText() {
+        return this.ssl.modal.mode === 'renew'
+          ? '{{ i18n "pages.settings.ssl.renewNow" }}'
+          : '{{ i18n "pages.settings.ssl.getCert" }}';
+      },
+      // The button is dead when the host reported no method that could work, and
+      // when a method that cannot run without a token has not been given one.
+      // Both reasons are already on screen as words: an antd button that is
+      // disabled opens no tooltip, so a tooltip-only reason is unreadable.
+      sslModalBlocked() {
+        const m = this.ssl.modal;
+        if (m.blocked) return true;
+        if (m.needsToken && !String(m.token || '').trim()) return true;
+        return false;
+      },
+      sslModalCost() {
+        return this.ssl.modal.mode === 'renew'
+          ? '{{ i18n "pages.settings.ssl.renewCost" }}'
+          : '{{ i18n "pages.settings.ssl.issueCost" }}';
+      },
+      sslDisruptiveLabel() {
+        return '{{ i18n "pages.settings.ssl.applyDisruptive" }} ' + this.ssl.modal.disruptive;
+      },
+      sslModalConfirm() {
+        const m = this.ssl.modal;
+        if (this.sslModalBlocked()) return;
+        this.ssl.modal.visible = false;
+        this.sslStart(m.mode === 'renew' ? 'renew' : 'issue', m);
+      },
+      // sslStart is the one place a confirmation becomes a request. The token is
+      // sent and never read back: no endpoint returns it, nothing stores it in a
+      // setting, and the service hands it to acme.sh through the environment
+      // rather than argv because /proc/<pid>/cmdline is world-readable.
+      async sslStart(op, m) {
+        if (this.ssl.running) return;
+        this.sslResetConsole(op);
+        const msg = await HttpUtil.post('/panel/setting/ssl/start', {
+          identifiers: m.identifiers,
+          challenge: m.challenge,
+          op: op,
+          keyType: m.keyType || '',
+          applyDisruptive: !!m.applyDisruptive,
+          cloudflareToken: m.token,
+          // Which store this lands in. For a new certificate the server derived
+          // it from the first name and sent it back with the suggestion, so the
+          // name it is filed under is the one the probe was run for.
+          profile: m.profile,
+        });
+        if (!msg || !msg.success) {
+          // A refusal (drained budget, a cooldown, another run already going)
+          // started nothing, so the console is closed again rather than left
+          // spinning on a run that does not exist. The reason arrived as a toast
+          // carrying the server's own sentence, which names the limit and the
+          // time it frees.
+          this.ssl.running = false;
+          this.ssl.done = false;
+          return;
+        }
+        this.sslApplyState(msg.obj || {});
+        this.pollSsl();
+      },
+      // Recursive setTimeout, never setInterval: the operation runs server-side,
+      // so polling survives leaving the tab, and it cannot pile up requests on a
+      // slow link the way a fixed interval does.
+      pollSsl() {
+        clearTimeout(this.ssl.timer);
+        this.ssl.timer = setTimeout(async () => {
+          const msg = await HttpUtil.get('/panel/setting/ssl/run-status');
+          if (msg && msg.success && msg.obj) {
+            this.sslApplyState(msg.obj);
+            if (!msg.obj.running) {
+              await this.sslAfterRun();
+              return;
+            }
+          }
+          this.pollSsl();
+        }, 600);
+      },
+      // What happens once a run lands. The whole picture is re-read rather than
+      // patched, because the run changed what is on disk and who is serving it.
+      //
+      // THE FIRST CERTIFICATE IS ASSIGNED TO THE PANEL, and only the panel. A
+      // fresh host has no certificate on either listener, so an operator who has
+      // just waited forty seconds for one would otherwise be looking at a table of
+      // switches that are all off, with no indication that the job is unfinished.
+      //
+      // THE SUBSCRIPTION SERVER IS NEVER TOUCHED HERE, and used to be. The rule was
+      // "fill any listener that is currently empty", so issuing one certificate on a
+      // fresh host put it on the subscription server as well, and every LATER
+      // issuance kept doing it: a host whose subscription server was deliberately on
+      // plain HTTP gained TLS, on a name chosen for something else entirely, the
+      // moment a second certificate was issued for an inbound. Serving the
+      // subscription links over TLS is a decision about a public URL that operators
+      // hand out, and it belongs to the operator, not to whatever certificate was
+      // issued last. The switch in the table is how they make it.
+      //
+      // Two guards on the panel assignment, both narrow on purpose. Only an ISSUE
+      // does this, never a renewal: a certificate deliberately assigned to neither
+      // listener is a legitimate state (an inbound may be its only consumer), and
+      // renewing it must not be what quietly puts it on the panel. And it only ever
+      // fills a panel holding nothing at all, so it can never move one someone chose.
+      async sslAfterRun() {
+        await this.loadSslStatus();
+        this.$nextTick(() => this.sslScroll());
+        if (this.ssl.failed || this.ssl.op !== 'issue') return;
+        // The names have been used. Leaving them in the box invites a second press
+        // that would spend another of the five-per-week slots on the exact same
+        // set, which is the one mistake this page can make that costs a week.
+        this.ssl.newNames = [];
+        const rows = this.sslRows().filter(r => r.kind === 'managed');
+        if (!rows.length) return;
+        if (rows.some(r => r.usedByPanel)) return;
+        const fresh = rows.find(r => r.profile === (this.ssl.modal.profile || ''));
+        if (!fresh) return;
+        const msg = await HttpUtil.post('/panel/setting/ssl/use-managed', {
+          profile: fresh.profile, targets: ['panel'],
+        });
+        if (!msg || !msg.success) return;
+        this.$message.success('{{ i18n "pages.settings.ssl.toasts.autoAssigned" }}');
+        await this.loadSslStatus();
+        await this.getAllSetting();
+      },
+      sslApplyState(obj) {
+        this.ssl.running = !!obj.running;
+        this.ssl.done = !!obj.done;
+        this.ssl.failed = !!obj.failed;
+        this.ssl.summary = obj.summary || '';
+        if (obj.op) this.ssl.op = obj.op;
+        this.sslApplySteps(obj.steps || []);
+      },
+      // The server streams the same growing array on every poll, so only indices
+      // never seen before get a wall-clock stamp; re-stamping would make every
+      // line jump to "now" on each tick.
+      sslApplySteps(steps) {
+        for (let i = this.ssl.stamps.length; i < steps.length; i++) {
+          this.ssl.stamps.push(this.sslTsNow());
+        }
+        this.ssl.steps = steps.map((s, i) => Object.assign({}, s, { ts: this.ssl.stamps[i] }));
+        this.$nextTick(() => this.sslScroll());
+      },
+      sslResetConsole(op) {
+        this.ssl.op = op;
+        this.ssl.steps = [];
+        this.ssl.stamps = [];
+        this.ssl.expanded = {};
+        this.ssl.done = false;
+        this.ssl.failed = false;
+        this.ssl.summary = '';
+        this.ssl.running = true;
+      },
+      // --- Managing them ------------------------------------------------------
+      // One switch, both directions. Turning it OFF clears the setting, which
+      // leaves that listener serving plain HTTP after the next restart, so it
+      // asks first; turning it on cannot lose anything and does not.
+      async sslToggle(row, target, on) {
+        if (!row.assignable) return;
+        if (!on) {
+          const label = target === 'panel'
+            ? '{{ i18n "pages.settings.ssl.tagPanel" }}'
+            : '{{ i18n "pages.settings.ssl.tagSub" }}';
+          const ok = await new Promise(resolve => {
+            this.$confirm({
+              title: '{{ i18n "pages.settings.ssl.unassignConfirm" }}'.replace('{target}', label),
+              content: '{{ i18n "pages.settings.ssl.unassignConfirmDesc" }}',
+              okText: '{{ i18n "sure" }}',
+              cancelText: '{{ i18n "cancel" }}',
+              class: themeSwitcher.currentTheme,
+              onOk: () => resolve(true),
+              onCancel: () => resolve(false),
+            });
+          });
+          if (!ok) return;
+        }
+        this.ssl.busy = true;
+        const url = on ? '/panel/setting/ssl/use-managed' : '/panel/setting/ssl/unassign';
+        const body = { targets: [target] };
+        if (on) body.profile = row.profile;
+        const msg = await HttpUtil.post(url, body);
+        this.ssl.busy = false;
+        if (!msg || !msg.success) return;
+        await this.loadSslStatus();
+        // webCertFile is a stored setting, so the general panel on screen now
+        // shows the old path until it is re-read.
+        await this.getAllSetting();
+      },
+      sslConfirmDelete(row) {
+        if (!row.deletable) return;
+        this.$confirm({
+          title: '{{ i18n "pages.settings.ssl.deleteProfileConfirm" }}'.replace('{name}', row.name),
+          content: '{{ i18n "pages.settings.ssl.deleteProfileDesc" }}',
+          okText: '{{ i18n "sure" }}',
+          cancelText: '{{ i18n "cancel" }}',
+          class: themeSwitcher.currentTheme,
+          onOk: async () => {
+            this.ssl.busy = true;
+            const msg = await HttpUtil.post('/panel/setting/ssl/delete-profile', { profile: row.profile });
+            this.ssl.busy = false;
+            if (msg && msg.success) await this.loadSslStatus();
+          },
+        });
+      },
+      // Auto renew, per certificate. Turning it OFF only stops the unattended
+      // scheduler: Renew in the row menu keeps working, because "do not renew this
+      // on your own" is a different statement from "never renew this".
+      // --- The nickname -------------------------------------------------------
+      sslNicknameTitle() { return '{{ i18n "pages.settings.ssl.nicknameTitle" }}'; },
+      sslNicknameSave() { return '{{ i18n "pages.settings.ssl.nicknameSave" }}'; },
+      sslNicknamePlaceholder() { return '{{ i18n "pages.settings.ssl.nicknamePlaceholder" }}'; },
+      sslNicknameTip(row) {
+        return row.nickname
+          ? '{{ i18n "pages.settings.ssl.nicknameEdit" }}'
+          : '{{ i18n "pages.settings.ssl.nicknameAdd" }}';
+      },
+      sslEditNickname(row) {
+        this.ssl.nick = {
+          open: true,
+          profile: row.profile,
+          // The certificate's REAL name, so the dialog says which one is being
+          // labelled even when the label being replaced is itself confusing.
+          forName: row.name,
+          value: row.nickname || '',
+        };
+      },
+      // Empty clears it, which is why this does not refuse a blank value: the way
+      // to remove a nickname is to empty the box, and refusing that would leave no
+      // way back to no label at all.
+      async sslSaveNickname() {
+        const n = this.ssl.nick;
+        this.ssl.busy = true;
+        const msg = await HttpUtil.post('/panel/setting/ssl/nickname', {
+          profile: n.profile, nickname: n.value || '',
+        });
+        this.ssl.busy = false;
+        if (!msg || !msg.success) return;
+        this.ssl.nick.open = false;
+        await this.loadSslStatus();
+      },
+      async sslToggleAutoRenew(row, on) {
+        this.ssl.busy = true;
+        const msg = await HttpUtil.post('/panel/setting/ssl/auto-renew', {
+          profile: row.profile, enabled: on ? 'true' : 'false',
+        });
+        this.ssl.busy = false;
+        if (!msg || !msg.success) return;
+        await this.loadSslStatus();
+      },
+      // --- Health -------------------------------------------------------------
+      // Whole days, from the nanoseconds the server already computed. Never from
+      // notAfter minus now: that would disagree with the server's own renewal
+      // decision at exactly the boundary where the operator is looking.
+      sslDaysLeft(info) {
+        return info ? Math.floor((info.remainingNanos || 0) / 86400e9) : 0;
+      },
+      // The server's renewalDue is a fraction of the certificate's own lifetime,
+      // so a deliberately short-lived one can sit two days from expiry and still
+      // report "not due". A week or less is never a healthy state whatever the
+      // lifetime was, so the floor is here rather than in the words alone: the
+      // colour and the sentence have to agree.
+      sslHealthUrgent(info) {
+        return !!info && (info.renewalDue || this.sslDaysLeft(info) <= 7);
+      },
+      sslHealthLevel(info) {
+        if (!info) return 'off';
+        if (info.expired) return 'bad';
+        return this.sslHealthUrgent(info) ? 'warn' : 'ok';
+      },
+      // One plain sentence in days. The old line read "67d2h left", which is a
+      // duration an operator has to decode before it means anything.
+      sslHealthText(info) {
+        if (!info) return '';
+        if (info.expired) return '{{ i18n "pages.settings.ssl.expired" }}';
+        const days = this.sslDaysLeft(info);
+        if (days <= 0) return '{{ i18n "pages.settings.ssl.healthToday" }}';
+        if (days === 1) return '{{ i18n "pages.settings.ssl.healthTomorrow" }}';
+        const text = this.sslHealthUrgent(info)
+          ? '{{ i18n "pages.settings.ssl.healthSoon" }}'
+          : '{{ i18n "pages.settings.ssl.healthValid" }}';
+        return text.replace('{days}', days);
+      },
+      // --- The console --------------------------------------------------------
+      sslToggleStep(i) {
+        this.$set(this.ssl.expanded, i, !this.ssl.expanded[i]);
+      },
+      sslScroll() {
+        const el = this.$refs.sslTerm;
+        if (el) el.scrollTop = el.scrollHeight;
+      },
+      sslTsNow() {
+        const d = new Date();
+        const p = (n) => String(n).padStart(2, '0');
+        return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+      },
+      sslGlyph(item) {
+        if (!item.ok) return '✗';
+        if (item.warn) return '!';
+        return '✓';
+      },
+      sslLineClass(item) {
+        if (!item.ok) return 'term-err';
+        if (item.warn) return 'term-warn';
+        return 'term-ok';
+      },
+      sslOkCount() {
+        return this.ssl.steps.filter(s => s.ok).length;
+      },
+      sslCurrentStep() {
+        const n = this.ssl.steps.length;
+        return n ? this.ssl.steps[n - 1].name : '';
+      },
+      // The step count depends on the host and the challenge and is unknown in
+      // advance, so the bar runs off an estimate that always keeps headroom and
+      // snaps to 100% only when the run has actually finished.
+      sslProgress() {
+        if (this.ssl.done && !this.ssl.running) return 100;
+        const done = this.ssl.steps.length;
+        const est = Math.max(12, done + 2);
+        return Math.min(96, Math.round((done / est) * 100));
+      },
+      // The progress block exists only once something has run.
+      sslConsoleVisible() {
+        return this.ssl.running || this.ssl.done || this.ssl.steps.length > 0;
+      },
+      // --- The progress block -------------------------------------------------
+      // Three states, and the colour, the icon and the words all agree on which
+      // one it is rather than each deciding separately.
+      sslRunLevel() {
+        if (this.ssl.running) return '';
+        if (!this.ssl.done) return '';
+        return this.ssl.failed ? 'bad' : 'ok';
+      },
+      sslRunIcon() {
+        if (this.ssl.running) return 'loading';
+        if (this.ssl.done) return this.ssl.failed ? 'close-circle' : 'check-circle';
+        return 'clock-circle';
+      },
+      sslRunHeadline() {
+        if (this.ssl.running) {
+          return this.ssl.op === 'renew'
+            ? '{{ i18n "pages.settings.ssl.runRenewing" }}'
+            : '{{ i18n "pages.settings.ssl.runIssuing" }}';
+        }
+        if (this.ssl.done) {
+          return this.ssl.failed
+            ? '{{ i18n "pages.settings.ssl.runFailed" }}'
+            : '{{ i18n "pages.settings.ssl.runDone" }}';
+        }
+        return '';
+      },
+      // antd's progress statuses: 'active' animates the bar, which is what says
+      // "still working" when the percentage sits still through the long acme.sh
+      // call in the middle.
+      sslProgressStatus() {
+        if (this.ssl.running) return 'active';
+        if (this.ssl.done && this.ssl.failed) return 'exception';
+        if (this.ssl.done) return 'success';
+        return 'normal';
+      },
+      // ONE SENTENCE, and the whole reason the terminal could go away. The step
+      // names the server emits are engineering labels ("port 80 free", "acme.sh
+      // dependencies"), so the common ones are mapped to something an operator can
+      // act on. Anything unmapped falls through unchanged rather than being
+      // hidden: an unfamiliar label is still better than silence.
+      sslStepText() {
+        if (this.ssl.done && !this.ssl.running) {
+          return this.ssl.summary || '';
+        }
+        const name = this.sslCurrentStep();
+        if (!name) return '';
+        const map = {
+          'request shape': '{{ i18n "pages.settings.ssl.stepShape" }}',
+          'existing certificate': '{{ i18n "pages.settings.ssl.stepExisting" }}',
+          'recent failures': '{{ i18n "pages.settings.ssl.stepHistory" }}',
+          'new-certificate budget': '{{ i18n "pages.settings.ssl.stepBudget" }}',
+          'port 80 free': '{{ i18n "pages.settings.ssl.stepPort80" }}',
+          'acme.sh dependencies': '{{ i18n "pages.settings.ssl.stepDeps" }}',
+          'acme home': '{{ i18n "pages.settings.ssl.stepAcmeHome" }}',
+          'Cloudflare token': '{{ i18n "pages.settings.ssl.stepCfToken" }}',
+          'clock': '{{ i18n "pages.settings.ssl.stepClock" }}',
+          'issue': '{{ i18n "pages.settings.ssl.stepIssue" }}',
+          'renew': '{{ i18n "pages.settings.ssl.stepIssue" }}',
+        };
+        if (map[name]) return map[name];
+        // "identifier points here: panel.example.com" and the like carry the name
+        // after a colon, which is worth keeping.
+        if (name.indexOf('identifier points here') === 0) {
+          return '{{ i18n "pages.settings.ssl.stepResolves" }}'.replace('{name}', name.split(':').pop().trim());
+        }
+        if (name.indexOf("contacting Let") === 0) {
+          return '{{ i18n "pages.settings.ssl.stepContacting" }}';
+        }
+        return name;
+      },
+      sslFailedCount() {
+        return this.ssl.steps.filter(s => !s.ok).length;
+      },
+      sslLogButtonTitle() {
+        return this.ssl.steps.length
+          ? '{{ i18n "pages.settings.ssl.showLog" }}'
+          : '{{ i18n "pages.settings.ssl.showLogEmpty" }}';
+      },
+      sslLogTitleText() {
+        return '{{ i18n "pages.settings.ssl.logTitle" }}';
+      },
+      // THE REAL OUTPUT, in the order the server emitted it.
+      //
+      // Every step carries a name and a message, and the ones that ran a command
+      // also carry that command's raw stdout/stderr in `log`. The old window
+      // rendered these as styled rows with glyphs and timestamps and hid `log`
+      // behind a per-row disclosure, which is a summary pretending to be a
+      // terminal. This concatenates the actual text instead: the message line, then
+      // the raw output indented under it so the two are still tellable apart, and
+      // nothing invented.
+      sslRawLog() {
+        const out = [];
+        for (const step of this.ssl.steps) {
+          const head = step.msg ? `${step.name}: ${step.msg}` : step.name;
+          out.push(head);
+          if (step.log) {
+            out.push(String(step.log).replace(/\s+$/, ''));
+          }
+        }
+        if (this.ssl.summary) {
+          out.push('');
+          out.push(this.ssl.summary);
+        }
+        return out.join('\n');
+      },
+      async sslCopyLog() {
+        const text = this.sslRawLog();
+        try {
+          await navigator.clipboard.writeText(text);
+          this.$message.success('{{ i18n "copied" }}');
+        } catch (e) {
+          // Clipboard access needs a secure context, and a panel reached over
+          // plain HTTP is exactly the case this page exists to fix. Selecting the
+          // text is the honest fallback rather than a silent no-op.
+          const el = this.$refs.sslRawLog;
+          if (el && window.getSelection) {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }
+      },
+      // --- Wildcards ----------------------------------------------------------
+      // A wildcard needs saying out loud, because the two things that surprise
+      // people about it both look like the panel malfunctioning afterwards.
+      sslModalWildcard() {
+        return (this.ssl.modal.identifiers || []).some(id => String(id).indexOf('*.') === 0);
+      },
+      // The apex is the expensive mistake: *.example.com issues perfectly and then
+      // example.com still warns in every browser, because a wildcard covers one
+      // label and never the bare name.
+      sslWildcardApex() {
+        const w = (this.ssl.modal.identifiers || []).find(id => String(id).indexOf('*.') === 0);
+        return w ? String(w).slice(2) : '';
+      },
+      sslWildcardApexMissing() {
+        const apex = this.sslWildcardApex();
+        return !!apex && !(this.ssl.modal.identifiers || []).includes(apex);
+      },
+      // EVERY occurrence, not the first. String.replace with a string pattern
+      // substitutes once, and this sentence names the apex three times in English
+      // and a varying number of times in the twelve translations, so the first-only
+      // form left a literal {apex} sitting in the middle of the instruction.
+      sslFill(text, token, value) {
+        return String(text).split('{' + token + '}').join(value);
+      },
+      sslWildcardApexNote() {
+        const apex = this.sslWildcardApex() || 'example.com';
+        return this.sslFill(
+          this.sslWildcardApexMissing()
+            ? '{{ i18n "pages.settings.ssl.wildcardApexMissing" }}'
+            : '{{ i18n "pages.settings.ssl.wildcardApexOk" }}',
+          'apex', apex);
+      },
+      sslAddApexLabel() {
+        return '{{ i18n "pages.settings.ssl.wildcardAddApex" }}'.replace('{apex}', this.sslWildcardApex());
+      },
+      // Adding the apex changes the SET of names, and Let's Encrypt meters the
+      // exact set, so the suggestion is recomputed from scratch rather than
+      // patched: the profile the certificate lands in is derived from it too.
+      async sslAddApex() {
+        const apex = this.sslWildcardApex();
+        if (!apex) return;
+        this.ssl.newNames = (this.ssl.modal.identifiers || []).concat([apex]);
+        this.ssl.modal.visible = false;
+        await this.sslAskIssue();
+      },
+      sslConsoleLabel() {
+        const labels = {
+          issue: '{{ i18n "pages.settings.ssl.getCert" }}',
+          renew: '{{ i18n "pages.settings.ssl.renew" }}',
+        };
+        return labels[this.ssl.op] || '{{ i18n "pages.settings.ssl.consoleTitle" }}';
+      },
+      sslLogTitle(item, i) {
+        if (!item || !item.log) return '';
+        return this.ssl.expanded[i]
+          ? '{{ i18n "pages.core.hideLog" }}'
+          : '{{ i18n "pages.core.showLog" }}';
+      },
+      sslDate(v) {
+        if (!v) return '';
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return String(v);
+        return IntlUtil.formatDate(d);
+      },
       async loadInboundTags() {
         const msg = await HttpUtil.get("/panel/api/inbounds/list");
         if (msg && msg.success && Array.isArray(msg.obj)) {
@@ -402,33 +1191,8 @@
         const msg = await HttpUtil.post("/panel/setting/update", this.allSetting);
         this.loading(false);
         if (msg.success) {
-          this.$message.success(msg.msg || '{{ i18n "pages.settings.save" }}');
           await this.getAllSetting();
-        } else {
-          this.$message.error(msg.msg || '{{ i18n "pages.settings.save" }}');
         }
-      },
-      async onSubTemplateChange() {
-        if (!this.loadingStates.fetched) return;
-        const value = this.allSetting.subTemplate;
-        if (value === this.lastSavedSubTemplate) return;
-        this.lastSavedSubTemplate = value;
-        await this.updateAllSetting();
-      },
-      async loadSubPreview() {
-        this.subPreviewLoading = true;
-        const msg = await HttpUtil.post("/panel/setting/subPreview", {
-          template: this.allSetting.subTemplate,
-          custom: this.allSetting.subCustomTemplate || ''
-        });
-        this.subPreviewLoading = false;
-        if (!msg.success) {
-          this.$message.error(msg.msg);
-          return;
-        }
-        this.subPreviewContent = msg.obj ? msg.obj.content : '';
-        this.subPreviewSubId = msg.obj ? msg.obj.subId : '';
-        this.subPreviewVisible = true;
       },
       async updateUser() {
         const sendUpdateUserRequest = async () => {
@@ -574,25 +1338,6 @@
         const updatedNoises = [...this.noisesArray];
         updatedNoises[index] = { ...updatedNoises[index], applyTo: value };
         this.noisesArray = updatedNoises;
-      },
-      async issueAcmeCert() {
-        this.acmeIssuing = true;
-        this.acmeResult = null;
-        const msg = await HttpUtil.post("/panel/setting/acme/issue", {
-          domain: this.allSetting.acmeDomain,
-          email: this.allSetting.acmeEmail,
-          method: this.allSetting.acmeMethod,
-          cfToken: this.allSetting.acmeCfToken,
-          certDir: this.allSetting.acmeCertDir,
-        });
-        this.acmeIssuing = false;
-        if (msg && msg.obj) {
-          this.acmeResult = msg.obj;
-          if (msg.obj.success) {
-            this.allSetting.webCertFile = msg.obj.certPath;
-            this.allSetting.webKeyFile = msg.obj.keyPath;
-          }
-        }
       },
     },
     computed: {
@@ -761,7 +1506,7 @@
         get: function () {
           if (!this.allSetting) return [];
           var alerts = []
-          if (window.location.protocol !== "https:") alerts.push('{{ i18n "secAlertSsl" }}');
+          if (window.location.protocol !== "https:") alerts.push('{{ i18n "secAlertSSL" }}');
           if (this.allSetting.webPort === 2083) alerts.push('{{ i18n "secAlertPanelPort" }}');
           panelPath = window.location.pathname.split('/').length < 4
           if (panelPath && this.allSetting.webBasePath == '/') alerts.push('{{ i18n "secAlertPanelURI" }}');
@@ -778,6 +1523,10 @@
       }
     },
     async mounted() {
+      // Before the first await: the loop at the foot of this hook never returns,
+      // and the section tree has to know its default before the panes can render.
+      // '1' was the strip's default-active-key; no pane here used force-render.
+      this.initSections('1', []);
       this.entryHost = window.location.hostname;
       this.entryPort = window.location.port;
       this.entryProtocol = window.location.protocol;
@@ -786,6 +1535,14 @@
       await this.loadInboundTags();
       await this.loadServiceState();
       await this.loadServiceLog();
+      await this.loadSslStatus();
+      // An operation started before this page load is still going server-side, so
+      // pick its progress back up rather than showing an idle one. The poll refills
+      // the steps from the server's own array, which holds the whole run.
+      if (this.ssl.status && this.ssl.status.running) {
+        this.sslResetConsole(this.ssl.status.running.op);
+        this.pollSsl();
+      }
       while (true) {
         await PromiseUtil.sleep(1000);
         this.saveBtnDisable = this.oldAllSetting.equals(this.allSetting);

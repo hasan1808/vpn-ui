@@ -502,6 +502,10 @@ func allowedIPsKey(ips []net.IPNet) string {
 func (s *WgcService) ensureLink(iface string, mtu int, blockNet net.IP, prefix int) error {
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
+		// Nothing there, so what we are about to create is unambiguously ours: record it
+		// before the LinkAdd, so the stale-link sweep has a positive claim to work from
+		// rather than inferring ownership from the name alone.
+		ownIfaceCreated(iface, "wgc")
 		la := netlink.NewLinkAttrs()
 		la.Name = iface
 		if mtu > 0 {
@@ -516,6 +520,10 @@ func (s *WgcService) ensureLink(iface string, mtu int, blockNet net.IP, prefix i
 		if link, err = netlink.LinkByName(iface); err != nil {
 			return err
 		}
+	} else if ownForbidsDelete(ownIface, iface) {
+		// A device with our exact generated name that the manifest says predates us. We
+		// would otherwise adopt it, rewrite its addresses and eventually delete it.
+		return fmt.Errorf("%s already exists and was not created by vpn-ui; not touching it", iface)
 	}
 	if blockNet != nil {
 		v4 := blockNet.To4()
@@ -551,6 +559,12 @@ func dropForeignV4Addrs(link netlink.Link, keep *netlink.Addr) {
 }
 
 // removeStaleLinks deletes every wgc<id> interface not present in keep.
+//
+// This was the worst of the three stale-link sweeps: a bare name prefix with NO link-type
+// check at all, so a bridge, a veth or an operator's own WireGuard interface called
+// "wgc-home" was deleted on the next reconcile tick and every tick after it. Ownership is
+// now the exact wgIfaceName shape plus the wireguard link kind plus the manifest; see
+// wgcOwnsLink in ifaceown.go.
 func (s *WgcService) removeStaleLinks(keep map[string]bool) {
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -558,8 +572,11 @@ func (s *WgcService) removeStaleLinks(keep map[string]bool) {
 	}
 	for _, l := range links {
 		name := l.Attrs().Name
-		if strings.HasPrefix(name, wgIfacePrefix) && !keep[name] {
-			_ = netlink.LinkDel(l)
+		if keep[name] || !wgcOwnsLink(l) {
+			continue
+		}
+		if err := netlink.LinkDel(l); err == nil {
+			ownRemoveEntry(ownIface, name)
 		}
 	}
 }
@@ -580,11 +597,7 @@ func (s *WgcService) SetupRouting() error {
 	s.runCmd("sysctl", "-w", "net.ipv4.ip_forward=1")
 	s.runCmd("modprobe", wgKernelModule)
 
-	output, _ := exec.Command("ip", "rule", "show").Output()
-	if !strings.Contains(string(output), "fwmark 0x1 lookup 100") {
-		s.runCmd("ip", "rule", "add", "fwmark", "1", "lookup", "100")
-	}
-	s.runCmd("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", "100")
+	ensureVpnPolicyRoute(s.runCmd)
 	return s.nftService.ApplyNftRules()
 }
 
@@ -605,13 +618,16 @@ func (s *WgcService) WireguardAvailable() bool {
 
 // AnyInterfaceUp reports whether at least one wgc interface exists and is up (the
 // data plane is live). Used by the Core Settings status row (WireGuard has no daemon).
+//
+// Ownership-checked like the stale-link sweep: an operator's own "wgc-home" used to make
+// the status row claim the wg-c core was running on a host that had never started it.
 func (s *WgcService) AnyInterfaceUp() bool {
 	links, err := netlink.LinkList()
 	if err != nil {
 		return false
 	}
 	for _, l := range links {
-		if strings.HasPrefix(l.Attrs().Name, wgIfacePrefix) && l.Attrs().Flags&net.FlagUp != 0 {
+		if wgcOwnsLink(l) && l.Attrs().Flags&net.FlagUp != 0 {
 			return true
 		}
 	}
@@ -641,6 +657,20 @@ type WgcClientConfig struct {
 	Remark      string `json:"remark"`    // external-proxy label (empty for the default endpoint)
 	PublicKey   string `json:"publicKey"` // the account's public key (identifier)
 	Config      string `json:"config"`    // the full wg .conf text
+	// PreSharedKey is THIS device's own preshared key, empty when PSK is off, and is the
+	// same value the Config text above carries on its PresharedKey= line. It is repeated
+	// as a field because a caller that prints the key as its own row (the account export's
+	// PSK row) would otherwise have to parse it back out of the .conf, and there is no
+	// other source for it: each device of a multi-device account has a DIFFERENT key, so
+	// the account's legacy top-level psk is not a stand-in for the device's.
+	PreSharedKey string `json:"psk"`
+	// Host/Port mirror this config's own Endpoint= (the target this specific config
+	// dials, an external-proxy relay or the panel host). Callers that print a separate
+	// "Server" summary row (the account export) must read it from here rather than
+	// re-deriving the inbound's default address, or that row goes stale the moment an
+	// external proxy is set while the attached .conf (which is always correct) does not.
+	Host string `json:"host"`
+	Port int    `json:"port"`
 }
 
 // dnsList joins the inbound's configured DNS servers (defaults to Cloudflare).
@@ -719,6 +749,13 @@ func (s *WgcService) RenderClientConfigs(inbound *model.Inbound, email, endpoint
 				continue
 			}
 			cidr := ips[d] + "/32"
+			// Resolved once per device, not per endpoint: the key belongs to the device, and
+			// every endpoint config of that device carries the same one. Same shape (and same
+			// gate) as RenderClientParams below, which is what keeps the two in lock-step.
+			psk := ""
+			if settings.PskEnable && strings.TrimSpace(dev.Psk) != "" {
+				psk = dev.Psk
+			}
 			for ti, t := range targets {
 				var b strings.Builder
 				b.WriteString("[Interface]\n")
@@ -728,8 +765,8 @@ func (s *WgcService) RenderClientConfigs(inbound *model.Inbound, email, endpoint
 				b.WriteString(fmt.Sprintf("MTU = %d\n", settings.mtu()))
 				b.WriteString("\n[Peer]\n")
 				b.WriteString("PublicKey = " + settings.ServerPubKey + "\n")
-				if settings.PskEnable && strings.TrimSpace(dev.Psk) != "" {
-					b.WriteString("PresharedKey = " + dev.Psk + "\n")
+				if psk != "" {
+					b.WriteString("PresharedKey = " + psk + "\n")
 				}
 				b.WriteString(fmt.Sprintf("Endpoint = %s:%d\n", t.host, t.port))
 				b.WriteString("AllowedIPs = 0.0.0.0/0\n")
@@ -745,11 +782,14 @@ func (s *WgcService) RenderClientConfigs(inbound *model.Inbound, email, endpoint
 					remark += t.remark
 				}
 				out = append(out, WgcClientConfig{
-					DeviceIndex: d*len(targets) + ti,
-					IP:          cidr,
-					Remark:      remark,
-					PublicKey:   dev.PubKey,
-					Config:      b.String(),
+					DeviceIndex:  d*len(targets) + ti,
+					IP:           cidr,
+					Remark:       remark,
+					PublicKey:    dev.PubKey,
+					Config:       b.String(),
+					PreSharedKey: psk,
+					Host:         t.host,
+					Port:         t.port,
 				})
 			}
 		}

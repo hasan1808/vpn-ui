@@ -42,7 +42,7 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "dns1": "8.8.8.8",
   "dns2": "8.8.4.4",
   "mtu": 1400,
-  "userLimit": 1,
+  "userLimit": 10,
   "userLimitStrategy": "accept",
   "clients": [],
   "externalProxy": []
@@ -55,7 +55,7 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "dns1": "8.8.8.8",
   "dns2": "8.8.4.4",
   "mtu": 1400,
-  "userLimit": 1,
+  "userLimit": 10,
   "userLimitStrategy": "accept",
   "clients": [],
   "externalProxy": []
@@ -71,6 +71,8 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "serverCertFile": "",
   "serverKeyFile": "",
   "tlsCryptFile": "",
+  "tlsCryptEnable": true,
+  "friendlyName": "",
   "dns1": "8.8.8.8",
   "dns2": "8.8.4.4",
   "mtu": 1500,
@@ -95,7 +97,7 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "clientToClient": false,
   "crossInbound": false,
   "ipRanges": [],
-  "userLimit": 1,
+  "userLimit": 10,
   "userLimitStrategy": "accept"
 }`,
 
@@ -114,14 +116,14 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "clientToClient": false,
   "crossInbound": false,
   "ipRanges": [],
-  "userLimit": 1,
+  "userLimit": 10,
   "userLimitStrategy": "accept"
 }`,
 
 	model.SSTP: `{
   "dns1": "8.8.8.8",
   "dns2": "8.8.4.4",
-  "mtu": 1420,
+  "mtu": 1400,
   "tlsUseFile": false,
   "certificateFile": "",
   "keyFile": "",
@@ -133,14 +135,14 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "clientToClient": false,
   "crossInbound": false,
   "ipRanges": [],
-  "userLimit": 1,
+  "userLimit": 10,
   "userLimitStrategy": "accept"
 }`,
 
 	model.IKEV2: `{
   "dns1": "8.8.8.8",
   "dns2": "8.8.4.4",
-  "mtu": 1420,
+  "mtu": 1400,
   "authMode": "eap-mschapv2",
   "psk": "",
   "serverAddr": "",
@@ -156,7 +158,7 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "clientToClient": false,
   "crossInbound": false,
   "ipRanges": [],
-  "userLimit": 1,
+  "userLimit": 10,
   "userLimitStrategy": "accept"
 }`,
 
@@ -171,7 +173,7 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "clientToClient": false,
   "crossInbound": false,
   "ipRanges": [],
-  "userLimit": 1,
+  "userLimit": 10,
   "userLimitStrategy": "accept",
   "externalProxy": []
 }`,
@@ -196,7 +198,7 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "clientToClient": false,
   "crossInbound": false,
   "ipRanges": [],
-  "userLimit": 1,
+  "userLimit": 10,
   "userLimitStrategy": "accept",
   "externalProxy": []
 }`,
@@ -213,16 +215,22 @@ var uiSettingsBlobs = map[model.Protocol]string{
   "clientToClient": false,
   "crossInbound": false,
   "ipRanges": [],
-  "userLimit": 1,
+  "userLimit": 10,
   "userLimitStrategy": "accept"
 }`,
 
 	model.MTPROTO: `{
-  "clients": []
+  "modeClassic": true,
+  "modeSecure": true,
+  "modeTls": true,
+  "tlsDomain": "www.google.com",
+  "userLimit": 10,
+  "clients": [],
+  "externalProxy": []
 }`,
 
 	model.SSH: `{
-  "userLimit": 0,
+  "userLimit": 10,
   "userLimitStrategy": "accept",
   "externalProxy": [],
   "clients": [],
@@ -282,6 +290,10 @@ var vpnDefaultProtocols = []model.Protocol{
 }
 
 func TestDefaultSettingsForMatchesTheBrowserModel(t *testing.T) {
+	// An empty database, because l2tp's ipsecPsk default is inherited from an existing
+	// enabled l2tp inbound when there is one (see sharedL2tpIpsecPsk) and the length
+	// check below is only meaningful for a MINTED key.
+	newInboundDB(t)
 	if len(uiSettingsBlobs) != len(vpnDefaultProtocols) {
 		t.Fatalf("fixture covers %d protocols, expected %d", len(uiSettingsBlobs), len(vpnDefaultProtocols))
 	}
@@ -318,7 +330,15 @@ func TestDefaultSettingsForMatchesTheBrowserModel(t *testing.T) {
 // The minted secrets must differ per inbound. A package-level constant would satisfy
 // every other test in this file and hand the same IPsec PSK to every L2TP inbound the
 // panel ever creates.
+//
+// L2TP is only tested here for the FIRST inbound. This test used to assert that two L2TP
+// inbounds always get different keys, which read as a safety property but was really the
+// bug written down: the save-time check refuses two different keys on one IKE listen
+// address, and a new inbound listens on all of them, so "always different" meant "the
+// second inbound can never be saved without hand-copying the first one's key out of the
+// other form". Inheritance is asserted below instead.
 func TestDefaultSettingsForMintsAFreshSecretPerCall(t *testing.T) {
+	newInboundDB(t) // no l2tp inbound to inherit from, so l2tp mints like gre does
 	for _, protocol := range []model.Protocol{model.L2TP, model.GRE} {
 		first := decodeSettingsMap(t, mustDefaultSettings(t, protocol))
 		second := decodeSettingsMap(t, mustDefaultSettings(t, protocol))
@@ -328,11 +348,58 @@ func TestDefaultSettingsForMintsAFreshSecretPerCall(t *testing.T) {
 	}
 }
 
+// The second L2TP inbound inherits the first one's IPsec key, because on one listen
+// address that is the only key it could ever have used. GRE keeps minting: its
+// connections are per-inbound identities on the shared charon, so nothing is shared.
+func TestDefaultSettingsForInheritsTheL2tpIpsecPsk(t *testing.T) {
+	s := newInboundDB(t)
+
+	if _, _, err := s.AddInbound(&model.Inbound{
+		UserId: 1, Tag: "inbound-11301", Port: 11301, Protocol: model.L2TP, Enable: true,
+		Settings: `{"ipsecEnable":true,"ipsecPsk":"the-first-key","clients":[]}`,
+	}); err != nil {
+		t.Fatalf("AddInbound: %v", err)
+	}
+
+	got := decodeSettingsMap(t, mustDefaultSettings(t, model.L2TP))
+	if got["ipsecPsk"] != "the-first-key" {
+		t.Errorf("a new l2tp inbound got ipsecPsk %q, want the existing inbound's %q",
+			got["ipsecPsk"], "the-first-key")
+	}
+
+	// And the same through the fill path, which is what the API actually calls.
+	filled, err := FillSettingsDefaults(model.L2TP, `{"dns1":"9.9.9.9"}`)
+	if err != nil {
+		t.Fatalf("FillSettingsDefaults: %v", err)
+	}
+	if psk := decodeSettingsMap(t, filled)["ipsecPsk"]; psk != "the-first-key" {
+		t.Errorf("filled ipsecPsk is %q, want %q", psk, "the-first-key")
+	}
+
+	// A key the caller sent is still theirs; the default only fills an absent one.
+	filled, err = FillSettingsDefaults(model.L2TP, `{"ipsecPsk":"mine","listen":"ignored"}`)
+	if err != nil {
+		t.Fatalf("FillSettingsDefaults: %v", err)
+	}
+	if psk := decodeSettingsMap(t, filled)["ipsecPsk"]; psk != "mine" {
+		t.Errorf("filled ipsecPsk is %q, want the posted %q", psk, "mine")
+	}
+
+	gre := decodeSettingsMap(t, mustDefaultSettings(t, model.GRE))
+	greAgain := decodeSettingsMap(t, mustDefaultSettings(t, model.GRE))
+	if gre["ipsecPsk"] == greAgain["ipsecPsk"] {
+		t.Errorf("gre stopped minting a fresh key: %q twice", gre["ipsecPsk"])
+	}
+}
+
 // The defaults have to unmarshal into the struct the protocol's own service parses the
 // same blob with, carrying the values through. This is the check that catches a key
 // name that is plausible but wrong: json.Unmarshal ignores what it does not recognise,
 // so a misspelled key leaves the field on its zero value and nothing complains.
 func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
+	// Same reason as TestDefaultSettingsForMatchesTheBrowserModel: only a minted l2tp
+	// key is 16 chars, an inherited one is whatever the other inbound holds.
+	newInboundDB(t)
 	t.Run("l2tp", func(t *testing.T) {
 		var s l2tpSettings
 		unmarshalDefaults(t, model.L2TP, &s)
@@ -342,7 +409,9 @@ func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
 		if s.Dns1 != "8.8.8.8" || s.Dns2 != "8.8.4.4" || s.Mtu != 1400 {
 			t.Errorf("dns/mtu: %q %q %d", s.Dns1, s.Dns2, s.Mtu)
 		}
-		if effectiveUserLimit(s.UserLimit) != 1 || s.UserLimitStrategy != "accept" {
+		// An EXPLICIT 10, not an absent field: absent would resolve to a single device,
+		// which is not what a freshly created inbound gets.
+		if s.UserLimit == nil || *s.UserLimit != 10 || s.UserLimitStrategy != "accept" {
 			t.Errorf("user limit: %v %q", s.UserLimit, s.UserLimitStrategy)
 		}
 	})
@@ -353,7 +422,9 @@ func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
 		if s.Dns1 != "8.8.8.8" || s.Dns2 != "8.8.4.4" || s.Mtu != 1400 {
 			t.Errorf("dns/mtu: %q %q %d", s.Dns1, s.Dns2, s.Mtu)
 		}
-		if effectiveUserLimit(s.UserLimit) != 1 || s.UserLimitStrategy != "accept" {
+		// An EXPLICIT 10, not an absent field: absent would resolve to a single device,
+		// which is not what a freshly created inbound gets.
+		if s.UserLimit == nil || *s.UserLimit != 10 || s.UserLimitStrategy != "accept" {
 			t.Errorf("user limit: %v %q", s.UserLimit, s.UserLimitStrategy)
 		}
 	})
@@ -381,7 +452,9 @@ func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
 		if s.Dns1 != "8.8.8.8" || s.Mtu != 1420 || s.TlsUseFile {
 			t.Errorf("dns/mtu/tls: %q %d %v", s.Dns1, s.Mtu, s.TlsUseFile)
 		}
-		if effectiveUserLimit(s.UserLimit) != 1 || s.UserLimitStrategy != "accept" {
+		// An EXPLICIT 10, not an absent field: absent would resolve to a single device,
+		// which is not what a freshly created inbound gets.
+		if s.UserLimit == nil || *s.UserLimit != 10 || s.UserLimitStrategy != "accept" {
 			t.Errorf("user limit: %v %q", s.UserLimit, s.UserLimitStrategy)
 		}
 	})
@@ -389,7 +462,11 @@ func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
 	t.Run("sstp", func(t *testing.T) {
 		var s sstpSettings
 		unmarshalDefaults(t, model.SSTP, &s)
-		if s.Dns1 != "8.8.8.8" || s.Mtu != 1420 || s.TlsUseFile {
+		// 1400 and NOT OpenConnect's 1420, which is the value this shape was copied from:
+		// SSTP's PPP-in-SSTP-in-TLS-in-TCP stack costs ~101 bytes on a 1500 byte path.
+		// sstpSettings' own writer falls back to 1400 when nothing is set, and the form
+		// posting 1420 on every save is what made that fallback dead code.
+		if s.Dns1 != "8.8.8.8" || s.Mtu != 1400 || s.TlsUseFile {
 			t.Errorf("dns/mtu/tls: %q %d %v", s.Dns1, s.Mtu, s.TlsUseFile)
 		}
 	})
@@ -402,6 +479,12 @@ func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
 		}
 		if s.Dns1 != "8.8.8.8" || s.Dns2 != "8.8.4.4" {
 			t.Errorf("dns: %q %q", s.Dns1, s.Dns2)
+		}
+		// The mtu key has to reach the STRUCT, not just the stored JSON. It used to be
+		// defaulted, range-checked and saved while ikev2Settings had no Mtu field at all,
+		// so the form's control did nothing whatsoever.
+		if s.Mtu != 1400 || s.effectiveMtu() != 1400 || s.clampMss() != 1360 {
+			t.Errorf("mtu: stored=%d effective=%d mss=%d", s.Mtu, s.effectiveMtu(), s.clampMss())
 		}
 	})
 
@@ -451,10 +534,10 @@ func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
 	t.Run("ssh", func(t *testing.T) {
 		var s sshSettings
 		unmarshalDefaults(t, model.SSH, &s)
-		// 0 is the constructor's value and means NO limit. It has to arrive as an
-		// explicit 0 rather than an absent key, which effectiveSshK reads as 1.
-		if s.UserLimit == nil || *s.UserLimit != 0 {
-			t.Errorf("userLimit must be an explicit 0 (no limit), got %v", s.UserLimit)
+		// 10 is the constructor's value. It has to arrive as an explicit number rather
+		// than an absent key, which effectiveSshK reads as 1.
+		if s.UserLimit == nil || *s.UserLimit != 10 {
+			t.Errorf("userLimit must be an explicit 10, got %v", s.UserLimit)
 		}
 		if s.UserLimitStrategy != "accept" || s.HostKey != "" {
 			t.Errorf("strategy/hostKey: %q %q", s.UserLimitStrategy, s.HostKey)
@@ -466,6 +549,27 @@ func TestDefaultSettingsForRoundTripsIntoTheProtocolStruct(t *testing.T) {
 		unmarshalDefaults(t, model.MTPROTO, &s)
 		if s.Clients == nil {
 			t.Error("clients must be an empty array, not absent")
+		}
+		// All three modes on is the constructor's value. An inbound created through
+		// the API with none of them would be refused by validateMtprotoSettings and,
+		// were it stored anyway, would render per-account mode entries that telemt
+		// reads as "unrestricted".
+		if !s.ModeClassic || !s.ModeSecure || !s.ModeTls {
+			t.Errorf("modes: %v %v %v, want all three on", s.ModeClassic, s.ModeSecure, s.ModeTls)
+		}
+		if s.TlsDomain != "www.google.com" {
+			t.Errorf("tlsDomain: %q, want the default", s.TlsDomain)
+		}
+		// No ad tag is seeded, because the tag is per CLIENT. A fresh inbound whose
+		// settings carried adtagEnable would be read by nothing and would only make
+		// the two levels look interchangeable.
+		if s.Clients != nil && len(s.Clients) > 0 {
+			t.Error("the defaults seeded a client")
+		}
+		// An explicit 10, not an absent key, which effectiveUserLimit reads as the
+		// legacy single device.
+		if s.UserLimit == nil || *s.UserLimit != 10 {
+			t.Errorf("userLimit must be an explicit 10, got %v", s.UserLimit)
 		}
 	})
 }
@@ -766,7 +870,7 @@ func TestAddInboundFillsDefaultsForAMinimalBody(t *testing.T) {
 	if !stored.IpsecEnable || len(stored.IpsecPsk) != 16 {
 		t.Errorf("ipsec was not defaulted: enable=%v psk=%q", stored.IpsecEnable, stored.IpsecPsk)
 	}
-	if effectiveUserLimit(stored.UserLimit) != 1 || stored.UserLimitStrategy != "accept" {
+	if stored.UserLimit == nil || *stored.UserLimit != 10 || stored.UserLimitStrategy != "accept" {
 		t.Errorf("user limit was not defaulted: %v %q", stored.UserLimit, stored.UserLimitStrategy)
 	}
 	if len(stored.Clients) != 1 || stored.Clients[0].ID != "bob" {
@@ -902,8 +1006,14 @@ func TestAddInboundKeepsWireguardDeviceKeys(t *testing.T) {
 func TestAddInboundKeepsShadowsocksPerClientMethod(t *testing.T) {
 	s := newInboundDB(t)
 
+	// The per-account key is a REAL 32-byte PSK, which its chacha20-poly1305 cipher
+	// demands. "client-psk" was accepted when this was written and is now refused by
+	// ValidateShadowsocksKeys, correctly: that account could never have connected.
+	// The subject here is the per-account METHOD surviving the add path, so the
+	// fixture is corrected rather than the check relaxed.
+	const clientPsk = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 	posted := `{"method":"2022-blake3-aes-256-gcm","password":"inbound-psk","network":"tcp,udp","ivCheck":false,` +
-		`"clients":[{"method":"2022-blake3-chacha20-poly1305","password":"client-psk","email":"erin@example.com","enable":false}]}`
+		`"clients":[{"method":"2022-blake3-chacha20-poly1305","password":"` + clientPsk + `","email":"erin@example.com","enable":false}]}`
 	added, _, err := s.AddInbound(&model.Inbound{
 		UserId: 1, Tag: "inbound-11301", Port: 11301, Protocol: model.Shadowsocks,
 		Enable: true, Settings: posted,

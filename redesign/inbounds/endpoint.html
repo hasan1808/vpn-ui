@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Endpoint, five ways</title>
+<style>
+/* ==================================================================
+   Tokens and row styles lifted from web/assets/css/tokens.css and the
+   bo-il- block of components.css, so what is on screen is the SHIPPED
+   Manifest row and the only thing changing between tabs is how the
+   endpoint is carried.
+   ================================================================== */
+:root {
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eef2f4;
+  --border:#e4e9ee;
+  --border-strong:#d2dae1;
+
+  --text:#1b2430;
+  --text-2:#5a6675;
+  --text-3:#6b7787;
+
+  --accent:#008771;
+  --accent-strong:#00806b;
+  --accent-weak:#e2f2ee;
+  --on-accent:#ffffff;
+
+  --ok:#1c7a45;
+  --info:#1f6fd0;
+  --warn:#8a6008;
+  --error:#b3261e;
+  --off:#6b7787;
+
+  --ok-weak:rgba(28,122,69,.10);
+  --info-weak:rgba(31,111,208,.10);
+  --warn-weak:rgba(138,96,8,.12);
+  --error-weak:rgba(179,38,30,.10);
+  --off-weak:rgba(107,119,135,.12);
+
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+
+  --fs-xs:11px; --fs-sm:12.5px; --fs-base:14px; --fs-md:16px;
+  --r:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740;
+    --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+    --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13);
+    --warn-weak:rgba(224,169,74,.14); --error-weak:rgba(242,114,106,.13);
+    --off-weak:rgba(133,147,168,.15);
+    --shadow-sm:none;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740;
+  --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13);
+  --warn-weak:rgba(224,169,74,.14); --error-weak:rgba(242,114,106,.13);
+  --off-weak:rgba(133,147,168,.15);
+  --shadow-sm:none;
+  color-scheme:dark;
+}
+
+*, *::before, *::after { box-sizing:border-box; }
+html, body { margin:0; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:var(--ui); font-size:var(--fs-base); line-height:1.45;
+  -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+}
+.num { font-variant-numeric:tabular-nums; }
+.page { max-width:1250px; margin:0 auto; padding:40px 22px 90px; }
+
+.masthead { max-width:840px; margin-bottom:26px; }
+.eyebrow {
+  font-size:11px; font-weight:700; letter-spacing:.10em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 9px;
+}
+.masthead h1 { font-size:27px; font-weight:650; letter-spacing:-.015em; margin:0 0 10px; }
+.masthead p { color:var(--text-2); font-size:14px; margin:0 0 10px; }
+.masthead em { color:var(--text); font-style:normal; font-weight:600; }
+.masthead code {
+  font-family:var(--mono); font-size:12.5px;
+  background:var(--surface-2); padding:1px 6px; border-radius:5px; color:var(--text-2);
+}
+
+.switcher {
+  position:sticky; top:0; z-index:30;
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+  background:var(--bg); padding:12px 0 13px; margin-bottom:20px;
+  border-bottom:1px solid var(--border);
+}
+.tabs { display:flex; gap:5px; flex-wrap:wrap; }
+.tab {
+  font:inherit; font-size:13px; font-weight:550;
+  display:inline-flex; align-items:center; gap:8px;
+  padding:7px 14px 7px 9px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  cursor:pointer; transition:background .13s, color .13s, border-color .13s;
+}
+.tab .n {
+  display:inline-grid; place-items:center; width:19px; height:19px; border-radius:50%;
+  background:var(--surface-2); color:var(--text-3);
+  font-size:10.5px; font-weight:700; font-family:var(--mono);
+}
+.tab:hover { border-color:var(--border-strong); color:var(--text); }
+.tab[aria-selected="true"] { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.tab[aria-selected="true"] .n { background:rgba(255,255,255,.22); color:var(--on-accent); }
+.switcher-right { display:flex; gap:7px; }
+.ghost {
+  font:inherit; font-size:12.5px; font-weight:550;
+  padding:7px 13px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2); cursor:pointer;
+}
+.ghost:hover { border-color:var(--border-strong); color:var(--text); }
+
+.rationale {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:0; margin:0 0 18px;
+  background:var(--border); border:1px solid var(--border); border-radius:var(--r); overflow:hidden;
+}
+.rationale > div { background:var(--surface); padding:13px 15px; }
+.rationale dt {
+  font-size:10.5px; font-weight:700; letter-spacing:.085em; text-transform:uppercase;
+  color:var(--text-3); margin-bottom:5px;
+}
+.rationale dd { margin:0; font-size:12.5px; color:var(--text-2); line-height:1.45; }
+.rationale dd b { color:var(--text); font-weight:600; }
+.rationale .cost dd b { color:var(--warn); }
+
+.view { display:none; }
+.view.on { display:block; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-sm); overflow:hidden; }
+
+/* ---- the shipped row ---- */
+table { width:100%; border-collapse:collapse; }
+thead th {
+  text-align:start; font-size:var(--fs-sm); font-weight:700;
+  color:var(--text-3); background:var(--surface-2);
+  padding:11px 14px; border-bottom:1px solid var(--border); white-space:nowrap;
+}
+tbody td { padding:12px 14px; border-bottom:1px solid var(--border); vertical-align:middle; }
+tbody tr:last-child td { border-bottom:0; }
+tbody tr:hover { background:var(--accent-weak); }
+th.end, td.end { text-align:end; }
+
+.lead { color:var(--text-3); text-align:center; }
+.lead .box { display:inline-block; width:14px; height:14px; border-radius:3px; border:1px solid var(--border-strong); }
+.lead .kebab { font-size:17px; letter-spacing:-1px; }
+.sw { display:inline-block; width:38px; height:20px; border-radius:999px; background:var(--accent); position:relative; vertical-align:middle; }
+.sw::after { content:""; position:absolute; top:2px; inset-inline-start:20px; width:16px; height:16px; border-radius:50%; background:#fff; }
+.sw[data-on="false"] { background:var(--border-strong); }
+.sw[data-on="false"]::after { inset-inline-start:2px; }
+
+.bo-il-ident { display:flex; align-items:center; gap:9px; min-width:0; }
+.bo-il-lines { min-width:0; flex:1; }
+.bo-il-lamp { width:9px; height:9px; border-radius:50%; flex:none; background:var(--ok); }
+.bo-il-lamp[data-state="off"] { background:var(--off); }
+.bo-il-lamp[data-state="warn"] { background:var(--warn); }
+.bo-il-name {
+  display:block; font-size:var(--fs-base); font-weight:600; color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.bo-il-meta {
+  display:block; font-family:var(--mono); font-size:var(--fs-sm);
+  color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  direction:ltr; unicode-bidi:isolate; text-align:start;
+}
+.bo-il-meta b { color:var(--text-2); font-weight:600; }
+.bo-il-top { display:flex; align-items:baseline; justify-content:space-between; gap:10px; font-size:var(--fs-base); margin-bottom:5px; }
+.bo-il-used { font-family:var(--mono); font-weight:600; color:var(--text); }
+.bo-il-cap { font-family:var(--mono); font-size:var(--fs-sm); color:var(--text-3); }
+.bo-il-sub { display:block; margin-top:5px; font-size:var(--fs-sm); color:var(--text-3); white-space:nowrap; }
+.bo-il-meter { height:5px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.bo-il-meter > i { display:block; height:100%; border-radius:999px; background:var(--accent); }
+.bo-il-meter--warn > i { background:var(--warn); }
+.bo-il-acc { display:flex; gap:1px; height:5px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.bo-il-acc > i { display:block; height:100%; }
+.bo-il-acc--online { background:var(--info); }
+.bo-il-acc--idle { background:var(--border-strong); }
+.bo-il-acc--off { background:var(--off); }
+.bo-il-n { font-family:var(--mono); font-weight:600; color:var(--text); }
+.bo-il-exp { font-family:var(--mono); font-size:var(--fs-base); color:var(--text-2); }
+.bo-il-inf { font-size:var(--fs-md); line-height:1; color:var(--text-3); }
+
+/* the endpoint's shared parts, so the five differ on structure not paint */
+.ep { font-family:var(--mono); font-size:var(--fs-sm); white-space:nowrap; }
+.ep .host { color:var(--text-3); }
+.ep .port { color:var(--text); font-weight:600; }
+.ep .none { color:var(--text-3); }
+.cp { opacity:.5; font-size:11px; margin-inline-start:5px; }
+.hit { cursor:pointer; border-radius:5px; padding:1px 5px; margin-inline-start:-5px; }
+.hit:hover { background:var(--surface-2); }
+.hit:hover .cp { opacity:1; }
+
+/* an inbound whose dial address is NOT the panel's, flagged wherever a
+   scheme prints one - this is the case that makes a printed endpoint lie */
+.flag {
+  font-family:var(--ui); font-size:10.5px; font-weight:650; letter-spacing:.02em;
+  padding:0 5px; border-radius:4px; margin-inline-start:6px;
+  background:var(--warn-weak); color:var(--warn); vertical-align:1px;
+}
+.flag--bound { background:var(--info-weak); color:var(--info); }
+
+/* ==================================================================
+   1  SHARED HOST - the host is said once, above the table
+   ================================================================== */
+.caption {
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+  padding:10px 14px; border-bottom:1px solid var(--border);
+  background:var(--surface-2); font-size:var(--fs-sm); color:var(--text-2);
+}
+.caption .h { font-family:var(--mono); color:var(--text); font-weight:600; }
+.caption .note { color:var(--text-3); }
+
+/* ==================================================================
+   2  GHOST HOST - inline, host receded, port lit
+   ================================================================== */
+.g2 .bo-il-meta .host { color:var(--text-3); opacity:.55; transition:opacity .12s; }
+.g2 tbody tr:hover .bo-il-meta .host { opacity:1; }
+.g2 .bo-il-meta .port { color:var(--text); font-weight:600; }
+
+/* ==================================================================
+   3  COLUMN - the endpoint gets a column, elided from the left
+   ================================================================== */
+.g3 .epcol { font-family:var(--mono); font-size:var(--fs-sm); color:var(--text-2); }
+.g3 .epcol .line + .line { margin-top:3px; }
+.g3 .epcol .t { color:var(--text-3); }
+
+/* ==================================================================
+   4  HANDOFF - the endpoint IS the control, and it yields whatever
+      this protocol actually hands to a person
+   ================================================================== */
+.g4 .handoff {
+  display:inline-flex; align-items:center; gap:8px;
+  border:1px solid var(--border); background:var(--surface);
+  border-radius:7px; padding:3px 9px; cursor:pointer; max-width:100%;
+  transition:border-color .12s, background .12s;
+}
+.g4 .handoff:hover { border-color:var(--accent); background:var(--accent-weak); }
+.g4 .handoff .addr {
+  font-family:var(--mono); font-size:var(--fs-sm); color:var(--text-2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.g4 .handoff .addr b { color:var(--text); font-weight:600; }
+.g4 .handoff .verb {
+  font-size:11px; font-weight:650; color:var(--accent);
+  border-inline-start:1px solid var(--border); padding-inline-start:8px; white-space:nowrap;
+}
+.g4 .handoff:hover .verb { color:var(--accent); }
+.g4 .handoff.dead { cursor:default; border-style:dashed; }
+.g4 .handoff.dead:hover { border-color:var(--border); background:var(--surface); }
+.g4 .handoff.dead .verb { color:var(--text-3); }
+
+/* ==================================================================
+   5  REACHABLE - the endpoint carries whether anything answers there
+   ================================================================== */
+.g5 .reach { display:inline-flex; align-items:center; gap:7px; }
+.g5 .dot { width:7px; height:7px; border-radius:50%; flex:none; background:var(--border-strong); }
+.g5 .reach[data-r="up"] .dot { background:var(--ok); }
+.g5 .reach[data-r="down"] .dot { background:var(--error); }
+.g5 .reach[data-r="unknown"] .dot { background:var(--border-strong); }
+.g5 .rl { font-size:11px; font-weight:600; color:var(--text-3); }
+.g5 .reach[data-r="up"] .rl { color:var(--ok); }
+.g5 .reach[data-r="down"] .rl { color:var(--error); }
+
+.legend {
+  margin-top:14px; font-size:12.5px; color:var(--text-3); line-height:1.6;
+  border-inline-start:2px solid var(--border-strong); padding-inline-start:12px;
+}
+.legend b { color:var(--text-2); font-weight:600; }
+.legend code { font-family:var(--mono); color:var(--text-2); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Inbounds list &middot; the endpoint, further</p>
+    <h1>Endpoint, five ways</h1>
+    <p>
+      The first sketch printed <code>panel.example.com:8443</code> as a third line in the
+      identity cell. It answers the right question &mdash; a port on its own is half an
+      address &mdash; and it has three problems worth designing away: it makes the row a
+      line taller, it repeats the same hostname down the entire column, and on a fronted
+      inbound the address it prints is <em>not the one a client dials</em>.
+    </p>
+    <p>
+      Each of these five gives up something different to fix those. The fixture now
+      carries <em>cdn-fronted</em>, whose real address is a CDN hostname the panel has
+      never been told, and <em>cdn-ws</em>, which is bound to one interface &mdash; the two
+      rows that decide whether a scheme tells the truth.
+    </p>
+  </header>
+
+  <div class="switcher">
+    <div class="tabs" role="tablist" aria-label="Direction">
+      <button class="tab" role="tab" data-view="e1" aria-selected="true"><span class="n">1</span>Shared host</button>
+      <button class="tab" role="tab" data-view="e2" aria-selected="false"><span class="n">2</span>Ghost host</button>
+      <button class="tab" role="tab" data-view="e3" aria-selected="false"><span class="n">3</span>Column</button>
+      <button class="tab" role="tab" data-view="e4" aria-selected="false"><span class="n">4</span>Handoff</button>
+      <button class="tab" role="tab" data-view="e5" aria-selected="false"><span class="n">5</span>Reachable</button>
+    </div>
+    <div class="switcher-right">
+      <button class="ghost" id="theme">Dark</button>
+    </div>
+  </div>
+
+  <section class="view on" id="v-e1"></section>
+  <section class="view" id="v-e2"></section>
+  <section class="view" id="v-e3"></section>
+  <section class="view" id="v-e4"></section>
+  <section class="view" id="v-e5"></section>
+
+</div>
+
+<script>
+const HOST = 'panel.example.com';
+
+/* ------------------------------------------------------------------
+   The fixture. Two rows exist purely to catch a scheme lying:
+   cdn-ws is bound to one interface, and cdn-fronted is reached at a
+   CDN name that lives in streamSettings, not in the panel's own idea
+   of where it lives.
+   ------------------------------------------------------------------ */
+const R = [
+  { remark:'reality-main', label:'VLESS', port:8443, net:'tcp', sec:'reality',
+    state:'ok', reach:'up', kind:'xray',
+    used:'55.88 GB', cap:null, all:'84.75 GB', n:12, online:4, note:'all healthy',
+    segs:[['online',4],['idle',8]] },
+
+  { remark:'cdn-ws', label:'VMess', port:8444, listen:'10.0.0.5', net:'ws', sec:'tls',
+    state:'ok', reach:'up', kind:'xray', bound:true,
+    used:'1.21 GB', cap:'50.00 GB', pct:2.4, all:'3.73 GB', n:6, online:1, note:'all healthy',
+    segs:[['online',1],['idle',5]] },
+
+  { remark:'cdn-fronted', label:'VLESS', port:443, net:'ws', sec:'tls',
+    state:'ok', reach:'up', kind:'xray', fronted:'cdn.example.net',
+    used:'302.00 GB', cap:null, all:'740.00 GB', n:31, online:11, note:'all healthy',
+    segs:[['online',11],['idle',20]] },
+
+  { remark:'ovpn-road', label:'OpenVPN', port:1195, tcpPort:1194, dual:true,
+    state:'ok', reach:'up', kind:'ovpn',
+    used:'820.00 GB', cap:'2.00 TB', pct:41, all:'1.90 TB', n:17, online:6, note:'all healthy',
+    segs:[['online',6],['idle',11]] },
+
+  { remark:'branch-gre', label:'GRE', noport:true,
+    state:'off', reach:'down', kind:'vpn',
+    used:'0 B', cap:null, all:'0 B', n:2, online:0, note:'2 disabled',
+    segs:[['off',2]] },
+
+  { remark:'ikev2-mobile', label:'IKEv2', port:500, net:'udp',
+    state:'warn', reach:'unknown', kind:'vpn',
+    used:'184.00 GB', cap:'200.00 GB', pct:92, warn:true, all:'302.00 GB',
+    n:9, online:3, note:'all healthy', segs:[['online',3],['idle',6]] },
+
+  { remark:'mtproto-tg', label:'MTProto Proxy', port:443,
+    state:'ok', reach:'up', kind:'relay',
+    used:'12.40 GB', cap:null, all:'40.10 GB', n:1, online:0, note:'all healthy',
+    segs:[['idle',1]] },
+];
+
+const INF = '<span class="bo-il-inf" title="No limit">&infin;</span>';
+const COPY = '<span class="cp">&#10697;</span>';
+
+/* The address a client actually dials, and how confident the panel is in it.
+   Three answers, not one: the inbound is fronted (the panel is guessing and
+   should say so), bound to an interface (the panel knows exactly), or on the
+   panel's own host (the panel's best guess, and usually right). */
+function dial(d) {
+  if (d.fronted) return { host:d.fronted, kind:'fronted' };
+  if (d.listen)  return { host:d.listen,  kind:'bound' };
+  return { host:HOST, kind:'default' };
+}
+function ports(d) {
+  if (d.noport) return [];
+  if (d.dual) return [{ t:'tcp', p:d.tcpPort }, { t:'udp', p:d.port }];
+  return [{ t:d.net || null, p:d.port }];
+}
+function flag(k) {
+  if (k === 'fronted') return '<span class="flag" title="Reached at a CDN name; the panel is not the address">fronted</span>';
+  if (k === 'bound') return '<span class="flag flag--bound" title="Bound to one interface">bound</span>';
+  return '';
+}
+/* Middle-elide, not left-elide. A hostname's distinguishing part is its FIRST
+   label; cutting from the left turns panel.example.com into …nel.example.com,
+   which keeps the half every host on the box shares and throws away the half
+   that identifies it. Both ends survive here. */
+function elide(h, max) {
+  if (h.length <= max) return h;
+  const head = Math.ceil((max - 1) / 2), tail = Math.floor((max - 1) / 2);
+  return h.slice(0, head) + '…' + h.slice(h.length - tail);
+}
+
+/* ---- shared cells ---- */
+const LEAD_H = '<th style="width:34px"></th><th style="width:46px">Menu</th><th style="width:58px">Enabled</th>';
+const lead = d => '<td class="lead"><span class="box"></span></td>' +
+  '<td class="lead"><span class="kebab">&#8942;</span></td>' +
+  '<td class="lead"><span class="sw" data-on="' + (d.state !== 'off') + '"></span></td>';
+
+function segs(d) {
+  return '<div class="bo-il-acc">' +
+    d.segs.map(([k, v]) => '<i class="bo-il-acc--' + k + '" style="flex:' + v + '"></i>').join('') +
+    '</div>';
+}
+function tail(d) {
+  return '<td>' +
+      '<div class="bo-il-top">' +
+        '<span class="bo-il-used num">' + d.used + '</span>' +
+        (d.cap ? '<span class="bo-il-cap num">' + d.cap + '</span>' : '<span class="bo-il-cap">' + INF + '</span>') +
+      '</div>' +
+      '<div class="bo-il-meter' + (d.warn ? ' bo-il-meter--warn' : '') + '">' +
+        '<i style="width:' + (d.pct || 0) + '%"></i></div>' +
+      '<span class="bo-il-sub">' + d.all + ' all time</span>' +
+    '</td>' +
+    '<td>' +
+      '<div class="bo-il-top"><span class="bo-il-n num">' + d.n + '</span>' +
+        (d.online ? '<span class="bo-il-cap" style="color:var(--info)">' + d.online + ' online</span>' : '') +
+      '</div>' + segs(d) +
+      '<span class="bo-il-sub">' + d.note + '</span>' +
+    '</td>' +
+    '<td class="end">' + INF + '</td>';
+}
+function ident(d, meta, extra) {
+  return lead(d) + '<td><div class="bo-il-ident">' +
+    '<span class="bo-il-lamp" data-state="' + d.state + '"></span>' +
+    '<span class="bo-il-lines">' +
+      '<span class="bo-il-name">' + d.remark + '</span>' +
+      '<span class="bo-il-meta">' + meta + '</span>' +
+      (extra || '') +
+    '</span></div></td>';
+}
+function sig(d, withPort) {
+  const rest = [d.dual ? 'tcp + udp' : d.net, d.sec].filter(Boolean);
+  return '<b>' + d.label + '</b>' + (withPort ? ' ' + withPort : '') +
+    (rest.length ? ' ' + rest.join(' &middot; ') : '');
+}
+function rationale(o) {
+  return '<dl class="rationale">' +
+    '<div><dt>Optimised for</dt><dd>' + o.for + '</dd></div>' +
+    '<div><dt>The change</dt><dd>' + o.change + '</dd></div>' +
+    '<div class="cost"><dt>Costs</dt><dd>' + o.cost + '</dd></div>' +
+    '<div><dt>To build</dt><dd>' + o.build + '</dd></div>' +
+  '</dl>';
+}
+function shell(cls, head, rows, legend, caption) {
+  return '<div class="card ' + cls + '">' + (caption || '') + '<table>' +
+    '<thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<p class="legend">' + legend + '</p>';
+}
+const HEAD = LEAD_H + '<th>Inbound</th><th style="width:200px">Traffic</th>' +
+             '<th style="width:180px">Clients</th><th style="width:84px" class="end">Duration</th>';
+
+/* ==================================================================
+   1  SHARED HOST
+   ================================================================== */
+document.getElementById('v-e1').innerHTML =
+  rationale({
+    for: '<b>Ink.</b> On a normal box every row prints the SAME hostname, so 90% of the endpoint column is one repeated fact.',
+    change: 'The host is stated once, above the table. Rows print <code>:8443</code> &mdash; and now the leading colon has something to refer to. Any row whose address differs prints its own and is flagged.',
+    cost: '<b>A caption is easy to miss</b>, and the moment most inbounds are bound or fronted the exceptions outnumber the rule and the caption stops earning its line.',
+    build: 'The panel host it already knows, plus a per-row "is this the default address" test.',
+  }) +
+  shell('g1', HEAD, R.map(d => {
+    const ps = ports(d), dl = dial(d);
+    // No third line: once the host is factored out, what is left is short
+    // enough to live where the port already lived.
+    const body = d.noport
+      ? '<span class="host">proto 47</span>'
+      : dl.kind === 'default'
+        ? ps.map(x => (d.dual ? '<span class="host">' + x.t + '</span>' : '') +
+            '<span class="port">:' + x.p + '</span>').join(' ')
+        : ps.map(x => '<span class="host">' + dl.host + ':</span><span class="port">' + x.p + '</span>').join(' ');
+    return '<tr>' + ident(d, '<span class="ep">' + sig(d, body) + '</span>' +
+      (dl.kind !== 'default' ? flag(dl.kind) : '')) + tail(d) + '</tr>';
+  }).join(''),
+  'Hard cases: <b>cdn-fronted</b> and <b>cdn-ws</b> break the rule, so they print their own address ' +
+  'and wear the reason. Everything else is five characters wide, which is why this is the only ' +
+  'scheme here that needs no third line and no extra column: it is today\'s row, with the colon ' +
+  'given something to refer to. <b>ovpn-road</b> reads <code>tcp:1194 udp:1195</code> and still fits.',
+  '<div class="caption"><span>Everything answers on</span><span class="h">' + HOST + '</span>' +
+  '<span class="note">&mdash; except the two rows that say otherwise</span></div>');
+
+/* ==================================================================
+   2  GHOST HOST
+   ================================================================== */
+document.getElementById('v-e2').innerHTML =
+  rationale({
+    for: '<b>Row height.</b> No third line, no extra column: the endpoint goes where the port already was.',
+    change: 'The full address sits in the signature line with the host receded almost to the background and the port at full contrast, so it scans as <code>:8443</code> and reads as an address when you look at it. Hover brings the host up.',
+    cost: '<b>Deliberately low contrast</b>, which is a thing this panel otherwise refuses to do &mdash; and it is exactly the text someone will want to read off a screenshot. The line is also the longest of the five.',
+    build: 'Two spans and a hover rule. Nothing structural.',
+  }) +
+  shell('g2', HEAD, R.map(d => {
+    const ps = ports(d), dl = dial(d);
+    const body = d.noport
+      ? '<span class="host">no endpoint</span>'
+      : ps.map(x => (d.dual ? '<span class="host">' + x.t + ' </span>' : '') +
+          '<span class="host">' + dl.host + ':</span><span class="port">' + x.p + '</span>').join(' ');
+    return '<tr>' + ident(d, sig(d, body) + (dl.kind !== 'default' ? flag(dl.kind) : '')) + tail(d) + '</tr>';
+  }).join(''),
+  'Hard cases: <b>ovpn-road</b> prints the host twice on one line, which is where this scheme is at ' +
+  'its worst. <b>cdn-fronted</b> still needs the flag, because a receded hostname is still a stated ' +
+  'hostname and this one is a guess.');
+
+/* ==================================================================
+   3  COLUMN
+   ================================================================== */
+document.getElementById('v-e3').innerHTML =
+  rationale({
+    for: '<b>Alignment.</b> Endpoints stack, so the eye runs down one edge instead of hunting a different offset on every row.',
+    change: 'The endpoint becomes its own column. Long hosts elide from the middle, so the first label and the TLD both survive and the port &mdash; the part that differs row to row &mdash; is never the bit that gets cut.',
+    cost: '<b>A sixth column, ~190px, taken from everything else.</b> Look at the ikev2 row: Traffic is now narrow enough to wrap its own figure. Elision also means what you see is not all of what you copy, which is a bad property for an address.',
+    build: 'A new column and slot. The identity cell goes back to protocol and transport only.',
+  }) +
+  shell('g3',
+    LEAD_H + '<th>Inbound</th><th style="width:200px">Endpoint</th>' +
+    '<th style="width:170px">Traffic</th><th style="width:150px">Clients</th>' +
+    '<th style="width:74px" class="end">Duration</th>',
+    R.map(d => {
+      const ps = ports(d), dl = dial(d);
+      const cell = d.noport
+        ? '<span class="none">&mdash;</span>'
+        : ps.map(x => '<div class="line hit" title="' + dl.host + ':' + x.p + '">' +
+            (d.dual ? '<span class="t">' + x.t + ' </span>' : '') +
+            '<span class="host">' + elide(dl.host, 22) + ':</span>' +
+            '<span class="port">' + x.p + '</span>' + COPY + '</div>').join('') +
+          (dl.kind !== 'default' ? '<div class="line">' + flag(dl.kind) + '</div>' : '');
+      return '<tr>' + ident(d, sig(d)) + '<td class="epcol ep">' + cell + '</td>' + tail(d) + '</tr>';
+    }).join(''),
+    'Hard cases: <b>ovpn-road</b> gets two lines in the cell, which is the only place two endpoints ' +
+    'do not lengthen anything. Both hosts in this fixture fit; a longer one elides from the MIDDLE, ' +
+    'keeping the first label and the TLD, and the full value stays on the tooltip and on the clipboard. ' +
+    'That still means seeing less than you copy, which matters most on <b>cdn-fronted</b>, where the ' +
+    'host is the part in doubt. <b>branch-gre</b> is a dash: no endpoint exists.');
+
+/* ==================================================================
+   4  HANDOFF
+   ================================================================== */
+const VERB = {
+  xray:  { v:'Export links', t:'Every share link on this inbound' },
+  ovpn:  { v:'Get .ovpn',    t:'Download the client config' },
+  vpn:   { v:'Copy address', t:'Copy host and port' },
+  relay: { v:'Copy address', t:'Copy host and port' },
+};
+document.getElementById('v-e4').innerHTML =
+  rationale({
+    for: '<b>Why you looked.</b> Nobody wants a port; they want the thing they are about to send someone.',
+    change: 'The endpoint stops being text and becomes the control that yields whatever THIS protocol actually hands to a person: share links for an Xray inbound, the <code>.ovpn</code> file for OpenVPN, host and port for everything else. It absorbs the OpenVPN download button.',
+    cost: '<b>One control with four meanings.</b> It has to be right every time or it is worse than nothing, it needs visible feedback on click, and an inbound with no artifact at all still has to render as something.',
+    build: 'Wires up actions that already exist &mdash; Export All URLs, the .ovpn route &mdash; behind one affordance.',
+  }) +
+  shell('g4', HEAD, R.map(d => {
+    const ps = ports(d), dl = dial(d), verb = VERB[d.kind];
+    const addr = d.noport
+      ? '<span class="host">IP protocol 47</span>'
+      : '<span class="host">' + elide(dl.host, 22) + ':</span><b>' +
+        (d.dual ? ps.map(x => x.p).join('/') : ps[0].p) + '</b>';
+    const btn = '<span class="handoff' + (d.noport ? ' dead' : '') + '" title="' + verb.t + '">' +
+      '<span class="addr ep">' + addr + '</span>' +
+      '<span class="verb">' + (d.noport ? 'nothing to hand out' : verb.v) + '</span></span>';
+    return '<tr>' + ident(d, sig(d) + (dl.kind !== 'default' ? flag(dl.kind) : ''),
+      '<span style="display:block;margin-top:6px">' + btn + '</span>') + tail(d) + '</tr>';
+  }).join(''),
+  'Hard cases: <b>ovpn-road</b> collapses to one button because the .ovpn is the artifact whichever ' +
+  'transport you take, and the file itself carries the ports. <b>branch-gre</b> has no artifact and no ' +
+  'endpoint, so the control renders dashed and says so rather than disappearing. <b>cdn-fronted</b> ' +
+  'is the one row where the address on the button is a guess but the links behind it are not.');
+
+/* ==================================================================
+   5  REACHABLE
+   ================================================================== */
+const REACH = {
+  up:      { l:'listening', t:'The panel saw this port accepting connections' },
+  down:    { l:'not listening', t:'Nothing is bound to this port' },
+  unknown: { l:'not checked', t:'No probe for this protocol' },
+};
+document.getElementById('v-e5').innerHTML =
+  rationale({
+    for: '<b>The question behind the question.</b> An operator reads a port to find out whether the thing is up.',
+    change: 'The endpoint carries whether anything actually answers there. The enable switch says what was asked for, the lamp says what the panel recorded, and this says what is true on the socket right now.',
+    cost: '<b>The panel cannot answer this today.</b> Xray reports core state, not per-listener state, and the VPN daemons report a process, not a port. Somebody has to probe. A stale or wrong green here is worse than no green at all.',
+    build: '<b>New backend.</b> Same class of work as the Watch health model &mdash; and the same payoff: a silently refused inbound stops being invisible.',
+  }) +
+  shell('g5', HEAD, R.map(d => {
+    const ps = ports(d), dl = dial(d);
+    // No port means no probe, which is not the same as a failed probe. Forced
+    // to the neutral state and given no verdict label: a red dot here would be
+    // the scheme's first lie, on the one row it cannot possibly know about.
+    const r = d.noport ? { l:'', t:'GRE binds no port; there is nothing to probe' } : REACH[d.reach];
+    const state = d.noport ? 'unknown' : d.reach;
+    const body = d.noport
+      ? '<span class="none">nothing to probe</span>'
+      : '<span class="host">' + elide(dl.host, 22) + ':</span><span class="port">' +
+        (d.dual ? ps.map(x => x.p).join('/') : ps[0].p) + '</span>';
+    const line = '<span class="reach ep" data-r="' + state + '" title="' + r.t + '">' +
+      '<span class="dot"></span>' + body +
+      (r.l ? '<span class="rl">' + r.l + '</span>' : '') + '</span>';
+    return '<tr>' + ident(d, sig(d) + (dl.kind !== 'default' ? flag(dl.kind) : ''),
+      '<span style="display:block;margin-top:3px">' + line + '</span>') + tail(d) + '</tr>';
+  }).join(''),
+  'Hard cases: <b>branch-gre</b> binds no port, so it is forced to the neutral dot with no verdict ' +
+  'at all &mdash; red there would be the scheme\'s first lie, on the one row it cannot know about. ' +
+  '<b>ikev2-mobile</b> reads <code>not checked</code>: a third state is mandatory, because a scheme ' +
+  'with only up and down has to call every unprobeable protocol down. <b>ovpn-road</b> would need two ' +
+  'probes and shows the worse of them.');
+
+/* ---- switcher ---- */
+function show(view, push) {
+  const tabs = [...document.querySelectorAll('.tab')];
+  const t = tabs.find(x => x.dataset.view === view) || tabs[0];
+  tabs.forEach(x => x.setAttribute('aria-selected', String(x === t)));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + t.dataset.view));
+  if (push) location.hash = t.dataset.view;
+}
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => show(t.dataset.view, true)));
+window.addEventListener('hashchange', () => show(location.hash.slice(1), false));
+show(location.hash.slice(1), false);
+
+const themeBtn = document.getElementById('theme');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+  themeBtn.textContent = dark ? 'Dark' : 'Light';
+});
+</script>
+</body>
+</html>

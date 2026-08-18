@@ -558,7 +558,7 @@ func (s *ResellerService) PrepareClientCreate(user *model.User, data *model.Inbo
 	if taken, terr := inboundService.checkEmailsExistForClients([]model.Client{{Email: email}}); terr != nil {
 		return ChargeTicket{}, terr
 	} else if taken != "" {
-		return ChargeTicket{}, duplicateEmailError(taken)
+		return ChargeTicket{}, duplicateEmailError(taken, inboundService.emailHolders(taken)...)
 	}
 
 	q, err := Quote(QuoteInput{
@@ -1447,12 +1447,17 @@ func (s *ResellerService) dropReseller(userId int) error {
 // which by this table's own rule means the house owns them: a working account,
 // serving traffic, that nobody is billed for and no reseller page shows.
 //
-// Two accounts are handed to the house instead of deleted: one whose last client on
-// an admin's inbound cannot be removed (an inbound may not be emptied, and is not
-// ours to destroy) and one that is already gone (stale ledger). Neither aborts the
-// cascade, and the ledger row goes either way, because the reseller it belongs to
-// is being deleted and a charge against a user that no longer exists can never be
-// settled.
+// An account is handed to the house instead of deleted when it is STILL SERVED
+// somewhere after the cascade has done what it can, or when it was already gone
+// (a stale ledger row). Neither aborts the cascade, and the ledger row goes either
+// way, because the reseller it belongs to is being deleted and a charge against a
+// user that no longer exists can never be settled.
+//
+// That "still served" test is the load-bearing rule of this function and is checked
+// against the database at the end, not inferred from what the removal loop managed
+// to do. The reseller's ledger row is dropped unconditionally, so an account this
+// function leaves behind is a live, working client that nobody is billed for; if it
+// is also miscounted as deleted, nothing anywhere will ever surface it.
 func (s *ResellerService) cascadeClients(rows []model.ResellerClient) (DeleteResult, error) {
 	res := DeleteResult{Protocols: map[model.Protocol]bool{}}
 	db := database.GetDB()
@@ -1465,38 +1470,23 @@ func (s *ResellerService) cascadeClients(rows []model.ResellerClient) (DeleteRes
 		if err != nil {
 			return res, err
 		}
-		removed, survived := 0, 0
+		removed := 0
 		for _, id := range ids {
 			inbound, err := inboundService.GetInbound(id)
 			if err != nil || inbound == nil {
 				continue // gone between resolving and now: nothing left to remove
 			}
-			// The settings' own spelling of the email, not the ledger's. Identity is
-			// case-insensitive across the panel and these two tables are written by
-			// different paths, but DelInboundClientByEmail matches the settings entry
-			// EXACTLY: handed the ledger's spelling of an account stored mixed-case, it
-			// reports "not found" and the account survives the cascade as a live,
-			// unbilled client.
-			email := rc.Email
-			if clients, cerr := inboundService.GetClients(inbound); cerr == nil {
-				for _, c := range clients {
-					if accountKey(c.Email) == accountKey(rc.Email) {
-						email = c.Email
-						break
-					}
-				}
-			}
-			needRestart, err := inboundService.DelInboundClientByEmail(id, email)
+			// The ledger's own spelling is handed over as-is. DelInboundClientByEmail
+			// now matches the settings entry on accountKey, so an account the two
+			// tables spell differently is found; it used to report "not found" and
+			// survive the cascade as a live, unbilled client, which is what the
+			// spelling lookup that stood here worked around.
+			needRestart, err := inboundService.DelInboundClientByEmail(id, rc.Email)
 			if err != nil {
-				msg := err.Error()
-				switch {
-				case strings.Contains(msg, "no client remained"):
-					// Last client on the inbound: the account keeps this membership
-					// rather than the admin's inbound being destroyed under it.
-					survived++
-				case strings.Contains(msg, "not found"):
-					// Already gone from this one. Neither a delete nor a survivor.
-				default:
+				// "not found" only: already gone from this one, which is not a failure.
+				// The last client of an inbound is no longer a special case either, so
+				// there is nothing left that can leave a cascaded account still serving.
+				if !strings.Contains(err.Error(), "not found") {
 					return res, err
 				}
 				continue
@@ -1508,10 +1498,34 @@ func (s *ResellerService) cascadeClients(rows []model.ResellerClient) (DeleteRes
 		if derr := dropLedger(rc.Email); derr != nil {
 			return res, derr
 		}
+
 		// Reported by what became of the ACCOUNT, not by how many memberships moved:
-		// one that still serves anywhere was handed to the house, whatever else the
-		// cascade managed to remove.
-		if survived > 0 || removed == 0 {
+		// an account still serving ANYWHERE was handed to the house, whatever else the
+		// cascade managed to remove. The ledger row has just gone, so a survivor is a
+		// live, working, unbilled client and must not be counted as deleted.
+		//
+		// Asked of the database rather than inferred from the loop above. It used to be
+		// inferred, from DelInboundClientByEmail answering "no client remained in
+		// Inbound" - which was the panel refusing to empty an inbound, a guard that has
+		// since been removed because it stranded accounts rather than protecting
+		// anything. Inferring it from an error string was always the weaker test: it
+		// could only see the one survival mode it knew the message for, and silently
+		// counted an account as deleted when its inbound had disappeared between the
+		// resolve and the delete (the `continue` above), which is a survival the old
+		// code could not detect at all.
+		//
+		// settings.clients ONLY, which is why this is inboundIdsServingEmails and not
+		// the servingInboundIds that drove the removal loop. That one unions
+		// account_inbounds and client_traffics.inbound_id as well, and a membership
+		// outlives the settings entry it described, so asking it here would report
+		// every cascaded account as a survivor and nothing would ever be counted
+		// deleted. Being served is a property of the settings blob: it is what RADIUS,
+		// the daemon config writers and GetXrayConfig all read.
+		stillServed, serr := inboundService.inboundIdsServingEmails(db, []string{rc.Email})
+		if serr != nil {
+			return res, serr
+		}
+		if len(stillServed) > 0 || removed == 0 {
 			res.Kept++
 			continue
 		}

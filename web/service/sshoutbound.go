@@ -42,6 +42,35 @@ type SshOutboundConfig struct {
 	Passphrase string `json:"passphrase" form:"passphrase"`
 	KnownHost  string `json:"knownHost" form:"knownHost"` // SHA256/MD5 fingerprint pin; "" = TOFU
 	SocksPort  int    `json:"socksPort" form:"socksPort"`
+
+	// Via is the tag of the outbound that carries this tunnel: the panel's own TCP
+	// connection to Address:Port travels through that carrier, so the SSH server sees
+	// the carrier's exit address and never this host's. Empty is the ordinary case, a
+	// tunnel dialled straight out of the host's WAN.
+	//
+	// Nothing in the dial path above reads it, and that is deliberate rather than an
+	// omission. Carrying is destination-based policy routing into the carrier's netdev
+	// (vpnoutvia.go): the rule is `to <ssh server> lookup <carrier table>`, so the
+	// kernel redirects the ssh.Dial in supervise() with no change to the dial code.
+	// The one L4-agnostic mechanism serves every tunnel kind, TCP here included.
+	//
+	// POPULATED FROM THE OUTBOUND ROW'S sockopt.dialerProxy, exactly as a VPN tunnel's
+	// Via is. There is one chaining control in the panel and it is the Dialer Proxy
+	// select, present on every outbound row including the socks facade that fronts this
+	// tunnel; the browser posts whatever it holds into this field. The stored name stays
+	// Via because that is what the routing side calls it, and because the key must not
+	// survive into the Xray config: there dialerProxy means "dial through that outbound
+	// instead", which would redirect the facade's loopback CONNECT to the local SOCKS
+	// port somewhere else entirely and break the tunnel it was meant to carry.
+	//
+	// omitempty is load-bearing rather than tidy. Every stored tunnel predates this
+	// field, the whole list lives in ONE settings row, and that row is re-marshalled and
+	// written back in full whenever anything in it changes (any Save, any Delete, and
+	// every TOFU host key that gets learned). Without omitempty the first such write
+	// would stamp `"via":""` onto tunnels nobody touched, and the same list is what the
+	// synthesized socks outbounds are derived from (applySshOutbounds), so an upgrade
+	// would rewrite stored config and restart the core over rows that did not change.
+	Via string `json:"via,omitempty" form:"via"`
 }
 
 const sshOutboundsSettingKey = "sshOutbounds"
@@ -96,6 +125,10 @@ func (s *SshOutboundService) List() []SshOutboundConfig {
 func (s *SshOutboundService) Save(cfg SshOutboundConfig) (SshOutboundConfig, error) {
 	cfg.Tag = strings.TrimSpace(cfg.Tag)
 	cfg.Address = strings.TrimSpace(cfg.Address)
+	// Trimmed like the tag it names. The carrier is resolved by exact tag match, so a
+	// stray space would resolve to nothing and the tunnel would dial straight out of the
+	// host's WAN while the panel showed a carrier on it.
+	cfg.Via = strings.TrimSpace(cfg.Via)
 	if cfg.Tag == "" {
 		return cfg, errors.New("tag is required")
 	}
@@ -113,23 +146,8 @@ func (s *SshOutboundService) Save(cfg SshOutboundConfig) (SshOutboundConfig, err
 	defer sshOutCfgMu.Unlock()
 
 	all := s.load()
-	prev, hadPrev := findTunnel(all, cfg.Tag)
-	if hadPrev {
-		if cfg.Password == "" {
-			cfg.Password = prev.Password
-		}
-		if cfg.PrivateKey == "" {
-			cfg.PrivateKey = prev.PrivateKey
-		}
-		if cfg.Passphrase == "" {
-			cfg.Passphrase = prev.Passphrase
-		}
-		// Keep the port an existing tunnel is already reachable on. The Xray
-		// outbound points at it by number, so re-allocating on every edit would
-		// silently break every edited tunnel.
-		if cfg.SocksPort <= 0 {
-			cfg.SocksPort = prev.SocksPort
-		}
+	if prev, hadPrev := findTunnel(all, cfg.Tag); hadPrev {
+		cfg = sshOutKeepStored(cfg, prev)
 	}
 
 	out := make([]SshOutboundConfig, 0, len(all)+1)
@@ -164,6 +182,37 @@ func (s *SshOutboundService) Save(cfg SshOutboundConfig) (SshOutboundConfig, err
 	// rebuilt for the change to reach it.
 	(&XrayService{}).SetToNeedRestart()
 	return cfg, nil
+}
+
+// sshOutKeepStored fills in the fields an edit CANNOT re-send, from the tunnel that is
+// already stored. List() strips Password/PrivateKey/Passphrase before the panel ever
+// sees them, so every edit posts them blank; taking that at face value would wipe the
+// key or password of any tunnel whose remark was changed, and the tunnel would then
+// fail to authenticate at the next reconnect with nothing on screen having asked for
+// that. SocksPort is here for a different reason: the saved Xray outbound names it by
+// number, so re-allocating on an edit would break a working tunnel silently.
+//
+// Via is deliberately NOT merged, and keeping that decision in one named place is the
+// point of this function. The carrier comes from the row's Dialer Proxy select, which
+// the browser posts on EVERY save including an empty one, so blank means "no carrier"
+// and never "I could not tell you". Merging it the way the secrets are merged would
+// make clearing that box a no-op: the routing rules steering this tunnel's TCP
+// connection into the old carrier would outlive a save that removed the carrier from
+// the screen, and nothing anywhere would report the difference.
+func sshOutKeepStored(cfg, prev SshOutboundConfig) SshOutboundConfig {
+	if cfg.Password == "" {
+		cfg.Password = prev.Password
+	}
+	if cfg.PrivateKey == "" {
+		cfg.PrivateKey = prev.PrivateKey
+	}
+	if cfg.Passphrase == "" {
+		cfg.Passphrase = prev.Passphrase
+	}
+	if cfg.SocksPort <= 0 {
+		cfg.SocksPort = prev.SocksPort
+	}
+	return cfg
 }
 
 // Delete removes a tunnel by tag and stops it.

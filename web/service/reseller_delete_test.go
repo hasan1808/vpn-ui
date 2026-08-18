@@ -170,9 +170,11 @@ func TestDeleteResellerCascadeDeletesOnlyTheResellersAccounts(t *testing.T) {
 	}
 }
 
-// The one account a cascade may not delete: the last client on an admin's inbound,
-// which may not be emptied. It is handed to the house instead, inbound intact.
-func TestDeleteResellerCascadeKeepsTheLastClientOnAnInbound(t *testing.T) {
+// The last client on an admin's inbound is deleted like any other, and the inbound
+// is left empty rather than handed a customer nobody is billed for. See
+// TestCascadeRemovesAnAccountFromTheInboundItHoldsAlone for why the old refusal
+// went: emptying an inbound is a legal state and the guard only stranded accounts.
+func TestDeleteResellerCascadeRemovesTheLastClientAndKeepsTheInbound(t *testing.T) {
 	fx := newResellerFixture(t)
 	seedResellerProfile(t, fx)
 	db := database.GetDB()
@@ -195,15 +197,16 @@ func TestDeleteResellerCascadeKeepsTheLastClientOnAnInbound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cascade delete: %v", err)
 	}
-	if res.Deleted != 0 || res.Kept != 1 {
-		t.Fatalf("want 0 deleted 1 kept, got %+v", res)
+	if res.Deleted != 1 || res.Kept != 0 {
+		t.Fatalf("want 1 deleted 0 kept, got %+v", res)
 	}
+	// The inbound still exists (the admin owns it), and it is simply empty.
 	reloaded, err := fx.svc.GetInbound(solo.Id)
 	if err != nil {
-		t.Fatalf("reload solo inbound: %v", err)
+		t.Fatalf("the admin's inbound went with its last client: %v", err)
 	}
-	if emails := clientEmailsIn(t, reloaded.Settings); len(emails) != 1 || emails[0] != "solo-client" {
-		t.Fatalf("last-client inbound was damaged: %v", emails)
+	if emails := clientEmailsIn(t, reloaded.Settings); len(emails) != 0 {
+		t.Fatalf("the cascaded account still serves on the inbound: %v", emails)
 	}
 	if resellerExists(t, fx.reseller.Id) {
 		t.Fatal("reseller was not deleted")

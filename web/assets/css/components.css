@@ -36,7 +36,7 @@
  * every page longer than the viewport.
  */
 .bo-shell {
-  display:flex; flex-direction:column;
+  display:flex;
   height:100vh;
   overflow:hidden;
   font-family:var(--font-sans);
@@ -95,16 +95,17 @@
  * shell: rail nav
  * ================================================================== */
 
-/* height:100% of .bo-body, not 100vh. */
+/* height:100% of the fixed-height .bo-shell, not 100vh + sticky as in the
+   mockup: the shell is the scroll boundary here, so the rail is simply a
+   full-height flex child that scrolls its own overflow. */
 .bo-rail {
   flex:0 0 124px; width:124px;
   height:100%;
   background:var(--surface);
-  border-inline-start:1px solid var(--border);
+  border-inline-end:1px solid var(--border);
   display:flex; flex-direction:column; align-items:center;
   padding:20px 0; gap:26px; overflow-y:auto;
   z-index:20;
-  order:1;
 }
 
 .bo-rail-brand {
@@ -127,15 +128,35 @@
   flex:1 1 auto;
 }
 
-/* Theme switch, pinned to the bottom of the rail. */
+/* Theme switch and collapse control, pinned to the bottom of the rail. */
 .bo-rail-foot {
   display:flex; flex-direction:column; align-items:center; gap:10px;
   width:100%; margin-top:auto;
 }
 
-/* Fully hidden sidebar (hamburger toggle). The rail is removed from the
-   flex flow so .bo-main takes the full width. */
-.bo-rail--hidden { display:none; }
+.bo-rail-collapse {
+  width:30px; height:30px; border-radius:50%;
+  border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text-3); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:background var(--dur-fast) var(--ease),
+             color var(--dur-fast) var(--ease),
+             border-color var(--dur-fast) var(--ease);
+}
+.bo-rail-collapse:hover {
+  background:var(--accent-weak); color:var(--accent); border-color:var(--accent);
+}
+/* The chevron points inward/outward, so it must mirror in RTL. */
+[dir="rtl"] .bo-rail-collapse { transform:scaleX(-1); }
+
+/* User-toggled collapse, persisted in localStorage. Distinct from the
+   automatic narrow-screen collapse in the media query at the foot of
+   this file. */
+.bo-rail--collapsed { flex-basis:76px; width:76px; }
+.bo-rail--collapsed .bo-rail-item { width:64px; }
+.bo-rail--collapsed .bo-rail-item span,
+.bo-rail--collapsed .bo-rail-brand span { display:none; }
+.bo-rail--collapsed .bo-rail-brand img { max-width:52px; }
 
 .bo-rail-item {
   display:flex; flex-direction:column; align-items:center; gap:7px;
@@ -161,7 +182,7 @@
  * shell: topbar and content
  * ================================================================== */
 
-/* The page scroll container. Now inside .bo-body, flex child fills remaining space. */
+/* The page scroll container. See the note on .bo-shell. */
 .bo-main {
   flex:1 1 auto; min-width:0;
   display:flex; flex-direction:column;
@@ -170,11 +191,10 @@
 
 .bo-topbar {
   background:var(--surface); border-bottom:1px solid var(--border);
-  z-index:25; flex:0 0 auto;
-  box-shadow:var(--shadow-sm);
+  position:sticky; top:0; z-index:10;
 }
 .bo-topbar-inner {
-  width:100%; padding:12px 24px;
+  max-width:1320px; margin:0 auto; padding:10px 24px;
   display:flex; align-items:center; justify-content:space-between;
   gap:var(--gap-sm); flex-wrap:wrap;
 }
@@ -224,39 +244,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
   color:var(--text); margin:0; text-wrap:balance;
 }
 
-/* Language switch in topbar */
-.bo-topbar-right { display:flex; align-items:center; gap:8px; margin-inline-start:auto; }
-.bo-lang-switch {
-  position:relative; display:flex; align-items:center; gap:6px;
-  padding:5px 10px; border-radius:var(--radius-md); cursor:pointer;
-  border:1px solid var(--border); background:var(--surface-2); color:var(--text-2);
-  font-size:var(--fs-sm); font-weight:var(--fw-medium);
-  transition:background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
-}
-.bo-lang-switch:hover { background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
-.bo-lang-switch .bo-icon { width:16px; height:16px; flex:0 0 auto; }
-.bo-lang-label { white-space:nowrap; }
-.bo-lang-dropdown {
-  position:absolute; z-index:30; top:calc(100% + 6px); inset-inline-end:0;
-  min-width:160px; background:var(--surface); border:1px solid var(--border-strong);
-  border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);
-  padding:4px; display:flex; flex-direction:column;
-}
-.bo-lang-opt {
-  display:block; padding:7px 12px; border-radius:var(--radius-md);
-  font-size:var(--fs-sm); color:var(--text-2); text-decoration:none; cursor:pointer;
-  transition:background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
-}
-.bo-lang-opt:hover { background:var(--surface-2); color:var(--text); }
-.bo-lang-opt.is-active { background:var(--accent-weak); color:var(--accent); font-weight:var(--fw-semibold); }
-
 .bo-content { max-width:1320px; width:100%; margin:0 auto; padding:12px 22px 8px; }
-
-/* The body row holds sidebar + main below the topbar. */
-.bo-body {
-  display:flex; flex:1 1 auto; min-height:0;
-  position:relative;
-}
 .bo-page-title {
   font-size:24px; font-weight:var(--fw-semibold);
   margin-bottom:var(--sp-5); text-wrap:balance;
@@ -277,7 +265,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-bento {
   display:grid; grid-template-columns:1fr; gap:var(--gap-sm);
   grid-template-areas:
-    "ident" "flow" "xray" "users" "manage" "outbounds" "proui" "vit" "svc";
+    "ident" "flow" "xray" "users" "manage" "vpnui" "vit" "svc";
 }
 @media (min-width:760px) {
   .bo-bento {
@@ -286,8 +274,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
       "ident ident ident ident"
       "flow flow flow flow"
       "xray xray users users"
-      "manage manage proui proui"
-      "outbounds outbounds outbounds outbounds"
+      "manage manage vpnui vpnui"
       "vit vit vit vit"
       "svc svc svc svc";
   }
@@ -298,9 +285,15 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
     grid-template-areas:
       "ident ident ident ident flow flow flow flow vit vit vit vit"
       "xray xray xray xray users users users users vit vit vit vit"
-      "manage manage manage manage proui proui proui proui vit vit vit vit"
-      "outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds outbounds"
+      "manage manage manage manage vpnui vpnui vpnui vpnui vit vit vit vit"
       "svc svc svc svc svc svc svc svc svc svc svc svc";
+    /* Tiles STRETCH to fill their row (grid's default) rather than sizing to
+       content. align-items:start was tried and is worse: it removes the dead
+       space inside a card but dumps it between the cards instead, leaving
+       ragged holes under Identity, Clients and System Status. The three
+       columns carry near-equal total content (roughly 700 / 725 / 730px), so
+       stretching lands them flush. .bo-tile distributes its own content, see
+       the justify-content rule there. */
   }
 }
 
@@ -309,10 +302,9 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-t-vit { grid-area:vit; }
 .bo-t-svc { grid-area:svc; }
 .bo-t-xray { grid-area:xray; }
-.bo-t-proui { grid-area:proui; }
+.bo-t-vpnui { grid-area:vpnui; }
 .bo-t-users { grid-area:users; }
 .bo-t-manage { grid-area:manage; }
-.bo-t-outbounds { grid-area:outbounds; }
 
 /* ================================================================== *
  * tile
@@ -320,112 +312,46 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 
 .bo-tile {
   background:var(--surface); border:1px solid var(--border);
-  border-radius:var(--radius-lg); padding:16px 18px;
+  border-radius:var(--radius-xl); padding:14px 16px;
   box-shadow:var(--shadow-md); min-width:0;
   display:flex; flex-direction:column;
   transition:transform var(--dur-fast) var(--ease),
              box-shadow var(--dur-fast) var(--ease),
              border-color var(--dur-fast) var(--ease);
-  position:relative; overflow:hidden;
 }
-/* Subtle gradient overlay on hover for modern feel */
-.bo-tile::before {
-  content:''; position:absolute; inset:0;
-  background:linear-gradient(135deg,rgba(13,148,136,.03),transparent 60%);
-  opacity:0; transition:opacity var(--dur-med) var(--ease);
-  pointer-events:none; border-radius:inherit;
-}
-.bo-tile:hover {
-  transform:translateY(-3px);
-  box-shadow:var(--shadow-lg);
-  border-color:var(--border-strong);
-}
-.bo-tile:hover::before { opacity:1; }
-/* Content sits at the top of a stretched tile. */
+.bo-tile:hover { transform:translateY(-2px); border-color:var(--border-strong); }
+/* Content sits at the top of a stretched tile. space-between was tried and
+   looks worse: it strands the heading at the top and the body at the very
+   bottom with a hole in the middle.
+   For the tiles whose body is a grid of cells, that body grows to absorb the
+   slack instead, so the card is filled rather than padded. */
 .bo-tile > :last-child { margin-bottom:0; }
 .bo-t-users .bo-people,
 .bo-t-users .bo-person { flex:1 1 auto; }
 .bo-t-users .bo-person { justify-content:center; }
 .bo-t-xray .bo-btn-row,
 .bo-t-manage .bo-btn-row { margin-top:auto; }
+/* System Status spans three rows. Its own content is shorter, so the vitals
+   list takes the slack. Capped growth (space-around, not space-between) keeps
+   the four rows from being flung to the card edges. */
 .bo-t-vit .bo-vit-list { flex:1 1 auto; justify-content:space-around; }
-
-/* ================================================================== *
- * Manage tile halves
- * ================================================================== */
-/* The Manage tile splits into two halves: the operator's actions (logs,
-   config, backup, restore) and the server's outbound connectivity check
-   (Internet). They stack on narrow screens and sit side by side, divided by a
-   hairline, once there is room. */
-.bo-manage-split {
-  display:grid; grid-template-columns:1fr; gap:14px;
-  flex:1; min-width:0;
-}
-@media (min-width:520px) {
-  .bo-manage-split { grid-template-columns:1fr 1fr; gap:18px; }
-  .bo-manage-actions {
-    padding-inline-end:18px;
-    border-inline-end:1px solid var(--border);
-  }
-}
-.bo-manage-actions { display:flex; }
-.bo-manage-actions .bo-btn-row {
-  margin:auto 0 0; width:100%;
-  display:grid; grid-template-columns:1fr 1fr; gap:8px;
-  flex-wrap:nowrap;
-}
-.bo-manage-actions .bo-icon-btn { justify-content:flex-start; min-width:0; }
-
-.bo-manage-ping { display:flex; flex-direction:column; gap:10px; min-width:0; }
-.bo-ping-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.bo-ping-title { font-size:var(--fs-sm); font-weight:var(--fw-semibold); color:var(--text-2); margin:0; }
-.bo-ping-overall {
-  display:inline-flex; align-items:center; gap:6px; align-self:flex-start;
-  font-size:var(--fs-xs); font-weight:var(--fw-semibold);
-  color:var(--off); background:var(--off-weak);
-  padding:3px 10px; border-radius:var(--radius-pill);
-}
-.bo-ping-overall--online { color:var(--ok); background:var(--ok-weak); }
-.bo-ping-overall--partial { color:var(--warn); background:var(--warn-weak); }
-.bo-ping-overall--offline { color:var(--error); background:var(--error-weak); }
-.bo-ping-list { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
-.bo-ping-row {
-  display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:8px;
-  font-size:var(--fs-sm); color:var(--text-2); min-width:0;
-}
-.bo-ping-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.bo-ping-dot { width:8px; height:8px; border-radius:50%; background:var(--off); }
-.bo-ping-dot--ok { background:var(--ok); box-shadow:0 0 0 3px var(--ok-weak); }
-.bo-ping-dot--fail { background:var(--error); box-shadow:0 0 0 3px var(--error-weak); }
-.bo-ping-dot--pending { background:var(--off); animation:log-live-pulse 1.2s ease-in-out infinite; }
-.bo-ping-value { font-variant-numeric:tabular-nums; color:var(--text); font-weight:var(--fw-semibold); }
-.bo-ping-value--fail { color:var(--error); }
-.bo-ping-value--pending { color:var(--text-3); }
-/* Traffic (↑/↓) shown next to the latency on the outbound card: smaller and
-   dimmer so the number that matters is the one the operator reads first. */
-.bo-ping-traffic { font-size:11.5px; color:var(--text-3); font-weight:var(--fw-regular); }
-
-/* ================================================================== *
- * Protocol tabs (Inbounds page)
- * ================================================================== */
-/* The Inbounds page is scoped per protocol via /panel/inbounds/:proto. The tab
-   bar is a horizontally scrollable row of chips: direct links, so every
-   protocol has its own bookmarkable URL and the active tab comes server-
-   rendered from .Protocol, not guessed on the client. */
 
 .bo-tile-head {
   display:flex; align-items:center; justify-content:space-between;
-  gap:10px; margin-bottom:12px;
+  gap:10px; margin-bottom:10px;
 }
 .bo-tile-title {
-  font-size:var(--fs-xs); font-weight:var(--fw-bold);
-  text-transform:uppercase; letter-spacing:.06em; color:var(--text-3);
+  font-size:var(--fs-sm); font-weight:var(--fw-bold);
+  text-transform:uppercase; letter-spacing:.05em; color:var(--text-2);
   display:flex; align-items:center; gap:7px;
 }
 .bo-tile-meta { font-size:var(--fs-xs); color:var(--text-3); white-space:nowrap; }
+/* Section heading inside a tile. Carries its own top spacing instead of a
+   divider: the block above already ends on a rule, and two lines in one gap
+   read as a duplicate. */
 .bo-tile-head--sub { margin-top:12px; }
 .bo-tile-caption { font-size:var(--fs-sm); color:var(--text-3); line-height:var(--lh-base); }
-.bo-divider { height:1px; background:var(--border); margin:10px 0; }
+.bo-divider { height:1px; background:var(--border); margin:9px 0; }
 
 /* ================================================================== *
  * identity tile
@@ -439,15 +365,15 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-ident-kernel { font-size:var(--fs-sm); color:var(--text-3); margin-top:5px; }
 .bo-ident-chips { display:flex; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-5); }
 
+/* Identity metadata pill. Distinct from .bo-svc-chip below. */
 .bo-chip {
   display:inline-flex; align-items:center; gap:7px;
   font-size:var(--fs-xs); font-weight:var(--fw-semibold);
   padding:6px 12px; border-radius:var(--radius-pill);
   background:var(--surface-2); color:var(--text-2);
-  border:1px solid var(--border);
 }
 .bo-chip .bo-icon { color:var(--text-3); }
-.bo-chip--ok { background:var(--ok-weak); color:var(--ok); border-color:transparent; }
+.bo-chip--ok { background:var(--ok-weak); color:var(--ok); }
 .bo-chip--ok .bo-dot { background:var(--ok); }
 
 /* ================================================================== *
@@ -460,22 +386,28 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-flow-label {
   display:flex; align-items:center; gap:6px;
   font-size:11.5px; font-weight:var(--fw-bold);
-  text-transform:uppercase; letter-spacing:.05em; color:var(--text-3);
+  text-transform:uppercase; letter-spacing:.04em; color:var(--text-3);
 }
 .bo-flow-col--up .bo-flow-label .bo-icon { color:var(--accent); }
 .bo-flow-col--down .bo-flow-label .bo-icon { color:var(--info); }
+/* nowrap + a fixed line box: without these the figure re-wraps when the value
+   grows a digit ("38.07 KB" -> "382.40 KB"), which resized the whole card on
+   every 2-second poll. clamp() shrinks the type instead of wrapping. */
 .bo-flow-value {
-  font-size:clamp(20px,2vw,28px); font-weight:var(--fw-bold);
-  letter-spacing:-.02em; margin-top:6px;
+  font-size:clamp(18px,1.7vw,24px); font-weight:var(--fw-bold);
+  letter-spacing:-.01em; margin-top:6px;
   white-space:nowrap; line-height:1.2; min-height:1.2em;
 }
 .bo-flow-col--up .bo-flow-value { color:var(--accent); }
 .bo-flow-col--down .bo-flow-value { color:var(--info); }
 .bo-unit { font-size:13px; font-weight:var(--fw-semibold); color:var(--text-3); margin-inline-start:3px; white-space:nowrap; }
 
+/* Time flows left-to-right in every locale. Never mirror a chart. */
 .bo-flow-chart { width:100%; height:96px; flex:0 0 96px; margin-top:10px; direction:ltr; }
 .bo-flow-chart svg { display:block; width:100%; height:100%; overflow:visible; }
 
+/* One total centred beneath each chart. The column template mirrors
+   .bo-flow-cols exactly so each figure lines up under its own graph. */
 .bo-flow-footer { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 @media (max-width:479px) { .bo-flow-footer { grid-template-columns:1fr; } }
 .bo-mini-stat { align-items:center; text-align:center; }
@@ -483,7 +415,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-mini-stat { display:flex; flex-direction:column; gap:3px; }
 .bo-mini-stat-label {
   font-size:var(--fs-xs); color:var(--text-3); font-weight:var(--fw-bold);
-  text-transform:uppercase; letter-spacing:.05em;
+  text-transform:uppercase; letter-spacing:.04em;
 }
 .bo-mini-stat-value { font-size:18px; font-weight:var(--fw-bold); color:var(--text); }
 
@@ -503,6 +435,8 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-ring-wrap { position:relative; width:44px; height:44px; flex:0 0 auto; }
 .bo-ring-wrap svg { width:100%; height:100%; transform:rotate(-90deg); }
 .bo-ring-track { fill:none; stroke:var(--border); stroke-width:4; }
+/* The circumference below is 2*pi*r for r=16. Any JS that animates
+   stroke-dashoffset MUST derive it from the same radius, not re-hardcode it. */
 .bo-ring-progress {
   fill:none; stroke:var(--accent); stroke-width:4; stroke-linecap:round;
   stroke-dasharray:100.53; stroke-dashoffset:100.53;
@@ -519,7 +453,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-vit-info { flex:1; min-width:0; }
 .bo-vit-top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
 .bo-vit-name { font-size:13px; font-weight:var(--fw-semibold); color:var(--text); }
-.bo-vit-pct { font-size:var(--fs-base); font-weight:var(--fw-bold); color:var(--accent); }
+.bo-vit-pct { font-size:var(--fs-base); font-weight:var(--fw-bold); color:var(--text); }
 .bo-vit-meta { font-size:11.5px; color:var(--text-3); margin-top:2px; }
 .bo-vit-spark { width:100%; height:24px; direction:ltr; }
 .bo-vit-spark svg { display:block; width:100%; height:100%; overflow:visible; }
@@ -545,6 +479,12 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
  * here navigates to that service on the Core Settings page.
  * ================================================================== */
 
+/* 208px, not 178px: at the narrower track "OpenConnect", "AmneziaWG",
+   "WireGuard (C)" and "MTProto Proxy" all ellipsised to nonsense
+   ("OpenConn...", "Amn..."). The state label is pushed to its own line so the
+   name gets the full width. */
+/* Full-width band with the state label restored. 190px keeps the longest
+   names ("OpenConnect (cisco)", "MTProto Proxy") off the ellipsis. */
 .bo-svc-grid {
   display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
   gap:8px; align-content:start;
@@ -553,24 +493,28 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-svc-chip {
   display:flex; align-items:center; gap:8px;
   background:var(--surface); border:1px solid var(--border);
-  border-radius:var(--radius-sm); padding:8px 10px;
+  border-radius:var(--radius-md); padding:6px 9px;
   cursor:pointer; text-align:start; width:100%; font-family:inherit;
-  transition:all var(--dur-fast) var(--ease);
+  transition:transform var(--dur-fast) var(--ease),
+             border-color var(--dur-fast) var(--ease),
+             box-shadow var(--dur-fast) var(--ease);
 }
 .bo-svc-chip:hover {
-  transform:translateY(-2px);
-  border-color:var(--accent);
-  box-shadow:0 4px 12px rgba(13,148,136,.12);
+  transform:translateY(-1px);
+  border-color:var(--border-strong);
+  box-shadow:var(--shadow-sm);
 }
 
-.bo-svc-led { width:10px; height:10px; border-radius:50%; flex:0 0 auto; background:var(--off); }
+.bo-svc-led { width:9px; height:9px; border-radius:50%; flex:0 0 auto; background:var(--off); }
+/* Wraps rather than ellipsising: a truncated protocol name is useless, and
+   these names are the whole point of the tile. */
 .bo-svc-name {
   font-size:13.5px; font-weight:var(--fw-semibold); color:var(--text);
   flex:1; min-width:0; overflow-wrap:anywhere; line-height:1.3;
 }
 .bo-svc-state {
   font-size:var(--fs-xs); font-weight:var(--fw-bold);
-  text-transform:uppercase; letter-spacing:.04em; color:var(--off);
+  text-transform:uppercase; letter-spacing:.03em; color:var(--off);
   white-space:nowrap; flex:0 0 auto;
 }
 
@@ -582,6 +526,8 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-svc-chip[data-state="stopped"] .bo-svc-state { color:var(--warn); }
 .bo-svc-chip[data-state="error"] .bo-svc-led { background:var(--error); box-shadow:0 0 0 3px var(--error-weak); }
 .bo-svc-chip[data-state="error"] .bo-svc-state { color:var(--error); }
+/* Not installed: present in the list but never started, so it reads as absent
+   rather than as a fault. */
 .bo-svc-chip[data-state="off"] { opacity:.6; }
 .bo-svc-chip[data-state="off"] .bo-svc-led { background:var(--off); box-shadow:0 0 0 3px var(--off-weak); }
 .bo-svc-chip[data-state="off"] .bo-svc-state { color:var(--off); }
@@ -593,7 +539,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-status-pill {
   display:inline-flex; align-items:center; gap:6px;
   font-size:var(--fs-xs); font-weight:var(--fw-semibold);
-  padding-block:5px; padding-inline:10px 12px;
+  padding-block:4px; padding-inline:8px 10px;
   border-radius:var(--radius-pill);
   background:var(--off-weak); color:var(--off);
 }
@@ -601,11 +547,14 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-status-pill--warn { background:var(--warn-weak); color:var(--warn); }
 .bo-status-pill--error { background:var(--error-weak); color:var(--error); }
 
-.bo-kv-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:4px 0; }
+.bo-kv-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:3px 0; }
 .bo-kv-label { font-size:var(--fs-sm); color:var(--text-2); font-weight:var(--fw-medium); }
 .bo-kv-value { font-size:var(--fs-base); font-weight:var(--fw-bold); color:var(--text); }
 
 .bo-btn-row { display:flex; flex-wrap:wrap; gap:var(--sp-2); }
+/* Compact action rows: four small buttons on ONE line, so a card is not made
+   tall by a wrapped second row. Used by the merged Manage actions inside the
+   identity card and by Xray. */
 .bo-btn-row--compact,
 .bo-t-xray .bo-btn-row { gap:6px; flex-wrap:nowrap; }
 .bo-btn-row--compact .bo-icon-btn,
@@ -620,12 +569,14 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
   color:var(--text-2); background:var(--surface-2);
   border:1px solid var(--border); border-radius:var(--radius-sm);
   padding:7px 12px; cursor:pointer; font-family:inherit;
-  transition:all var(--dur-fast) var(--ease);
+  transition:background var(--dur-fast) var(--ease),
+             color var(--dur-fast) var(--ease),
+             border-color var(--dur-fast) var(--ease),
+             transform var(--dur-fast) var(--ease);
 }
 .bo-icon-btn:hover {
   background:var(--accent-weak); color:var(--accent);
   border-color:var(--accent); transform:translateY(-1px);
-  box-shadow:var(--shadow-sm);
 }
 .bo-icon-btn--danger:hover { background:var(--error-weak); color:var(--error); border-color:var(--error); }
 .bo-icon-btn--ghost { background:transparent; border-color:transparent; padding:5px 10px; }
@@ -635,6 +586,7 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 }
 .bo-icon-btn--accent:hover { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
 
+/* Info affordance sitting inline with a value. */
 .bo-kv-with-action { display:inline-flex; align-items:center; gap:7px; }
 .bo-inline-btn {
   border:none; background:transparent; color:var(--text-3); cursor:pointer;
@@ -647,13 +599,15 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 
 .bo-btn {
   font-size:13.5px; font-weight:var(--fw-semibold);
-  border-radius:var(--radius-sm); padding:10px 18px; cursor:pointer;
+  border-radius:9px; padding:10px 18px; cursor:pointer;
   border:1px solid transparent; font-family:inherit;
-  transition:all var(--dur-fast) var(--ease);
+  transition:filter var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
+/* --accent-strong, not --accent: white on the brand green is 4.46:1 and misses
+   WCAG AA. The two greens are visually near-identical. */
 .bo-btn--primary { background:var(--accent-strong); color:var(--on-accent); align-self:flex-start; }
 .bo-btn--icon { display:inline-flex; align-items:center; gap:7px; }
-.bo-btn--primary:hover { filter:brightness(1.08); transform:translateY(-1px); box-shadow:var(--shadow-md); }
+.bo-btn--primary:hover { filter:brightness(1.06); transform:translateY(-1px); }
 /* Secondary action sharing a row with a primary one: outlined, so the primary
    keeps the only filled surface and the hierarchy survives both themes. */
 .bo-btn--ghost {
@@ -663,8 +617,8 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-btn--ghost:hover { color:var(--accent); border-color:var(--accent); transform:translateY(-1px); }
 .bo-btn[disabled] { opacity:.5; cursor:not-allowed; transform:none; filter:none; }
 
-.bo-proui-body { display:flex; flex-direction:column; justify-content:space-between; gap:18px; flex:1; }
-.bo-proui-version { font-size:24px; font-weight:var(--fw-bold); color:var(--accent); }
+.bo-vpnui-body { display:flex; flex-direction:column; justify-content:space-between; gap:18px; flex:1; }
+.bo-vpnui-version { font-size:23px; font-weight:var(--fw-bold); color:var(--text); }
 .bo-status-line { display:flex; align-items:center; gap:6px; font-size:13px; font-weight:var(--fw-semibold); margin-top:var(--sp-2); }
 .bo-status-line--ok { color:var(--ok); }
 .bo-status-line--warn { color:var(--warn); }
@@ -717,7 +671,73 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 }
 .bo-relnotes-foot .bo-icon { flex:none; }
 
+/* Post-update notice: where the pre-update database was snapshotted. A block and
+   not a -foot row because the value is a filesystem path, which is long and has no
+   spaces to break at, so it gets its own line and is allowed to wrap anywhere
+   rather than widening the dialog. Selectable: the operator's next move is to copy
+   it into an scp. */
+.bo-update-backup {
+  margin:var(--sp-3) 0 0; padding:8px 10px;
+  border:1px solid var(--border); border-radius:var(--radius-sm);
+  background:var(--surface-2); font-size:12.5px; color:var(--text-3);
+}
+.bo-update-backup-path {
+  margin-top:4px; font-family:var(--font-mono); font-size:12px;
+  color:var(--text); overflow-wrap:anywhere; user-select:all;
+}
+
+/* Backup filename picker. The preview is the dialog's answer, so it reads as a
+   result panel under the ticks rather than as another form row, and it carries the
+   monospace face because it is a filename. */
+.bo-backup-name-desc { margin:0 0 var(--sp-3); font-size:13px; color:var(--text-3); }
+.bo-backup-name-preview {
+  margin-top:var(--sp-2); padding:8px 10px;
+  border:1px solid var(--border); border-radius:var(--radius-sm);
+  background:var(--surface-2);
+}
+.bo-backup-name-label { font-size:11.5px; color:var(--text-3); }
+.bo-backup-name-file {
+  display:block; margin-top:3px;
+  font-family:var(--font-mono); font-size:12.5px;
+  color:var(--text); overflow-wrap:anywhere; user-select:all;
+}
+
+/* Donate dialog (PRO-UI tile). Each row is chain / address / copy. The address
+   is the payload, so it gets the monospace face and the room: the chain label
+   is fixed-width and the button is intrinsic, leaving the middle column to
+   absorb whatever is left. Addresses are long and unbreakable, hence the
+   explicit wrap rather than an ellipsis — a truncated address invites copying
+   half of one by hand. */
+.bo-donate-intro { margin:0 0 var(--sp-3); font-size:13px; color:var(--text-3); }
+.bo-donate-list { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; }
+.bo-donate-row {
+  display:grid; grid-template-columns:96px minmax(0,1fr) auto;
+  align-items:center; gap:var(--sp-2);
+  padding:8px 10px; border:1px solid var(--border);
+  border-radius:var(--radius-sm); background:var(--surface-2);
+}
+.bo-donate-chain {
+  font-size:12px; font-weight:var(--fw-semibold); color:var(--text-3);
+  letter-spacing:.02em;
+}
+.bo-donate-addr {
+  font-family:var(--font-mono); font-size:12px; color:var(--text);
+  background:none; padding:0; overflow-wrap:anywhere; user-select:all;
+}
+.bo-donate-copy { flex:none; }
 .bo-icon-btn--ok { color:var(--ok); border-color:var(--ok); }
+
+/* Under ~560px the three columns cannot all hold their minimum, so the row
+   becomes two lines: chain and button on the first, the address spanning the
+   second. Every cell is placed explicitly — grid auto-placement only moves
+   forward, so once the full-width address claims row 2 the button would land
+   on a row 3 of its own instead of back beside the chain. */
+@media (max-width:560px) {
+  .bo-donate-row { grid-template-columns:minmax(0,1fr) auto; row-gap:6px; }
+  .bo-donate-chain { grid-column:1; grid-row:1; }
+  .bo-donate-copy { grid-column:2; grid-row:1; }
+  .bo-donate-addr { grid-column:1 / -1; grid-row:2; }
+}
 
 /* ================================================================== *
  * stat grids
@@ -738,26 +758,37 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-users-value--online { color:var(--ok); }
 .bo-users-value--depleted { color:var(--error); }
 
+/* Editable server name. Always visible: a hover-only affordance is
+   undiscoverable, and this is the one control on the tile. */
 .bo-ident-nameline { display:flex; align-items:center; gap:8px; min-width:0; }
 .bo-ident-edit {
   border:1px solid var(--border); background:var(--surface-2); color:var(--text-3);
   cursor:pointer; padding:4px; border-radius:6px; flex:0 0 auto;
   display:inline-flex; align-items:center; justify-content:center;
-  transition:all var(--dur-fast) var(--ease);
+  transition:color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+             background var(--dur-fast) var(--ease);
 }
 .bo-ident-edit:hover { color:var(--accent); border-color:var(--accent); background:var(--accent-weak); }
 .bo-ident-sub { font-size:var(--fs-base); color:var(--text-3); margin-top:4px; }
 
+/* Labelled spec rows: tinted icon, key, value. One fact per line. */
+/* Splitting Uptime into Panel + Server took this list from seven rows to eight.
+   The tile must keep its footprint (it shares a bento row with Overall Speed and
+   System Status, and growing it grows the whole row), so the extra row is paid
+   for out of row padding and the list's top margin rather than out of the grid.
+   Measured: at 1px the eight rows land inside the height the seven used, so the
+   bento row height stays set by Overall Speed exactly as before. The 1px rules
+   between rows still separate them; the padding was slack, not structure. */
 .bo-spec { display:flex; flex-direction:column; gap:0; margin:15px 0 0; }
 .bo-spec-row {
   display:grid; grid-template-columns:22px minmax(70px,auto) 1fr;
-  align-items:center; gap:9px; padding:2px 0;
+  align-items:center; gap:9px; padding:1px 0;
 }
 .bo-spec-row + .bo-spec-row { border-top:1px solid var(--border); }
 .bo-spec-ico { display:inline-flex; align-items:center; justify-content:center; }
 .bo-spec-key {
   font-size:var(--fs-sm); font-weight:var(--fw-bold); color:var(--text-3);
-  text-transform:uppercase; letter-spacing:.05em; margin:0;
+  text-transform:uppercase; letter-spacing:.04em; margin:0;
 }
 .bo-spec-val {
   font-size:var(--fs-base); font-weight:var(--fw-semibold); color:var(--text);
@@ -765,6 +796,8 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 }
 .bo-spec-val.bo-ok { color:var(--ok); }
 .bo-spec-val.bo-warn { color:var(--warn); }
+/* Each row's icon gets its own tint so a row can be found by colour first.
+   These are the reserved status hues plus the accent, not new colours. */
 .bo-spec-ico--os { color:var(--accent); }
 .bo-spec-ico--kernel { color:var(--warn); }
 .bo-spec-ico--cpu { color:var(--info); }
@@ -815,7 +848,8 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 .bo-spec-ico--health { color:var(--ok); }
 .bo-spec-ico--panel { color:var(--accent); }
 
-/* Clients: three people marks, no column rules. */
+/* Clients: three people marks, no column rules. Colour carries the state -
+   accent for the total, ok for online, error for depleted. */
 .bo-people {
   display:grid; grid-template-columns:repeat(3,1fr);
   gap:var(--sp-3); text-align:center;
@@ -823,20 +857,15 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 @media (max-width:520px) { .bo-people { grid-template-columns:1fr; } }
 .bo-person {
   display:flex; flex-direction:column; align-items:center; gap:4px;
-  padding:10px 8px; border-radius:var(--radius-md);
+  padding:9px 8px; border-radius:var(--radius-lg);
   background:var(--surface-2); border:1px solid var(--border);
-  transition:all var(--dur-fast) var(--ease);
-}
-.bo-person:hover {
-  transform:translateY(-2px);
-  box-shadow:var(--shadow-sm);
 }
 .bo-person-ico { width:21px; height:21px; fill:none; stroke:currentColor;
   stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
-.bo-person-val { font-size:22px; font-weight:var(--fw-bold); line-height:1.1; color:var(--text); }
+.bo-person-val { font-size:21px; font-weight:var(--fw-bold); line-height:1.1; color:var(--text); }
 .bo-person-key {
   font-size:var(--fs-xs); font-weight:var(--fw-semibold); color:var(--text-3);
-  text-transform:uppercase; letter-spacing:.05em;
+  text-transform:uppercase; letter-spacing:.04em;
 }
 .bo-person--total { color:var(--text-2); }
 .bo-person--online { color:var(--ok); }
@@ -853,28 +882,28 @@ body.dark .bo-theme-toggle .bo-i-moon { display:block; }
 @media (max-width:1100px) { .bo-stat-grid--5 { grid-template-columns:repeat(2,1fr); } }
 @media (max-width:560px) { .bo-stat-grid--5 { grid-template-columns:1fr; } }
 
-.bo-stat-grid--6 { grid-template-columns:repeat(6,1fr); }
-@media (max-width:1100px) { .bo-stat-grid--6 { grid-template-columns:repeat(3,1fr); } }
-@media (max-width:560px) { .bo-stat-grid--6 { grid-template-columns:1fr; } }
-
 .bo-stat-cell { background:var(--surface); padding:14px 16px; display:flex; flex-direction:column; gap:5px; min-width:0; }
 .bo-stat-cell-label {
   font-size:var(--fs-xs); font-weight:var(--fw-semibold);
-  text-transform:uppercase; letter-spacing:.05em; color:var(--text-3);
+  text-transform:uppercase; letter-spacing:.04em; color:var(--text-3);
 }
 .bo-stat-cell-value { font-size:15.5px; font-weight:var(--fw-bold); color:var(--text); }
 
+/* Same centred-pair shape as the throughput totals, so the two cards rhyme.
+   Figures are smaller than the throughput headline: these are secondary. */
 .bo-conn-body { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
 .bo-conn-stat { display:flex; flex-direction:column; align-items:center; gap:3px; }
 .bo-conn-label {
   display:flex; align-items:center; gap:6px;
   font-size:11.5px; font-weight:var(--fw-bold);
-  text-transform:uppercase; letter-spacing:.05em; color:var(--text-3);
+  text-transform:uppercase; letter-spacing:.04em; color:var(--text-3);
 }
 .bo-conn-label .bo-icon { color:var(--text-3); }
 .bo-conn-stat--tcp .bo-conn-label .bo-icon { color:var(--accent); }
 .bo-conn-stat--udp .bo-conn-label .bo-icon { color:var(--info); }
-.bo-conn-value { font-size:18px; font-weight:var(--fw-bold); color:var(--text); }
+.bo-conn-value { font-size:17px; font-weight:var(--fw-bold); color:var(--text); }
+/* Sits directly under the figures, not pushed to the foot of a stretched
+   tile, which left a visible void between them. */
 .bo-conn-ratio {
   display:flex; gap:2px; height:6px; border-radius:3px;
   overflow:hidden; background:var(--surface); margin-top:0;
@@ -1079,13 +1108,6 @@ body.dark .bo-distro--photon{--distro-ink:#2C67A6}
   overflow-wrap:anywhere; word-break:break-all;
 }
 
-/* Timestamp under the test result: "last tested at HH:MM:SS". Deliberately
-   dimmer than the result itself so an old outcome reads as historical. */
-.ob-last { margin-top:2px; }
-.ob-last-time {
-  font-size:11px; line-height:1.4; color:var(--text-secondary, #888);
-}
-
 /* ============================================================
    Log viewer. One appearance for the panel log, Xray and every
    bundled daemon; see LogFormatter in assets/js/util/index.js.
@@ -1208,6 +1230,13 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
 .bo-cf-rail {
   flex:0 0 200px; border-inline-end:1px solid var(--border);
   background:var(--surface-2); display:flex; flex-direction:column;
+  /* Same reason as the pane below: without it the rail refuses to shrink under
+     its own content, and the sections that do not fit are pushed out of the
+     dialog and clipped by .ant-modal-body's overflow:hidden rather than being
+     scrolled to. On a 700px-tall window that lost the last two entries of a
+     nine-section inbound - reported as "some parts cannot be reached on a
+     smaller screen", and unreachable is exactly what they were. */
+  min-height:0;
 }
 /* min-height:0 is what lets the pane actually scroll: a flex item defaults to
    min-height:auto, which refuses to shrink below its content and pushes the
@@ -1226,7 +1255,13 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
 }
 .bo-cf-kv b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
 
-.bo-cf-tabs { padding:10px; display:flex; flex-direction:column; gap:2px; }
+/* The section list scrolls, not the whole rail: the summary above it says WHOSE
+   dialog this is, and scrolling that away to reach the last section is how the
+   operator loses track of which inbound they are editing. */
+.bo-cf-tabs {
+  padding:10px; display:flex; flex-direction:column; gap:2px;
+  flex:1 1 auto; min-height:0; overflow-y:auto;
+}
 .bo-cf-tab {
   display:flex; align-items:center; gap:9px; width:100%;
   font:inherit; font-size:13.5px; text-align:start; cursor:pointer;
@@ -1247,6 +1282,25 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
 }
 .bo-cf-field > label .ant-tag { margin-inline-end:0; font-size:11px; line-height:17px; }
 .bo-cf-hint { font-size:11.5px; color:var(--text-3); margin-top:4px; }
+
+/* A setting that belongs to the field above it rather than beside it: mtproto's ad
+   tag under mtproto's secret. The rule and the indent are the whole of it, and they
+   are what say "part of that" instead of "next thing down" - as a sibling row it
+   read as a form-level setting, which is exactly what it is not. */
+.bo-cf-nest {
+  margin-top:9px; padding-inline-start:12px;
+  border-inline-start:2px solid var(--border-strong);
+}
+/* The switch row's own separator would cut the group it is heading. */
+.bo-cf-nest > .bo-cf-switch { padding:0 0 8px; border-bottom:0; }
+/* Loud enough to stop an operator, small enough to stay inside the group. An
+   a-alert here spans the pane and so reads as a warning about the whole form. */
+.bo-cf-warnnote {
+  display:flex; gap:6px; margin-top:7px; padding:7px 9px; border-radius:6px;
+  background:var(--warn-weak); color:var(--warn);
+  font-size:11.5px; line-height:1.5;
+}
+.bo-cf-warnnote > .anticon { flex:0 0 auto; margin-top:2px; }
 /* Dimmed, not hidden: a field that vanishes as inbounds are ticked makes the
    form shift under the operator mid-edit. */
 .bo-cf-unused { opacity:.5; }
@@ -1315,13 +1369,175 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
 .bo-cf-stem { color:var(--text-3); }
 
 /* The rail stacks above the pane once there is no room beside it. */
+/* The rail dialogs on a narrow screen.
+ *
+ * Three things were wrong here at once, and all three read to an operator as
+ * "part of this dialog cannot be reached".
+ *
+ * 1. The sections scrolled SIDEWAYS. Stacking the rail on top turned nine
+ *    sections into a 1227px strip inside a 350px window, so two of them were on
+ *    screen and the other seven were behind a horizontal scroll with nothing but
+ *    a hairline scrollbar to suggest they existed. They wrap now: every section
+ *    is visible at once, which is the whole job of a rail.
+ *
+ * 2. The pane stopped scrolling. `overflow-y:visible` let a 479px section spill
+ *    out of a 438px pane, and .ant-modal-body (custom.css) is overflow-y:hidden,
+ *    so the spill was CLIPPED rather than scrolled: on a 390x844 phone the last
+ *    40px of every long section - the Port field among them - simply could not be
+ *    got at. The pane keeps its own scrollbar here, exactly as on the desktop.
+ *
+ * 3. The dialog gave the pane almost nothing to work with, because the summary
+ *    block above it is written for a 200px column and kept all four of its rows.
+ *    On a phone it is trimmed to the name; the fields it recapped are in the form
+ *    itself, a few taps away.
+ */
 @media (max-width:640px) {
-  .bo-cf { flex-direction:column; height:auto; }
-  .bo-cf-rail { flex:0 0 auto; border-inline-end:0; border-bottom:1px solid var(--border); }
-  .bo-cf-tabs { flex-direction:row; overflow-x:auto; }
-  .bo-cf-tab { width:auto; white-space:nowrap; }
-  .bo-cf-pane { overflow-y:visible; }
+  .bo-cf {
+    flex-direction:column; height:auto;
+    /* Taller than the desktop ceiling: with the rail stacked ON TOP of the pane
+       rather than beside it, the same allowance leaves the pane a letterbox. The
+       180px covers the modal's header, its footer and the 20px it is offset by,
+       with room to spare on the shortest phone. */
+    max-height:calc(100vh - 180px);
+  }
+  .bo-cf-rail {
+    flex:0 0 auto; border-inline-end:0; border-bottom:1px solid var(--border);
+  }
+  /* Trimmed to the title. Protocol, ports, account count and usage are all
+     visible in the form below, and on a 640px-tall phone those four rows cost
+     more than they tell. */
+  .bo-cf-summary { padding:12px 14px; }
+  .bo-cf-summary .bo-cf-sub,
+  .bo-cf-summary .bo-cf-kv { display:none; }
+  /* Wraps rather than scrolls. */
+  .bo-cf-tabs {
+    flex-direction:row; flex-wrap:wrap; gap:4px; padding:8px;
+    overflow:visible;
+  }
+  .bo-cf-tab {
+    width:auto; white-space:nowrap; font-size:12.5px; gap:6px; padding:7px 9px;
+  }
+  /* The group headings are a desktop nicety and a wrap-breaker here: each one
+     would claim a whole row of its own. The sections stay in group order. */
+  .bo-if-grp { display:none; }
+  /* The field count goes with them: it is a comparison aid for a nine-item
+     column, and every character of a chip's width is wanted for its name. */
+  .bo-if-n { display:none; }
+  .bo-cf-pane { padding:16px; }
 }
+
+/* .ant-modal-body drops to 20px of padding at this width (custom.css), so the
+   -24px bleed that makes the rail meet the dialog edge overshoots by 4px on each
+   side - enough for .ant-modal-body's overflow-x:auto to put a scrollbar across
+   the bottom of every rail dialog. */
+@media (max-width:768px) {
+  .bo-cf { margin:-20px; }
+}
+
+/* ================================================================== *
+ * inbound form (Inbounds page add / edit)
+ *
+ * The same rail as the client form above, and deliberately so: the two are
+ * the panel's two "make a thing" dialogs and there is no reason for them to
+ * be different controls. Everything structural is reused from .bo-cf-*;
+ * what is added here is what an inbound has and an account does not.
+ *
+ * An account has four sections. An inbound has up to nine, because a VLESS
+ * inbound can render 195 fields against SSH's 25, so the rail carries two
+ * things the client rail has no need for:
+ *
+ *   a count, because "Final mask" and "Identity" look equally weighty in a
+ *   list and one of them is 64 fields;
+ *
+ *   a dot, because an inbound can be unsaveable (a missing certificate, an
+ *   xhttp combination the core refuses) and the old form expressed that as
+ *   a greyed button with no reason attached.
+ *
+ * Sections are grouped under three fixed headings. The groups do not change
+ * with the protocol even though their contents do, so "certificates are
+ * under Security" stays true whether the operator is on OpenVPN or VLESS.
+ * ================================================================== */
+
+/* Group heading. Reads as a label for what follows, not as a row you can click. */
+.bo-if-grp {
+  font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); margin:12px 0 4px; padding-inline-start:11px;
+}
+.bo-if-grp:first-child { margin-top:2px; }
+
+/* The count, pinned right. Tabular so the column of numbers lines up. */
+.bo-if-n {
+  margin-inline-start:auto; padding-inline-start:6px;
+  font-size:11px; font-weight:400; color:var(--text-3);
+  font-variant-numeric:tabular-nums;
+}
+/* The blocker dot sits with the label rather than at the far edge: it qualifies
+   the section, where the count measures it. When a section has both, the dot is
+   next to the name and the number stays in its column. */
+.bo-if-dot {
+  flex:0 0 auto; width:7px; height:7px; border-radius:50%;
+  background:var(--error); margin-inline-start:2px;
+}
+.bo-if-dot + .bo-if-n { margin-inline-start:auto; }
+.bo-if-dot:last-child { margin-inline-start:auto; }
+
+/* 200px does not fit "Security (REALITY)" beside an icon and a count, and an
+   ellipsis in a nine-item rail reads as a defect rather than as truncation. The
+   rail takes a short name and the pane heading carries the full one, so this is
+   a backstop for a protocol whose name is longer than expected, not the plan. */
+.bo-cf-tab .bo-if-lb {
+  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* A summary value that is allowed to use a second line. .bo-cf-ell truncates,
+   which is right for a name the operator typed and wrong for one the panel
+   chose: "OpenConnect (cisco)" and "WireGuard (Xray)" both overrun the 168px a
+   rail row leaves, and an ellipsis there hides the value the row is reporting. */
+.bo-cf-kv b.bo-if-wrap {
+  min-width:0; text-align:end; white-space:normal; overflow-wrap:anywhere;
+}
+
+/* The pane heading. The rail says where you are in two words; this says it in
+   full and adds what the section is for. */
+.bo-if-h { margin:0 0 2px; font-size:15px; font-weight:600; color:var(--text); }
+.bo-if-d { margin:0 0 16px; font-size:11.5px; color:var(--text-3); line-height:1.5; }
+
+/* A group of fields inside a section: Certificates under Security, Masquerade
+   under Transport.
+ *
+ * This replaces <a-divider>Some Title</a-divider>, which ant draws as a centred
+ * caption on a full-bleed rule. In a tinted panel that reads as a grey title bar
+ * stamped across the pane, and it belongs to no other surface in this UI. Same
+ * vocabulary as the rail's group headings instead: a small caps label with a
+ * hairline running out to the edge, so a sub-group is quieter than the section
+ * heading above it rather than louder. */
+.bo-if-sub {
+  display:flex; align-items:center; gap:10px;
+  margin:22px 0 12px;
+  font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3);
+}
+.bo-if-sub:first-child { margin-top:0; }
+.bo-if-sub::after {
+  content:""; flex:1 1 auto; height:1px; background:var(--border);
+}
+
+/* Sections are hidden with v-show, so they stay in the DOM. Every field keeps its
+   state while the operator moves around, and the rail can count what is inside a
+   section that has never been opened. v-if would cost both. */
+
+/* The footer says why Create is disabled. The old form disabled the button and
+   left the operator to guess, which is the defect this whole dialog exists to
+   fix; the button alone cannot carry a reason. */
+.bo-if-foot { display:flex; align-items:center; gap:12px; }
+.bo-if-why { font-size:12px; color:var(--error); text-align:start; }
+.bo-if-why.ok { color:var(--ok); }
+.bo-if-why b { font-weight:600; }
+.bo-if-btns { margin-inline-start:auto; display:flex; gap:8px; flex:0 0 auto; }
+
+/* The ant modal footer is right-aligned by default, which would push the reason
+   into the buttons instead of giving it the row. */
+.bo-inbound-modal .ant-modal-footer { text-align:start; }
 
 /* ================================================================== *
  * clients ledger (the Clients page table)
@@ -1336,15 +1552,67 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
 
 /* One glyph for the whole account state, with the label in its tooltip. Hue is
    doing real work here (it is the reserved status scale), which is why the
-   protocol chips beside it must not also be carrying identity hues. */
+   protocol chips beside it must not also be carrying identity hues.
+
+   Online is its own HUE now (--info, the blue) rather than the ring it used to
+   be. The ring was the right call while online was orthogonal to health, but it
+   was drawn in --ok-weak around an --ok dot, so at 8px the whole glyph read as
+   one slightly larger green circle: online and merely-enabled were the same
+   colour to anyone not comparing two rows side by side. Blue separates on hue,
+   which survives being 8px wide and survives the eight percent of men who
+   cannot tell the green from the amber. */
 .bo-lamp { width:8px; height:8px; border-radius:50%; flex:0 0 auto; background:var(--off); }
 .bo-lamp--ok { background:var(--ok); }
 .bo-lamp--warn { background:var(--warn); }
 .bo-lamp--error { background:var(--error); }
 .bo-lamp--off { background:var(--off); }
-/* Online is a ring rather than a sixth colour: it is orthogonal to health, so
-   an account can be online AND nearly out of data. */
-.bo-lamp--live { box-shadow:0 0 0 3px var(--ok-weak); }
+.bo-lamp--live { background:var(--info); box-shadow:0 0 0 3px var(--info-weak); }
+/* An account whose clock has not started yet: sold, never connected. It carries
+   NO hue on purpose. It is neither healthy nor unhealthy, and painting it green
+   with everything else is what made "this customer has never once connected"
+   invisible on a page of two hundred rows. A hollow ring reads as "nothing has
+   happened here" in a way no colour does. */
+.bo-lamp--idle { background:transparent; box-shadow:inset 0 0 0 1.5px var(--off); }
+
+/* The lamp breathes so a glance at a still screenshot and a glance at the live
+   page do not tell the same story. Opacity only, and never geometry: the lamp
+   sits in a flex row with the email beside it, so animating width or transform
+   would jitter the text of every row it is in.
+
+   Two speeds carry meaning. Online pulses at roughly a resting heart rate
+   because there is a session behind it right now; every other coloured state
+   drifts at less than half that, enough to read as live without a table of
+   fifty rows becoming a strobe. The idle lamp does not pulse at all, which is
+   the whole point of it.
+
+   Every selector below is qualified with .bo-lamp rather than keying off the
+   modifier alone. The account panel's own lamp (.ai-lamp, further down this
+   file) borrows the --on/--off modifier NAMES without being a .bo-lamp, so an
+   unqualified .bo-lamp--off rule reaches into that modal and animates something
+   that is deliberately a flat 45% grey. */
+@keyframes bo-lamp-pulse { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+@keyframes bo-lamp-beat  { 0%,100% { opacity:1; } 50% { opacity:.3;  } }
+.bo-lamp.bo-lamp--ok,
+.bo-lamp.bo-lamp--warn,
+.bo-lamp.bo-lamp--error,
+.bo-lamp.bo-lamp--off { animation:bo-lamp-pulse 2.6s ease-in-out infinite; }
+.bo-lamp.bo-lamp--live { animation:bo-lamp-beat 1.1s ease-in-out infinite; }
+/* Motion is decoration here: the hue already carries the state, and the tooltip
+   carries the word. So an operator who has asked their OS for less of it loses
+   nothing by having it removed entirely.
+
+   Every compound selector above is repeated rather than collapsed to a bare
+   .bo-lamp. A media query adds NO specificity, so `.bo-lamp { animation:none }`
+   in here would score 0,1,0 against the 0,2,0 of `.bo-lamp.bo-lamp--ok` outside
+   it and lose - the rule would read as though it worked and the lamps would go
+   on pulsing at exactly the people who asked them not to. */
+@media (prefers-reduced-motion: reduce) {
+  .bo-lamp.bo-lamp--ok,
+  .bo-lamp.bo-lamp--warn,
+  .bo-lamp.bo-lamp--error,
+  .bo-lamp.bo-lamp--off,
+  .bo-lamp.bo-lamp--live { animation:none; }
+}
 
 .bo-lg-who { display:flex; align-items:center; gap:9px; min-width:0; }
 .bo-lg-names { min-width:0; }
@@ -1384,9 +1652,12 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
 }
 
 .bo-lg-seen { font-size:12px; color:var(--text-3); white-space:nowrap; }
-.bo-lg-seen--live { color:var(--ok); }
+/* The word "Online" in the Last Online cell, on the same row as a lamp that is
+   now --info for exactly this state. Green here and blue two cells to the left
+   would be two colours for one fact. */
+.bo-lg-seen--live { color:var(--info); }
 
-.bo-lg-acts { display:inline-flex; align-items:center; gap:8px; justify-content:flex-end; }
+.bo-lg-acts { display:inline-flex; align-items:center; gap:6px; justify-content:flex-end; flex-wrap:nowrap; }
 
 /* Denser rows for a big fleet. The two lines that go are the two that repeat
    what is already visible elsewhere: the comment (searchable) and the absolute
@@ -1436,6 +1707,27 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
 .bo-mb.off { opacity:.55; }
 
 .bo-mb-id { display:flex; align-items:center; gap:7px; flex:1 1 210px; min-width:0; }
+
+/* Live on THIS inbound. Hollow at rest rather than filled-grey, so a row of
+   offline memberships reads as an absence of light instead of a row of dots
+   competing with the account lamp above it. */
+.bo-mb-lamp {
+  width:7px; height:7px; border-radius:50%; flex:0 0 auto;
+  border:1px solid var(--border); background:transparent;
+}
+/* Blue, not green, and it has to be: this answers the same question the account
+   lamp above answers ("is there a session"), and that lamp is now --info for
+   online. Leaving this one green would put two colours on one page for one
+   meaning, which is how a status scale stops meaning anything.
+   It does NOT pulse. The account lamp is the one an operator scans a whole page
+   of; these are read a handful at a time inside an expander they deliberately
+   opened, and animating them would have every open row twitching. */
+.bo-mb-lamp--live { border-color:var(--info); background:var(--info); box-shadow:0 0 0 2px var(--info-weak); }
+/* Connected, but on one of this account's Xray-native inbounds and the core does
+   not say which. Filled in the same hue with no ring: it is the same evidence,
+   held less certainly, and giving it a second colour would read as a third state
+   an operator has to learn. */
+.bo-mb-lamp--maybe { border-color:var(--info); background:var(--info-weak); }
 .bo-mb-name {
   font-weight:500; color:var(--text);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -1445,13 +1737,31 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
 /* The credential this inbound authenticates on. Monospace because it is copied,
    truncated because a uuid is 36 characters and the whole row is not about it. */
 .bo-mb-cred {
-  flex:1 1 260px; min-width:0; display:flex; align-items:center; gap:6px;
+  flex:1 1 260px; min-width:0; display:flex; align-items:center; gap:10px;
   font-family:var(--font-mono, ui-monospace, monospace); font-size:12px;
-  color:var(--text-2); cursor:pointer;
+  color:var(--text-2);
 }
-.bo-mb-cred:hover { color:var(--accent); }
+/* One copyable artifact. There can be two of them on the dial-in protocols, whose
+   customer needs a username AND a password, so each is its own click target rather
+   than the whole cell being one. */
+.bo-mb-cred-one {
+  min-width:0; display:flex; align-items:center; gap:5px; cursor:pointer;
+}
+.bo-mb-cred-one:hover { color:var(--accent); }
+/* The tiny label in front of a value. Without it a bare login name and a bare
+   password are two indistinguishable strings sitting next to each other. */
+.bo-mb-cred-k {
+  flex:0 0 auto; font-family:var(--ui, inherit); font-size:10px;
+  text-transform:uppercase; letter-spacing:.04em; color:var(--text-3);
+}
 .bo-mb-cred-v { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .bo-mb-cred .anticon { flex:0 0 auto; font-size:12px; }
+/* A share link is far too long for the cell, so the tooltip carries the whole of it
+   and wraps rather than running off the edge of the screen. */
+.bo-mb-cred-full {
+  max-width:420px; margin-top:4px; word-break:break-all; white-space:normal;
+  font-family:var(--font-mono, ui-monospace, monospace); font-size:11px; opacity:.85;
+}
 
 .bo-mb-use {
   flex:0 0 auto; display:flex; align-items:center; gap:8px;
@@ -1459,49 +1769,1012 @@ html[data-theme-animations='off'] .log-live-dot { animation:none; }
 }
 .bo-mb-use b { color:var(--text); font-weight:600; }
 
+/* "shared": this membership's figure is the account's Xray-native remainder, not
+   this one inbound's own bytes. Deliberately a quiet label in the neutral ink and
+   NOT one of the four status hues: it qualifies a number, it does not report a
+   health state, and colouring it would put a warning on an ordinary vless account. */
+.bo-mb-shared {
+  font-size:11px; color:var(--text-3, var(--text-2)); font-style:italic;
+  white-space:nowrap;
+}
+.bo-mb-shared-note { max-width:260px; white-space:normal; color:var(--text-2); }
+
 .bo-mb-actions { flex:0 0 auto; margin-inline-start:auto; }
 
+/* ---------------------------------------------------------------------------
+ * GRE: the far side's Outbound form, box by box (modals/greConfigModal)
+ *
+ * Here rather than in a <style> inside that modal for the reason the SSL block
+ * below states: Vue strips a <style> out of a template while compiling it, and
+ * the block disappears with no warning in a production build.
+ *
+ * Every selector is under .gre-out. The rules are shaped like a definition list
+ * and would otherwise reach every two-column layout in the panel.
+ * --------------------------------------------------------------------------- */
+.gre-out {
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.gre-out-h {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.gre-out-h span { font-size: 12px; color: var(--text-3); }
+.gre-out-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 34%) 1fr;
+  gap: 2px 12px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.gre-out-row:last-child { border-bottom: 0; }
+/* A box that must be left empty is recessed rather than hidden: blank is a
+   decision the operator has to make deliberately, and a missing row reads as an
+   answer nobody gave. */
+.gre-out-row--blank { opacity: .72; }
+.gre-out-k { font-size: 12px; color: var(--text-2); }
+.gre-out-v {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px;
+  color: var(--text); cursor: pointer; word-break: break-all;
+}
+.gre-out-v:hover { color: var(--accent); }
+.gre-out-v--none {
+  font-family: var(--ui, inherit); font-style: italic;
+  color: var(--text-3); cursor: default;
+}
+.gre-out-v--none:hover { color: var(--text-3); }
+/* The note spans both columns so a full sentence is not squeezed into the value
+   column, which is sized for an address. */
+.gre-out-n {
+  grid-column: 1 / -1;
+  font-size: 11px; line-height: 1.45; color: var(--text-3);
+}
+/* ---------------------------------------------------------------------------
+ * SSL certificate manager (Panel Settings, the SSL tab)
+ *
+ * Here rather than in a <style> block inside settings/panel/ssl.html: Vue strips
+ * <style> out of a template while compiling it, and the production build has the
+ * warning about that compiled out, so such a block disappears without a trace and
+ * every rule in it is silently dead.
+ *
+ * Scoped under .settings-page, which settings.html stamps on #app, so nothing
+ * here can reach the other pages. The one exception is the confirmation modal at
+ * the foot of this block: antd portals every overlay to document.body, outside
+ * #app, so a rule scoped under .settings-page would never match it.
+ * ------------------------------------------------------------------------ */
+
+.settings-page .ssl-alert { margin: 0 0 14px; }
+.settings-page .ssl-alert-btn { margin-top: 10px; }
+
+/* THE TABLE. A grid, not a-table: three of the six cells are custom controls, and
+   nothing here sorts or paginates, so the table component would carry no weight.
+
+   The scroll container is the OUTER element and the grid inside it holds a
+   min-width. Letting the grid itself shrink instead collapses the two switch
+   columns into each other on a phone, which is the one place a mis-click flips a
+   listener off. */
+.settings-page .ssl-table { overflow-x: auto; margin-bottom: 16px; }
+
+.settings-page .ssl-grid {
+  min-width: 860px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.settings-page .ssl-row {
+  display: grid;
+  /* Seven columns now: name, issuer, life, and then three fixed-width switch or
+     action columns. The three stay fixed while the first three take the slack, so
+     the switches never drift apart as the window widens. */
+  grid-template-columns:
+    minmax(170px, 2fr) minmax(120px, 1.3fr) minmax(95px, .9fr) minmax(115px, 1.1fr) 84px 74px 74px 52px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-page .ssl-row:last-child { border-bottom: none; }
+
+.settings-page .ssl-row-head {
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* The two switch columns are centred under centred headers, so the column reads
+   as a column rather than as two ragged controls. */
+.settings-page .ssl-col-mid { text-align: center; }
+
+/* NAME. Wraps rather than truncating: a hostname is the row's identity and half
+   of one identifies nothing. The tags sit on their own line when the name is
+   long, which is why this is a flex row that wraps and not a nowrap ellipsis. */
+.settings-page .ssl-cell-name {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  min-width: 0;
+}
+.settings-page .ssl-name {
+  font-weight: var(--fw-medium);
+  word-break: break-all;
+}
+.settings-page .ssl-more { font-size: var(--fs-sm); color: var(--text-3); }
+.settings-page .ssl-flags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.settings-page .ssl-flags .ant-tag { margin: 0; }
+
+.settings-page .ssl-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex: none;
+  background: currentColor;
+}
+
+/* NICKNAME. The pencil is always present, including on an empty cell, so a blank
+   nickname still reads as something you can set rather than as missing data. */
+.settings-page .ssl-cell-nick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.settings-page .ssl-nick {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-page .ssl-nick-empty::before {
+  /* An em dash would read as a value. This is a placeholder for absence. */
+  content: "-";
+  color: var(--text-3);
+}
+.settings-page .ssl-nick-btn {
+  padding: 0 6px;
+  flex: none;
+  opacity: .55;
+}
+.settings-page .ssl-nick-btn:hover,
+.settings-page .ssl-nick-btn:focus-visible { opacity: 1; }
+
+.settings-page .ssl-cell-issuer {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* LIFE LEFT. The bar answers "is this fine" before the number is read, and the
+   number is there because "fine" is not a date. */
+.settings-page .ssl-cell-life { min-width: 0; }
+.settings-page .ssl-days { display: block; font-size: var(--fs-sm); }
+.settings-page .ssl-meter {
+  display: block; height: 3px; margin-top: 5px;
+  border-radius: 2px; background: var(--surface-2); overflow: hidden;
+}
+.settings-page .ssl-meter i { display: block; height: 100%; border-radius: 2px; }
+
+/* The reserved status scale, and the only place these four hues appear on this
+   page. Every one of them ships with the sentence beside it, never colour alone. */
+.settings-page .ssl-health-ok { color: var(--ok); }
+.settings-page .ssl-health-warn { color: var(--warn); }
+.settings-page .ssl-health-bad { color: var(--error); }
+.settings-page .ssl-health-off { color: var(--off); }
+.settings-page .ssl-meter-ok { background: var(--ok); }
+.settings-page .ssl-meter-warn { background: var(--warn); }
+.settings-page .ssl-meter-bad { background: var(--error); }
+.settings-page .ssl-meter-off { background: var(--off); }
+
+.settings-page .ssl-cell-act { text-align: end; }
+.settings-page .ssl-menu-btn { padding: 0 8px; }
+
+/* NOTHING YET. A table with no rows teaches nothing, and this page is seen for
+   the first time by someone who has never got a certificate before, so the empty
+   state says what is wrong right now and the row below it says what to type. */
+.settings-page .ssl-blank {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 28px 20px;
+  text-align: center;
+  margin-bottom: 16px;
+}
+.settings-page .ssl-blank-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  margin-bottom: 6px;
+}
+.settings-page .ssl-blank-sub {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  max-width: 62ch;
+  margin: 0 auto;
+  line-height: var(--lh-base);
+}
+
+/* THE LAST ROW: getting one, on the same surface as managing them. */
+.settings-page .ssl-new { display: flex; gap: 10px; align-items: flex-start; }
+/* The gear sits beside the button it modifies, not in a settings panel somewhere
+   else: it changes what pressing Get SSL is about to do. */
+.settings-page .ssl-gear { flex: none; }
+.settings-page .ssl-new-input { flex: 1; min-width: 0; }
+.settings-page .ssl-new-note {
+  margin-top: 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  line-height: var(--lh-base);
+}
+
+/* PROGRESS. A bar, a percentage and one sentence. The black terminal that used to
+   sit here answered a question the operator was not asking; it now lives one click
+   away behind the log button, which is where it belongs and where it is still
+   live. */
+.settings-page .ssl-progress {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.settings-page .ssl-progress-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.settings-page .ssl-progress-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: var(--fw-medium);
+  min-width: 0;
+}
+/* The percentage is the one number here, and it sits beside a bar that moves, so
+   it gets tabular figures to stop it jittering as the digits change. */
+.settings-page .ssl-progress-pct {
+  margin-inline-start: auto;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.settings-page .ssl-log-btn { position: relative; }
+/* How many steps failed, on the button that opens the log. Only drawn when it is
+   non-zero, so it is never a decoration. */
+.settings-page .ssl-log-badge {
+  position: absolute;
+  top: -6px;
+  inset-inline-end: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--error);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.settings-page .ssl-progress-step {
+  margin-top: 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: var(--lh-base);
+  /* The sentence changes every few seconds and the lines differ in length, so the
+     block is held at two lines' height: without this the whole page below it
+     jumps each time a shorter step replaces a longer one. */
+  min-height: calc(var(--fs-sm) * var(--lh-base) * 2);
+}
+
+/* The log window. Rules are NOT scoped under .settings-page: antd portals a modal
+   to document.body, outside #app. */
+/* The nickname editor. Outside .settings-page: antd portals it to document.body. */
+.ssl-nick-modal .ssl-nick-for {
+  margin-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  word-break: break-all;
+}
+.ssl-nick-modal .ssl-nick-hint {
+  margin-top: 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  line-height: var(--lh-base);
+}
+
+/* THE LOG WINDOW. One <pre> of the real output rather than a styled step list:
+   what an operator opens a log for is what the tool actually printed. */
+.ssl-log-modal .ant-modal-body { padding: 16px; }
+.ssl-log-modal .ssl-rawlog-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ssl-log-modal .ssl-rawlog-meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.ssl-log-modal .ssl-rawlog {
+  margin: 0;
+  padding: 12px 14px;
+  height: 460px;
+  max-height: 62vh;
+  overflow: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text);
+  /* The output is the point, so it stays selectable and wraps rather than being
+     cut off; long acme.sh lines are informative right to the end. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+/* The key-algorithm popup. Also outside .settings-page, for the same reason: antd
+   portals it to document.body. Hand-built rows rather than a-radio-group because
+   each option carries a sentence explaining what it costs, and an antd radio puts
+   its label on one line. */
+.ssl-key-modal .ssl-key-intro {
+  margin-bottom: 14px;
+  color: var(--text-2);
+  line-height: var(--lh-base);
+}
+.ssl-key-modal .ssl-key-opt {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.ssl-key-modal .ssl-key-opt:hover { border-color: var(--border-strong); }
+.ssl-key-modal .ssl-key-on {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+}
+.ssl-key-modal .ssl-key-radio {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  flex: none;
+  margin-top: 3px;
+}
+.ssl-key-modal .ssl-key-on .ssl-key-radio {
+  border-color: var(--accent);
+  border-width: 5px;
+}
+.ssl-key-modal .ssl-key-body { min-width: 0; }
+.ssl-key-modal .ssl-key-name {
+  display: block;
+  font-weight: var(--fw-medium);
+}
+.ssl-key-modal .ssl-key-name .ant-tag { margin-inline-start: 8px; }
+.ssl-key-modal .ssl-key-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  line-height: var(--lh-base);
+}
+.ssl-key-modal .ssl-key-foot {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  line-height: var(--lh-base);
+}
+
+/* ---------------------------------------------------------------------------
+ * THE CONFIRMATION, and NOT under .settings-page.
+ *
+ * antd renders a modal into a wrapper appended to document.body, which is
+ * outside #app and therefore outside the .settings-page scope. The template
+ * passes wrap-class-name="ssl-modal" so these rules have something of their own
+ * to hang on; a .settings-page prefix here would match nothing at all.
+ * ------------------------------------------------------------------------ */
+
+.ssl-modal .ssl-modal-names { margin-bottom: 12px; }
+.ssl-modal .ssl-modal-names .ant-tag { margin: 0 6px 6px 0; }
+
+.ssl-modal .ssl-modal-reason {
+  margin: 0 0 12px;
+  line-height: var(--lh-base);
+}
+
+.ssl-modal .ssl-modal-alert { margin-bottom: 12px; }
+.ssl-modal .ssl-modal-list { margin: 4px 0 0; padding-inline-start: 18px; }
+.ssl-modal .ssl-modal-list li { margin-bottom: 4px; }
+
+.ssl-modal .ssl-modal-field { margin-bottom: 12px; }
+.ssl-modal .ssl-modal-field > label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: var(--fw-medium);
+}
+.ssl-modal .ssl-modal-hint {
+  margin-top: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  line-height: var(--lh-base);
+}
+
+/* What it costs, last and quiet. It is the one line that is true whatever else
+   the modal is showing, so it reads as a footnote rather than as a warning. */
+.ssl-modal .ssl-modal-cost {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  line-height: var(--lh-base);
+}
+
 /* ================================================================== *
- * hamburger menu (always visible)
+ * section nav: the vertical tree on Settings and Xray
+ *
+ * Replaces the seven-tab <a-tabs> strip those two pages opened with. The
+ * sections stack down the side and the open one unfolds to list its
+ * <a-collapse> panels, so both levels of the page are legible at once
+ * instead of one hiding the other.
+ *
+ * The tree sticks below the topbar rather than scrolling away with the
+ * form: a section like General is six panels tall, and losing the nav
+ * three screens down is what made the tab strip feel like a dead end.
  * ================================================================== */
 
-.bo-hamburger {
-  display:flex; width:36px; height:36px; border-radius:var(--radius-md);
-  border:1px solid var(--border); background:var(--surface-2);
-  color:var(--text-2); cursor:pointer; flex:0 0 auto;
-  align-items:center; justify-content:center;
-  transition:background var(--dur-fast) var(--ease),
-             border-color var(--dur-fast) var(--ease),
-             color var(--dur-fast) var(--ease);
+.bo-secnav-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
 }
-.bo-hamburger:hover {
-  background:var(--accent-weak); border-color:var(--accent); color:var(--accent);
-}
-.bo-hamburger .bo-icon { width:20px; height:20px; }
 
-.bo-overlay {
-  display:none; position:fixed; inset:0; z-index:19;
-  background:rgba(0,0,0,.35); backdrop-filter:blur(2px);
-  transition:opacity var(--dur-fast) var(--ease);
+.bo-secnav {
+  flex: 0 0 246px;
+  width: 246px;
+  position: sticky;
+  /* clears the sticky .bo-topbar, which is 44px at every breakpoint */
+  top: 56px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 10px;
+  /* Its own scroll, so a long tree can never push the page taller than the
+     form beside it. 132px is the topbar plus the sticky offset plus room. */
+  max-height: calc(100vh - 132px);
+  overflow-y: auto;
 }
-.bo-overlay.is-open { display:block; }
 
+.bo-secnav-sec {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 11px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  /* --fs-base, the same size the a-collapse headers this nav points at are
+     set in, so the two levels of the page read at one scale. */
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--text-2);
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+.bo-secnav-sec:hover { background: var(--surface-2); color: var(--text); }
+.bo-secnav-sec.is-open { background: var(--accent-weak); color: var(--accent); }
+
+.bo-secnav-sec .anticon { font-size: 17px; flex: none; }
+
+/* Two lines, not one with an ellipsis. Clipping the section names is what the
+   tab strip did, and it is why ru/fa/ar were the worst place to use it, so a
+   nav that reintroduced the clipping would have fixed nothing. Same clamp the
+   rail uses on the same kind of label. */
+.bo-secnav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* Points along the list when shut and into it when open. It mirrors in RTL
+   like the rail's collapse chevron does. */
+.bo-secnav-chev {
+  flex: none;
+  font-size: 12px !important;
+  color: var(--text-3);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.bo-secnav-sec.is-open .bo-secnav-chev {
+  transform: rotate(90deg);
+  color: inherit;
+}
+[dir="rtl"] .bo-secnav-chev { transform: scaleX(-1); }
+[dir="rtl"] .bo-secnav-sec.is-open .bo-secnav-chev { transform: rotate(90deg); }
+
+.bo-secnav-subs { padding: 1px 0 5px; }
+
+.bo-secnav-sub {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  padding-inline-start: 38px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  text-align: start;
+  cursor: pointer;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  transition: background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+/* The hairline that ties the children to their parent. */
+.bo-secnav-sub::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 20px;
+  border-inline-start: 1px solid var(--border);
+}
+.bo-secnav-sub:hover { background: var(--surface-2); color: var(--text-2); }
+.bo-secnav-sub.is-active { color: var(--accent); font-weight: var(--fw-semibold); }
+.bo-secnav-sub.is-active::before { border-inline-start-color: var(--accent); }
+
+.bo-secpanes { flex: 1 1 auto; min-width: 0; }
+
+/* Narrow screens: the tree stops being a column and becomes a block above the
+   form. No drawer and no second nav gesture, because the rail already owns the
+   one the reader knows. */
+@media (max-width: 900px) {
+  .bo-secnav-layout { flex-direction: column; }
+  .bo-secnav {
+    flex: none;
+    width: 100%;
+    position: static;
+    max-height: none;
+  }
+}
+
+/* ================================================================== *
+ * account info: the whole account in one panel
+ *
+ * Two columns. The left is everything true of the ACCOUNT and is pinned:
+ * identity, health, quota, runway, its one subscription with a QR, and the
+ * exports that cover every membership at once. The right is the memberships,
+ * each opening to whatever that protocol actually gives the customer.
+ *
+ * a-modal portals its body OUT of #app, so none of this may be scoped under
+ * .clients-page or a theme class on the shell. It themes off the tokens
+ * directly, which are declared on :root / body.dark and reach the portal.
+ * ================================================================== */
+
+.ai-dos {
+  display: grid;
+  grid-template-columns: 296px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 820px) {
+  .ai-dos { grid-template-columns: 1fr; }
+}
+
+/* Both tracks need this. A grid item defaults to min-width:auto, so the nowrap
+   share link inside a membership forced the whole column wider than the modal and
+   put a horizontal scrollbar under the dialog. */
+.ai-side, .ai-mem { min-width: 0; }
+
+.ai-side {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 15px;
+}
+
+.ai-who { display: flex; align-items: center; gap: 11px; margin-bottom: 11px; }
+.ai-av {
+  width: 38px; height: 38px; border-radius: var(--radius-md); flex: none;
+  background: var(--accent-weak); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: var(--fw-bold); font-size: var(--fs-base);
+}
+.ai-who-t { min-width: 0; }
+.ai-email {
+  font-weight: var(--fw-semibold); font-size: var(--fs-base);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ai-sub-note {
+  font-size: var(--fs-xs); color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.ai-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 13px; }
+.ai-chip {
+  font-size: var(--fs-xs); font-weight: var(--fw-bold);
+  padding: 2px 9px; border-radius: var(--radius-pill); white-space: nowrap;
+  background: var(--surface-2); color: var(--text-2);
+}
+.ai-chip.ok { background: var(--ok-weak); color: var(--ok); }
+.ai-chip.warn { background: var(--warn-weak); color: var(--warn); }
+.ai-chip.err { background: var(--error-weak); color: var(--error); }
+
+.ai-lbl {
+  font-size: var(--fs-xs); letter-spacing: .1em; text-transform: uppercase;
+  font-weight: var(--fw-bold); color: var(--text-3);
+}
+
+/* Centred, because it is the one thing on this panel a customer points a phone at. */
+.ai-qr-wrap { display: flex; justify-content: center; margin: 8px 0 9px; }
+.ai-qr-wrap canvas {
+  width: 150px; height: 150px;
+  border-radius: var(--radius-md); border: 1px solid var(--border); background: #fff;
+}
+
+.ai-link {
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 7px 9px; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ai-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.ai-hint { font-size: var(--fs-xs); color: var(--text-3); margin-top: 7px; font-style: italic; }
+.ai-sep { border-top: 1px solid var(--border); margin: 13px 0; }
+
+.ai-meter + .ai-meter { margin-top: 10px; }
+.ai-meter-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ai-meter-v { font-size: var(--fs-xs); color: var(--text-3); }
+.ai-bar {
+  height: 5px; border-radius: var(--radius-pill);
+  background: var(--surface-2); overflow: hidden; margin-top: 4px;
+}
+.ai-bar i { display: block; height: 100%; background: var(--accent); }
+.ai-bar i.warn { background: var(--warn); }
+
+.ai-kv {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 5px 0; font-size: var(--fs-sm);
+}
+.ai-kv .k { flex: 0 0 120px; color: var(--text-3); }
+.ai-kv .v { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.ai-kv .v.mono { font-family: var(--font-mono); font-size: var(--fs-xs); }
+
+/* ---- the membership list ---- */
+
+.ai-mem-head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.ai-empty, .ai-none {
+  font-size: var(--fs-sm); color: var(--text-3); font-style: italic; padding: 14px 2px;
+}
+
+.ai-item {
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface); margin-bottom: 8px; overflow: hidden;
+}
+.ai-item.open { border-color: var(--border-strong); }
+/* Switched off on this inbound while the account itself is enabled: the row is
+   dimmed rather than hidden, because it is a fault worth seeing. */
+.ai-item.off .ai-item-nm, .ai-item.off .ai-item-pr { opacity: .55; }
+
+.ai-item-h {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 11px; cursor: pointer;
+}
+.ai-item-h:hover { background: var(--surface-2); }
+.ai-item-nm {
+  font-weight: var(--fw-semibold); font-size: var(--fs-sm);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ai-item-pr { font-size: var(--fs-xs); color: var(--text-3); flex: none; }
+.ai-item-sp { flex: 1 1 auto; }
+.ai-item-use { font-size: var(--fs-xs); color: var(--text-3); flex: none; white-space: nowrap; }
+/* In the header so a membership can be exported without opening it. */
+.ai-item-exp { display: flex; gap: 5px; flex: none; }
+.ai-chev { color: var(--text-3); flex: none; font-size: 11px; }
+
+.ai-lamp {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--text-3); opacity: .5;
+}
+/* These two used to be keyed on .bo-lamp--on / .bo-lamp--off, which NOTHING sets:
+   the panel fills this lamp from app.membershipLampClass(), the same function the
+   expander on the Clients page uses, and that returns bo-mb-lamp--live,
+   bo-mb-lamp--maybe or ''. So neither rule ever matched. The generic
+   .bo-mb-lamp--live above did match, but it scores the same 0,1,0 as .ai-lamp and
+   loses on source order to the grey background six lines up - which is why this
+   lamp sat grey for every membership of every account, connected or not, and read
+   as "nobody is ever online". Keyed on the real classes now, and compounded so
+   they outrank .ai-lamp rather than depending on where they sit in the file. */
+.ai-lamp.bo-mb-lamp--live {
+  background: var(--info); opacity: 1; box-shadow: 0 0 0 3px var(--info-weak);
+}
+.ai-lamp.bo-mb-lamp--maybe { background: var(--info-weak); opacity: 1; }
+
+.ai-item-b { padding: 12px; border-top: 1px solid var(--border); background: var(--bg); }
+.ai-card + .ai-card { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.ai-card-t {
+  font-size: var(--fs-sm); font-weight: var(--fw-semibold); margin-bottom: 7px;
+}
+.ai-art { display: flex; gap: 12px; align-items: flex-start; }
+.ai-art-qr {
+  width: 104px; height: 104px; flex: none;
+  border-radius: var(--radius-sm); border: 1px solid var(--border); background: #fff;
+}
+.ai-art-body { flex: 1 1 auto; min-width: 0; }
+.ai-more { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+@media (max-width: 560px) {
+  .ai-art { flex-direction: column; }
+  .ai-item-exp { display: none; }
+}
+
+/* A QR small enough to sit in a list is there to be recognised; clicking it opens
+   the one you point a phone at. */
+.ai-zoomable { cursor: zoom-in; }
+.ai-zoom-body { text-align: center; }
+.ai-zoom-body canvas {
+  width: 100%; max-width: 300px; height: auto;
+  border-radius: var(--radius-md); border: 1px solid var(--border); background: #fff;
+}
+.ai-zoom-link { margin-top: 12px; text-align: start; }
+.ai-zoom-body .ai-btns { justify-content: center; }
+
+/* More Information: one membership, in the same vocabulary as the account panel. */
+.mi-head {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  padding-bottom: 12px; margin-bottom: 13px; border-bottom: 1px solid var(--border);
+}
+.mi-head-sp { flex: 1 1 auto; }
+.mi-wrap .ai-card + .ai-card { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+
+/* ==================================================================
+ * a-dropdown menus that carry a SELECTION
+ *
+ * Distinct from a-select's dropdown, which this panel has themed for a long
+ * time (.ant-select-dropdown-menu-item-selected, in custom.css). A plain
+ * a-dropdown had never needed a selected state until the Clients page grew a
+ * "Sort by" menu, so the item fell through to ant's own defaults: a muddy
+ * #b3c7c0 fill under white-at-65% text, which is neither of this panel's
+ * themes and is unreadable in both.
+ *
+ * Tokens rather than two theme-specific blocks. --accent and --accent-weak are
+ * redefined per theme on :root, and a dropdown overlay is PORTALLED onto <body>
+ * where no page or #app scoping reaches it, so reading the value off :root is
+ * the only thing that works in the portal AND follows the theme. That is also
+ * why the markup passes the theme class down to the overlay by hand.
+ *
+ * Same shape as the client form's selected tab (.bo-cf-tab[aria-selected]):
+ * accent text on a weak accent wash, weight for the non-colour cue. A filled
+ * accent bar was tried first and read as a hover state on a list that already
+ * highlights on hover.
+ * ==================================================================
+ *
+   The selectors are deliberately over-qualified. Two existing rules already
+   colour this element and both would otherwise win:
+     custom.css  .dark .ant-dropdown-menu .ant-dropdown-menu-item   (0,3,0)
+     ant-bridge  .ant-dropdown-menu-item                            (0,1,0)
+   The second is only one class, but ant-bridge.css is the LAST stylesheet the
+   page loads, so at equal specificity it beats anything written here. Matching
+   0,3,0 clears the bridge rule outright and ties the dark one, which
+   components.css then wins on source order. A bare
+   .ant-dropdown-menu-item-selected was tried and lost in both themes: the fill
+   changed and the text stayed ant's grey. */
+.ant-dropdown-menu .ant-dropdown-menu-item.ant-dropdown-menu-item-selected,
+.ant-dropdown-menu .ant-dropdown-menu-item.ant-dropdown-menu-item-selected > a {
+  color: var(--accent);
+  background-color: var(--accent-weak);
+  font-weight: 600;
+}
+/* Hover on the already-selected row must not fall back to ant's blue-grey.
+   Same fill as at rest, so the row does not appear to change meaning under the
+   pointer: the cursor is the affordance, the colour is the state. One class
+   further up again, to clear custom.css's own dark hover rule. */
+.ant-dropdown-menu .ant-dropdown-menu-item.ant-dropdown-menu-item-selected:hover,
+.ant-dropdown-menu .ant-dropdown-menu-item.ant-dropdown-menu-item-selected > a:hover {
+  color: var(--accent);
+  background-color: var(--accent-weak);
+}
+
+/* ================================================================== *
+ * Inbounds list: the Manifest row
+ *
+ * The list page used to spend eleven columns on one inbound, and up to a
+ * dozen coloured pills per row: protocol, network, TLS, Reality, five
+ * account popovers, traffic, all-time, expiry. Nothing had a shape, so
+ * nothing could be scanned.
+ *
+ * Five columns now. Remark, protocol, port, network and security collapse
+ * into one identity cell (a name over a monospace signature); traffic and
+ * all-time become a used/cap pair over a meter; the five account popovers
+ * become one segmented bar with a plain-English line under it.
+ *
+ * Deliberately NOT scoped under .inbounds-page. Some of these run inside
+ * a-popover content, which antd portals onto <body>, outside #app and
+ * therefore outside the page class. The bo-il- prefix is the isolation.
+ * ================================================================== */
+
+/* --- identity ----------------------------------------------------- */
+.bo-il-ident { display:flex; align-items:center; gap:9px; min-width:0; }
+.bo-il-ident > .bo-il-lines { min-width:0; }
+
+/* Two type sizes and no more, both straight off the scale: --fs-base for
+   anything that answers the row's question (the remark, the figure, the
+   count) and --fs-sm for anything that qualifies the answer. An earlier
+   pass ran a step lower throughout, at 13.5/11px, which is what the
+   prototype was drawn at in a page of its own - next to the panel's other
+   tables, whose cells inherit --fs-base, the whole row read as fine print. */
+
+/* Health, not intent: the switch beside it says what the operator asked
+   for, this says what the row actually is right now. Always paired with
+   the title text below, never colour alone. */
+.bo-il-lamp {
+  width:9px; height:9px; border-radius:50%; flex:none;
+  background:var(--off);
+}
+.bo-il-lamp[data-state="ok"] { background:var(--ok); }
+.bo-il-lamp[data-state="warn"] { background:var(--warn); }
+.bo-il-lamp[data-state="error"] { background:var(--error); }
+.bo-il-lamp[data-state="off"] { background:var(--off); }
+
+.bo-il-name {
+  display:block; font-size:var(--fs-base); font-weight:var(--fw-semibold); color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+/* The technical signature: protocol, where it listens, how it is wrapped.
+   Pinned LTR because it is machine text and a Persian or Arabic locale
+   would otherwise reorder ":8080 - tcp - tls" around the separators.
+   A monospace face sets smaller than the sans at the same size, so this
+   still reads a clear step below the remark at --fs-sm. */
+.bo-il-meta {
+  display:block; font-family:var(--font-mono); font-size:var(--fs-sm);
+  color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  direction:ltr; unicode-bidi:isolate; text-align:start;
+}
+/* The protocol name is the "what is this" answer and the only part of this
+   line anyone reads first, so it takes the full size while the transport and
+   security tokens beside it stay a step down. It does not fight the remark
+   above it: different family, lighter colour. */
+.bo-il-meta b {
+  color:var(--text-2); font-weight:var(--fw-semibold); font-size:var(--fs-base);
+}
+/* Inside the mobile info popover there is no column to overflow, and the
+   signature is the heading of the whole panel, so it wraps instead. */
+.bo-il-meta--wrap { white-space:normal; overflow:visible; }
+
+/* Separator between the blocks of that popover. A plain rule rather than
+   a-divider, which brings its own vertical rhythm and a wrapper element. */
+.bo-il-rule { border-top:1px solid var(--border); margin:9px 0; }
+
+/* On a phone the table drops table-layout:fixed (the wide one gets it from
+   scroll.x, the narrow one has no scroll set), so a cell that refuses to wrap
+   makes the whole table wider than the screen and pushes the last column off
+   the right edge. Both lines wrap here instead. Vertical room is the thing a
+   phone has; ellipsis is for the desktop column, which is measured. */
 @media (max-width:768px) {
-  .bo-rail {
-    position:fixed; top:0; bottom:0;
-    inset-inline-start:-260px;
-    width:240px; flex:0 0 240px;
-    transition:inset-inline-start var(--dur-med) var(--ease);
-    z-index:21;
-  }
-  .bo-rail.is-mobile-open {
-    inset-inline-start:0;
-    /* Override a persisted .bo-rail--hidden (the desktop collapse state): on
-       mobile the drawer must still slide in, so the higher-specificity
-       display:flex beats the collapse's display:none. */
-    display:flex;
-  }
-
-  .bo-topbar-inner { padding:10px 16px; }
-  .bo-content { padding:12px 14px 8px; }
+  .bo-il-name, .bo-il-meta { white-space:normal; overflow-wrap:anywhere; }
 }
+
+/* --- data + accounts share one head/bar/foot shape ---------------- */
+.bo-il-top {
+  display:flex; align-items:baseline; justify-content:space-between;
+  gap:10px; font-size:var(--fs-base); margin-bottom:5px;
+}
+.bo-il-used { font-family:var(--font-mono); font-weight:var(--fw-semibold); color:var(--text); }
+.bo-il-cap { font-family:var(--font-mono); font-size:var(--fs-sm); color:var(--text-3); }
+.bo-il-sub {
+  display:block; margin-top:5px; font-size:var(--fs-sm); color:var(--text-3);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+.bo-il-meter {
+  height:5px; border-radius:var(--radius-pill);
+  background:var(--surface-2); overflow:hidden;
+}
+.bo-il-meter > i {
+  display:block; height:100%; border-radius:var(--radius-pill);
+  background:var(--accent);
+}
+.bo-il-meter--warn > i { background:var(--warn); }
+.bo-il-meter--error > i { background:var(--error); }
+
+/* One bar, five segments, sized by share. Replaces five a-popover tags
+   whose numbers had to be read one at a time to learn the same thing. */
+.bo-il-acc {
+  display:flex; gap:1px; height:5px; border-radius:var(--radius-pill);
+  background:var(--surface-2); overflow:hidden;
+}
+.bo-il-acc > i { display:block; height:100%; }
+.bo-il-acc--online { background:var(--info); }
+.bo-il-acc--idle { background:var(--border-strong); }
+.bo-il-acc--expiring { background:var(--warn); }
+.bo-il-acc--depleted { background:var(--error); }
+.bo-il-acc--off { background:var(--off); }
+
+.bo-il-n { font-family:var(--font-mono); font-weight:var(--fw-semibold); color:var(--text); }
+.bo-il-online { font-family:var(--font-mono); font-size:var(--fs-sm); color:var(--info); }
+
+/* --- endpoint ------------------------------------------------------
+   The address a client dials. Right-aligned in its column so the ports
+   stack and the eye runs down one edge rather than hunting a different
+   offset per row; the host is the part that repeats, so it recedes and
+   the port keeps the contrast. */
+.bo-il-ep {
+  display:flex; flex-direction:column; align-items:flex-end; gap:3px;
+  font-family:var(--font-mono); font-size:var(--fs-sm);
+  direction:ltr; unicode-bidi:isolate;
+}
+.bo-il-ep--start { align-items:flex-start; margin-top:6px; }
+.bo-il-ep-line {
+  display:inline-flex; align-items:baseline; max-width:100%;
+  padding:1px 5px; margin-inline-end:-5px; border-radius:5px;
+  cursor:pointer; white-space:nowrap;
+}
+.bo-il-ep--start .bo-il-ep-line { margin-inline-end:0; margin-inline-start:-5px; }
+.bo-il-ep-line:hover { background:var(--surface-2); }
+.bo-il-ep-tag { color:var(--text-3); margin-inline-end:6px; }
+/* No text-overflow here. endpointHost() has already elided from the middle,
+   and a CSS ellipsis on top of that produced a host with TWO of them
+   (cdn.a-very-…xampl…), which reads as corruption rather than truncation. */
+.bo-il-ep-host { color:var(--text-3); }
+.bo-il-ep-port { color:var(--text); font-weight:var(--fw-semibold); }
+/* Present at rest but nearly silent: a copy glyph on every row of a long
+   table is noise, and one that only appears on hover cannot be found by
+   someone who does not already know it is there. */
+.bo-il-ep-copy {
+  margin-inline-start:6px; font-size:11px; color:var(--text-3);
+  opacity:.35; transition:opacity var(--dur-fast) var(--ease);
+}
+.bo-il-ep-line:hover .bo-il-ep-copy { opacity:1; color:var(--accent); }
+.bo-il-ep-more { font-size:var(--fs-xs); color:var(--text-3); cursor:default; }
+
+/* --- the .ovpn download, against the protocol name -----------------
+   Inline with "OpenVPN" rather than out in the actions cell, because it
+   is not a row action like edit or delete - it is what that word means
+   here. Accent, because it is an action with an outcome, and because it
+   only ever appears on OpenVPN rows, so it cannot become wallpaper the
+   way a per-row accent on every row would.
+
+   Sized OFF the protocol name rather than at a number of its own, so the
+   two cannot drift if the scale moves. The multiplier is not decoration:
+   an icon glyph does not fill its em box the way letters do, so at a
+   nominal 14px it reads visibly smaller than the 14px word beside it. */
+.bo-il-dl {
+  font-size:calc(var(--fs-base) * 1.35); color:var(--accent);
+  margin-inline-start:8px; vertical-align:-4px;
+  padding:2px; border-radius:5px; line-height:1;
+  transition:background var(--dur-fast) var(--ease);
+}
+.bo-il-dl:hover { background:var(--accent-weak); }
+
+/* --- expiry + the no-limit mark ----------------------------------- */
+/* Full size: this is the whole content of its column, not a qualifier. */
+.bo-il-exp { font-family:var(--font-mono); font-size:var(--fs-base); color:var(--text-2); }
+.bo-il-exp--warn { color:var(--warn); }
+.bo-il-exp--error { color:var(--error); }
+.bo-il-inf { font-size:var(--fs-md); line-height:1; color:var(--text-3); }
+.bo-il-none { font-size:var(--fs-base); color:var(--text-3); }

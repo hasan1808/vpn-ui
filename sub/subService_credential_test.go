@@ -171,8 +171,9 @@ func TestGreYieldsNoLink(t *testing.T) {
 // Shadowrocket) still works while a subscription importer has something to keep.
 func TestMtprotoAndSshCarryNativeLinkPlusCard(t *testing.T) {
 	s := cardService()
+	// modeClassic is the INBOUND's: telemt's listener modes are process-wide.
 	mt := credInbound(model.MTPROTO, 8443,
-		`{"clients":[{"email":"h","secret":"0123456789abcdef0123456789abcdef","modeClassic":true}]}`)
+		`{"modeClassic":true,"clients":[{"email":"h","secret":"0123456789abcdef0123456789abcdef"}]}`)
 	lines := strings.Split(s.getLink(mt, "h"), "\n")
 	if len(lines) != 2 {
 		t.Fatalf("want tg:// + card, got %d line(s): %q", len(lines), lines)

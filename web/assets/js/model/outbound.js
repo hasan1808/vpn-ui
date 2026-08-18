@@ -1830,6 +1830,15 @@ class Outbound extends CommonClass {
         if (!match) return null;
         let [, protocol, userData, address, port,] = match;
         port *= 1;
+        // An IPv6 literal is bracketed in a URL authority and must NOT be in the
+        // config field, where the address is a bare host. Xray reads "[2001:db8::1]"
+        // as a DOMAIN, fails to resolve it, and the outbound is dead with nothing in
+        // the log naming the brackets as the cause.
+        //
+        // parseShareLink already strips them, so tuic and naive imported IPv6
+        // correctly while the four schemes routed through here (vless, trojan, ss
+        // and anytls) did not. Same treatment, so the two paths agree.
+        address = address.replace(/^\[(.*)\]$/, '$1');
         if (protocol == 'ss') {
             protocol = 'shadowsocks';
             userData = atob(userData).split(':');
@@ -2781,10 +2790,19 @@ const VPN_OUT_AWG_FIELDS = VPN_OUT_WG_FIELDS.concat([
 ]);
 
 const VPN_OUT_KINDS = {
-    // "(kernel)" is not decoration: it is what separates this row from Xray's own
-    // wireguard outbound in the picker, and it is the same word Core Settings
-    // already uses for the server-side twin. See PROTOCOL_LABELS.
-    wireguard: { label: 'WireGuard (kernel)', fields: VPN_OUT_WG_FIELDS },
+    // The qualifier is not decoration: it is what separates this row from Xray's
+    // own userspace wireguard outbound in the picker, and unqualified the two read
+    // as one protocol listed twice.
+    //
+    // "(C)" and not "(kernel)", which is what this said and was wrong. The panel
+    // names this protocol "WireGuard (C)" everywhere an operator meets it: the
+    // inbound picker (ProtocolLabels in model/inbound.js), the Overview, Core
+    // Settings' protocol column and the account export. "WireGuard (kernel)" is
+    // the RUNTIME name, and it belongs to the one column that lists runtimes,
+    // beside xl2tpd, pptpd and ocserv (core.html). Naming the outbound after the
+    // runtime made the tunnel look like a different protocol from the inbound it
+    // dials.
+    wireguard: { label: 'WireGuard (C)', fields: VPN_OUT_WG_FIELDS },
     awg: { label: 'AmneziaWG', fields: VPN_OUT_AWG_FIELDS },
     openvpn: {
         label: 'OpenVPN',
@@ -2799,6 +2817,22 @@ const VPN_OUT_KINDS = {
             // visible in both modes.
             { name: 'username', type: 'text', def: '', label: 'vpnOutUsername' },
             { name: 'password', type: 'password', def: '', label: 'vpnOutPassword', secret: true },
+            // Dial the VPN server THROUGH a SOCKS5 proxy, keeping the VPN's own exit
+            // address. Shown in both modes because it describes how to REACH the
+            // server, which a pasted profile does not change.
+            //
+            // A REAL proxy server, and the answer for reaching one that is not a
+            // tunnel on this panel. The Dialer Proxy beside it answers the other
+            // half: naming another VPN tunnel there carries this tunnel's outer
+            // connection through that tunnel's device by routing rules, and naming
+            // an ordinary Xray outbound is refused at save, because there is no
+            // device to steer into and this client can only be handed a proxy
+            // address. Both wrap the OUTER connection, so the exit address stays
+            // the VPN's either way.
+            { name: 'socksProxy', type: 'text', def: '', label: 'vpnOutSocksProxy', help: 'vpnOutSocksProxyHelp', placeholder: '127.0.0.1', clears: ['socksProxyUser', 'socksProxyPass'] },
+            { name: 'socksProxyPort', type: 'number', def: null, min: 1, max: 65535, label: 'vpnOutSocksProxyPort', placeholder: '1080', showIf: p => !!p.socksProxy },
+            { name: 'socksProxyUser', type: 'text', def: '', label: 'vpnOutSocksProxyUser', showIf: p => !!p.socksProxy, clears: 'socksProxyPass' },
+            { name: 'socksProxyPass', type: 'password', def: '', label: 'vpnOutSocksProxyPass', secret: true, showIf: p => !!p.socksProxy },
             // The discrete alternative. Hidden while a profile is pasted, because
             // the driver ignores them then and a filled-in field that does nothing
             // is worse than no field.
@@ -2818,7 +2852,12 @@ const VPN_OUT_KINDS = {
             { name: 'tlsAuth', type: 'textarea', def: '', rows: 3, label: 'vpnOutTlsAuth', secret: true, showIf: p => !p.profile },
             { name: 'tlsCrypt', type: 'textarea', def: '', rows: 3, label: 'vpnOutTlsCrypt', secret: true, showIf: p => !p.profile },
             { name: 'remoteCertTls', type: 'switch', def: false, label: 'vpnOutRemoteCertTls', showIf: p => !p.profile },
-            { name: 'mtu', type: 'number', def: null, min: 576, max: 9000, plain: 'MTU' },
+            // Blank writes no tun-mtu at all, so OpenVPN's own default stands. A real
+            // `def` would be wrong here twice over: it would post 1500 on every save
+            // (settingsPayload only drops a BLANK number), and with it a
+            // `pull-filter ignore "tun-mtu"` that throws away the server's pushed
+            // value, which for a provider profile is usually the correct one.
+            { name: 'mtu', type: 'number', def: null, min: 576, max: 9000, plain: 'MTU', placeholder: '1500' },
             // Appended verbatim and NOT filtered, so it is also how an operator
             // puts back a directive the driver stripped. It is also NOT masked in
             // the tunnel list, which is why the driver refuses an inline key block
@@ -2886,7 +2925,14 @@ const VPN_OUT_KINDS = {
             // payload, which is what a remote-access gateway expects.
             { name: 'localAddr', type: 'text', def: '', label: 'vpnOutLocalAddress' },
             { name: 'remoteTs', type: 'text', def: '', label: 'vpnOutRemoteTs', placeholder: '0.0.0.0/0' },
-            { name: 'mtu', type: 'number', def: null, min: 576, max: 9000, plain: 'MTU' },
+            // Blank puts 1400 on the XFRM interface: ESP inside UDP costs 73-100 bytes
+            // on a 1500 byte path, and a NAT between here and the gateway is the normal
+            // case rather than the exception.
+            //
+            // max 1500, not 9000. The driver refuses anything above 1500 outright, so
+            // the wider bound only ever produced a form that accepted a number and then
+            // failed the save with a server-side error.
+            { name: 'mtu', type: 'number', def: null, min: 576, max: 1500, plain: 'MTU', placeholder: '1400' },
         ],
     },
     sstp: {
@@ -2912,8 +2958,15 @@ const VPN_OUT_KINDS = {
             // certificate failure into a warning gives up the only thing
             // authenticating the server.
             { name: 'allowInsecureCert', type: 'switch', def: false, label: 'vpnOutInsecure' },
-            { name: 'proxy', type: 'text', def: '', label: 'vpnOutProxy', placeholder: 'http://10.0.0.1:3128' },
-            { name: 'mtu', type: 'number', def: null, min: 576, max: 1500, plain: 'MTU' },
+            // HTTP CONNECT only, and the label says so because sstp-client does not:
+            // it ignores the scheme entirely, so a socks5:// URL here makes it send an
+            // HTTP request to the SOCKS port and report the proxy as unreachable. The
+            // driver refuses that URL on save; the help is what stops it being typed.
+            { name: 'proxy', type: 'text', def: '', label: 'vpnOutProxy', help: 'vpnOutProxyHelp', placeholder: 'http://10.0.0.1:3128' },
+            // Blank writes 1400 into the pppd peer file, which is what PPP inside a
+            // 4-byte SSTP header inside TLS inside TCP leaves of a 1500 byte path. It
+            // is also what the panel's own SSTP inbound now defaults to.
+            { name: 'mtu', type: 'number', def: null, min: 576, max: 1500, plain: 'MTU', placeholder: '1400' },
         ],
     },
     openconnect: {
@@ -2950,7 +3003,32 @@ const VPN_OUT_KINDS = {
             // Drops the UDP data channel. Slower, and the only thing that works
             // where UDP is blocked.
             { name: 'noDtls', type: 'switch', def: false, label: 'vpnOutNoDtls' },
-            { name: 'mtu', type: 'number', def: null, min: 576, max: 1500, plain: 'MTU' },
+            // Dial the GATEWAY through a proxy, keeping the tunnel's own exit address.
+            // The same field the OpenVPN form calls SOCKS5 Proxy, and the same division
+            // with the Dialer Proxy beside it: that one names another VPN TUNNEL and is
+            // delivered by routing rules, this one takes a proxy address the client
+            // dials itself.
+            //
+            // Unlike OpenVPN's, this client speaks BOTH schemes, so the scheme is a
+            // choice rather than a constant. socks4 is deliberately not offered:
+            // openconnect refuses it at startup.
+            { name: 'proxy', type: 'text', def: '', label: 'vpnOutProxyHost', help: 'vpnOutOcProxyHelp', placeholder: '127.0.0.1', clears: ['proxyUser', 'proxyPass'] },
+            {
+                name: 'proxyType', type: 'select', def: 'socks5', label: 'vpnOutProxyType', showIf: p => !!p.proxy,
+                options: [{ value: 'socks5', text: 'SOCKS5' }, { value: 'http', text: 'HTTP CONNECT' }],
+            },
+            // Blank takes the driver's per-scheme default (1080 for SOCKS5, 8080 for
+            // HTTP), because openconnect's own fallback is port 80 whatever the scheme
+            // is, which for a SOCKS proxy is never right.
+            { name: 'proxyPort', type: 'number', def: null, min: 1, max: 65535, label: 'vpnOutSocksProxyPort', placeholder: '1080', showIf: p => !!p.proxy },
+            { name: 'proxyUser', type: 'text', def: '', label: 'vpnOutSocksProxyUser', showIf: p => !!p.proxy, clears: 'proxyPass' },
+            { name: 'proxyPass', type: 'password', def: '', label: 'vpnOutSocksProxyPass', secret: true, showIf: p => !!p.proxy },
+            // "auto" and not a number, because blank really is the best answer here:
+            // the driver writes no mtu into the vpnc-script environment, and openconnect
+            // then takes the value the GATEWAY negotiates, which is the one that fits its
+            // own encapsulation (DTLS and TLS do not cost the same). Pinning a number
+            // here would post it on every save and silence that negotiation.
+            { name: 'mtu', type: 'number', def: null, min: 576, max: 1500, plain: 'MTU', placeholder: 'auto' },
         ],
     },
     pptp: {
@@ -2991,18 +3069,26 @@ const VPN_OUT_KINDS = {
             // route to the server picks, which is right on a single-homed host and
             // wrong to guess on exactly the multi-homed one whose operator knows it.
             { name: 'local', type: 'text', def: '', label: 'vpnOutLocalAddress' },
-            { name: 'address', type: 'text', def: '', label: 'vpnOutTunAddress', placeholder: '10.11.0.2/30' },
+            // /32, not /30. The classic point-to-point pair is what a router
+            // manual teaches, but a vpn-ui GRE inbound hands each account a single
+            // address out of the inbound's block: a /30 pasted here claims three
+            // more addresses, and on a busy inbound those belong to other accounts.
+            // The inbound's own config modal now states the mask alongside the
+            // address for exactly this reason.
+            { name: 'address', type: 'text', def: '', label: 'vpnOutTunAddress', placeholder: '10.9.3.7/32' },
             // The far side's inner address. Nothing routes by it (a point-to-point
             // GRE device sends everything to its outer remote), but it is half of
             // the pair of numbers the far side hands out and it is what an operator
             // pings to prove the tunnel carries traffic.
-            { name: 'peer', type: 'text', def: '', label: 'vpnOutPeerAddress', placeholder: '10.11.0.1' },
+            { name: 'peer', type: 'text', def: '', label: 'vpnOutPeerAddress', placeholder: '10.9.3.1' },
             { name: 'ttl', type: 'number', def: null, min: 0, max: 255, plain: 'TTL', placeholder: '64' },
-            // Blank = let the kernel choose, as the GRE inbound documents: the
-            // right MTU differs between raw GRE and GRE-in-FOU and the kernel
-            // knows which is in play, so a number pinned here would be wrong for
-            // the other mode.
-            { name: 'mtu', type: 'number', def: null, min: 576, max: 9000, plain: 'MTU' },
+            // Blank = let the driver choose per encapsulation, as the GRE inbound
+            // documents: 1476 for raw GRE, 1464 under FOU (8 more for the UDP
+            // header), 1428 with IPsec, and the smaller of the two when both are
+            // on. A number pinned here would be posted on every save and would be
+            // wrong for every mode but one, which is why the placeholder says
+            // "auto" instead of naming one of them.
+            { name: 'mtu', type: 'number', def: null, min: 576, max: 9000, plain: 'MTU', placeholder: 'auto' },
             { name: 'fouEnable', type: 'switch', def: false, label: 'vpnOutFou' },
             { name: 'fouPort', type: 'number', def: 15547, min: 1, max: 65535, label: 'vpnOutFouPort', showIf: p => p.fouEnable },
             { name: 'ipsecEnable', type: 'switch', def: false, label: 'vpnOutIpsec' },
@@ -3170,6 +3256,9 @@ Outbound.VpnSettings = class extends CommonClass {
         // wrong one binds egress to some other device that happens to exist.
         this.iface = iface;
         this.remark = remark;
+        // The carrier this tunnel rides on is NOT here. It is the row's own
+        // sockopt.dialerProxy, the one chaining control the panel offers on every
+        // outbound, and saveVpnTunnel posts it as the tunnel's `via`.
         // The kind this tunnel is STORED as, fixed at construction. Changing the
         // picker moves `kind` and leaves this behind, which is how the form knows
         // to warn: the server skips its keep-the-stored-secret merge when the kind
@@ -3295,10 +3384,18 @@ Outbound.VpnSettings = class extends CommonClass {
         // validated pair has to empty the other half explicitly, or the absent
         // secret is restored from storage and the tunnel saves with a key and no
         // certificate.
+        //
+        // A LIST is allowed, for the field that governs more than one other. Turning
+        // the OpenVPN socks-proxy off is the case: blanking the address hides the
+        // username and password boxes, but settingsPayload walks every field of the
+        // kind rather than the visible ones, so both would still be posted and the
+        // driver would refuse "credentials with no address" on a form where the
+        // operator can no longer see either box.
         fields.forEach(f => {
             if (!f.clears) return;
             const v = this.params[f.name];
-            if (v === undefined || v === null || v === '') out[f.clears] = '';
+            if (v !== undefined && v !== null && v !== '') return;
+            (Array.isArray(f.clears) ? f.clears : [f.clears]).forEach(k => { out[k] = ''; });
         });
         return out;
     }

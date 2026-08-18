@@ -43,7 +43,7 @@ var (
 )
 
 // Panel self-update. The panel binary ships as a single GitHub release asset
-// (Sir-MmD/vpn-ui, "vpn-ui-amd64") — the same source deploy.sh installs from — so
+// (hasan1808/vpn-ui, "vpn-ui-amd64") — the same source deploy.sh installs from — so
 // the overview can both check for and apply updates in place.
 //
 // PanelAsset and PanelDownloadURL are exported because `vpn-ui-amd64 update` (the
@@ -100,7 +100,7 @@ func (s *ServerService) CheckPanelUpdate() (*PanelUpdateInfo, error) {
 	if err != nil {
 		return info, err
 	}
-	req.Header.Set("User-Agent", "pro-ui") // GitHub API rejects requests without a UA
+	req.Header.Set("User-Agent", "vpn-ui") // GitHub API rejects requests without a UA
 	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := client.Do(req)
@@ -186,6 +186,15 @@ type PanelUpdateProgressInfo struct {
 	Bytes   int64  `json:"bytes"`
 	Total   int64  `json:"total"`
 	Speed   int64  `json:"speed"` // bytes/sec
+	// Running distinguishes "a download is happening right now" from "phase still
+	// holds whatever the last attempt left behind". The phase alone cannot answer
+	// that: error and cancelled are written once by the deferred block in
+	// UpdatePanel and then never cleared for the life of the process, so an
+	// overview that reopened hours later would read a stale terminal phase as live
+	// work. This is what lets the page re-attach to an update it did not start -
+	// the download outlives the request that began it, because its context is
+	// context.Background() and Gin does not kill a handler when the browser leaves.
+	Running bool `json:"running"`
 }
 
 // PanelUpdateProgress returns the current self-update phase and download counters.
@@ -197,6 +206,7 @@ func (s *ServerService) PanelUpdateProgress() PanelUpdateProgressInfo {
 		Bytes:   panelUpdateBytes.Load(),
 		Total:   panelUpdateTotal.Load(),
 		Speed:   panelUpdateSpeed.Load(),
+		Running: panelUpdateInFlight.Load(),
 	}
 }
 
@@ -206,6 +216,10 @@ type PanelUpdateResultInfo struct {
 	Updated bool   `json:"updated"`
 	From    string `json:"from"`
 	To      string `json:"to"`
+	// Where the pre-update database snapshot landed. Empty when the snapshot did
+	// not run or failed, which it is allowed to do: it is best-effort and does not
+	// block the update.
+	BackupPath string `json:"backupPath"`
 }
 
 // TakePanelUpdateResult reports whether this process is the one that came up
@@ -218,9 +232,10 @@ func (s *ServerService) TakePanelUpdateResult() PanelUpdateResultInfo {
 	var settingService SettingService
 	from := settingService.TakePanelUpdatedFrom()
 	return PanelUpdateResultInfo{
-		Updated: from != "",
-		From:    from,
-		To:      config.GetVersion(),
+		Updated:    from != "",
+		From:       from,
+		To:         config.GetVersion(),
+		BackupPath: settingService.TakePanelUpdateBackupPath(),
 	}
 }
 
@@ -246,12 +261,12 @@ type progressReader struct {
 	lastSampleBytes int64
 }
 
-func newProgressReader(r io.Reader, total, start int64) *progressReader {
+func newProgressReader(r io.Reader, total int64) *progressReader {
 	if total < 0 {
 		total = 0 // unknown length (chunked): still count bytes, just skip percent
 	}
 	panelUpdateTotal.Store(total)
-	return &progressReader{r: r, total: total, read: start, lastSampleAt: time.Now(), lastSampleBytes: start}
+	return &progressReader{r: r, total: total, lastSampleAt: time.Now()}
 }
 
 func (pr *progressReader) Read(p []byte) (int, error) {
@@ -330,9 +345,10 @@ func (s *ServerService) UpdatePanel() error {
 		exe = resolved
 	}
 
-	logger.Infof("panel update: downloading %s", PanelDownloadGZURL)
-	tmp, err := DownloadPanelUpdate(ctx, exe, "")
-	if err != nil {
+	tmp := exe + ".new"
+	logger.Infof("panel update: downloading %s", PanelDownloadURL)
+	if err := DownloadPanelBinary(ctx, tmp, PanelDownloadURL); err != nil {
+		_ = os.Remove(tmp)
 		// A cancelled download surfaces as a transport error; ctx is what says the
 		// user asked for it rather than the network failing.
 		if ctx.Err() != nil {
@@ -342,9 +358,20 @@ func (s *ServerService) UpdatePanel() error {
 		}
 		return err
 	}
+	// Validate it's an ELF for THIS architecture — a 404 HTML page, a truncated
+	// file, or a wrong-arch asset would otherwise be renamed over the running binary
+	// and brick the panel (the restart would fail with exec-format-error).
+	if !IsCompatibleBinary(tmp) {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("downloaded file is not a %s Linux binary (no valid '%s' asset?)", runtime.GOARCH, PanelAsset)
+	}
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
 
 	// A cancel can land between the download returning and the hook being dropped
-	// below. ctx is not consulted anywhere after DownloadPanelUpdate, so without
+	// below. ctx is not consulted anywhere after DownloadPanelBinary, so without
 	// this the user would get an HTTP success for their cancel and be updated
 	// anyway. Checked before the install starts, which is the last moment aborting
 	// is free.
@@ -364,70 +391,6 @@ func (s *ServerService) UpdatePanel() error {
 	return nil
 }
 
-// ReinstallPanel downloads the binary for the CURRENT version and reinstalls it.
-// Useful when the operator suspects a corrupt binary or wants a clean slate without
-// changing versions. The download URL targets the release tag matching the running
-// version rather than /releases/latest.
-func (s *ServerService) ReinstallPanel() error {
-	if !panelUpdateInFlight.CompareAndSwap(false, true) {
-		return fmt.Errorf("a panel update is already in progress")
-	}
-	resetUpdateCounters()
-	setUpdateProgress(updatePhaseDownloading, 0)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	setPanelUpdateCancel(cancel)
-
-	restarting := false
-	cancelled := false
-	defer func() {
-		setPanelUpdateCancel(nil)
-		if !restarting {
-			panelUpdateSpeed.Store(0)
-			if cancelled {
-				setUpdateProgress(updatePhaseCancelled, 0)
-			} else {
-				setUpdateProgress(updatePhaseError, 0)
-			}
-			panelUpdateInFlight.Store(false)
-		}
-	}()
-
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("cannot resolve own path: %w", err)
-	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
-	}
-
-	cur := config.GetVersion()
-	logger.Infof("panel reinstall: downloading v%s", cur)
-	tmp, err := DownloadPanelUpdate(ctx, exe, cur)
-	if err != nil {
-		if ctx.Err() != nil {
-			cancelled = true
-			logger.Info("panel reinstall: cancelled by user during download")
-			return ErrPanelUpdateCancelled
-		}
-		return err
-	}
-
-	if ctx.Err() != nil {
-		_ = os.Remove(tmp)
-		cancelled = true
-		logger.Info("panel reinstall: cancelled by user just before installing")
-		return ErrPanelUpdateCancelled
-	}
-
-	if err := installPanelBinary(tmp, exe); err != nil {
-		return err
-	}
-	restarting = true
-	return nil
-}
-
 // installPanelBinary is the point of no return, shared by the download updater and
 // the update-from-file path: snapshot the DB, keep a rollback copy of the running
 // binary, swap `staged` in, record what was replaced, and restart. One
@@ -442,8 +405,9 @@ func installPanelBinary(staged, exe string) error {
 	// here on.
 	setPanelUpdateCancel(nil)
 	panelUpdateSpeed.Store(0)
-	// Best-effort DB snapshot before the new binary can migrate it.
-	backupPanelDB()
+	// Best-effort DB snapshot before the new binary can migrate it. The path is kept
+	// so the notice the restarted panel shows can say where the old database went.
+	backupPath, _ := backupPanelDB()
 
 	// Keep a copy of the current binary next to it so a bad update can be rolled
 	// back manually (mv vpn-ui.bak vpn-ui): once renamed, the old inode is gone.
@@ -468,6 +432,11 @@ func installPanelBinary(staged, exe string) error {
 	var settingService SettingService
 	if err := settingService.SetPanelUpdatedFrom(config.GetVersion()); err != nil {
 		logger.Warning("panel update: recording the updated-from version failed:", err)
+	}
+	// Written even when the snapshot failed and the path is empty: this CLEARS an
+	// earlier update's path, which would otherwise be announced as this one's.
+	if err := settingService.SetPanelUpdateBackupPath(backupPath); err != nil {
+		logger.Warning("panel update: recording the DB backup path failed:", err)
 	}
 
 	// Restart detached so our own termination can't abort the restart.
@@ -502,19 +471,81 @@ func (s *ServerService) CancelPanelUpdate() error {
 }
 
 // DownloadPanelBinary streams url into dst (0755), aborting if ctx is cancelled.
-// Unlike a plain GET, it resumes from dst's existing size via an HTTP Range request
-// when the server supports byte ranges, so a dropped or throttled connection picks
-// up where it left off instead of restarting the whole transfer.
 func DownloadPanelBinary(ctx context.Context, dst, url string) error {
-	return downloadPanelAsset(ctx, dst, url)
+	client := &http.Client{Timeout: 5 * time.Minute}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "vpn-ui")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed: HTTP %d from %s", resp.StatusCode, url)
+	}
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	// Feed the overview's % bar and speed readout. Attached even when the length is
+	// unknown: bytes and speed are still meaningful, only the percent isn't.
+	if _, err := io.Copy(f, newProgressReader(resp.Body, resp.ContentLength)); err != nil {
+		return err
+	}
+	return nil
 }
 
-// DownloadPanelUpdate downloads and validates the panel binary for the given version
-// ("" = latest), preferring the gzip-compressed asset for speed on slow links and
-// falling back to the raw binary. Both downloads resume from any partial file left
-// by a previous attempt. Returns the path of the validated, executable binary
-// (exe+".new") ready for installPanelBinary. The caller owns installing it and
-// removing it on failure.
+// elfMachineFor maps a GOARCH to its ELF e_machine value (little-endian targets
+// only). The bool is false for archs we don't map, in which case only the ELF magic
+// is checked (still catches an HTML 404 page, just not a wrong-arch binary).
+func elfMachineFor(goarch string) (uint16, bool) {
+	switch goarch {
+	case "amd64":
+		return 0x3E, true // EM_X86_64
+	case "arm64":
+		return 0xB7, true // EM_AARCH64
+	case "386":
+		return 0x03, true // EM_386
+	case "arm":
+		return 0x28, true // EM_ARM
+	}
+	return 0, false
+}
+
+// IsCompatibleBinary reports whether path is an ELF whose architecture matches the
+// running panel. Guards against installing an HTML error page, a truncated file, or
+// a wrong-architecture asset over the live binary (which would brick the restart).
+func IsCompatibleBinary(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	var hdr [20]byte // magic(4) + ident(12) + e_type(2) + e_machine(2)
+	if _, err := io.ReadFull(f, hdr[:]); err != nil {
+		return false
+	}
+	if hdr[0] != 0x7f || hdr[1] != 'E' || hdr[2] != 'L' || hdr[3] != 'F' {
+		return false
+	}
+	if hdr[5] != 1 { // EI_DATA: only little-endian targets are supported
+		return false
+	}
+	machine := uint16(hdr[18]) | uint16(hdr[19])<<8
+	if want, ok := elfMachineFor(runtime.GOARCH); ok && machine != want {
+		return false
+	}
+	return true
+}
+
+// DownloadPanelUpdate fetches the panel release asset into exe+".new" and returns
+// its path. It prefers the gzip-compressed asset and falls back to the raw binary
+// (which is also the target for old releases that predate the .gz asset). Used by
+// the CLI/menu updater (`vpn-ui-amd64 update`) in main.go.
 func DownloadPanelUpdate(ctx context.Context, exe, version string) (string, error) {
 	var gzURL, rawURL string
 	if version == "" {
@@ -533,14 +564,9 @@ func DownloadPanelUpdate(ctx context.Context, exe, version string) (string, erro
 		_ = os.Remove(tmp)
 		logger.Warningf("panel update: compressed asset from %s was invalid, falling back to raw binary", gzURL)
 	} else if ctx.Err() != nil {
-		// A cancelled transfer must not fall through to a second (raw) download:
-		// the caller reads ctx to report the cancel.
 		return "", ctx.Err()
 	}
 
-	// Fall back to the raw binary (or it IS the fallback target for an old release
-	// that predates the .gz asset). No stale partial from a gz attempt should leak
-	// into the raw download target, so truncate first.
 	_ = os.Remove(tmp)
 	if err := downloadPanelAsset(ctx, tmp, rawURL); err != nil {
 		return "", err
@@ -566,7 +592,6 @@ func downloadGunzip(ctx context.Context, gzURL, dst string) error {
 		return err
 	}
 	if err := gunzipFile(gzTmp, dst); err != nil {
-		// A corrupt/incomplete archive: drop it so the next attempt restarts clean.
 		_ = os.Remove(gzTmp)
 		_ = os.Remove(dst)
 		return err
@@ -640,8 +665,6 @@ func downloadPanelAsset(ctx context.Context, dst, url string) error {
 	}
 	defer resp.Body.Close()
 
-	// The existing partial is as long as (or longer than) the whole asset: it is stale
-	// or complete garbage, so drop it and retry cleanly once.
 	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
 		resp.Body.Close()
 		_ = os.Remove(dst)
@@ -659,8 +682,6 @@ func downloadPanelAsset(ctx context.Context, dst, url string) error {
 	}
 	defer f.Close()
 
-	// A 200 means the server ignored our range (no resume support or stale partial):
-	// truncate and write the full body so we never append onto old bytes.
 	if restart {
 		if err := f.Truncate(0); err != nil {
 			return err
@@ -670,57 +691,10 @@ func downloadPanelAsset(ctx context.Context, dst, url string) error {
 		return err
 	}
 
-	// Feed the overview's % bar and speed readout. total already includes the offset
-	// prefix (offset + Content-Length) so a resumed bar starts at the right place.
-	// Attached even when the length is unknown: bytes and speed are still meaningful,
-	// only the percent isn't.
-	if _, err := io.Copy(f, newProgressReader(resp.Body, offset+resp.ContentLength, offset)); err != nil {
+	if _, err := io.Copy(f, newProgressReader(resp.Body, offset+resp.ContentLength)); err != nil {
 		return err
 	}
 	return nil
-}
-
-// elfMachineFor maps a GOARCH to its ELF e_machine value (little-endian targets
-// only). The bool is false for archs we don't map, in which case only the ELF magic
-// is checked (still catches an HTML 404 page, just not a wrong-arch binary).
-func elfMachineFor(goarch string) (uint16, bool) {
-	switch goarch {
-	case "amd64":
-		return 0x3E, true // EM_X86_64
-	case "arm64":
-		return 0xB7, true // EM_AARCH64
-	case "386":
-		return 0x03, true // EM_386
-	case "arm":
-		return 0x28, true // EM_ARM
-	}
-	return 0, false
-}
-
-// IsCompatibleBinary reports whether path is an ELF whose architecture matches the
-// running panel. Guards against installing an HTML error page, a truncated file, or
-// a wrong-architecture asset over the live binary (which would brick the restart).
-func IsCompatibleBinary(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	var hdr [20]byte // magic(4) + ident(12) + e_type(2) + e_machine(2)
-	if _, err := io.ReadFull(f, hdr[:]); err != nil {
-		return false
-	}
-	if hdr[0] != 0x7f || hdr[1] != 'E' || hdr[2] != 'L' || hdr[3] != 'F' {
-		return false
-	}
-	if hdr[5] != 1 { // EI_DATA: only little-endian targets are supported
-		return false
-	}
-	machine := uint16(hdr[18]) | uint16(hdr[19])<<8
-	if want, ok := elfMachineFor(runtime.GOARCH); ok && machine != want {
-		return false
-	}
-	return true
 }
 
 // HasSQLiteSupport checks whether a Linux ELF binary was built with CGO_ENABLED=1,
@@ -735,7 +709,6 @@ func HasSQLiteSupport(path string) bool {
 	}
 	defer f.Close()
 
-	// Read ELF magic + class to determine 32-bit vs 64-bit.
 	var ident [16]byte
 	if _, err := io.ReadFull(f, ident[:]); err != nil {
 		return false
@@ -777,8 +750,6 @@ func HasSQLiteSupport(path string) bool {
 		return false
 	}
 
-	// Scan program headers for PT_INTERP (type 3). Its presence means the binary
-	// is dynamically linked, which is what CGO_ENABLED=1 produces.
 	phdr := make([]byte, phentsize)
 	for i := uint16(0); i < phnum; i++ {
 		_, err := f.ReadAt(phdr, int64(phoff+uint64(i)*uint64(phentsize)))
@@ -794,16 +765,26 @@ func HasSQLiteSupport(path string) bool {
 	return false
 }
 
-// backupPanelDB copies the SQLite DB (and its WAL/SHM sidecars) next to it with a
-// versioned name. Best-effort — a failed snapshot must not block the update.
-func backupPanelDB() {
+// backupPanelDB copies the SQLite DB (and its WAL/SHM sidecars) into a backups/
+// directory beside it, named for the version being replaced, this panel's name and
+// the moment it happened. Returns where it landed, or "" if it wrote nothing:
+// best-effort, since a failed snapshot must not block the update.
+//
+// The timestamp is what makes this multi-slot. The name used to be the version
+// alone, so a second update FROM the same version (a retry, or reinstalling the
+// build you are already on) silently overwrote the only copy the operator had.
+//
+// Domain is left out of the name: there is no request behind this call, so it could
+// only ever resolve to the webDomain setting or to nothing, and the panel name
+// already says which install this came from.
+func backupPanelDB() (string, error) {
 	db := config.GetDBPath()
 	if _, err := os.Stat(db); err != nil {
-		return
+		return "", err
 	}
 	dir := filepath.Join(filepath.Dir(db), "backups")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return
+		return "", err
 	}
 	// Fold the WAL into the main DB first so the file copy is a consistent snapshot
 	// (the panel holds the DB open, so a plain copy could otherwise be torn).
@@ -812,16 +793,25 @@ func backupPanelDB() {
 			_, _ = sqlDB.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 		}
 	}
-	base := fmt.Sprintf("vpn-ui_%s.db", config.GetVersion())
+	// config.GetVersion() is still the OUTGOING version here: the swap has not
+	// happened yet, and this process is the binary being replaced.
+	var serverService ServerService
+	base := serverService.BuildBackupFilename(BackupNameOptions{
+		Date:      true,
+		Time:      true,
+		PanelName: true,
+		Version:   true,
+	}, "")
 	dst := filepath.Join(dir, base)
 	if err := CopyFile(db, dst); err != nil {
 		logger.Warning("panel update: DB backup failed:", err)
-		return
+		return "", err
 	}
 	for _, side := range []string{"-wal", "-shm"} {
 		_ = CopyFile(db+side, dst+side)
 	}
 	logger.Infof("panel update: backed up DB -> %s", dst)
+	return dst, nil
 }
 
 func CopyFile(src, dst string) error {
@@ -858,9 +848,7 @@ func restartPanel(exe string) {
 	name := sd.GetServiceName()
 	if commandExists("systemctl") && systemctlActive(name) {
 		// setsid detaches the restarter so systemd killing us mid-restart is fine.
-		// Use exec.Command with separate args instead of sh -c to prevent injection.
-		if err := exec.Command("setsid", "sh", "-c",
-			"sleep 1; systemctl restart "+strconv.Quote(name)).Start(); err != nil {
+		if err := exec.Command("setsid", "sh", "-c", fmt.Sprintf("sleep 1; systemctl restart %s", name)).Start(); err != nil {
 			// The restart never launched: the binary is already swapped but this
 			// process keeps running the old one. Release the guard so the operator
 			// can retry from the panel (or restart the unit manually).

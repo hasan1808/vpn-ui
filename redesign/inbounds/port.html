@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The port, five ways</title>
+<style>
+/* ==================================================================
+   Tokens and row styles lifted from web/assets/css/tokens.css and the
+   bo-il- block of components.css, so what is on screen is the SHIPPED
+   Manifest row and the only thing changing between tabs is the port.
+   ================================================================== */
+:root {
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eef2f4;
+  --border:#e4e9ee;
+  --border-strong:#d2dae1;
+
+  --text:#1b2430;
+  --text-2:#5a6675;
+  --text-3:#6b7787;
+
+  --accent:#008771;
+  --accent-strong:#00806b;
+  --accent-weak:#e2f2ee;
+  --on-accent:#ffffff;
+
+  --ok:#1c7a45;
+  --info:#1f6fd0;
+  --warn:#8a6008;
+  --error:#b3261e;
+  --off:#6b7787;
+
+  --ok-weak:rgba(28,122,69,.10);
+  --info-weak:rgba(31,111,208,.10);
+  --warn-weak:rgba(138,96,8,.12);
+  --error-weak:rgba(179,38,30,.10);
+  --off-weak:rgba(107,119,135,.12);
+
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+
+  /* the panel's type scale, and the two steps the row actually uses */
+  --fs-xs:11px; --fs-sm:12.5px; --fs-base:14px; --fs-md:16px;
+  --r:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740;
+    --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+    --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13);
+    --warn-weak:rgba(224,169,74,.14); --error-weak:rgba(242,114,106,.13);
+    --off-weak:rgba(133,147,168,.15);
+    --shadow-sm:none;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740;
+  --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13);
+  --warn-weak:rgba(224,169,74,.14); --error-weak:rgba(242,114,106,.13);
+  --off-weak:rgba(133,147,168,.15);
+  --shadow-sm:none;
+  color-scheme:dark;
+}
+
+*, *::before, *::after { box-sizing:border-box; }
+html, body { margin:0; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:var(--ui); font-size:var(--fs-base); line-height:1.45;
+  -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+}
+.num { font-variant-numeric:tabular-nums; }
+.page { max-width:1250px; margin:0 auto; padding:40px 22px 90px; }
+
+/* ---- masthead ---- */
+.masthead { max-width:840px; margin-bottom:26px; }
+.eyebrow {
+  font-size:11px; font-weight:700; letter-spacing:.10em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 9px;
+}
+.masthead h1 { font-size:27px; font-weight:650; letter-spacing:-.015em; margin:0 0 10px; }
+.masthead p { color:var(--text-2); font-size:14px; margin:0 0 10px; }
+.masthead em { color:var(--text); font-style:normal; font-weight:600; }
+.masthead code {
+  font-family:var(--mono); font-size:12.5px;
+  background:var(--surface-2); padding:1px 6px; border-radius:5px; color:var(--text-2);
+}
+
+/* ---- switcher ---- */
+.switcher {
+  position:sticky; top:0; z-index:30;
+  display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+  background:var(--bg); padding:12px 0 13px; margin-bottom:20px;
+  border-bottom:1px solid var(--border);
+}
+.tabs { display:flex; gap:5px; flex-wrap:wrap; }
+.tab {
+  font:inherit; font-size:13px; font-weight:550;
+  display:inline-flex; align-items:center; gap:8px;
+  padding:7px 14px 7px 9px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  cursor:pointer; transition:background .13s, color .13s, border-color .13s;
+}
+.tab .n {
+  display:inline-grid; place-items:center; width:19px; height:19px; border-radius:50%;
+  background:var(--surface-2); color:var(--text-3);
+  font-size:10.5px; font-weight:700; font-family:var(--mono);
+}
+.tab:hover { border-color:var(--border-strong); color:var(--text); }
+.tab[aria-selected="true"] { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.tab[aria-selected="true"] .n { background:rgba(255,255,255,.22); color:var(--on-accent); }
+.switcher-right { display:flex; gap:7px; }
+.ghost {
+  font:inherit; font-size:12.5px; font-weight:550;
+  padding:7px 13px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2); cursor:pointer;
+}
+.ghost:hover { border-color:var(--border-strong); color:var(--text); }
+.ghost[aria-pressed="true"] { background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+
+/* ---- rationale strip ---- */
+.rationale {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:0; margin:0 0 18px;
+  background:var(--border); border:1px solid var(--border); border-radius:var(--r); overflow:hidden;
+}
+.rationale > div { background:var(--surface); padding:13px 15px; }
+.rationale dt {
+  font-size:10.5px; font-weight:700; letter-spacing:.085em; text-transform:uppercase;
+  color:var(--text-3); margin-bottom:5px;
+}
+.rationale dd { margin:0; font-size:12.5px; color:var(--text-2); line-height:1.45; }
+.rationale dd b { color:var(--text); font-weight:600; }
+.rationale .cost dd b { color:var(--warn); }
+
+.view { display:none; }
+.view.on { display:block; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow-sm); overflow:hidden; }
+
+/* ==================================================================
+   The shipped row. Class names mirror components.css so a direction
+   that wins can be lifted across without re-deriving anything.
+   ================================================================== */
+table { width:100%; border-collapse:collapse; }
+thead th {
+  text-align:start; font-size:var(--fs-sm); font-weight:700;
+  color:var(--text-3); background:var(--surface-2);
+  padding:11px 14px; border-bottom:1px solid var(--border); white-space:nowrap;
+}
+tbody td { padding:12px 14px; border-bottom:1px solid var(--border); vertical-align:middle; }
+tbody tr:last-child td { border-bottom:0; }
+tbody tr:hover { background:var(--accent-weak); }
+th.end, td.end { text-align:end; }
+
+.bo-il-ident { display:flex; align-items:center; gap:9px; min-width:0; }
+.bo-il-lines { min-width:0; flex:1; }
+.bo-il-lamp { width:9px; height:9px; border-radius:50%; flex:none; background:var(--ok); }
+.bo-il-lamp[data-state="off"] { background:var(--off); }
+.bo-il-lamp[data-state="warn"] { background:var(--warn); }
+.bo-il-name {
+  display:block; font-size:var(--fs-base); font-weight:600; color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.bo-il-meta {
+  display:block; font-family:var(--mono); font-size:var(--fs-sm);
+  color:var(--text-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  direction:ltr; unicode-bidi:isolate; text-align:start;
+}
+.bo-il-meta b { color:var(--text-2); font-weight:600; }
+.bo-il-top {
+  display:flex; align-items:baseline; justify-content:space-between;
+  gap:10px; font-size:var(--fs-base); margin-bottom:5px;
+}
+.bo-il-used { font-family:var(--mono); font-weight:600; color:var(--text); }
+.bo-il-cap { font-family:var(--mono); font-size:var(--fs-sm); color:var(--text-3); }
+.bo-il-sub { display:block; margin-top:5px; font-size:var(--fs-sm); color:var(--text-3); white-space:nowrap; }
+.bo-il-meter { height:5px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.bo-il-meter > i { display:block; height:100%; border-radius:999px; background:var(--accent); }
+.bo-il-meter--warn > i { background:var(--warn); }
+.bo-il-acc { display:flex; gap:1px; height:5px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.bo-il-acc > i { display:block; height:100%; }
+.bo-il-acc--online { background:var(--info); }
+.bo-il-acc--idle { background:var(--border-strong); }
+.bo-il-acc--off { background:var(--off); }
+.bo-il-n { font-family:var(--mono); font-weight:600; color:var(--text); }
+.bo-il-exp { font-family:var(--mono); font-size:var(--fs-base); color:var(--text-2); }
+.bo-il-inf { font-size:var(--fs-md); line-height:1; color:var(--text-3); }
+
+/* ==================================================================
+   1  WEIGHTED - the port is the only lit token in the signature
+   ================================================================== */
+.p1 .port { color:var(--text); font-weight:600; }
+
+/* ==================================================================
+   2  NAMED - the port carries its noun, so every shape reads as a
+      sentence and there is no orphan colon
+   ================================================================== */
+.p2 .word { color:var(--text-3); font-weight:400; }
+.p2 .port { color:var(--text-2); font-weight:600; }
+
+/* ==================================================================
+   3  CHIP - the port leaves the signature and pins to the right of
+      the remark, so every row's port is at the same x
+   ================================================================== */
+.p3 .bo-il-nameline { display:flex; align-items:baseline; gap:10px; }
+.p3 .bo-il-name { flex:1; }
+.p3 .portchip {
+  flex:none; font-family:var(--mono); font-size:var(--fs-sm); font-weight:600;
+  color:var(--text-2); background:var(--surface-2);
+  border:1px solid var(--border); border-radius:6px; padding:1px 7px;
+  white-space:nowrap;
+}
+.p3 .portchip.none { color:var(--text-3); font-weight:400; border-style:dashed; background:transparent; }
+
+/* ==================================================================
+   4  COLUMN - a column of its own, right-aligned so the digits stack
+   ================================================================== */
+.p4 .portcol { font-family:var(--mono); font-size:var(--fs-base); color:var(--text); }
+.p4 .portcol .l {
+  display:block; font-size:var(--fs-sm); color:var(--text-3); font-weight:400;
+}
+.p4 .portcol .dim { color:var(--text-3); font-size:var(--fs-sm); }
+
+/* ==================================================================
+   5  ENDPOINT - what a client actually dials, and what you paste
+   ================================================================== */
+.p5 .endpoint {
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:var(--fs-sm);
+  color:var(--text-2); cursor:pointer; border-radius:5px;
+  padding:1px 5px; margin-inline-start:-5px;
+}
+.p5 .endpoint:hover { background:var(--surface-2); color:var(--text); }
+.p5 .endpoint .host { color:var(--text-3); }
+.p5 .endpoint .port { color:var(--text); font-weight:600; }
+.p5 .endpoint .cp { opacity:.55; font-size:11px; }
+.p5 .endpoint:hover .cp { opacity:1; }
+.p5 .endpoint.none { cursor:default; color:var(--text-3); }
+.p5 .endpoint.none:hover { background:transparent; color:var(--text-3); }
+
+/* ---- the hard-cases legend under each scheme ---- */
+.legend {
+  margin-top:14px; font-size:12.5px; color:var(--text-3); line-height:1.6;
+  border-inline-start:2px solid var(--border-strong); padding-inline-start:12px;
+}
+.legend b { color:var(--text-2); font-weight:600; }
+.legend code { font-family:var(--mono); color:var(--text-2); }
+
+/* The three leading cells the real table carries. They are here only so the
+   identity column is the width it actually is - ~355px at a 1440 viewport,
+   not the ~780px it would be if the select, menu and enable columns were
+   left out. A chip pinned to the right edge of the wrong column is judged
+   in the wrong place. */
+.lead { color:var(--text-3); text-align:center; }
+.lead .box {
+  display:inline-block; width:14px; height:14px; border-radius:3px;
+  border:1px solid var(--border-strong);
+}
+.lead .kebab { font-size:17px; letter-spacing:-1px; }
+.sw {
+  display:inline-block; width:38px; height:20px; border-radius:999px;
+  background:var(--accent); position:relative; vertical-align:middle;
+}
+.sw::after {
+  content:""; position:absolute; top:2px; inset-inline-start:20px;
+  width:16px; height:16px; border-radius:50%; background:#fff;
+}
+.sw[data-on="false"] { background:var(--border-strong); }
+.sw[data-on="false"]::after { inset-inline-start:2px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Inbounds list &middot; the endpoint</p>
+    <h1>The port, five ways</h1>
+    <p>
+      The shipped Manifest row, with only the port changing between tabs. Today it is
+      <code>:8443</code>, set in the same dim grey as <code>tcp</code> and
+      <code>reality</code> and reading as one more transport token &mdash; when it is
+      actually one of the two or three facts an operator opens this page for.
+    </p>
+    <p>
+      All five carry the three shapes a port really takes here: <em>one port</em>,
+      <em>two</em> (OpenVPN can listen on separate TCP and UDP), and <em>none at all</em>
+      (GRE is IP protocol 47). A treatment that only looks right on the first one is not
+      finished.
+    </p>
+  </header>
+
+  <div class="switcher">
+    <div class="tabs" role="tablist" aria-label="Direction">
+      <button class="tab" role="tab" data-view="p1" aria-selected="true"><span class="n">1</span>Weighted</button>
+      <button class="tab" role="tab" data-view="p2" aria-selected="false"><span class="n">2</span>Named</button>
+      <button class="tab" role="tab" data-view="p3" aria-selected="false"><span class="n">3</span>Chip</button>
+      <button class="tab" role="tab" data-view="p4" aria-selected="false"><span class="n">4</span>Column</button>
+      <button class="tab" role="tab" data-view="p5" aria-selected="false"><span class="n">5</span>Endpoint</button>
+    </div>
+    <div class="switcher-right">
+      <button class="ghost" id="theme">Dark</button>
+    </div>
+  </div>
+
+  <section class="view on" id="v-p1" aria-label="Weighted"></section>
+  <section class="view" id="v-p2" aria-label="Named"></section>
+  <section class="view" id="v-p3" aria-label="Chip"></section>
+  <section class="view" id="v-p4" aria-label="Column"></section>
+  <section class="view" id="v-p5" aria-label="Endpoint"></section>
+
+</div>
+
+<script>
+/* ------------------------------------------------------------------
+   One fixture. Every awkward shape the port takes in the real panel:
+   a plain port, a port on a bound address, two ports at once, no port
+   at all, and a well-known low port that is easy to misread as text.
+   ------------------------------------------------------------------ */
+const R = [
+  { remark:'reality-main', label:'VLESS', port:8443, net:'tcp', sec:'reality',
+    state:'ok', used:'55.88 GB', cap:null, all:'84.75 GB', n:12, online:4, note:'all healthy',
+    segs:[['online',4],['idle',8]] },
+  { remark:'cdn-ws', label:'VMess', port:8444, listen:'10.0.0.5', net:'ws', sec:'tls',
+    state:'ok', used:'1.21 GB', cap:'50.00 GB', pct:2.4, all:'3.73 GB', n:6, online:1, note:'all healthy',
+    segs:[['online',1],['idle',5]] },
+  { remark:'ovpn-road', label:'OpenVPN', port:1195, tcpPort:1194, dual:true,
+    state:'ok', used:'820.00 GB', cap:'2.00 TB', pct:41, all:'1.90 TB', n:17, online:6, note:'all healthy',
+    segs:[['online',6],['idle',11]] },
+  { remark:'branch-gre', label:'GRE', noport:true,
+    state:'off', used:'0 B', cap:null, all:'0 B', n:2, online:0, note:'2 disabled',
+    segs:[['off',2]] },
+  { remark:'ikev2-mobile', label:'IKEv2', port:500, net:'udp',
+    state:'warn', used:'184.00 GB', cap:'200.00 GB', pct:92, warn:true, all:'302.00 GB',
+    n:9, online:3, note:'all healthy', segs:[['online',3],['idle',6]] },
+  { remark:'mtproto-tg', label:'MTProto Proxy', port:443,
+    state:'ok', used:'12.40 GB', cap:null, all:'40.10 GB', n:1, online:0, note:'all healthy',
+    segs:[['idle',1]] },
+];
+
+const HOST = 'panel.example.com';
+const INF = '<span class="bo-il-inf" title="No limit">&infin;</span>';
+
+/* the three shapes, once, so every scheme is fed the same truth */
+function ports(d) {
+  if (d.noport) return [];
+  if (d.dual) return [{ t:'tcp', p:d.tcpPort }, { t:'udp', p:d.port }];
+  return [{ t:d.net || null, p:d.port }];
+}
+
+function segs(d) {
+  return '<div class="bo-il-acc">' +
+    d.segs.map(([k, v]) => '<i class="bo-il-acc--' + k + '" style="flex:' + v + '"></i>').join('') +
+    '</div>';
+}
+
+/* every cell except the identity one, which is what the schemes differ on */
+function tail(d) {
+  return '<td>' +
+      '<div class="bo-il-top">' +
+        '<span class="bo-il-used num">' + d.used + '</span>' +
+        (d.cap ? '<span class="bo-il-cap num">' + d.cap + '</span>' : '<span class="bo-il-cap">' + INF + '</span>') +
+      '</div>' +
+      '<div class="bo-il-meter' + (d.warn ? ' bo-il-meter--warn' : '') + '">' +
+        '<i style="width:' + (d.pct || 0) + '%"></i></div>' +
+      '<span class="bo-il-sub">' + d.all + ' all time</span>' +
+    '</td>' +
+    '<td>' +
+      '<div class="bo-il-top"><span class="bo-il-n num">' + d.n + '</span>' +
+        (d.online ? '<span class="bo-il-cap" style="color:var(--info)">' + d.online + ' online</span>' : '') +
+      '</div>' + segs(d) +
+      '<span class="bo-il-sub">' + d.note + '</span>' +
+    '</td>' +
+    '<td class="end">' + INF + '</td>';
+}
+
+function shell(cls, head, rows, legend) {
+  return '<div class="card ' + cls + '"><table>' +
+    '<thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<p class="legend">' + legend + '</p>';
+}
+
+/* the three leading columns, identical in every scheme, present so the
+   identity cell is the width the shipped table actually gives it */
+const LEAD_H = '<th style="width:34px"></th><th style="width:46px">Menu</th>' +
+               '<th style="width:58px">Enabled</th>';
+const lead = d => '<td class="lead"><span class="box"></span></td>' +
+  '<td class="lead"><span class="kebab">&#8942;</span></td>' +
+  '<td class="lead"><span class="sw" data-on="' + (d.state !== 'off') + '"></span></td>';
+
+const HEAD3 = LEAD_H + '<th>Inbound</th><th style="width:210px">Traffic</th>' +
+              '<th style="width:190px">Clients</th><th style="width:90px" class="end">Duration</th>';
+
+function ident(d, metaHtml, nameHtml) {
+  return lead(d) + '<td><div class="bo-il-ident">' +
+    '<span class="bo-il-lamp" data-state="' + d.state + '"></span>' +
+    '<span class="bo-il-lines">' +
+      (nameHtml || '<span class="bo-il-name">' + d.remark + '</span>') +
+      '<span class="bo-il-meta">' + metaHtml + '</span>' +
+    '</span></div></td>';
+}
+
+/* ==================================================================
+   1  WEIGHTED
+   ================================================================== */
+document.getElementById('v-p1').innerHTML =
+  rationale({
+    for: '<b>Costing nothing.</b> The line keeps its shape; the port stops hiding in it.',
+    change: 'The port is the only token set in the full text colour and a heavier weight. Protocol, transport and security stay dim.',
+    cost: '<b>Still a token in a run of tokens.</b> Nothing lines up down the page, and a dual-port inbound is still the longest line in the table.',
+    where: 'One CSS rule and one <code>&lt;b&gt;</code> in the identity slot.',
+  }) +
+  shell('p1', HEAD3, R.map(d => {
+    const ps = ports(d);
+    const port = d.noport
+      ? '<span class="port">proto 47</span>'
+      : ps.map(x => '<span class="port">' + (d.dual ? x.t + ':' : ':') + x.p + '</span>').join(' ');
+    const rest = [d.dual ? null : d.net, d.sec].filter(Boolean);
+    return '<tr>' + ident(d, '<b>' + d.label + '</b> ' + port +
+      (rest.length ? ' &middot; ' + rest.join(' &middot; ') : '')) + tail(d) + '</tr>';
+  }).join(''),
+  'Hard cases: <b>ovpn-road</b> keeps <code>tcp:1194 udp:1195</code> inline, so two ports cost ' +
+  'the row a longer line and the transport is carried by the prefix rather than stated. ' +
+  '<b>branch-gre</b> lights <code>proto 47</code> the same way, so the lit token always answers ' +
+  '"where does it listen", even when the answer is not a number.');
+
+/* ==================================================================
+   2  NAMED
+   ================================================================== */
+document.getElementById('v-p2').innerHTML =
+  rationale({
+    for: '<b>Being unambiguous.</b> A bare <code>:8443</code> needs the reader to know what a leading colon means.',
+    change: 'The number carries its noun. <code>port 8443</code>, <code>tcp 1194 &middot; udp 1195</code>, <code>proto 47</code> &mdash; one grammar, three shapes, no orphan punctuation.',
+    cost: '<b>The longest line of the five.</b> Four extra characters on every row, and the word repeats down the whole page where the reader only needed telling once.',
+    where: 'The <code>inboundListen()</code> helper already builds this string; it grows a word.',
+  }) +
+  shell('p2', HEAD3, R.map(d => {
+    const ps = ports(d);
+    const port = d.noport
+      ? '<span class="word">proto</span> <span class="port">47</span>'
+      : d.dual
+        ? ps.map(x => '<span class="word">' + x.t + '</span> <span class="port">' + x.p + '</span>').join(' &middot; ')
+        : '<span class="word">port</span> <span class="port">' + ps[0].p + '</span>';
+    const rest = [d.dual ? null : d.net, d.sec].filter(Boolean);
+    return '<tr>' + ident(d, '<b>' + d.label + '</b> ' + port +
+      (d.listen ? ' <span class="word">on</span> ' + d.listen : '') +
+      (rest.length ? ' &middot; ' + rest.join(' &middot; ') : '')) + tail(d) + '</tr>';
+  }).join(''),
+  'Hard cases: <b>ovpn-road</b> reads <code>tcp 1194 &middot; udp 1195</code>, which is the only ' +
+  'treatment here that says WHICH transport each number belongs to without punctuation doing the ' +
+  'work. <b>cdn-ws</b> can also say <code>on 10.0.0.5</code> when the inbound is bound to one address.');
+
+/* ==================================================================
+   3  CHIP
+   ================================================================== */
+document.getElementById('v-p3').innerHTML =
+  rationale({
+    for: '<b>Scanning a column of ports.</b> Every row puts its port at the same x, on the remark line.',
+    change: 'The port leaves the signature entirely and becomes a mono chip pinned right of the remark. The signature is then purely "what kind of thing is this": protocol, transport, security.',
+    cost: '<b>Takes width from the remark</b>, which is the row\'s title and already truncates on a phone. A dual-port chip is wide enough to take a third of the cell.',
+    where: 'A flex row inside the identity cell. No column changes.',
+  }) +
+  shell('p3', HEAD3, R.map(d => {
+    const ps = ports(d);
+    const chip = d.noport
+      ? '<span class="portchip none">no port</span>'
+      : '<span class="portchip">' + (d.dual ? ps.map(x => x.p).join(' / ') : ps[0].p) + '</span>';
+    const rest = [d.dual ? 'tcp / udp' : d.net, d.sec].filter(Boolean);
+    return '<tr>' + ident(d,
+      '<b>' + d.label + '</b>' + (rest.length ? ' ' + rest.join(' &middot; ') : '') +
+        (d.listen ? ' &middot; on ' + d.listen : ''),
+      '<span class="bo-il-nameline"><span class="bo-il-name">' + d.remark + '</span>' + chip + '</span>'
+    ) + tail(d) + '</tr>';
+  }).join(''),
+  'Hard cases: <b>ovpn-road</b> becomes <code>1194 / 1195</code> in the chip and <code>tcp / udp</code> ' +
+  'in the signature, so the pairing is by order rather than stated. <b>branch-gre</b> gets a dashed ' +
+  '<code>no port</code> chip: the slot stays, so a missing port cannot be mistaken for one that failed to load.');
+
+/* ==================================================================
+   4  COLUMN
+   ================================================================== */
+document.getElementById('v-p4').innerHTML =
+  rationale({
+    for: '<b>Answering "is anything on 443?" without reading a word.</b> Right-aligned digits stack.',
+    change: 'The port goes back to a column of its own, the way the old table had it, but typed properly: mono, full size, right-aligned, no tag around it.',
+    cost: '<b>A sixth column, ~80px.</b> Manifest exists because eleven columns were too many; this buys one back. It also splits the endpoint from the protocol that explains it.',
+    where: 'A new column and slot. Everything else is untouched.',
+  }) +
+  shell('p4',
+    LEAD_H + '<th>Inbound</th><th style="width:96px" class="end">Port</th>' +
+    '<th style="width:190px">Traffic</th><th style="width:170px">Clients</th>' +
+    '<th style="width:78px" class="end">Duration</th>',
+    R.map(d => {
+      const ps = ports(d);
+      const cell = d.noport
+        ? '<span class="dim" title="GRE is IP protocol 47 and has no ports">proto 47</span>'
+        : d.dual
+          ? ps.map(x => '<span class="l">' + x.t + ' ' + x.p + '</span>').join('')
+          : ps[0].p;
+      const rest = [d.dual ? 'tcp + udp' : d.net, d.sec].filter(Boolean);
+      return '<tr>' + ident(d, '<b>' + d.label + '</b>' +
+          (rest.length ? ' ' + rest.join(' &middot; ') : '') +
+          (d.listen ? ' &middot; on ' + d.listen : '')) +
+        '<td class="end portcol num">' + cell + '</td>' + tail(d) + '</tr>';
+    }).join(''),
+    'Hard cases: <b>ovpn-road</b> stacks <code>tcp 1194</code> over <code>udp 1195</code>, which is ' +
+    'the only place two ports do not lengthen a line. <b>branch-gre</b> prints <code>proto 47</code> ' +
+    'dimmed rather than a number, since the column\'s promise is "this is where it listens".');
+
+/* ==================================================================
+   5  ENDPOINT
+   ================================================================== */
+document.getElementById('v-p5').innerHTML =
+  rationale({
+    for: '<b>The thing you were going to paste anyway.</b> A port on its own is half an address.',
+    change: 'The row prints what a client actually dials &mdash; the panel host, or the bound address when the inbound has one &mdash; and copies it on click.',
+    cost: '<b>The panel has to know its own hostname</b>, and it is only right for inbounds a client dials directly: a fronted or CDN inbound is reached at a name the panel has never heard of.',
+    where: 'Needs the address the share-link builder already derives, plus a copy handler.',
+  }) +
+  shell('p5', HEAD3, R.map(d => {
+    const ps = ports(d);
+    const host = d.listen || HOST;
+    const one = x => '<span class="endpoint" title="Click to copy">' +
+      '<span class="host">' + (d.dual ? x.t + ' ' : '') + host + ':</span>' +
+      '<span class="port">' + x.p + '</span><span class="cp">&#10697;</span></span>';
+    const ep = d.noport
+      ? '<span class="endpoint none">no endpoint &middot; IP protocol 47</span>'
+      : ps.map(one).join('<br>');
+    const rest = [d.dual ? 'tcp + udp' : d.net, d.sec].filter(Boolean);
+    // The endpoint is a THIRD line in the identity cell rather than a column:
+    // it is the widest thing on the row and a column sized for it would be
+    // sized for the longest hostname anyone ever configures.
+    return '<tr>' + ident(d,
+      '<b>' + d.label + '</b>' + (rest.length ? ' ' + rest.join(' &middot; ') : '') +
+      '</span><span class="bo-il-meta">' + ep) + tail(d) + '</tr>';
+  }).join(''),
+  'Hard cases: <b>ovpn-road</b> prints one endpoint per transport, stacked. <b>cdn-ws</b> is bound to ' +
+  '<code>10.0.0.5</code>, so that is what it shows rather than the panel host &mdash; and it is also ' +
+  'the case where the printed endpoint is NOT what a real client dials, because that inbound sits ' +
+  'behind a CDN. <b>branch-gre</b> has no endpoint to print at all.');
+
+/* ------------------------------------------------------------------ */
+function rationale(o) {
+  return '<dl class="rationale">' +
+    '<div><dt>Optimised for</dt><dd>' + o.for + '</dd></div>' +
+    '<div><dt>The change</dt><dd>' + o.change + '</dd></div>' +
+    '<div class="cost"><dt>Costs</dt><dd>' + o.cost + '</dd></div>' +
+    '<div><dt>To build</dt><dd>' + o.where + '</dd></div>' +
+  '</dl>';
+}
+
+/* ---- switcher ---- */
+function show(view, push) {
+  const tabs = [...document.querySelectorAll('.tab')];
+  const t = tabs.find(x => x.dataset.view === view) || tabs[0];
+  tabs.forEach(x => x.setAttribute('aria-selected', String(x === t)));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + t.dataset.view));
+  if (push) location.hash = t.dataset.view;
+}
+document.querySelectorAll('.tab').forEach(t =>
+  t.addEventListener('click', () => show(t.dataset.view, true)));
+window.addEventListener('hashchange', () => show(location.hash.slice(1), false));
+show(location.hash.slice(1), false);
+
+const themeBtn = document.getElementById('theme');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+  themeBtn.textContent = dark ? 'Dark' : 'Light';
+});
+</script>
+</body>
+</html>

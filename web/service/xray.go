@@ -248,6 +248,46 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		// get settings clients
 		settings := map[string]any{}
 		json.Unmarshal([]byte(inbound.Settings), &settings)
+
+		// The Xray-native wireguard inbound takes `peers`, never `clients`, so its
+		// accounts are translated here instead of going through the generic filter
+		// below. It has to be before that filter and not after: the filter is an
+		// allowlist over each client's keys, and it would delete the very key
+		// material a peer is built from. See web/service/wgxray.go.
+		if inbound.Protocol == model.WireGuard {
+			applyWireguardClients(settings, func(email string, entryEnabled bool) bool {
+				if enable, exists := enableByEmail[accountKey(email)]; exists && !enable {
+					return false
+				}
+				return entryEnabled
+			})
+			modifiedSettings, err := json.MarshalIndent(settings, "", "  ")
+			if err != nil {
+				return nil, err
+			}
+			inbound.Settings = string(modifiedSettings)
+		}
+
+		// The INBOUND-level flow, folded the same way the per-client one is folded
+		// a few lines down.
+		//
+		// The fold below sits inside the clients loop, so it never saw this key, and
+		// the two are not equally dangerous: the core rejects an unsupported flow
+		// wherever it appears, but a bad value on ONE CLIENT costs that client while
+		// a bad settings.flow makes the core refuse the entire config. That is every
+		// inbound on the box down at once, which is the same failure class as the
+		// blank certificateFile bug.
+		//
+		// "xtls-rprx-vision-udp443" is the only value that gets here: the bundled
+		// core accepts "" and "xtls-rprx-vision" and nothing else (see
+		// third_party/Xray-core/infra/conf/vless.go), and the panel's own picker no
+		// longer offers udp443. This is for a blob that arrived some other way - an
+		// imported database, a hand-edited settings field, a direct API POST - which
+		// is exactly the path the per-client fold already defends against.
+		if flow, ok := settings["flow"].(string); ok && flow == "xtls-rprx-vision-udp443" {
+			settings["flow"] = "xtls-rprx-vision"
+		}
+
 		clients, ok := settings["clients"].([]any)
 		if ok {
 			// filter and clean clients
@@ -463,6 +503,30 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	// IP, so a per-CLIENT rule has nothing to match on. Its routing is per-INBOUND,
 	// via the socks inbound's tag above.
 	s.translateVpnRoutingRules(xrayConfig)
+
+	// The carrier bridges LAST, and the rule they add is PREPENDED, which is the whole
+	// reason they are here rather than beside the outbound synthesis at the top.
+	//
+	// Routing is first-match, and translateVpnRoutingRules appends a backstop that
+	// sends every source inside vpnAddrSpace (10.0.0.0/12) to the blackhole. A carrier
+	// device is addressed out of 10.11 - inside that /12 on purpose, so it inherits the
+	// firewalld trust - so a rule appended after that backstop would never be reached
+	// and every carried tunnel would be blackholed. Prepending puts the carrier's own
+	// inboundTag rule ahead of both the backstop and any operator rule that sends
+	// everything to a proxy, which would otherwise swallow a tunnel's outer transport
+	// and send it somewhere nobody asked for.
+	//
+	// Deriving it here also means the carriers are read once, from the same stored
+	// lists the raise path uses, so the config and the routing rules cannot disagree
+	// about which tag has a device.
+	carriers, problems := vpnOutCarrierPlan((&VpnOutboundService{}).List(),
+		(&SshOutboundService{}).List(), vpnOutTemplateOutbounds())
+	for _, p := range problems {
+		logger.Warning("vpn carrier:", p)
+	}
+	if err := applyCarrierBridgesWith(xrayConfig, carriers); err != nil {
+		logger.Warning("could not synthesize the carrier bridges:", err)
+	}
 
 	return xrayConfig, nil
 }
@@ -742,6 +806,22 @@ func (s *XrayService) RestartXray(isForce bool) error {
 	if err != nil {
 		return err
 	}
+
+	// A carrier tun belongs to the panel but is attached by the core, and stopping the
+	// core sets the device DOWN. The kernel drops a table's device route when its
+	// device goes down, which is the fail-closed half and is deliberate: what is left
+	// is the blackhole at metric 1000, so a carried tunnel is dropped rather than
+	// leaked out of the host's WAN while the core is not running.
+	//
+	// Nothing put that route back, though, and that is the bug this call closes.
+	// vpnOutApplyVia reconciles RULES only; the egress ROUTES are written by
+	// vpnOutBindEgress, which until now only ran on save, boot and raise. So a carrier
+	// survived an Xray restart with a table holding one blackhole and stayed that way
+	// until somebody re-saved the tunnel: fail-closed, but stuck closed.
+	//
+	// Re-asserted after every start, because that is exactly when the device has just
+	// come back up. Idempotent, and cheap enough: a restart is not a hot path.
+	vpnOutReassertCarriers()
 
 	return nil
 }

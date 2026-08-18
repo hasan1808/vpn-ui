@@ -9,3 +9,18 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    # The workflows pin every action to a floating MAJOR tag (actions/checkout@v6,
+    # github/codeql-action@v4), so patch and minor releases already arrive on their
+    # own. A PR bumping @v4 to @v4.37.3 does not add a version we were missing; it
+    # removes one, because an exact tag freezes the CodeQL analyser between
+    # Dependabot PRs, which is the wrong direction for a security scanner. It also
+    # does not buy what pinning is for, since a tag can be moved and only a full
+    # commit SHA is immutable.
+    #
+    # Major bumps still come through. Those can change a workflow's own contract,
+    # so they are worth a human deciding on.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-patch"
+          - "version-update:semver-minor"

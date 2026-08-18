@@ -32,6 +32,11 @@
           <a-select-option value="disable">{{ i18n "pages.inbounds.opDisable" }}</a-select-option>
           <a-select-option value="freeze">{{ i18n "pages.inbounds.opFreeze" }}</a-select-option>
           <a-select-option value="unfreeze">{{ i18n "pages.inbounds.opUnfreeze" }}</a-select-option>
+          <!-- Also withheld from a reseller, and for a different reason than the two
+               above: which inbounds serve an account is the admin's call, not a lever
+               their grant carries. The server refuses these outright for them. -->
+          <a-select-option v-if="bulkOpAllowed('addInbounds')" value="addInbounds">{{ i18n "pages.inbounds.opAddInbounds" }}</a-select-option>
+          <a-select-option v-if="bulkOpAllowed('removeInbounds')" value="removeInbounds">{{ i18n "pages.inbounds.opRemoveInbounds" }}</a-select-option>
           <a-select-option value="delete">{{ i18n "pages.inbounds.opDelete" }}</a-select-option>
         </a-select>
       </a-form-item>
@@ -46,21 +51,56 @@
         </a-select>
         <span v-else :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.days" }}</span>
       </a-form-item>
-      <a-divider :style="{ margin: '8px 0' }"></a-divider>
-      <a-space direction="vertical" :size="10" :style="{ width: '100%' }">
-        <div>
-          <a-switch v-model="bulkOps.skipFirstUse" size="small"></a-switch>
-          <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipFirstUse" }}</span>
+      <!-- The two membership ops take a set of inbounds instead of an amount. Same
+           checklist the single-account form uses (modals/clientMembershipModal), off
+           the same already-loaded `assignable` list, so the picker here can never
+           offer an inbound that form would not. -->
+      <a-form-item v-if="bulkIsMembershipOp()" label='{{ i18n "pages.inbounds.inboundMembership" }}'>
+        <div class="bo-dim" :style="{ marginBottom: '8px' }">{{ i18n "pages.inbounds.bulkMembershipDesc" }}</div>
+        <div :style="{ marginBottom: '8px' }">
+          <a-checkbox
+            :checked="bulkAllInboundsChecked()"
+            :indeterminate="bulkSomeInboundsChecked()"
+            @change="e => bulkToggleAllInbounds(e)">
+            {{ i18n "pages.inbounds.selectAllInbounds" }}
+          </a-checkbox>
         </div>
-        <div>
-          <a-switch v-model="bulkOps.skipUnlimited" size="small"></a-switch>
-          <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipUnlimited" }}</span>
-        </div>
-        <div>
-          <a-switch v-model="bulkOps.skipDisabled" size="small"></a-switch>
-          <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipDisabled" }}</span>
-        </div>
-      </a-space>
+        <a-checkbox-group v-model="bulkOps.inboundIds" :style="{ width: '100%' }">
+          <div class="bo-cf-ib" v-for="ib in bulkAssignable()" :key="ib.inboundId"
+            :class="{ on: bulkOps.inboundIds.includes(ib.inboundId) }">
+            <a-checkbox :value="ib.inboundId">
+              [[ ib.remark || ('#' + ib.inboundId) ]]
+              <a-tag>[[ ib.protocol ]]</a-tag>
+              <span class="bo-dim">:[[ ib.port ]]</span>
+            </a-checkbox>
+          </div>
+        </a-checkbox-group>
+        <!-- Refused by the server for every account it would touch, so saying it
+             here saves a run that comes back as N identical skips. -->
+        <a-alert v-if="bulkProtocolClash()" type="error" show-icon
+          :style="{ marginTop: '12px' }"
+          message='{{ i18n "pages.inbounds.membershipSameProtocol" }}'></a-alert>
+      </a-form-item>
+      <!-- The three skips are filters on a CLIENT field (first use, unlimited quota,
+           disabled), and the membership ops read none of them. Rendering them under
+           an operation that ignores them would read as three settings that apply. -->
+      <template v-if="!bulkIsMembershipOp()">
+        <a-divider :style="{ margin: '8px 0' }"></a-divider>
+        <a-space direction="vertical" :size="10" :style="{ width: '100%' }">
+          <div>
+            <a-switch v-model="bulkOps.skipFirstUse" size="small"></a-switch>
+            <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipFirstUse" }}</span>
+          </div>
+          <div>
+            <a-switch v-model="bulkOps.skipUnlimited" size="small"></a-switch>
+            <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipUnlimited" }}</span>
+          </div>
+          <div>
+            <a-switch v-model="bulkOps.skipDisabled" size="small"></a-switch>
+            <span :style="{ marginInlineStart: '8px' }">{{ i18n "pages.inbounds.skipDisabled" }}</span>
+          </div>
+        </a-space>
+      </template>
       <div v-if="bulkOps.progress.running || bulkOps.progress.done > 0" :style="{ marginTop: '14px' }">
         <a-progress :percent="bulkProgressPercent()"
           :status="bulkOps.progress.running ? 'active' : 'success'"></a-progress>

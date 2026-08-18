@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>pro-ui Overview redesign, local preview</title>
+<title>vpn-ui Overview redesign, local preview</title>
 <style>
   :root{ --bg:#f4f6f8; --card:#fff; --border:#e4e9ee; --text:#1b2430; --text-2:#5a6675; --text-3:#94a1b2; --accent:#008771; --accent-weak:#e2f2ee; }
   @media (prefers-color-scheme:dark){ :root{ --bg:#0a1222; --card:#151f31; --border:#2c3950; --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.6); --text-3:rgba(255,255,255,.4); --accent:#1bbf9f; --accent-weak:rgba(27,191,159,.14); } }
@@ -26,7 +26,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>pro-ui Overview redesign</h1>
+    <h1>vpn-ui Overview redesign</h1>
     <p class="sub">Seven directions. Each page has a light/dark toggle (top-right, defaults to your OS theme) and shows the server's OS distro + logo.</p>
 
     <p class="eyebrow">New directions</p>
@@ -49,6 +49,41 @@
       <a class="card" href="clients/gallery.html"><div class="row"><span class="tag">All five</span></div><h2>Five ways to list accounts</h2><p>Ledger, Roster, Workbench, Cards, Triage. One switcher, the same twelve accounts, each with its cost stated.</p></a>
     </div>
 
+    <p class="eyebrow">Account info</p>
+    <div class="grid">
+      <a class="card" href="account-info/gallery.html"><div class="row"><span class="tag">All five</span></div><h2>Five ways to show one account</h2><p>Handout, Vitals, Manifest, Sheet, Timeline. The account half of the info modal, one account on four inbound families, with a depleted toggle.</p></a>
+    </div>
+
+    <p class="eyebrow">Inbounds list</p>
+    <div class="grid">
+      <a class="card" href="inbounds/gallery.html#manifest"><div class="row"><span class="tag">Manifest, chosen</span></div><h2>Shipped: the table, earned</h2><p>Eleven columns became five. Identity, traffic over a meter, one segmented account bar. Built and verified in both themes and on a phone.</p></a>
+      <a class="card" href="inbounds/endpoint.html"><div class="row"><span class="tag">Open question</span></div><h2>Endpoint, five ways</h2><p>Shared host, Ghost host, Column, Handoff, Reachable. The chosen direction taken further, over an inbound bound to one interface and one reached at a CDN name the panel has never been told.</p></a>
+      <a class="card" href="inbounds/port.html"><div class="row"><span class="tag">First pass</span></div><h2>The port, five ways</h2><p>Weighted, Named, Chip, Column, Endpoint. Only the port changes between tabs; the rest is the shipped row. All five carry one port, two ports and none at all.</p></a>
+      <a class="card" href="inbounds/gallery.html"><div class="row"><span class="tag">All five</span></div><h2>Five ways to list inbounds</h2><p>Manifest, Rack, Console, Board, Watch. The page users live in, over thirteen inbounds including one the core refuses, one that can never be metered and one that binds no port. Each direction states its cost.</p></a>
+    </div>
+
+    <p class="eyebrow">Inbound info</p>
+    <div class="grid">
+      <a class="card" href="inbound-info/gallery.html"><div class="row"><span class="tag">All five</span></div><h2>Five ways to show an inbound</h2><p>Path, Sheet, Verdict, Handoff, Meter. The inbound half, over four inbounds including one that is genuinely broken and one with no accounts.</p></a>
+    </div>
+
+    <p class="eyebrow">Inbound add/edit form</p>
+    <div class="grid">
+      <a class="card" href="inbound-form/rail.html"><div class="row"><span class="tag">Chosen</span></div><h2>The rail, five ways</h2><p>Twin, Twin with state, Grouped, Spec rail, Adaptive. What the rail carries, drawn at the client modal's own 820px and 200px rail, with icons verified against the bundled antd.</p></a>
+      <a class="card" href="inbound-form/schemes.html"><div class="row"><span class="tag">All five</span></div><h2>Five ways to rebuild the inbound form</h2><p>Ledger, Rail, Stepper, Bento, Split. Drawn over the measured surface: 24 protocols from 23 fields to 195, in one 520px column. Switch protocol and Add/Edit and all five redraw.</p></a>
+    </div>
+
+    <p class="eyebrow">Client info: two buttons</p>
+    <div class="grid">
+      <a class="card" href="client-info/dossier.html"><div class="row"><span class="tag">Chosen</span></div><h2>Dossier</h2><p>The account pinned on the left with its subscription QR and Export TXT/PDF for everything; memberships on the right, each with its own export and artifact.</p></a>
+      <a class="card" href="client-info/schemes.html"><div class="row"><span class="tag">All five</span></div><h2>The five panels it came from</h2><p>One Scan, Bento, Ledger, Dossier, Carousel. Each carrying the subscription link and QR, health, quota, expiry and every membership's own artifact.</p></a>
+    </div>
+
+    <p class="eyebrow">Section navigation</p>
+    <div class="grid">
+      <a class="card" href="nav/schemes.html"><div class="row"><span class="tag">All five</span></div><h2>Five ways to replace the tab strip</h2><p>Tree, Column, Rail, Scroll, Strip. Every scheme is live and clickable, drawn over the real twenty sub-categories of Settings and Xray.</p></a>
+    </div>
+
     <p class="eyebrow">Login page</p>
     <div class="grid">
       <a class="card" href="login/gallery.html"><div class="row"><span class="tag">All five</span></div><h2>Side by side</h2><p>Every direction below, live, with theme and width controls.</p></a>
@@ -59,7 +94,7 @@
       <a class="card" href="login/keyplate.html"><div class="row"><span class="tag">Keyplate</span></div><h2>Maximum restraint</h2><p>Wordmark, two ruled fields, one accent gesture.</p></a>
     </div>
 
-    <p class="foot">Design mockups for the pro-ui Overview and login page. Sample data only.</p>
+    <p class="foot">Design mockups for the vpn-ui Overview and login page. Sample data only.</p>
   </div>
 </body>
 </html>

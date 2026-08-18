@@ -74,32 +74,11 @@ PPP_VER="$(pkgconf --modversion pppd 2>/dev/null || ls /usr/lib/pppd | head -1)"
 [ -d "/usr/lib/pppd/$PPP_VER" ] || { echo "FATAL: /usr/lib/pppd/$PPP_VER missing: ppp-dev and ppp disagree on the version" >&2; exit 1; }
 echo "== building against ppp $PPP_VER (must match pppd-bundle.sh) =="
 
-# Download with retries + backoff (same hardening as the other recipes; the
-# bare `wget -q` dies silently with exit 4 on a transient network blip). The
-# browser-like -U is deliberate: download servers 403 the stock BusyBox wget
-# User-Agent.
-dl_retry() {
-    local d="$1"; shift
-    for url in "$@"; do
-        for n in 1 2 3 4 5; do
-            echo "  dl[try $n] $url"
-            if wget -t 1 -T 60 -q -U "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" -O "$d" "$url" 2>/tmp/dl.err; then
-                echo "  ok: $url -> $d ($(wc -c < "$d") bytes)"
-                return 0
-            fi
-            sleep "$n"
-        done
-    done
-    echo "FATAL: download failed: $d" >&2
-    exit 1
-}
-
 # --- source --------------------------------------------------------------------
 # The project moved off SourceForge; GitLab is the only place 1.0.20 exists, and
 # a GitLab archive is a git snapshot with no ./configure, hence autogen.sh.
 cd /tmp
-dl_retry sstp-client.tar.gz \
-    "https://gitlab.com/sstp-project/sstp-client/-/archive/${SSTP_VER}/sstp-client-${SSTP_VER}.tar.gz"
+wget -q "https://gitlab.com/sstp-project/sstp-client/-/archive/${SSTP_VER}/sstp-client-${SSTP_VER}.tar.gz" -O sstp-client.tar.gz
 tar xf sstp-client.tar.gz
 cd "sstp-client-${SSTP_VER}"
 ./autogen.sh >/dev/null 2>&1
@@ -123,7 +102,7 @@ grep -q "MPPE-Keys.*yes" /tmp/sstp-conf.log \
     || { echo "FATAL: configure disabled MPPE key export: the SSTP crypto binding cannot be computed" >&2; exit 1; }
 
 # --- phase 1: normal build (gives us the plugin as a real .so) ------------------
-make -j"$(nproc)" 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion' >/tmp/sstp-make.log 2>&1 \
+make -j"$(nproc)" >/tmp/sstp-make.log 2>&1 \
     || { echo "FATAL: sstp-client build failed" >&2; tail -40 /tmp/sstp-make.log >&2; exit 1; }
 
 # --- the relocatable tree ------------------------------------------------------
@@ -158,7 +137,7 @@ mkdir -p "$DEST/sbin" "$DEST/lib" "$DEST/lib/ossl-modules"
 # /usr/sbin/sstpc, which is also what makes the ldd walk below resolve libsstp_api.
 # Installing into the container's own /usr is safe: the container is disposable, and
 # the tree we ship is assembled at $PREFIX.
-make install 'CC=gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion' >/tmp/sstp-install.log 2>&1 \
+make install >/tmp/sstp-install.log 2>&1 \
     || { echo "FATAL: sstp-client install failed" >&2; tail -30 /tmp/sstp-install.log >&2; exit 1; }
 [ -f /usr/sbin/sstpc ] || { echo "FATAL: /usr/sbin/sstpc missing after install" >&2; exit 1; }
 cp /usr/sbin/sstpc "$DEST/sbin/sstpc.bin"
@@ -210,7 +189,7 @@ mkdir -p /out
 PLUGIN_OBJ="$(ls src/pppd-plugin/.libs/*sstp-plugin.o 2>/dev/null | head -1)"
 [ -n "$PLUGIN_OBJ" ] || { echo "FATAL: plugin object not found under src/pppd-plugin/.libs" >&2; exit 1; }
 [ -f src/libsstp-api/.libs/libsstp_api.a ] || { echo "FATAL: PIC libsstp_api.a not built (did --with-pic take effect?)" >&2; exit 1; }
-gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion -shared -o /out/sstp-pppd-plugin.so "$PLUGIN_OBJ" src/libsstp-api/.libs/libsstp_api.a
+gcc -shared -o /out/sstp-pppd-plugin.so "$PLUGIN_OBJ" src/libsstp-api/.libs/libsstp_api.a
 strip /out/sstp-pppd-plugin.so 2>/dev/null || true
 
 # --- self-checks ---------------------------------------------------------------

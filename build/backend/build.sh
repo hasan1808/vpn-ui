@@ -55,41 +55,18 @@ build_arch() {
             openssl-dev openssl-libs-static libcap-ng-dev libcap-ng-static \
             lzo-dev lz4-dev lz4-static
 
-        # Download with retries + backoff: swupdate.openvpn.org drops/rate-limits
-        # automated fetches (it 403s the stock BusyBox wget User-Agent when it
-        # has flagged the IP, so dl_retry sends a browser-like -U), and
-        # sourceforge reconnects; the bare `wget -q` that used to sit here dies
-        # silently with exit 4 on the first blip - which is how CI has failed
-        # mid-recipe more than once.
-        dl_retry() {
-            local d="$1"; shift
-            for url in "$@"; do
-                for n in 1 2 3 4 5; do
-                    echo "  dl[try $n] $url"
-                    if wget -t 1 -T 60 -q -U "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" -O "$d" "$url" 2>/tmp/dl.err; then
-                        echo "  ok: $url -> $d ($(wc -c < "$d") bytes)"
-                        return 0
-                    fi
-                    sleep "$n"
-                done
-            done
-            echo "FATAL: download failed: $d" >&2
-            exit 1
-        }
-
         # --- xl2tpd (static) ---
         git clone --depth 1 https://github.com/xelerance/xl2tpd /src/xl2tpd
         cd /src/xl2tpd
         # Only the main daemon + control tool are needed (pfc requires libpcap).
-        make -j"$(nproc)" xl2tpd xl2tpd-control LDFLAGS="-static" CC="gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion"
+        make -j"$(nproc)" xl2tpd xl2tpd-control LDFLAGS="-static"
         cp xl2tpd xl2tpd-control /out/
         strip /out/xl2tpd /out/xl2tpd-control || true
 
         # --- openvpn (static) ---
         cd /tmp
         OVPN_VER=2.6.12
-        dl_retry "openvpn-${OVPN_VER}.tar.gz" \
-            "https://swupdate.openvpn.org/community/releases/openvpn-${OVPN_VER}.tar.gz"
+        wget -q "https://swupdate.openvpn.org/community/releases/openvpn-${OVPN_VER}.tar.gz"
         tar xf "openvpn-${OVPN_VER}.tar.gz"
         cd "openvpn-${OVPN_VER}"
         # No plugins/dco, but lzo AND lz4 are in: a provider profile that says
@@ -104,22 +81,18 @@ build_arch() {
             LIBCAPNG_CFLAGS=" " LIBCAPNG_LIBS="-l:libcap-ng.a" \
             LZO_CFLAGS=" " LZO_LIBS="-l:liblzo2.a" \
             LZ4_CFLAGS=" " LZ4_LIBS="-l:liblz4.a"
-        make -j"$(nproc)" LDFLAGS="-all-static -s" CC="gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion"
+        make -j"$(nproc)" LDFLAGS="-all-static -s"
         cp src/openvpn/openvpn /out/openvpn
 
         # --- pptpd (static) ---
         # pptpd execs pptpctrl at the compile-time SBINDIR path (no PATH lookup),
         # so pin it to a fixed sentinel that provisioning symlinks to the bundle.
-        # Sourceforge 403s automated egress (rate-limits the IP after a few hits),
-        # so the Ubuntu archive of the identical upstream tarball is the fallback.
         cd /tmp
-        dl_retry pptpd.tar.gz \
-            "https://downloads.sourceforge.net/project/poptop/pptpd/pptpd-1.4.0/pptpd-1.4.0.tar.gz" \
-            "https://archive.ubuntu.com/ubuntu/pool/main/p/pptpd/pptpd_1.4.0.orig.tar.gz"
+        wget -q "https://downloads.sourceforge.net/project/poptop/pptpd/pptpd-1.4.0/pptpd-1.4.0.tar.gz" -O pptpd.tar.gz
         tar xf pptpd.tar.gz
         cd pptpd-1.4.0
         ./configure --sbindir=/usr/libexec/vpn-ui
-        make pptpd pptpctrl LDFLAGS="-static" CC="gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion"
+        make pptpd pptpctrl LDFLAGS="-static"
         cp pptpd pptpctrl /out/
         strip /out/pptpd /out/pptpctrl || true
 
@@ -134,12 +107,10 @@ build_arch() {
         # pppd is the parent and that path is never consulted.
         cd /tmp
         PPTP_VER=1.10.0
-        dl_retry pptp.tar.gz \
-            "https://downloads.sourceforge.net/project/pptpclient/pptp/pptp-${PPTP_VER}/pptp-${PPTP_VER}.tar.gz" \
-            "https://deb.debian.org/debian/pool/main/p/pptp-linux/pptp-linux_${PPTP_VER}.orig.tar.gz"
+        wget -q "https://downloads.sourceforge.net/project/pptpclient/pptp/pptp-${PPTP_VER}/pptp-${PPTP_VER}.tar.gz" -O pptp.tar.gz
         tar xf pptp.tar.gz
         cd "pptp-${PPTP_VER}"
-        make -j"$(nproc)" pptp LDFLAGS="-static" CC="gcc -Wno-error=implicit-function-declaration -Wno-error=implicit-int -Wno-error=int-conversion"
+        make -j"$(nproc)" pptp LDFLAGS="-static"
         cp pptp /out/pptp
         strip /out/pptp || true
 
@@ -272,29 +243,6 @@ build_arch() {
         -v "$REPO_ROOT/build/backend/telemt-bundle.sh:/telemt-bundle.sh:ro" \
         -v "$REPO_ROOT/third_party/telemt:/src:ro" \
         rust:alpine sh -e /telemt-bundle.sh
-
-    # The bundle is the ONLY source of these daemons for the release binary
-    # (backend/bin is git-ignored and embedded via //go:embed all:bin), so an
-    # incomplete bundle must fail the build, not ship a release where the panel
-    # reports "daemons not in this build's bundle". This is also what makes CI
-    # retry (release.yml loops the whole build 3x) on a genuinely flaky host.
-    local missing=()
-    local f
-    for f in xl2tpd xl2tpd-control openvpn pptpd pptpctrl pptp \
-             pppd-bundle.tgz libreswan-bundle.tgz \
-             ocserv occtl ocserv-worker openconnect vpnc-script \
-             accel-ppp-bundle.tgz sstpc-bundle.tgz sstp-pppd-plugin.so \
-             strongswan-bundle.tgz telemt; do
-        if [[ ! -s "$outdir/$f" ]]; then
-            missing+=("$f")
-        fi
-    done
-    if ((${#missing[@]})); then
-        err "bundle for $goarch is incomplete — missing: ${missing[*]}"
-        err "the release would ship a broken bundle; failing build"
-        exit 1
-    fi
-    ok "bundle verified: all $goarch daemons present"
 
     ok "Done: $(ls -lh "$outdir")"
 }

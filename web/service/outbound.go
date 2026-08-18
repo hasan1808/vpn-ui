@@ -157,8 +157,10 @@ type OutboundStatusRow struct {
 }
 
 // TestOutbound tests an outbound by creating a temporary xray instance and measuring response time.
-// allOutboundsJSON must be a JSON array of all outbounds; they are copied into the test config unchanged.
-// Only the test inbound and a route rule (to the tested outbound tag) are added.
+// allOutboundsJSON must be a JSON array of all outbounds; they are copied into the test config
+// and then put through the SAME synthesis the live config gets (see createTestConfig), so what
+// is measured is what will run. Only the test inbound and a route rule (to the tested outbound
+// tag) are added.
 func (s *OutboundService) TestOutbound(outboundJSON string, testURL string, allOutboundsJSON string) (*TestOutboundResult, error) {
 	if testURL == "" {
 		testURL = "https://www.google.com/generate_204"
@@ -209,6 +211,22 @@ func (s *OutboundService) TestOutbound(outboundJSON string, testURL string, allO
 		allOutbounds = []any{testOutbound}
 	}
 
+	// Read the stored tunnels ONCE, so the refusal below and the synthesis inside
+	// createTestConfig cannot disagree about a tunnel that changed in between.
+	tunnels := (&VpnOutboundService{}).List()
+	sshTunnels := (&SshOutboundService{}).List()
+
+	// A tunnel with no live device is refused here rather than tested. The synthesis
+	// turns that tag into a BLACKHOLE (applyVpnOutboundsWith fails closed), so the test
+	// would otherwise report "Request failed" and leave the operator guessing between a
+	// dead tunnel, a dead proxy and a dead internet. Naming the tunnel is the whole
+	// value: this is the one failure the test can diagnose exactly.
+	if t, ok := findVpnTunnel(tunnels, outboundTag); ok {
+		if why := vpnOutNotTestable(t); why != "" {
+			return &TestOutboundResult{Success: false, Error: why}, nil
+		}
+	}
+
 	// Find an available port for test inbound
 	testPort, err := findAvailablePort()
 	if err != nil {
@@ -218,8 +236,8 @@ func (s *OutboundService) TestOutbound(outboundJSON string, testURL string, allO
 		}, nil
 	}
 
-	// Copy all outbounds as-is, add only test inbound and route rule
-	testConfig := s.createTestConfig(outboundTag, allOutbounds, testPort)
+	// Copy all outbounds, synthesize the tunnels over them, add test inbound and route rule
+	testConfig := s.createTestConfig(outboundTag, allOutbounds, testPort, tunnels, sshTunnels)
 
 	// Use a temporary config file so the main config.json is never overwritten
 	testConfigPath, err := createTestConfigPath()
@@ -325,9 +343,36 @@ func (s *OutboundService) probeExit(proxyPort int) ExitInfo {
 	return LookupExit(client)
 }
 
-// createTestConfig creates a test config by copying all outbounds unchanged and adding
-// only the test inbound (SOCKS) and a route rule that sends traffic to the given outbound tag.
-func (s *OutboundService) createTestConfig(outboundTag string, allOutbounds []any, testPort int) *xray.Config {
+// createTestConfig creates a test config by copying all outbounds, running the stored VPN
+// tunnels over them exactly as the live config build does, and adding only the test inbound
+// (SOCKS) and a route rule that sends traffic to the given outbound tag.
+//
+// THE SYNTHESIS IS NOT OPTIONAL, and leaving it out is what this comment is for. A VPN
+// tunnel's row in the template is NOT the outbound Xray runs: applyVpnOutboundsWith rebuilds
+// it on every config build, forcing the freedom protocol, the UseIP strategy and the
+// SO_BINDTODEVICE pin, dropping mux and dropping sockopt.dialerProxy. Copying the row
+// verbatim therefore tested a DIFFERENT outbound from the one in service, and every way it
+// could differ was a way the test could lie:
+//
+//   - a dialerProxy the operator typed into the sockopt form is deleted from the live
+//     outbound and was kept by the test. dialerProxy CANCELS the interface pin (DialSystem
+//     returns redirect() before the bind ever happens), so the test dialled the proxy and
+//     reported the PROXY's exit address for a tunnel that egresses somewhere else entirely.
+//     Measured on this box: pin only -> 65.109.217.240 (FI, the tunnel); pin + dialerProxy
+//     -> 212.8.240.13 (NL, the proxy). That is the report this function exists to answer.
+//   - the pin in the row is a COPY, written when the tunnel was created. A tunnel that
+//     redialled onto another device leaves it stale, and a stale pin does not fail: the core
+//     swallows the failed BindToDevice at Info level and the socket goes out the host's own
+//     WAN. Measured: pin to a device that does not exist -> 216.147.121.163 (the host).
+//   - a tunnel that is down is a blackhole in the live config and was a plain freedom
+//     outbound in the test, i.e. the test leaked out the host WAN and called it a pass.
+//
+// The last two matter most, because they are silent: a green delay tag and an exit address
+// that is not the tunnel's is the exact tool an operator uses to confirm there is NO leak.
+// Both tunnel lists are ARGUMENTS rather than read here, so this stays a pure function of
+// what it is given and the tests can pin its behaviour without a database.
+func (s *OutboundService) createTestConfig(outboundTag string, allOutbounds []any, testPort int,
+	tunnels []VpnOutboundConfig, sshTunnels []SshOutboundConfig) *xray.Config {
 	// Test inbound (SOCKS proxy) - only addition to inbounds
 	testInbound := xray.InboundConfig{
 		Tag:      "test-inbound",
@@ -395,7 +440,49 @@ func (s *OutboundService) createTestConfig(outboundTag string, allOutbounds []an
 		Stats:           json_util.RawMessage(`{}`),
 	}
 
+	// The same two calls the live build makes, in the same order and on the same lists,
+	// so the two cannot drift: a change to either synthesis reaches the test
+	// automatically. A tunnel that has no row here is APPENDED, which is also what the
+	// live build does and is what makes a tunnel testable at all before the operator has
+	// pressed Save on the Xray page.
+	//
+	// SSH is included for the same reason as VPN, in its smaller form: the row is a socks
+	// outbound aimed at a loopback port the panel allocated, and the port in the row is a
+	// copy. A tunnel that came back on a different port after a restart leaves the row
+	// pointing at whatever else took the number, and that is not a connection error, it is
+	// a successful test of somebody else's proxy.
+	if err := applySshOutboundsWith(cfg, sshTunnels); err != nil {
+		logger.Warning("outbound test: could not synthesize the SSH outbounds:", err)
+	}
+	if err := applyVpnOutboundsWith(cfg, tunnels); err != nil {
+		logger.Warning("outbound test: could not synthesize the VPN client outbounds:", err)
+	}
+
 	return cfg
+}
+
+// vpnOutNotTestable says why a stored tunnel cannot be tested, or "" when it can.
+//
+// The three conditions are applyVpnOutboundsWith's own fail-closed test, deliberately
+// duplicated rather than inferred from the config it produces: reading a blackhole back out
+// of the marshalled outbounds would say WHAT happened and not WHY, and "enabled but the
+// device is gone" and "switched off" want different sentences.
+func vpnOutNotTestable(t VpnOutboundConfig) string {
+	switch {
+	case !t.Enable:
+		return fmt.Sprintf("the %q tunnel is switched off, so there is nothing to test. "+
+			"The live config blackholes this tag while it is off, which is why the test refuses "+
+			"rather than measuring the host's own connection and calling it a pass", t.Tag)
+	case t.Iface == "":
+		return fmt.Sprintf("the %q tunnel has no network device, so it never came up. "+
+			"Re-save the outbound to dial it again, and read the client log if it still fails", t.Tag)
+	case vpnOutIfaceGone(t.Iface):
+		return fmt.Sprintf("the %q tunnel claims device %q, which is not on this host: the tunnel "+
+			"is down. Traffic on this tag is blackholed until it comes back, which is deliberate - "+
+			"an outbound pinned to a device that is gone does NOT fail, it silently leaves through "+
+			"the host's own WAN", t.Tag, t.Iface)
+	}
+	return ""
 }
 
 // testConnection tests the connection through the proxy and measures delay.

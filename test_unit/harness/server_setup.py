@@ -112,27 +112,37 @@ _MT_SECRET = ["00112233445566778899aabbccddeeff",
               "ffeeddccbbaa99887766554433221100"]
 
 
-def _mt_client(acct: Account, idx: int, modes=("classic", "secure", "tls")) -> dict:
+def _mt_client(acct: Account, idx: int) -> dict:
     """An mtproto client as the panel API expects it.
 
     Identity is the EMAIL (there is no username: the wg-c model); the credential is
-    `secret`. Modes / FakeTLS domain / User Limit / ad tag / external proxy are all
-    PER CLIENT, so they live here rather than on the inbound.
+    `secret`. That plus the external-proxy list is ALL an account owns: the connection
+    modes, the FakeTLS domain, the ad tag and the device cap belong to the inbound
+    (_mt_inbound_settings), because telemt applies each of them process-wide.
 
     `id` is still sent because the panel's shared client plumbing is id-keyed; it
     mirrors the email exactly, the way wg-c does it.
     """
     return {"id": acct.email, "email": acct.email, "secret": _MT_SECRET[idx],
             "enable": True,
-            "modeClassic": "classic" in modes,
-            "modeSecure": "secure" in modes,
-            "modeTls": "tls" in modes,
-            "tlsDomain": MTPROTO_TLS_DOMAIN,
-            "adtagEnable": False, "adtag": "",
-            "userLimit": MTPROTO_USER_LIMIT,
             "externalProxy": [],
             "expiryTime": 0, "totalGB": 0, "limitIp": 0,
             "tgId": "", "subId": "", "comment": "", "reset": 0}
+
+
+def _mt_inbound_settings(clients, modes=("classic", "secure", "tls")) -> dict:
+    """The mtproto inbound's own settings: which transports the listener accepts, the
+    domain its FakeTLS emulation models, the ad tag, and the per-account device cap."""
+    return {
+        "modeClassic": "classic" in modes,
+        "modeSecure": "secure" in modes,
+        "modeTls": "tls" in modes,
+        "tlsDomain": MTPROTO_TLS_DOMAIN,
+        "adtagEnable": False,
+        "adtag": "",
+        "userLimit": MTPROTO_USER_LIMIT,
+        "clients": clients,
+    }
 
 
 def _mt_secret_shapes(base: str) -> dict:
@@ -980,15 +990,13 @@ def run(panel: Panel, server_ip: str, cfg: dict, result: JobResult,
     log("-> creating mtproto inbound (telemt, all 3 modes, 2 accounts, user-limit 3)...")
     mts = phase.add(SubTest("mtproto-inbound"))
     try:
-        # A: all three modes. B: SECURE ONLY: deliberately different, so the suite can
-        # prove per-account enforcement rather than just per-inbound. The listener ends
-        # up allowing all three (the union), so B being refused on classic/tls can only
-        # come from [access.user_modes]; if that patch ever stopped working, B would
-        # start passing modes it does not hold and the mode-restriction subtest fails.
-        settings = {
-            "clients": [_mt_client(_acct("mtproto", 0), 0),
-                        _mt_client(_acct("mtproto", 1), 1, modes=("secure",))],
-        }
+        # Both accounts hold the inbound's three modes, because the modes ARE the
+        # inbound's: telemt's listener set is process-wide and its per-user map is
+        # written from that same set, so a per-account subset was never a thing it
+        # could enforce. The second account is still here to prove two accounts relay
+        # independently on one inbound and are billed separately.
+        settings = _mt_inbound_settings([_mt_client(_acct("mtproto", 0), 0),
+                                         _mt_client(_acct("mtproto", 1), 1)])
         inb = panel.add_inbound("test-mtproto", MTPROTO_PORT, "mtproto", settings)
         iid = inb["id"]
         mt_ib = Inbound(
@@ -1001,14 +1009,13 @@ def run(panel: Panel, server_ip: str, cfg: dict, result: JobResult,
             "A": _mt_secret_shapes(_MT_SECRET[0]),
             "B": _mt_secret_shapes(_MT_SECRET[1]),
         }
-        # Which modes each account HOLDS, so the suite can assert both directions:
-        # an allowed mode must work, and a mode the account does not hold must be
-        # refused even though the listener accepts it for the other account.
-        mt_ib.mt_modes = {"A": ["classic", "secure", "tls"], "B": ["secure"]}
+        # The modes every account on this inbound holds, which is the inbound's set.
+        mt_ib.mt_modes = {"A": ["classic", "secure", "tls"],
+                          "B": ["classic", "secure", "tls"]}
         sc.inbounds["mtproto"] = mt_ib
         mts.status = Status.PASS
-        mts.detail = (f"inbound {iid}, tcp {MTPROTO_PORT}, 2 accounts "
-                      f"(A: classic+secure+tls, B: secure-only: per-client modes), "
+        mts.detail = (f"inbound {iid}, tcp {MTPROTO_PORT}, 2 accounts, "
+                      f"modes classic+secure+tls (inbound-wide), "
                       f"tls_domain {MTPROTO_TLS_DOMAIN}")
     except Exception as e:  # noqa: BLE001
         mts.status = Status.ERROR

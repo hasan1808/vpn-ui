@@ -213,11 +213,17 @@ func loadMultiplierInbounds(tx *gorm.DB, idSets ...[]int) (map[int]*model.Inboun
 // or that traffic bills at 1:1 forever. Deciding where the delta sits relative to
 // the threshold needs the current counter, so unlike the bare `up = up + ?` this
 // replaces, it is a read-modify-write, hence the transaction.
-// protocol names where the torn-down session was served, so the bytes bill at
-// THAT inbound's multiplier rather than at whichever inbound the account's single
-// client_traffics row happens to name. Empty falls back to the max across the
-// account's memberships, which over-bills rather than under-bills.
-func foldClientTraffic(email, protocol string, up, down int64) {
+//
+// inboundId is the inbound the torn-down session was actually served on, which the
+// session registry now carries (see radiusSession.inboundId). It decides two
+// things: the multiplier the bytes bill at, and which membership they are
+// attributed to in the per-inbound breakdown. 0 means the caller could not tell,
+// and falls back to protocol, which names where the session was served but only
+// resolves when one inbound of that protocol serves the account. If that is
+// ambiguous too, the multiplier takes the max across the account's memberships
+// (over-billing rather than under-billing) and the breakdown takes NOTHING, because
+// a guess there would put another inbound's bytes on this one's row.
+func foldClientTraffic(email, protocol string, inboundId int, up, down int64) {
 	if email == "" || (up <= 0 && down <= 0) {
 		return
 	}
@@ -229,8 +235,8 @@ func foldClientTraffic(email, protocol string, up, down int64) {
 	// Resolved outside the transaction: it is a read-only lookup over the handful
 	// of inbounds of one protocol, and holding the write transaction open across
 	// it would widen the window on the 10s tick for no benefit.
-	sourceInboundId := 0
-	if protocol != "" {
+	sourceInboundId := inboundId
+	if sourceInboundId == 0 && protocol != "" {
 		inboundService := InboundService{}
 		sourceInboundId = inboundService.SingleInboundIdByEmail(protocol)[accountKey(email)]
 	}
@@ -265,9 +271,20 @@ func foldClientTraffic(email, protocol string, up, down int64) {
 		// startup backfill (MigrationRequirements) sets all_time = up+down for any
 		// row still at 0, which for a client whose traffic only ever arrived through
 		// this path would seed the lifetime record with MULTIPLIED bytes.
-		return tx.Exec(
+		if err := tx.Exec(
 			"UPDATE client_traffics SET up = up + ?, down = down + ?, all_time = COALESCE(all_time, 0) + ? WHERE email = ?",
-			billedUp, billedDown, up+down, email).Error
+			billedUp, billedDown, up+down, email).Error; err != nil {
+			return err
+		}
+		// The same delta into the breakdown, gated on sourceInboundId rather than on
+		// billingId: billingId falls back to the account's HOME inbound, which is a
+		// fine answer for "whose multiplier" and precisely the wrong one for "whose
+		// bytes" - it is the fallback that made every membership's usage look like it
+		// belonged to the inbound the account was created on.
+		deltas := map[membershipUsageKey]*membershipUsageDelta{}
+		addTo(deltas, sourceInboundId, email, billedUp, billedDown, up+down)
+		addMembershipTraffic(tx, deltas)
+		return nil
 	})
 	if err != nil {
 		logger.Warning("fold client traffic for ", email, ": ", err)

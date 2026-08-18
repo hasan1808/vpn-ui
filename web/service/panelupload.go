@@ -50,7 +50,7 @@ const (
 	PanelUploadSame      = "same"
 	PanelUploadUnknown   = "unknown"
 
-	// A version probe should answer instantly; anything slower is not a pro-ui binary
+	// A version probe should answer instantly; anything slower is not a vpn-ui binary
 	// behaving normally and must not hold a request open.
 	panelVersionProbeTimeout = 15 * time.Second
 	panelVersionProbeMaxOut  = 4 << 10
@@ -159,15 +159,11 @@ func StagePanelBinary(src io.Reader, declaredSize int64) (StagedPanelInfo, error
 		_ = os.Remove(staged)
 		return info, fmt.Errorf("that file is not a %s Linux binary", runtime.GOARCH)
 	}
-	if !HasSQLiteSupport(staged) {
-		_ = os.Remove(staged)
-		return info, fmt.Errorf("that binary lacks CGO/SQLite support — build with CGO_ENABLED=1")
-	}
 	// A pure parse, no execution: a shell script, a stripped C binary or somebody
 	// else's ELF is refused before the probe below ever runs it.
 	if !isGoBinary(staged) {
 		_ = os.Remove(staged)
-		return info, errors.New("that file is not a Go binary, so it is not a pro-ui panel")
+		return info, errors.New("that file is not a Go binary, so it is not a vpn-ui panel")
 	}
 
 	version, err := panelBinaryVersion(staged)
@@ -290,7 +286,7 @@ func StagePanelBinaryFromURL(rawURL string) (StagedPanelInfo, error) {
 	if err != nil {
 		return info, fmt.Errorf("that URL could not be requested: %w", err)
 	}
-	req.Header.Set("User-Agent", "pro-ui")
+	req.Header.Set("User-Agent", "vpn-ui")
 
 	resp, err := panelFetchClient().Do(req)
 	if err != nil {
@@ -318,7 +314,7 @@ func StagePanelBinaryFromURL(rawURL string) (StagedPanelInfo, error) {
 	setUpdateProgress(updatePhaseDownloading, 0)
 
 	info, err = StagePanelBinary(
-		&phaseFlipReader{r: newProgressReader(resp.Body, resp.ContentLength, 0)},
+		&phaseFlipReader{r: newProgressReader(resp.Body, resp.ContentLength)},
 		resp.ContentLength,
 	)
 	if err != nil {
@@ -336,7 +332,7 @@ func StagePanelBinaryFromURL(rawURL string) (StagedPanelInfo, error) {
 // info parse, and a -v probe that execs it), and reporting a download through all of
 // that shows a bar frozen at 99% with the speed decaying to zero.
 type phaseFlipReader struct {
-	r       io.Reader
+	r      io.Reader
 	flipped bool
 }
 
@@ -365,11 +361,7 @@ func validatePanelBinaryURL(raw string) (string, error) {
 	switch u.Scheme {
 	case "http", "https":
 	case "":
-		raw = "https://" + raw
-		u, err = url.Parse(raw)
-		if err != nil {
-			return "", fmt.Errorf("that is not a valid URL: %w", err)
-		}
+		return "", errors.New("that URL is missing its scheme, it has to start with http:// or https://")
 	default:
 		return "", fmt.Errorf("%s:// cannot be downloaded from, use http:// or https://", u.Scheme)
 	}
@@ -489,9 +481,9 @@ func panelBinaryVersion(path string) (string, error) {
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
-			return "", errors.New("that binary did not answer with a version (it hung), so it is not a pro-ui build")
+			return "", errors.New("that binary did not answer with a version (it hung), so it is not a vpn-ui build")
 		}
-		return "", errors.New("that binary could not be run to read its version, so it is not a usable pro-ui build")
+		return "", errors.New("that binary could not be run to read its version, so it is not a usable vpn-ui build")
 	}
 
 	// First line only. -v prints the version and exits, so anything after it is noise
@@ -501,7 +493,7 @@ func panelBinaryVersion(path string) (string, error) {
 		version = strings.TrimSpace(version[:i])
 	}
 	if !panelVersionPattern.MatchString(version) {
-		return "", errors.New("that file did not report a version number, so it is not a pro-ui binary")
+		return "", errors.New("that file did not report a version number, so it is not a vpn-ui binary")
 	}
 	return strings.TrimPrefix(version, "v"), nil
 }

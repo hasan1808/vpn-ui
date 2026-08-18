@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/hasan1808/pro-ui/database/model"
 	"github.com/hasan1808/pro-ui/util/common"
@@ -35,15 +34,6 @@ func NewXraySettingController(g *gin.RouterGroup) *XraySettingController {
 
 // initRouter sets up the routes for Xray settings management.
 func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
-	// Dashboard read-only endpoints. The overview page is open to every user
-	// whose profile grants it (see XUIController.initRouter), so these live
-	// OUTSIDE the PermXraySettings gate below or a dashboard-only user gets a
-	// 403 — but they still answer to the same overview grant the page does.
-	dash := g.Group("/xray")
-	dash.Use(requireOverviewAccess())
-	dash.GET("/outboundStatus", a.outboundStatus)
-	dash.POST("/testAllOutbounds", a.testAllOutbounds)
-
 	g = g.Group("/xray")
 	g.Use(requirePerm(model.PermXraySettings))
 	g.GET("/getDefaultJsonConfig", a.getDefaultXrayConfig)
@@ -226,10 +216,16 @@ func (a *XraySettingController) sshoutbound(c *gin.Context) {
 // blob travels as text and is unmarshalled by hand, the same way importInbound and
 // testOutbound take theirs.
 type vpnOutboundForm struct {
-	Tag      string `form:"tag"`
-	Kind     string `form:"kind"`
-	Remark   string `form:"remark"`
-	Enable   bool   `form:"enable"`
+	Tag    string `form:"tag"`
+	Kind   string `form:"kind"`
+	Remark string `form:"remark"`
+	Enable bool   `form:"enable"`
+	// Via is the tag of another tunnel that carries this one's outer transport, which the
+	// browser sends straight from the row's Dialer Proxy select: that one control is how
+	// a chain is asked for on every outbound, tunnel or not. Blank is the ordinary case
+	// and blank is also what an older panel posts, which is why it binds as a plain
+	// string rather than through anything that would fail on absence.
+	Via      string `form:"via"`
 	Settings string `form:"settings"`
 }
 
@@ -292,6 +288,7 @@ func (a *XraySettingController) vpnoutbound(c *gin.Context) {
 			Kind:   f.Kind,
 			Remark: f.Remark,
 			Enable: f.Enable,
+			Via:    f.Via,
 		}
 		// Rejected here rather than left to the driver, because a malformed blob does
 		// not stop at the driver: it survives Validate if the driver only looks at the
@@ -392,157 +389,5 @@ func (a *XraySettingController) testOutbound(c *gin.Context) {
 		return
 	}
 
-	// Persist the outcome (keyed by the outbound's tag) so the Xray page and the
-	// dashboard can show the last result after a reload.
-	if tag, ok := outboundTagFromJSON(outboundJSON); ok {
-		_ = a.SettingService.SaveOutboundStatus(tag, &service.OutboundStatus{
-			Success:    result.Success,
-			Delay:      result.Delay,
-			StatusCode: result.StatusCode,
-			Error:      result.Error,
-			Exit:       result.Exit,
-			TestedAt:   time.Now().Unix(),
-		})
-	}
-
 	jsonObj(c, result, nil)
-}
-
-// outboundTagFromJSON extracts the "tag" field from an outbound JSON document.
-func outboundTagFromJSON(outboundJSON string) (string, bool) {
-	var ob map[string]any
-	if err := json.Unmarshal([]byte(outboundJSON), &ob); err != nil {
-		return "", false
-	}
-	tag, _ := ob["tag"].(string)
-	return tag, tag != ""
-}
-
-// systemOutboundTags are the built-in routing targets the panel always carries:
-// the default config's direct/blocked, the IPv4/IPv6 domain-strategy outbounds,
-// the DNS outbound and the metrics collector. None is a connectivity option the
-// operator created, so the dashboard card must not list them (nor test them).
-var systemOutboundTags = map[string]bool{
-	"direct": true, "blocked": true,
-	"IPv4": true, "IPv6": true,
-	"dns-out": true, "metrics_out": true,
-}
-
-// outboundStatus returns the dashboard-facing view of every outbound in the
-// current config: tag, protocol, accumulated traffic, and the last test outcome.
-func (a *XraySettingController) outboundStatus(c *gin.Context) {
-	statuses, err := a.SettingService.GetOutboundStatuses()
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
-	}
-
-	traffics, err := a.OutboundService.GetOutboundsTraffic()
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
-	}
-	trafficByTag := make(map[string]*model.OutboundTraffics, len(traffics))
-	for _, t := range traffics {
-		trafficByTag[t.Tag] = t
-	}
-
-	xraySetting, err := a.SettingService.GetXrayConfigTemplate()
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
-	}
-	unwrapped := service.UnwrapXrayTemplateConfig(xraySetting)
-	var cfg struct {
-		Outbounds []struct {
-			Tag      string `json:"tag"`
-			Protocol string `json:"protocol"`
-		} `json:"outbounds"`
-	}
-	if err := json.Unmarshal([]byte(unwrapped), &cfg); err != nil {
-		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
-	}
-
-	rows := make([]*service.OutboundStatusRow, 0, len(cfg.Outbounds))
-	for _, ob := range cfg.Outbounds {
-		// Skip the built-in routing targets: they are not connectivity options,
-		// and a panel with nothing but them has no outbounds to show.
-		if systemOutboundTags[ob.Tag] {
-			continue
-		}
-		row := &service.OutboundStatusRow{
-			Tag:      ob.Tag,
-			Protocol: ob.Protocol,
-		}
-		if t, ok := trafficByTag[ob.Tag]; ok {
-			row.Up = t.Up
-			row.Down = t.Down
-			row.Total = t.Total
-		}
-		if st, ok := statuses[ob.Tag]; ok {
-			row.Status = st
-		}
-		rows = append(rows, row)
-	}
-	jsonObj(c, rows, nil)
-}
-
-// testAllOutbounds tests every testable outbound in the current config in the
-// background, persisting each result as it completes. The HTTP request returns
-// immediately; the dashboard polls outboundStatus to watch progress. The
-// testSemaphore inside the service serializes the actual test runs.
-func (a *XraySettingController) testAllOutbounds(c *gin.Context) {
-	xraySetting, err := a.SettingService.GetXrayConfigTemplate()
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
-	}
-	unwrapped := service.UnwrapXrayTemplateConfig(xraySetting)
-	var cfg struct {
-		Outbounds []json.RawMessage `json:"outbounds"`
-	}
-	if err := json.Unmarshal([]byte(unwrapped), &cfg); err != nil {
-		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
-		return
-	}
-
-	all := make([]any, 0, len(cfg.Outbounds))
-	targets := make([]string, 0, len(cfg.Outbounds))
-	for _, raw := range cfg.Outbounds {
-		var ob map[string]any
-		if err := json.Unmarshal(raw, &ob); err != nil {
-			continue
-		}
-		tag, _ := ob["tag"].(string)
-		protocol, _ := ob["protocol"].(string)
-		if systemOutboundTags[tag] || protocol == "blackhole" || tag == "blocked" {
-			continue
-		}
-		all = append(all, ob)
-		targets = append(targets, string(raw))
-	}
-	allOutboundsJSON, _ := json.Marshal(all)
-
-	go func() {
-		testURL, _ := a.SettingService.GetXrayOutboundTestUrl()
-		for _, raw := range targets {
-			result, err := a.OutboundService.TestOutbound(raw, testURL, string(allOutboundsJSON))
-			if err != nil {
-				continue
-			}
-			if tag, ok := outboundTagFromJSON(raw); ok {
-				_ = a.SettingService.SaveOutboundStatus(tag, &service.OutboundStatus{
-					Success:    result.Success,
-					Delay:      result.Delay,
-					StatusCode: result.StatusCode,
-					Error:      result.Error,
-					Exit:       result.Exit,
-					TestedAt:   time.Now().Unix(),
-				})
-			}
-		}
-	}()
-
-	jsonObj(c, gin.H{"started": true}, nil)
 }

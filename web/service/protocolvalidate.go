@@ -114,7 +114,7 @@ func validateOpenvpnSettings(m map[string]any) error {
 	if err := checkAddressedVpnCommon(m); err != nil {
 		return err
 	}
-	for _, key := range []string{"udpEnable", "tcpEnable", "separatePorts", "tlsUseFile", "clientToClient", "crossInbound"} {
+	for _, key := range []string{"udpEnable", "tcpEnable", "separatePorts", "tlsUseFile", "tlsCryptEnable", "clientToClient", "crossInbound"} {
 		if _, _, err := optBool(m, key); err != nil {
 			return err
 		}
@@ -135,7 +135,7 @@ func validateOpenvpnSettings(m map[string]any) error {
 	if present && len(ciphers) == 0 {
 		return common.NewError(`"ciphers" must list at least one cipher`)
 	}
-	for _, key := range []string{"caCert", "caKey", "serverCert", "serverKey", "tlsCrypt", "caCertFile", "serverCertFile", "serverKeyFile", "tlsCryptFile"} {
+	for _, key := range []string{"caCert", "caKey", "serverCert", "serverKey", "tlsCrypt", "caCertFile", "serverCertFile", "serverKeyFile", "tlsCryptFile", "friendlyName"} {
 		if _, _, err := optString(m, key); err != nil {
 			return err
 		}
@@ -311,9 +311,52 @@ func validateGreSettings(m map[string]any) error {
 	return nil
 }
 
+// The ad tag is not checked here: it is a per-CLIENT field, and this validator only
+// ever sees the inbound-level object.
 func validateMtprotoSettings(m map[string]any) error {
-	// The inbound owns nothing but its port and its account list; everything else is
-	// per-account (see Inbound.MtprotoSettings), so there is nothing else to check.
+	if _, _, err := optString(m, "tlsDomain"); err != nil {
+		return err
+	}
+	// The device cap is per-ACCOUNT even though it lives on the inbound, the same
+	// reading l2tp/wgc/gre/openconnect use: telemt counts distinct source IPs per
+	// account against it.
+	if err := checkUserLimit(m); err != nil {
+		return err
+	}
+	// The inbound-wide link endpoints. Same shape and same checks as everywhere else;
+	// an account's own list overrides it at link-generation time.
+	if err := checkExternalProxy(m); err != nil {
+		return err
+	}
+	return checkMtprotoModes(m)
+}
+
+// checkMtprotoModes refuses an inbound with every connection mode off.
+//
+// It is not merely useless: telemt's per-user mode map (our patch) reads an EMPTY
+// entry as "no restriction", so a modeless inbound would hand every account every
+// mode instead of none. The daemon refuses to start on one for that reason
+// (MtprotoService.startable), and this is what keeps the state from being saved at all.
+//
+// An inbound with all three keys ABSENT is not judged: that is a body in the pre-move
+// shape, whose modes are on its clients, and NormalizeInboundSettings resolves those
+// onto the inbound (then fills whatever is still missing) before this ever runs on the
+// add path, so what gets validated is the blob that will actually be stored. Judging
+// their absence here would refuse a body that still works today, and the resolution
+// itself can never produce a modeless inbound.
+func checkMtprotoModes(m map[string]any) error {
+	anyPresent, anyOn := false, false
+	for _, key := range []string{"modeClassic", "modeSecure", "modeTls"} {
+		on, present, err := optBool(m, key)
+		if err != nil {
+			return err
+		}
+		anyPresent = anyPresent || present
+		anyOn = anyOn || (present && on)
+	}
+	if anyPresent && !anyOn {
+		return common.NewError(`at least one connection mode ("modeClassic", "modeSecure" or "modeTls") must be enabled: an MTProto inbound with none has no usable link`)
+	}
 	return nil
 }
 

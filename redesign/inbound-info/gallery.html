@@ -1,0 +1,2002 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inbound info modal, five directions</title>
+<style>
+/* ==================================================================
+   Tokens. Lifted from web/assets/css/tokens.css so these mockups can
+   be judged as "would this look right in the panel" rather than as
+   pretty pictures in a palette the panel cannot ship.
+
+   Three theme signals, in the order they must win: the OS preference,
+   then the viewer's explicit toggle, then nothing else.
+   ================================================================== */
+:root {
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eef2f4;
+  --border:#e4e9ee;
+  --border-strong:#d2dae1;
+
+  --text:#1b2430;
+  --text-2:#5a6675;
+  --text-3:#6b7787;
+
+  --accent:#008771;
+  --accent-strong:#00806b;
+  --accent-weak:#e2f2ee;
+  --on-accent:#ffffff;
+
+  --ok:#1c7a45;
+  --info:#1f6fd0;
+  --warn:#8a6008;
+  --error:#b3261e;
+  --off:#6b7787;
+
+  --ok-weak:rgba(28,122,69,.10);
+  --info-weak:rgba(31,111,208,.10);
+  --warn-weak:rgba(138,96,8,.12);
+  --error-weak:rgba(179,38,30,.10);
+  --off-weak:rgba(107,119,135,.12);
+
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10),0 2px 5px rgba(16,24,32,.05);
+
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+
+  --r:10px;
+  color-scheme:light;
+}
+:root, :root[data-theme="light"] { --_t:light; }
+
+/* One dark palette, applied from either signal. Written once and pointed at
+   by both selectors, so the toggle and the OS preference cannot drift. */
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0a1222;
+    --surface:#151f31;
+    --surface-2:#1c2740;
+    --border:#2c3950;
+    --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88);
+    --text-2:rgba(255,255,255,.60);
+    --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f;
+    --accent-strong:#1bbf9f;
+    --accent-weak:rgba(27,191,159,.14);
+    --on-accent:#071a16;
+    --ok:#4fd08d;
+    --info:#6fa8f5;
+    --warn:#e0a94a;
+    --error:#f2726a;
+    --off:#8593a8;
+    --ok-weak:rgba(79,208,141,.13);
+    --info-weak:rgba(111,168,245,.13);
+    --warn-weak:rgba(224,169,74,.14);
+    --error-weak:rgba(242,114,106,.13);
+    --off-weak:rgba(133,147,168,.15);
+    --shadow-sm:none;
+    --shadow-md:none;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0a1222;
+  --surface:#151f31;
+  --surface-2:#1c2740;
+  --border:#2c3950;
+  --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88);
+  --text-2:rgba(255,255,255,.60);
+  --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f;
+  --accent-strong:#1bbf9f;
+  --accent-weak:rgba(27,191,159,.14);
+  --on-accent:#071a16;
+  --ok:#4fd08d;
+  --info:#6fa8f5;
+  --warn:#e0a94a;
+  --error:#f2726a;
+  --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13);
+  --info-weak:rgba(111,168,245,.13);
+  --warn-weak:rgba(224,169,74,.14);
+  --error-weak:rgba(242,114,106,.13);
+  --off-weak:rgba(133,147,168,.15);
+  --shadow-sm:none;
+  --shadow-md:none;
+  color-scheme:dark;
+}
+
+*, *::before, *::after { box-sizing:border-box; }
+html, body { margin:0; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:var(--ui); font-size:13.5px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+@media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
+
+.num { font-variant-numeric:tabular-nums; }
+.mono { font-family:var(--mono); }
+.dim { color:var(--text-3); }
+
+/* ================================= page chrome ================================= */
+.page { max-width:1360px; margin:0 auto; padding:36px 24px 80px; }
+
+.masthead { margin-bottom:26px; }
+.eyebrow {
+  font-size:11px; font-weight:700; letter-spacing:.10em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 10px;
+}
+.masthead h1 {
+  font-size:26px; font-weight:600; letter-spacing:-.015em; margin:0 0 8px;
+  text-wrap:balance;
+}
+.masthead p { margin:0 0 8px; color:var(--text-2); max-width:70ch; }
+
+/* The switcher. Sticky because comparing five layouts means flipping between
+   them repeatedly while scrolled into the middle of one. The second row filters
+   WHICH inbound is on screen: every direction renders all four samples, and
+   sometimes you want one of them large and alone. */
+.switcher {
+  position:sticky; top:0; z-index:20;
+  padding:12px 0 10px; margin-bottom:20px;
+  background:var(--bg);
+  border-bottom:1px solid var(--border);
+}
+.switcher .line { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.switcher .line + .line { margin-top:9px; }
+.tabs { display:flex; gap:4px; flex-wrap:wrap; }
+.tab {
+  font:inherit; font-size:13px; font-weight:500; cursor:pointer;
+  padding:7px 13px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  transition:color .15s, border-color .15s, background .15s;
+}
+.tab:hover { color:var(--text); border-color:var(--border-strong); }
+.tab[aria-selected="true"] {
+  background:var(--accent-weak); border-color:var(--accent); color:var(--accent); font-weight:600;
+}
+.tab .n { font-variant-numeric:tabular-nums; opacity:.55; margin-inline-end:5px; }
+.switcher-right { margin-inline-start:auto; display:flex; gap:8px; align-items:center; }
+.filterlbl {
+  font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); margin-inline-end:2px;
+}
+.ghost {
+  font:inherit; font-size:12.5px; cursor:pointer; color:var(--text-2);
+  padding:6px 11px; border-radius:8px;
+  border:1px solid var(--border); background:var(--surface);
+}
+.ghost:hover { color:var(--text); border-color:var(--border-strong); }
+.ghost[aria-pressed="true"] { color:var(--accent); border-color:var(--accent); background:var(--accent-weak); }
+
+/* The rationale strip. Five templates exist to be CHOSEN between, and a choice
+   needs its cost stated next to its benefit. The fourth cell is the overflow
+   rule, because a reality public key and a 63-character path are the two values
+   that break every one of these layouts and each direction answers differently. */
+.rationale {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:0;
+  border:1px solid var(--border); border-radius:var(--r);
+  background:var(--surface); margin-bottom:18px; overflow:hidden;
+}
+.rationale div { padding:12px 16px; border-inline-start:1px solid var(--border); }
+.rationale div:first-child { border-inline-start:0; }
+.rationale dt {
+  font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 4px;
+}
+.rationale dd { margin:0; font-size:12.5px; color:var(--text-2); line-height:1.45; }
+.rationale dd b { color:var(--text); font-weight:600; }
+
+.view { display:none; }
+.view.on { display:block; }
+
+/* Every direction lays its four sample inbounds out on this grid. 520px is about
+   the real modal's 600px minus its padding, so a panel here is roughly what a
+   panel would be in the panel. Handoff overrides it to one per row. */
+.deck { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr)); gap:16px; align-items:start; }
+.deck.wide { grid-template-columns:1fr; }
+.deck > .modal[hidden] { display:none; }
+
+/* ================================= shared atoms ================================= */
+.modal {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+  box-shadow:var(--shadow-md); overflow:hidden;
+}
+.modal > .mhead {
+  display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap;
+  padding:14px 18px; border-bottom:1px solid var(--border);
+}
+.modal > .mhead .t { min-width:0; flex:1 1 auto; }
+.modal > .mhead h2 {
+  margin:0; font-size:16px; font-weight:600; letter-spacing:-.01em;
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.modal > .mhead .sub { font-size:11.5px; color:var(--text-3); margin-top:3px; }
+
+.lamp { width:8px; height:8px; border-radius:50%; flex:0 0 auto; background:var(--off); }
+.lamp.ok { background:var(--ok); }
+.lamp.warn { background:var(--warn); }
+.lamp.error { background:var(--error); }
+.lamp.info { background:var(--info); }
+.lamp.off { background:var(--off); }
+.lamp.live { box-shadow:0 0 0 3px var(--ok-weak); }
+
+.pill {
+  display:inline-flex; align-items:center; gap:5px; flex:0 0 auto;
+  font-size:11px; font-weight:600; line-height:18px;
+  padding:0 8px; border-radius:999px;
+  background:var(--off-weak); color:var(--off);
+}
+.pill.ok { background:var(--ok-weak); color:var(--ok); }
+.pill.warn { background:var(--warn-weak); color:var(--warn); }
+.pill.error { background:var(--error-weak); color:var(--error); }
+.pill.info { background:var(--info-weak); color:var(--info); }
+
+/* Protocol chips stay NEUTRAL. Hue is reserved for state in this panel: with
+   twenty-four protocols in this fork a per-protocol hue is not a palette, it is
+   noise, and the chip already spells the name. */
+.proto {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:11px; font-weight:600; line-height:18px;
+  padding:0 7px; border-radius:5px;
+  background:var(--surface-2); color:var(--text-2);
+  border:1px solid var(--border);
+}
+.proto .port { font-family:var(--mono); font-weight:400; opacity:.7; }
+
+.meter { height:5px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.meter > i { display:block; height:100%; background:var(--accent); border-radius:999px; }
+.meter.warn > i { background:var(--warn); }
+.meter.error > i { background:var(--error); }
+.meter.inf { background:repeating-linear-gradient(90deg,var(--border) 0 5px,transparent 5px 10px); }
+
+.iconbtn {
+  width:26px; height:26px; display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  border-radius:7px; cursor:pointer; padding:0; flex:0 0 auto;
+}
+.iconbtn:hover { color:var(--accent); border-color:var(--accent); }
+.iconbtn.on { color:var(--ok); border-color:var(--ok); }
+.iconbtn svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+
+/* The two overflow treatments the five directions choose between. Which one a
+   direction picks is part of what is being decided: a reality public key is 43
+   characters and a websocket path here is 63, and neither fits a 170px column.
+   .clip  truncates on one line and keeps the whole value in the title.
+   .wrapv wraps across lines, nothing hidden, rows become uneven. */
+.clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.wrapv { overflow-wrap:anywhere; word-break:break-word; }
+
+.code {
+  font-family:var(--mono); font-size:11.5px; line-height:1.6;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+  padding:10px 12px; margin:0; color:var(--text-2);
+}
+
+/* "Does not apply to this protocol" is a real answer and has to look different
+   from "empty" and from "not set", which are three different facts. */
+.na { color:var(--text-3); font-style:italic; }
+.notset { color:var(--warn); }
+
+.footnote {
+  margin-top:34px; padding-top:16px; border-top:1px solid var(--border);
+  font-size:12px; color:var(--text-3); max-width:74ch;
+}
+.footnote p { margin:0 0 8px; }
+
+/* ================================================================== *
+ * 1 - PATH
+ * The modal read as the packet's journey: client, endpoint, transport,
+ * security, admission, egress. Every stage is a link, and a stage that
+ * cannot pass traffic BREAKS the chain visibly instead of being one red
+ * tag among forty neutral ones.
+ *
+ * The stage list is per family, not per protocol, which is the whole
+ * point: l2tp has no transport stage and gre has no port, so a layout
+ * that hardcodes "protocol then streamSettings" has nothing to draw.
+ * ================================================================== */
+.chain { padding:6px 18px 16px; }
+.stage { display:grid; grid-template-columns:26px 1fr; gap:0 12px; }
+.rail { position:relative; }
+.rail::before {
+  content:""; position:absolute; inset-inline-start:11px; top:0; bottom:0;
+  width:2px; background:var(--border);
+}
+.stage:last-child .rail::before { bottom:auto; height:22px; }
+.rail .node {
+  position:relative; z-index:1; margin-top:14px;
+  width:24px; height:24px; border-radius:50%;
+  background:var(--surface); border:2px solid var(--border-strong);
+  display:flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:700; color:var(--text-3);
+}
+.stage.ok .rail .node { border-color:var(--ok); color:var(--ok); }
+.stage.info .rail .node { border-color:var(--info); color:var(--info); }
+.stage.warn .rail .node { border-color:var(--warn); color:var(--warn); }
+.stage.error .rail .node { border-color:var(--error); color:var(--error); }
+/* The break. The connector below a failed stage turns red and dashed, so the
+   chain reads as severed rather than as "one of the rows is red". */
+.stage.error .rail::before { background:repeating-linear-gradient(180deg,var(--error) 0 5px,transparent 5px 10px); }
+.stage .body { padding:12px 0 14px; min-width:0; }
+.stage + .stage .body { border-top:1px solid var(--border); }
+.stage .lbl {
+  font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); margin-bottom:4px;
+}
+.stage .headline {
+  font-size:14.5px; font-weight:600; letter-spacing:-.01em;
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0;
+}
+.stage .headline .mono { font-size:13.5px; font-weight:500; }
+.stage .facts { margin-top:8px; display:flex; flex-direction:column; gap:5px; }
+.fact { display:grid; grid-template-columns:104px 1fr auto; gap:10px; align-items:baseline; min-width:0; }
+/* Field names are the thing you scan by, so they wrap rather than ellipsing.
+   Without this, `tcpSettings.acceptProxyProtocol` overprints its own value. */
+.fact > .k { font-size:11.5px; color:var(--text-3); overflow-wrap:anywhere; }
+.fact > .v { font-size:12.5px; font-family:var(--mono); color:var(--text-2); min-width:0; }
+.fact > .a { align-self:center; }
+.stage .note {
+  margin-top:8px; font-size:12px; line-height:1.45;
+  padding:8px 10px; border-radius:8px;
+  background:var(--surface-2); color:var(--text-2);
+  border-inline-start:3px solid var(--border-strong);
+}
+.stage.error .note { background:var(--error-weak); border-inline-start-color:var(--error); color:var(--text); }
+.stage.warn .note { background:var(--warn-weak); border-inline-start-color:var(--warn); color:var(--text); }
+.stage.info .note { background:var(--info-weak); border-inline-start-color:var(--info); color:var(--text); }
+
+/* ================================================================== *
+ * 2 - SHEET
+ * The spec sheet. Six groups by concern, one row per field, real field
+ * names in the key column. It answers "what is this set to" and nothing
+ * else, which is the job the current modal is TRYING to do and doing in
+ * a two-column soup of purple tags.
+ *
+ * Long values wrap here rather than truncating: this is the reference
+ * view, and a reference that hides half of a public key is not one.
+ * ================================================================== */
+.sheet { padding:0; }
+.grp + .grp { border-top:1px solid var(--border); }
+.grp > h3 {
+  margin:0; padding:11px 18px 8px;
+  font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3);
+  display:flex; align-items:center; gap:8px;
+}
+/* 210px, not 170: the longest real key here is tcpSettings.acceptProxyProtocol
+   at 31 characters, and a key column that a key does not fit in is the defect
+   this whole direction exists to remove. */
+.srow {
+  display:grid; grid-template-columns:210px 1fr auto; gap:12px;
+  padding:5px 18px; align-items:baseline; min-width:0;
+}
+.srow:hover { background:var(--surface-2); }
+.srow:last-child { padding-bottom:12px; }
+.srow > .k { font-size:12px; color:var(--text-3); font-family:var(--mono); overflow-wrap:anywhere; }
+.srow > .v { font-size:12.5px; min-width:0; }
+.srow > .v.mono { font-family:var(--mono); }
+.srow > .a { align-self:center; }
+.srow.hidden-na { display:none; }
+.grp.show-na .srow.hidden-na { display:grid; }
+.srow.hidden-na > .k, .srow.hidden-na > .v { opacity:.62; }
+.natoggle {
+  margin-inline-start:auto; font:inherit; font-size:11px; font-weight:600;
+  letter-spacing:0; text-transform:none;
+  background:none; border:0; padding:0; cursor:pointer; color:var(--accent);
+}
+@media (max-width:520px) { .srow, .fact { grid-template-columns:1fr; } }
+
+/* ================================================================== *
+ * 3 - VERDICT
+ * Health first. One sentence at the top that says whether this inbound
+ * can serve anybody, then the findings that justify it, then the whole
+ * configuration folded away behind four disclosures.
+ *
+ * Every finding names the FIELD it came from, because a finding you
+ * cannot trace back to a setting is a horoscope.
+ * ================================================================== */
+.verdict { padding:0; }
+.vbanner { padding:14px 18px; display:flex; gap:12px; align-items:flex-start; }
+.vbanner .icon {
+  width:30px; height:30px; border-radius:50%; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  font-size:15px; font-weight:700;
+}
+.vbanner .say { font-size:14.5px; font-weight:600; letter-spacing:-.01em; }
+.vbanner .because { font-size:12.5px; color:var(--text-2); margin-top:3px; }
+.vbanner.ok { background:var(--ok-weak); }
+.vbanner.ok .icon { background:var(--ok); color:var(--surface); }
+.vbanner.ok .say { color:var(--ok); }
+.vbanner.warn { background:var(--warn-weak); }
+.vbanner.warn .icon { background:var(--warn); color:var(--surface); }
+.vbanner.warn .say { color:var(--warn); }
+.vbanner.error { background:var(--error-weak); }
+.vbanner.error .icon { background:var(--error); color:var(--surface); }
+.vbanner.error .say { color:var(--error); }
+
+.findings { border-top:1px solid var(--border); }
+.finding { display:flex; gap:11px; padding:11px 18px; align-items:flex-start; }
+.finding + .finding { border-top:1px solid var(--border); }
+.finding .sev { margin-top:2px; }
+.finding .txt { min-width:0; flex:1 1 auto; }
+.finding .txt .what { font-size:13px; font-weight:500; }
+.finding .txt .from {
+  font-size:11.5px; color:var(--text-3); margin-top:3px;
+  font-family:var(--mono); overflow-wrap:anywhere;
+}
+.finding .fix { flex:0 0 auto; align-self:center; }
+.btn {
+  font:inherit; font-size:12px; font-weight:500; cursor:pointer; white-space:nowrap;
+  padding:5px 11px; border-radius:7px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+}
+.btn:hover { color:var(--accent); border-color:var(--accent); }
+
+.folds { border-top:1px solid var(--border); }
+.folds details + details { border-top:1px solid var(--border); }
+.folds summary {
+  padding:10px 18px; cursor:pointer; list-style:none;
+  display:flex; align-items:center; gap:9px;
+  font-size:12px; font-weight:600; color:var(--text-2);
+}
+.folds summary::-webkit-details-marker { display:none; }
+.folds summary::before {
+  content:"+"; width:16px; height:16px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid var(--border); border-radius:5px;
+  font-size:12px; line-height:1; color:var(--text-3);
+}
+.folds details[open] > summary::before { content:"\2212"; }
+.folds summary .hint { margin-inline-start:auto; font-weight:400; font-size:11.5px; color:var(--text-3); }
+.folds summary:hover { background:var(--surface-2); }
+.folds .fbody { padding:2px 18px 12px; display:flex; flex-direction:column; gap:5px; }
+/* The folds carry the SHEET's field names, which are far longer than Path's,
+   so the shared .fact grid needs a wider key track here. */
+.folds .fbody .fact { grid-template-columns:200px 1fr auto; }
+.folds .fbody .fact > .k { font-family:var(--mono); font-size:11px; }
+.folds details.flag > summary { color:var(--warn); }
+.folds details.flagerr > summary { color:var(--error); }
+
+/* ================================================================== *
+ * 4 - HANDOFF
+ * The modal as a producer. What comes out of it is the artifact the
+ * next person needs: a share link, an Xray outbound block, the four
+ * fields to read down a phone line, the peer router's commands.
+ *
+ * Two panes so the recipient list is always visible: picking "another
+ * vpn-ui panel" versus "a MikroTik" is the whole interaction, and a
+ * dropdown would hide the fact that the choice exists.
+ * ================================================================== */
+.handoff { display:grid; grid-template-columns:210px 1fr; align-items:stretch; }
+@media (max-width:760px) { .handoff { grid-template-columns:1fr; } }
+.hrecips { border-inline-end:1px solid var(--border); background:var(--surface-2); }
+@media (max-width:760px) { .hrecips { border-inline-end:0; border-bottom:1px solid var(--border); } }
+.hrecips .cap {
+  font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); padding:12px 14px 7px;
+}
+.hrecips button {
+  width:100%; text-align:start; font:inherit; font-size:12.5px; cursor:pointer;
+  padding:9px 14px; border:0; background:transparent; color:var(--text-2);
+  border-inline-start:3px solid transparent; display:block;
+}
+.hrecips button:hover { background:var(--surface); color:var(--text); }
+.hrecips button[aria-current="true"] {
+  background:var(--surface); color:var(--accent); font-weight:600;
+  border-inline-start-color:var(--accent);
+}
+.hrecips button .sub2 { display:block; font-size:11px; font-weight:400; color:var(--text-3); margin-top:1px; }
+.hpane { padding:14px 18px 16px; min-width:0; }
+.hpane .ptitle { font-size:13.5px; font-weight:600; margin-bottom:3px; }
+.hpane .pwhy { font-size:12px; color:var(--text-3); margin-bottom:11px; }
+/* pre-wrap, not the pre default: a <pre> with overflow-wrap still scrolls
+   horizontally, and half a share link visible is the failure this direction
+   claims to avoid. Newlines in the router commands are still preserved. */
+.hpane pre.code { max-height:340px; overflow-y:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
+.hpane .barrow { display:flex; gap:7px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+.hpane .warnstrip {
+  margin-bottom:11px; font-size:12px; line-height:1.45;
+  padding:8px 10px; border-radius:8px;
+  background:var(--warn-weak); border-inline-start:3px solid var(--warn); color:var(--text);
+}
+.hpane .warnstrip.err { background:var(--error-weak); border-inline-start-color:var(--error); }
+.hpane .fieldlist { display:flex; flex-direction:column; gap:1px; }
+.hf { display:grid; grid-template-columns:150px 1fr auto; gap:10px; align-items:center; padding:6px 0; min-width:0; }
+.hf + .hf { border-top:1px solid var(--border); }
+.hf .k { font-size:11.5px; color:var(--text-3); }
+.hf .v { font-family:var(--mono); font-size:12.5px; min-width:0; }
+
+/* ================================================================== *
+ * 5 - METER
+ * Capacity leads. Bytes carried, quota, accounts, and how much of the
+ * address pool is spoken for. Configuration is demoted to a strip at
+ * the bottom, because this view answers "is it full" and not "how is
+ * it set up".
+ *
+ * The pool block is the honest problem: a vless inbound has no address
+ * pool at all, so a third of this layout has nothing to draw for the
+ * protocols the panel is most used for. See its cost note.
+ * ================================================================== */
+.metric {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+  border-bottom:1px solid var(--border);
+}
+.metric > div { padding:13px 18px; border-inline-start:1px solid var(--border); }
+.metric > div:first-child { border-inline-start:0; }
+.metric dt {
+  font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 5px;
+}
+.metric dd { margin:0; font-size:19px; font-weight:600; letter-spacing:-.02em; }
+.metric dd small { font-size:11.5px; font-weight:400; color:var(--text-3); letter-spacing:0; display:block; margin-top:2px; }
+
+.msec { padding:13px 18px; border-bottom:1px solid var(--border); }
+.msec:last-child { border-bottom:0; }
+.msec > h3 {
+  margin:0 0 9px; font-size:10.5px; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--text-3);
+  display:flex; align-items:baseline; gap:8px;
+}
+.msec > h3 .r { margin-inline-start:auto; font-weight:600; letter-spacing:0; text-transform:none; font-size:12px; color:var(--text-2); }
+.quotafigs { display:flex; align-items:baseline; gap:8px; margin-bottom:7px; font-size:13px; }
+.quotafigs b { font-size:16px; font-weight:600; letter-spacing:-.01em; }
+
+/* One cell per allocation slot, not a percentage bar: an address pool is
+   discrete and its unit is "one more account", which a bar does not say. */
+.slots { display:flex; flex-wrap:wrap; gap:2px; margin-top:8px; }
+.slots i { width:7px; height:12px; border-radius:2px; background:var(--surface-2); border:1px solid var(--border); }
+.slots i.used { background:var(--accent); border-color:var(--accent); }
+.slots .more { font-size:11px; color:var(--text-3); align-self:center; margin-inline-start:6px; }
+.poolrow { display:flex; align-items:baseline; gap:10px; font-size:12.5px; min-width:0; }
+.poolrow .rng { font-family:var(--mono); min-width:0; }
+.poolrow .cap2 { margin-inline-start:auto; color:var(--text-3); font-size:11.5px; white-space:nowrap; }
+
+.talkers { display:flex; flex-direction:column; gap:7px; }
+.talker { display:grid; grid-template-columns:1fr 84px; gap:10px; align-items:center; min-width:0; }
+.talker .who { display:flex; align-items:center; gap:7px; min-width:0; }
+.talker .who .nm { font-size:12.5px; min-width:0; }
+.talker .amt { font-size:12px; color:var(--text-2); text-align:end; }
+.talker .bar { grid-column:1 / -1; }
+
+.ceilings { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+.ceil { font-size:12px; }
+.ceil .k { font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--text-3); }
+.ceil .v { margin-top:2px; }
+.ceil .v b { font-weight:600; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="masthead">
+    <p class="eyebrow">vpn-ui / inbound info modal</p>
+    <h1>Five ways to show an inbound</h1>
+    <p>
+      The same four inbounds, five information architectures. Today one 799-line template
+      renders an inbound and an account through the same two-column table of purple tags;
+      these five are answers to the inbound half only, and to the two questions an operator
+      actually opens it with: how is this configured, and why can a client not connect.
+    </p>
+    <p>
+      Everything is drawn in the panel's own tokens, so what you are choosing between is the
+      <em>structure</em>, not the paint. Protocol chips stay neutral; hue means state.
+    </p>
+  </header>
+
+  <div class="switcher">
+    <div class="line">
+      <div class="tabs" role="tablist" aria-label="Direction">
+        <button class="tab" role="tab" data-view="path" aria-selected="true"><span class="n">1</span>Path</button>
+        <button class="tab" role="tab" data-view="sheet" aria-selected="false"><span class="n">2</span>Sheet</button>
+        <button class="tab" role="tab" data-view="verdict" aria-selected="false"><span class="n">3</span>Verdict</button>
+        <button class="tab" role="tab" data-view="handoff" aria-selected="false"><span class="n">4</span>Handoff</button>
+        <button class="tab" role="tab" data-view="meter" aria-selected="false"><span class="n">5</span>Meter</button>
+      </div>
+      <div class="switcher-right">
+        <button class="ghost" id="theme">Dark</button>
+      </div>
+    </div>
+    <div class="line">
+      <span class="filterlbl">Inbound</span>
+      <div class="tabs" id="ibfilter" role="tablist" aria-label="Sample inbound"></div>
+    </div>
+  </div>
+
+  <!-- 1 -->
+  <section class="view on" id="v-path" aria-label="Path">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Diagnosis.</b> Why a client cannot connect.</dd></div>
+      <div><dt>The change</dt><dd>The fields are ordered by where they sit on the connection, and a stage that cannot pass traffic severs the chain below it.</dd></div>
+      <div><dt>Costs</dt><dd>It is a narrative, so it is tall. Fields with no place on the path (quota, sort order, traffic multiplier) are pushed to a tab this mockup does not draw.</dd></div>
+      <div><dt>Long values</dt><dd>Truncated on one line, full value in the tooltip and on the copy button. Fastest to scan, worst to read.</dd></div>
+    </dl>
+    <div class="deck" id="d-path"></div>
+  </section>
+
+  <!-- 2 -->
+  <section class="view" id="v-sheet" aria-label="Sheet">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Looking one thing up.</b> Every field, in a fixed place.</dd></div>
+      <div><dt>The change</dt><dd>Six groups by concern with the real field name in the key column, so what you read here matches what you search the codebase for.</dd></div>
+      <div><dt>Costs</dt><dd>Nothing leads. It is the longest of the five and it will not tell you anything is wrong.</dd></div>
+      <div><dt>Long values</dt><dd>Wrapped, never hidden. Rows become uneven, which is the price of a reference view that does not lie by omission.</dd></div>
+    </dl>
+    <div class="deck" id="d-sheet"></div>
+  </section>
+
+  <!-- 3 -->
+  <section class="view" id="v-verdict" aria-label="Verdict">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>The reason you opened it.</b> Something is broken.</dd></div>
+      <div><dt>The change</dt><dd>One sentence on whether it can serve, the findings that justify it, and the configuration folded behind four disclosures.</dd></div>
+      <div><dt>Costs</dt><dd>When nothing is wrong you get a green box and a click before you can read anything. It also cannot tell "does not apply" from "not shown", because inapplicable fields never surface at all.</dd></div>
+      <div><dt>Long values</dt><dd>Truncated inside the folds. Findings quote the field name, never the value, so a key never has to fit.</dd></div>
+    </dl>
+    <div class="deck" id="d-verdict"></div>
+  </section>
+
+  <!-- 4 -->
+  <section class="view" id="v-handoff" aria-label="Handoff">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Giving it to someone else.</b> An outbound, a router, a customer.</dd></div>
+      <div><dt>The change</dt><dd>The modal produces artifacts instead of listing fields. Recipients on the left, the finished block on the right, copy in one action.</dd></div>
+      <div><dt>Costs</dt><dd>It shows no usage and no health at all, and every family needs a hand-written template. A new protocol lands here as an empty pane until someone writes one.</dd></div>
+      <div><dt>Long values</dt><dd>Wrapped inside a code block at full length, the pane scrolling past 340px. A truncated config is a broken config.</dd></div>
+    </dl>
+    <div class="deck wide" id="d-handoff"></div>
+  </section>
+
+  <!-- 5 -->
+  <section class="view" id="v-meter" aria-label="Meter">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Is it full.</b> Bytes, quota, accounts, addresses.</dd></div>
+      <div><dt>The change</dt><dd>Capacity is the headline and configuration is a strip at the bottom. The address pool is drawn as discrete slots, because its unit is "one more account".</dd></div>
+      <div><dt>Costs</dt><dd>A vless or vmess inbound has no address pool, so on the protocols this panel is most used for a third of the layout has nothing to draw and says so.</dd></div>
+      <div><dt>Long values</dt><dd>Barely arises: this view shows figures, not keys. Range strings clip.</dd></div>
+    </dl>
+    <div class="deck" id="d-meter"></div>
+  </section>
+
+  <div class="footnote">
+    <p>
+      Sample data only. Four inbounds chosen to cover what the real modal has to survive: an
+      Xray-native one with reality (a 43-character public key and two short ids), a VPN-family
+      one with no stream settings at all (address ranges, DNS pair, MTU, IPsec PSK, user limit
+      and strategy), one that is genuinely broken (TLS enabled with a blank certificate file,
+      and a 63-character websocket path), and one with no accounts and no port at all.
+    </p>
+    <p>
+      Field names are the real ones, from database/model/model.go, web/assets/js/model/inbound.js
+      and the protocol forms under web/html/form/protocol. Nothing here is a runtime probe: every
+      value shown is something the panel already stores, except where a panel is labelled as
+      proposing something new.
+    </p>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * Sample inbounds. Four, chosen so every shape the modal has to render
+ * appears at least once, including the ones that are easy to forget and
+ * ugly when they surface: a protocol with no port, a protocol with no
+ * stream settings, a field that exists but is blank in a way that kills
+ * the whole Xray config, and an inbound nobody is on.
+ *
+ * `family` is the split that actually matters here and it is the panel's
+ * own: "xray" is what GenXrayInboundConfig emits verbatim, "vpn" is what
+ * isVpnProtocol covers (a separately injected dokodemo-door carries the
+ * inbound's tag), and a third, "relay", would cover mtproto and ssh.
+ * ------------------------------------------------------------------ */
+const KB = 1024, MB = KB * 1024, GB = MB * 1024, TB = GB * 1024;
+
+const INBOUNDS = [
+  {
+    key: "reality", id: 7, remark: "reality-main", tag: "inbound-11645",
+    protocol: "vless", family: "xray", enable: true, sortOrder: 2,
+    listen: "", port: 11645, address: "91.107.188.54",
+    stream: {
+      network: "tcp", security: "reality",
+      tcp: { headerType: "none", acceptProxyProtocol: false },
+      reality: {
+        target: "www.cloudflare.com:443",
+        serverNames: "www.cloudflare.com,cloudflare.com",
+        shortIds: "6ba85179e30d4fc2,0f",
+        publicKey: "hZ2ByBSCT_3jc0DvhLcMEZ9GgeuDbSF7z6dTA8lLMV0",
+        privateKey: "wKGm0NnZ8v1XyC4dQhRk7sP2wLtA9eJbUf6iOx3rY5M",
+        fingerprint: "chrome", spiderX: "/", xver: 0, show: false,
+      },
+    },
+    settings: { decryption: "none", encryption: "none", selectedAuth: null, externalProxy: [] },
+    sniffing: ["http", "tls", "quic"],
+    clients: 34, online: 5,
+    up: 812.4 * GB, down: 6.42 * TB, allTime: 11.7 * TB,
+    total: 0, expiryTime: 0, trafficReset: "never",
+    speedLimitEnable: true, speedLimitSeparate: false, speedLimitDown: 12288, speedLimitUp: 0, speedLimitAfter: 0,
+    ipLimit: 2, ipLimitStrategy: "reject",
+    trafficMultiplierEnable: false, trafficMultiplier: 1, trafficMultiplierAfter: 0,
+    top: [["8ja78jxp7", 1.42 * TB], ["32rctcg2", 0.99 * TB], ["uq0p5rcu", 742 * GB], ["k3m9x2plq", 508 * GB]],
+    sampleClientId: "642a4904-2d2a-4e95-b733-07c7ee61c8a4",
+  },
+  {
+    key: "l2tp", id: 12, remark: "l2tp-dialin", tag: "inbound-1701",
+    protocol: "l2tp", family: "vpn", enable: true, sortOrder: 5,
+    listen: "", port: 1701, address: "91.107.188.54",
+    stream: null,
+    settings: {
+      ipsecEnable: true, ipsecPsk: "Xk29fPqL7mTv3Zb1", allowRaw: false,
+      clientToClient: true, crossInbound: false,
+      ipRanges: ["10.0.5.2-10.0.5.254", "10.0.9.2-10.0.9.254"],
+      dns1: "8.8.8.8", dns2: "8.8.4.4", mtu: 1400,
+      userLimit: 2, userLimitStrategy: "accept",
+      externalProxy: [{ dest: "relay.eu-west.example.net", port: 1701, remark: "EU relay" }],
+    },
+    sniffing: null,
+    clients: 18, online: 3,
+    up: 214.8 * GB, down: 1.61 * TB, allTime: 4.9 * TB,
+    total: 2 * TB, expiryTime: "2026-11-30", trafficReset: "monthly", lastReset: "2026-08-01",
+    speedLimitEnable: false, speedLimitSeparate: false, speedLimitDown: 0, speedLimitUp: 0, speedLimitAfter: 0,
+    ipLimit: 0, ipLimitStrategy: "reject",
+    trafficMultiplierEnable: true, trafficMultiplier: 2, trafficMultiplierAfter: 500 * GB,
+    top: [["n7w4-login", 486 * GB], ["sara-d6ht", 311 * GB], ["branch-02", 264 * GB], ["kiosk-11", 173 * GB]],
+    sampleClientId: "n7w4-login",
+  },
+  {
+    key: "cdnws", id: 19, remark: "cdn-ws", tag: "inbound-47685",
+    protocol: "vmess", family: "xray", enable: true, sortOrder: 0,
+    listen: "", port: 47685, address: "91.107.188.54",
+    stream: {
+      network: "ws", security: "tls",
+      ws: {
+        path: "/api/v3/stream/edge/1f0c9a77-51b2-4c0e-9e21-4b7a2d3f8c10/tunnel",
+        host: "cdn.edge-delivery-network.example.com",
+      },
+      tls: {
+        sni: "cdn.edge-delivery-network.example.com",
+        minVersion: "1.2", maxVersion: "1.3",
+        alpn: ["h2", "http/1.1"], fingerprint: "chrome",
+        rejectUnknownSni: false,
+        certFile: "", keyFile: "",
+      },
+    },
+    settings: { externalProxy: [] },
+    sniffing: ["http", "tls"],
+    clients: 6, online: 0,
+    up: 0, down: 0, allTime: 0,
+    total: 0, expiryTime: 0, trafficReset: "never",
+    speedLimitEnable: false, speedLimitSeparate: false, speedLimitDown: 0, speedLimitUp: 0, speedLimitAfter: 0,
+    ipLimit: 0, ipLimitStrategy: "reject",
+    trafficMultiplierEnable: false, trafficMultiplier: 1, trafficMultiplierAfter: 0,
+    top: [],
+    sampleClientId: "1f0c9a77-51b2-4c0e-9e21-4b7a2d3f8c10",
+  },
+  {
+    key: "gre", id: 23, remark: "branch-gre", tag: "inbound-gre-23",
+    protocol: "gre", family: "vpn", enable: true, sortOrder: 7,
+    listen: "", port: null, address: "91.107.188.54",
+    stream: null,
+    settings: {
+      mtu: 0, ttl: 64,
+      ipsecEnable: false, ipsecPsk: "", allowRaw: true,
+      fouEnable: true, fouPort: 15547,
+      clientToClient: false, crossInbound: false,
+      ipRanges: [],
+      userLimit: 1, userLimitStrategy: "accept",
+    },
+    sniffing: null,
+    clients: 0, online: 0,
+    up: 0, down: 0, allTime: 0,
+    total: 0, expiryTime: 0, trafficReset: "never",
+    speedLimitEnable: false, speedLimitSeparate: false, speedLimitDown: 0, speedLimitUp: 0, speedLimitAfter: 0,
+    ipLimit: 0, ipLimitStrategy: "reject",
+    trafficMultiplierEnable: false, trafficMultiplier: 1, trafficMultiplierAfter: 0,
+    top: [],
+    sampleClientId: null,
+  },
+];
+
+/* --------------------------------- helpers --------------------------------- */
+const el = (t, cls, txt) => {
+  const n = document.createElement(t);
+  if (cls) n.className = cls;
+  if (txt != null) n.textContent = txt;
+  return n;
+};
+
+function bytes(n) {
+  if (!n) return "0 B";
+  if (n >= TB) return (n / TB).toFixed(2) + " TB";
+  if (n >= GB) return (n / GB).toFixed(1) + " GB";
+  if (n >= MB) return (n / MB).toFixed(1) + " MB";
+  if (n >= KB) return (n / KB).toFixed(0) + " KB";
+  return n + " B";
+}
+const used = (ib) => ib.up + ib.down;
+const quotaPct = (ib) => (ib.total ? Math.min(100, (used(ib) / ib.total) * 100) : 0);
+const quotaTone = (ib) => {
+  if (!ib.total) return "";
+  const p = quotaPct(ib);
+  return p >= 100 ? "error" : p >= 85 ? "warn" : "";
+};
+
+// The endpoint an operator would actually hand out, which is NOT always the
+// listener. settings.externalProxy overrides the advertised host and affects
+// generated links only: no daemon ever reads it, which is exactly the trap.
+const listener = (ib) => (ib.port == null ? ib.address : ib.address + ":" + ib.port);
+const advertised = (ib) => {
+  const ep = (ib.settings && ib.settings.externalProxy) || [];
+  if (!ep.length) return null;
+  return ep[0].dest + ":" + (ep[0].port || ib.port);
+};
+
+// Address pool arithmetic, done from the range strings rather than hardcoded, so
+// the numbers on screen are the numbers the allocator would reach. userLimit K
+// reserves K CONSECUTIVE addresses per account, so the slot count is a floor
+// division and not the address count.
+function poolStats(ib) {
+  const s = ib.settings || {};
+  const ranges = s.ipRanges || [];
+  const k = Math.max(1, s.userLimit === 0 ? 16 : s.userLimit || 1);
+  let addrs = 0;
+  const rows = ranges.map((r) => {
+    const [a, b] = r.split("-");
+    const lo = Number((a || "").split(".").pop());
+    const hi = Number((b || "").split(".").pop());
+    const n = Number.isFinite(lo) && Number.isFinite(hi) ? hi - lo + 1 : 0;
+    addrs += n;
+    return { range: r, addrs: n, slots: Math.floor(n / k) };
+  });
+  const slots = rows.reduce((t, r) => t + r.slots, 0);
+  return { rows: rows, addrs: addrs, slots: slots, k: k, usedSlots: ib.clients };
+}
+
+const ICON = {
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5h10"/>',
+  check: '<path d="M5 13l4 4 10-10"/>',
+};
+function svg(name) {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true">' + ICON[name] + "</svg>";
+}
+
+// Clipboard with a fallback, because these files get opened straight off disk
+// where navigator.clipboard is not available and a silent no-op looks like a bug.
+function writeClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => legacyCopy(text));
+  }
+  return Promise.resolve(legacyCopy(text));
+}
+function legacyCopy(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch (e) { /* nothing else to try */ }
+  document.body.removeChild(ta);
+}
+function copyBtn(value, label) {
+  const b = el("button", "iconbtn");
+  b.type = "button";
+  b.title = label || "Copy";
+  b.setAttribute("aria-label", label || "Copy");
+  b.innerHTML = svg("copy");
+  b.addEventListener("click", () => {
+    writeClipboard(value);
+    b.innerHTML = svg("check");
+    b.classList.add("on");
+    setTimeout(() => { b.innerHTML = svg("copy"); b.classList.remove("on"); }, 1100);
+  });
+  return b;
+}
+
+function protoChip(ib) {
+  const c = el("span", "proto");
+  c.append(document.createTextNode(ib.protocol));
+  if (ib.port != null) c.append(el("span", "port", ":" + ib.port));
+  return c;
+}
+
+/* Every panel wears the same head, so what differs below it is the only thing
+   being compared. The head is deliberately NOT one of the five directions. */
+function panelHead(ib) {
+  const h = el("div", "mhead");
+  const t = el("div", "t");
+  const h2 = el("h2");
+  h2.append(document.createTextNode(ib.remark), protoChip(ib));
+  if (!ib.enable) h2.append(el("span", "pill", "Disabled"));
+  const sub = el("div", "sub");
+  sub.textContent = "id " + ib.id + " . tag " + ib.tag + " . " +
+    (ib.port == null ? "IP protocol 47, no port" : "listen " + (ib.listen || "0.0.0.0") + ":" + ib.port);
+  t.append(h2, sub);
+  h.append(t);
+  return h;
+}
+
+/* --------------------------- the finding engine ----------------------------- *
+ * Shared by Verdict and, in a quieter form, by Path. Every finding names the
+ * field it was derived from. Nothing here is a probe: each one is a comparison
+ * between stored columns, which is the only kind of check a modal can honestly
+ * make without asking the server a new question.
+ * -------------------------------------------------------------------------- */
+function findings(ib) {
+  const out = [];
+  const s = ib.settings || {};
+
+  if (!ib.enable) {
+    out.push({ sev: "error", what: "The inbound is disabled. The listener is not started.", from: "inbound.enable = false", fix: "Enable" });
+  }
+  if (ib.clients === 0) {
+    out.push({
+      sev: "error",
+      what: "No accounts. The listener is up and there is nobody it can authenticate.",
+      from: "settings.clients = []",
+      fix: "Add account",
+    });
+  }
+  if (ib.family === "xray" && ib.stream && ib.stream.security === "tls" && ib.stream.tls && !ib.stream.tls.certFile) {
+    out.push({
+      sev: "error",
+      what: "TLS is on and no certificate is set. Xray refuses the whole configuration, not just this inbound, so every other inbound goes down with it.",
+      from: 'streamSettings.tlsSettings.certificates[0].certificateFile = ""',
+      fix: "Set certificate",
+    });
+    if (used(ib) === 0) {
+      out.push({
+        sev: "info",
+        what: "0 B up and 0 B down since it was created, which is what a listener that has never accepted a connection looks like.",
+        from: "inbound.up = 0, inbound.down = 0",
+        fix: null,
+      });
+    }
+  }
+  if (ib.total && quotaPct(ib) >= 85) {
+    out.push({
+      sev: quotaPct(ib) >= 100 ? "error" : "warn",
+      what: Math.round(quotaPct(ib)) + "% of the " + bytes(ib.total) + " quota is used. At 100% the inbound stops serving until the reset.",
+      from: "inbound.up + inbound.down vs inbound.total",
+      fix: "Raise quota",
+    });
+  }
+  if (s.ipsecEnable === false && s.allowRaw === true && ib.family === "vpn") {
+    out.push({
+      sev: "warn",
+      what: "IPsec is off and unencrypted tunnels are accepted. Anything on the path can read this traffic.",
+      from: "settings.ipsecEnable = false, settings.allowRaw = true",
+      fix: "Enable IPsec",
+    });
+  }
+  const adv = advertised(ib);
+  if (adv) {
+    out.push({
+      sev: "info",
+      what: "Clients are told to dial " + adv + ", not this server. The override changes generated credentials only, no daemon reads it.",
+      from: "settings.externalProxy[0]",
+      fix: null,
+    });
+  }
+  if (ib.family === "vpn" && (s.ipRanges || []).length === 0) {
+    out.push({
+      sev: "info",
+      what: "No address range assigned yet. One is allocated when the first account is added.",
+      from: "settings.ipRanges = []",
+      fix: null,
+    });
+  }
+  if (s.userLimit > 1 && s.userLimitStrategy === "accept") {
+    out.push({
+      sev: "info",
+      what: "User limit " + s.userLimit + " with strategy accept: a device beyond the limit is admitted and that account's oldest device is disconnected.",
+      from: "settings.userLimit, settings.userLimitStrategy",
+      fix: null,
+    });
+  }
+  if (ib.trafficMultiplierEnable) {
+    out.push({
+      sev: "info",
+      what: "Past " + bytes(ib.trafficMultiplierAfter) + " every byte counts " + ib.trafficMultiplier + " times against each account's own quota.",
+      from: "inbound.trafficMultiplierEnable, .trafficMultiplierAfter, .trafficMultiplier",
+      fix: null,
+    });
+  }
+  return out;
+}
+function worst(list) {
+  if (list.some((f) => f.sev === "error")) return "error";
+  if (list.some((f) => f.sev === "warn")) return "warn";
+  return "ok";
+}
+
+/* ================================================================== *
+ * 1 - PATH
+ * ================================================================== */
+
+// The stage list is derived per family. This function is the honest core of the
+// direction: "protocol, then streamSettings" describes eight of the twenty-four
+// protocols in this fork, and the other sixteen would render an empty chain.
+function stagesFor(ib) {
+  const s = ib.settings || {};
+  const st = ib.stream;
+  const out = [];
+
+  // 1. The endpoint. Where the client aims.
+  const adv = advertised(ib);
+  const ep = {
+    n: 1, lbl: "Endpoint", tone: adv ? "info" : "ok",
+    headline: [{ mono: true, text: adv || listener(ib) }],
+    facts: [
+      { k: "listen", v: ib.listen || "0.0.0.0", note: ib.listen ? null : "all interfaces" },
+      ib.port == null
+        ? { k: "port", v: "not applicable", na: true, note: "GRE is IP protocol 47 and has no ports" }
+        : { k: "port", v: String(ib.port) },
+    ],
+  };
+  if (ib.family === "vpn" && s.fouEnable) {
+    ep.facts.push({ k: "fouPort", v: "udp/" + s.fouPort, note: "second listener, GRE wrapped in UDP" });
+  }
+  if (adv) {
+    ep.note = "settings.externalProxy points clients at " + adv +
+      ". The listener is still " + listener(ib) + ". If the relay is down, nothing here will show it.";
+  }
+  out.push(ep);
+
+  // 2. Transport or encapsulation, depending on the family.
+  if (ib.family === "xray") {
+    const net = st.network;
+    const facts = [];
+    const host = (st.ws && st.ws.host) || null;
+    const path = (st.ws && st.ws.path) || null;
+    if (net === "tcp") {
+      facts.push({ k: "header type", v: st.tcp.headerType });
+      facts.push({ k: "acceptProxyProtocol", v: String(st.tcp.acceptProxyProtocol) });
+      facts.push({ k: "host", v: "not applicable", na: true, note: "no HTTP header on a raw tcp stream" });
+      facts.push({ k: "path", v: "not applicable", na: true });
+    } else {
+      facts.push({ k: "host", v: host || "not set", missing: !host });
+      facts.push({ k: "path", v: path || "not set", missing: !path, copy: path });
+    }
+    out.push({ n: 2, lbl: "Transport", tone: "ok", headline: [{ text: net }], facts: facts });
+  } else {
+    const facts = [];
+    if (s.ipsecEnable !== undefined) {
+      facts.push({ k: "ipsecEnable", v: String(s.ipsecEnable) });
+      if (s.ipsecEnable) facts.push({ k: "ipsecPsk", v: s.ipsecPsk, copy: s.ipsecPsk, secret: true });
+      facts.push({
+        k: "allowRaw", v: String(s.allowRaw),
+        note: s.allowRaw ? "unencrypted tunnels still accepted" : "unencrypted tunnels refused",
+      });
+    }
+    const bad = s.ipsecEnable === false && s.allowRaw === true;
+    out.push({
+      n: 2, lbl: "Encapsulation", tone: bad ? "warn" : "ok",
+      headline: [{ text: s.ipsecEnable ? "IPsec" : "plain, unencrypted" }],
+      facts: facts,
+      note: bad ? "Nothing between the peer and this server is encrypted. Anything on the path can read it." : null,
+    });
+  }
+
+  // 3. Security, for the Xray families only. A VPN inbound has no TLS layer:
+  //    its confidentiality question was answered by stage 2.
+  if (ib.family === "xray") {
+    const sec = st.security;
+    if (sec === "reality") {
+      const r = st.reality;
+      out.push({
+        n: 3, lbl: "Security", tone: "ok",
+        headline: [{ text: "reality" }],
+        facts: [
+          { k: "target", v: r.target },
+          { k: "serverNames", v: r.serverNames, copy: r.serverNames },
+          { k: "publicKey", v: r.publicKey, copy: r.publicKey },
+          { k: "shortIds", v: r.shortIds, copy: r.shortIds },
+          { k: "fingerprint", v: r.fingerprint },
+          { k: "certificate", v: "not applicable", na: true, note: "reality borrows the target's certificate" },
+        ],
+      });
+    } else if (sec === "tls") {
+      const t = st.tls;
+      const broken = !t.certFile;
+      out.push({
+        n: 3, lbl: "Security", tone: broken ? "error" : "ok",
+        headline: [{ text: "tls" }],
+        facts: [
+          { k: "serverName", v: t.sni, copy: t.sni },
+          { k: "certificateFile", v: t.certFile || "not set", missing: broken },
+          { k: "keyFile", v: t.keyFile || "not set", missing: !t.keyFile },
+          { k: "alpn", v: t.alpn.join(", ") },
+          { k: "versions", v: t.minVersion + " to " + t.maxVersion },
+        ],
+        note: broken
+          ? "The chain stops here. A blank certificateFile makes Xray refuse the whole configuration, so this does not fail alone: every inbound on the box is down until it is set or TLS is turned off."
+          : null,
+      });
+    } else {
+      out.push({
+        n: 3, lbl: "Security", tone: "warn",
+        headline: [{ text: "none" }],
+        facts: [{ k: "streamSettings.security", v: "none" }],
+        note: "Traffic is carried in the clear at this layer.",
+      });
+    }
+  }
+
+  // 4. Admission. Who is allowed in and how many of them.
+  const adm = { n: ib.family === "xray" ? 4 : 3, lbl: "Admission", tone: ib.clients ? "ok" : "error", facts: [] };
+  adm.headline = [{ text: ib.clients + (ib.clients === 1 ? " account" : " accounts") },
+                  { pill: ib.online ? "ok" : "", text: ib.online + " online" }];
+  if (ib.family === "xray") {
+    adm.facts.push({ k: "credential", v: ib.protocol === "vless" || ib.protocol === "vmess" ? "uuid per account" : "password per account" });
+    if (ib.settings.encryption !== undefined) adm.facts.push({ k: "encryption", v: ib.settings.encryption || "none" });
+    if (ib.settings.selectedAuth !== undefined) {
+      adm.facts.push({ k: "selectedAuth", v: ib.settings.selectedAuth || "none", missing: !ib.settings.selectedAuth });
+    }
+    adm.facts.push({ k: "ipLimit", v: ib.ipLimit ? ib.ipLimit + " addresses, " + ib.ipLimitStrategy : "no limit" });
+  } else {
+    adm.facts.push({ k: "auth", v: "username and password, in-binary RADIUS" });
+    adm.facts.push({ k: "userLimit", v: s.userLimit + " per account, " + s.userLimitStrategy });
+  }
+  if (!ib.clients) adm.note = "Nobody is provisioned. Everything above this line is working and unreachable.";
+  out.push(adm);
+
+  // 5. Addressing. VPN families only: a vless account has no address, it is
+  //    multiplexed onto the one listener.
+  if (ib.family === "vpn") {
+    const ranges = s.ipRanges || [];
+    out.push({
+      n: 4, lbl: "Addressing", tone: ranges.length ? "ok" : "info",
+      headline: ranges.length ? [{ mono: true, text: ranges[0] }] : [{ text: "none assigned" }],
+      facts: [
+        ranges.length > 1 ? { k: "ipRanges", v: "+" + (ranges.length - 1) + " more: " + ranges.slice(1).join(", ") } : null,
+        s.dns1 !== undefined ? { k: "dns1 / dns2", v: s.dns1 + " / " + s.dns2 } : null,
+        { k: "mtu", v: s.mtu === 0 ? "0" : String(s.mtu), note: s.mtu === 0 ? "kernel chooses, 1476 plain and less under FOU" : null },
+        s.ttl !== undefined ? { k: "ttl", v: String(s.ttl) } : null,
+        { k: "clientToClient", v: String(s.clientToClient) },
+        { k: "crossInbound", v: String(s.crossInbound), na: !s.clientToClient, note: !s.clientToClient ? "inert while clientToClient is off" : null },
+      ].filter(Boolean),
+      note: ranges.length ? null : "A range is allocated when the first account is added.",
+    });
+  }
+
+  // 6. Egress. Included because it is the question that follows "did it connect",
+  //    and answered honestly: no inbound owns it.
+  out.push({
+    n: ib.family === "xray" ? 5 : 5, lbl: "Egress", tone: "info",
+    headline: [{ text: "Xray routing decides" }],
+    facts: [
+      { k: "tag", v: ib.tag },
+      ib.family === "vpn"
+        ? { k: "reaches Xray via", v: "an injected dokodemo-door carrying this tag" }
+        : { k: "reaches Xray via", v: "this inbound, emitted verbatim" },
+    ],
+    note: "No outbound is pinned on the inbound. Which egress this traffic takes is a routing rule, on another page. This stage is here because it is the next question, not because the modal owns the answer.",
+  });
+
+  return out;
+}
+
+function buildPath(ib) {
+  const m = el("div", "modal");
+  m.append(panelHead(ib));
+  const chain = el("div", "chain");
+
+  stagesFor(ib).forEach((stg) => {
+    const wrap = el("div", "stage " + stg.tone);
+    const rail = el("div", "rail");
+    rail.append(el("div", "node", String(stg.n)));
+    const body = el("div", "body");
+    body.append(el("div", "lbl", stg.lbl));
+
+    const hl = el("div", "headline");
+    (stg.headline || []).forEach((h) => {
+      if (h.pill !== undefined) hl.append(el("span", "pill " + h.pill, h.text));
+      else if (h.mono) hl.append(el("span", "mono", h.text));
+      else hl.append(document.createTextNode(h.text));
+    });
+    body.append(hl);
+
+    if (stg.facts && stg.facts.length) {
+      const facts = el("div", "facts");
+      stg.facts.forEach((f) => {
+        const row = el("div", "fact");
+        row.append(el("div", "k", f.k));
+        const v = el("div", "v");
+        const span = el("span", "clip" + (f.na ? " na" : "") + (f.missing ? " notset" : ""), f.v);
+        span.title = f.v;
+        v.append(span);
+        if (f.note) {
+          const n = el("div", "dim");
+          n.style.fontFamily = "var(--ui)";
+          n.style.fontSize = "11px";
+          n.textContent = f.note;
+          v.append(n);
+        }
+        row.append(v);
+        const a = el("div", "a");
+        if (f.copy) a.append(copyBtn(f.copy, "Copy " + f.k));
+        row.append(a);
+        facts.append(row);
+      });
+      body.append(facts);
+    }
+    if (stg.note) body.append(el("div", "note", stg.note));
+
+    wrap.append(rail, body);
+    chain.append(wrap);
+  });
+
+  m.append(chain);
+  return m;
+}
+
+/* ================================================================== *
+ * 2 - SHEET
+ * ================================================================== */
+
+// Six groups, in the order an operator asks about them. Rows carry the REAL
+// key, so a value you read here is greppable. `na: true` means the field does
+// not exist for this protocol, which is a different fact from "empty" and is
+// therefore hidden by default behind a per-group count rather than deleted.
+function sheetGroups(ib) {
+  const s = ib.settings || {};
+  const st = ib.stream;
+  const xray = ib.family === "xray";
+  const G = [];
+
+  G.push({
+    name: "Identity",
+    rows: [
+      { k: "id", v: String(ib.id) },
+      { k: "remark", v: ib.remark },
+      { k: "protocol", v: ib.protocol },
+      { k: "tag", v: ib.tag, mono: true, copy: ib.tag },
+      { k: "enable", v: String(ib.enable) },
+      { k: "sortOrder", v: String(ib.sortOrder), note: ib.sortOrder === 0 ? "0 sorts last, it means never positioned" : null },
+    ],
+  });
+
+  const reach = [
+    { k: "listen", v: ib.listen || '"" (0.0.0.0)', mono: true },
+    ib.port == null
+      ? { k: "port", v: "no port", na: true, note: "GRE is IP protocol 47" }
+      : { k: "port", v: String(ib.port), mono: true },
+    { k: "address (derived)", v: ib.address, mono: true, copy: ib.address, note: "location.hostname unless listen is set" },
+  ];
+  const ep = s.externalProxy || [];
+  if (ep.length) {
+    ep.forEach((e, i) => reach.push({
+      k: "externalProxy[" + i + "]", v: e.dest + ":" + e.port + " (" + e.remark + ")",
+      mono: true, copy: e.dest + ":" + e.port,
+      note: "advertised in credentials only, no daemon reads it",
+    }));
+  } else {
+    reach.push({ k: "externalProxy", v: "[]", mono: true, note: "clients are given this server's own address" });
+  }
+  if (s.fouEnable !== undefined) {
+    reach.push({ k: "fouEnable", v: String(s.fouEnable) });
+    reach.push({ k: "fouPort", v: "udp/" + s.fouPort, mono: true, na: !s.fouEnable });
+  }
+  G.push({ name: "Reachability", rows: reach });
+
+  const tr = [];
+  if (xray) {
+    tr.push({ k: "streamSettings.network", v: st.network, mono: true });
+    if (st.network === "tcp") {
+      tr.push({ k: "tcpSettings.header.type", v: st.tcp.headerType, mono: true });
+      tr.push({ k: "tcpSettings.acceptProxyProtocol", v: String(st.tcp.acceptProxyProtocol), mono: true });
+      tr.push({ k: "host", v: "not applicable on tcp", na: true });
+      tr.push({ k: "path", v: "not applicable on tcp", na: true });
+      tr.push({ k: "grpc.serviceName", v: "not applicable on tcp", na: true });
+      tr.push({ k: "xhttp.mode", v: "not applicable on tcp", na: true });
+    } else if (st.network === "ws") {
+      tr.push({ k: "wsSettings.host", v: st.ws.host, mono: true, copy: st.ws.host });
+      tr.push({ k: "wsSettings.path", v: st.ws.path, mono: true, copy: st.ws.path });
+      tr.push({ k: "grpc.serviceName", v: "not applicable on ws", na: true });
+      tr.push({ k: "xhttp.mode", v: "not applicable on ws", na: true });
+    }
+    tr.push({ k: "sniffing.destOverride", v: (ib.sniffing || []).join(", "), mono: true });
+  } else {
+    tr.push({
+      k: "streamSettings", v: "not applicable to " + ib.protocol, na: true,
+      note: "this protocol is terminated by its own daemon, Xray only sees an injected dokodemo-door",
+    });
+    if (s.mtu !== undefined) tr.push({ k: "settings.mtu", v: String(s.mtu), mono: true, note: s.mtu === 0 ? "0 lets the kernel choose" : null });
+    if (s.ttl !== undefined) tr.push({ k: "settings.ttl", v: String(s.ttl), mono: true });
+    if (s.dns1 !== undefined) {
+      tr.push({ k: "settings.dns1", v: s.dns1, mono: true });
+      tr.push({ k: "settings.dns2", v: s.dns2, mono: true });
+    }
+    const rs = s.ipRanges || [];
+    tr.push({
+      k: "settings.ipRanges",
+      v: rs.length ? rs.join("\n") : "[] (assigned on first account)",
+      mono: true, copy: rs.length ? rs.join(", ") : null,
+    });
+    tr.push({ k: "settings.clientToClient", v: String(s.clientToClient), mono: true });
+    tr.push({ k: "settings.crossInbound", v: String(s.crossInbound), mono: true, na: !s.clientToClient });
+  }
+  G.push({ name: xray ? "Transport" : "Tunnel", rows: tr });
+
+  const sec = [];
+  if (xray) {
+    sec.push({ k: "streamSettings.security", v: st.security, mono: true });
+    if (st.security === "reality") {
+      const r = st.reality;
+      sec.push({ k: "realitySettings.target", v: r.target, mono: true, copy: r.target });
+      sec.push({ k: "realitySettings.serverNames", v: r.serverNames, mono: true, copy: r.serverNames });
+      sec.push({ k: "realitySettings.shortIds", v: r.shortIds, mono: true, copy: r.shortIds });
+      sec.push({ k: "settings.publicKey", v: r.publicKey, mono: true, copy: r.publicKey });
+      sec.push({ k: "realitySettings.privateKey", v: "stored, not shown", note: "server side only, it never belongs in a client config" });
+      sec.push({ k: "settings.fingerprint", v: r.fingerprint, mono: true });
+      sec.push({ k: "settings.spiderX", v: r.spiderX, mono: true });
+      sec.push({ k: "realitySettings.xver", v: String(r.xver), mono: true });
+      sec.push({ k: "tlsSettings", v: "not applicable under reality", na: true });
+    } else if (st.security === "tls") {
+      const t = st.tls;
+      sec.push({ k: "tlsSettings.serverName", v: t.sni, mono: true, copy: t.sni });
+      sec.push({ k: "certificates[0].certificateFile", v: t.certFile || '"" (not set)', mono: true, missing: !t.certFile });
+      sec.push({ k: "certificates[0].keyFile", v: t.keyFile || '"" (not set)', mono: true, missing: !t.keyFile });
+      sec.push({ k: "tlsSettings.alpn", v: t.alpn.join(", "), mono: true });
+      sec.push({ k: "tlsSettings.minVersion", v: t.minVersion, mono: true });
+      sec.push({ k: "tlsSettings.maxVersion", v: t.maxVersion, mono: true });
+      sec.push({ k: "tlsSettings.rejectUnknownSni", v: String(t.rejectUnknownSni), mono: true });
+      sec.push({ k: "realitySettings", v: "not applicable under tls", na: true });
+    }
+    if (ib.settings.decryption !== undefined) sec.push({ k: "settings.decryption", v: ib.settings.decryption, mono: true });
+    if (ib.settings.encryption !== undefined) sec.push({ k: "settings.encryption", v: ib.settings.encryption, mono: true });
+    if (ib.settings.selectedAuth !== undefined) {
+      sec.push({ k: "settings.selectedAuth", v: ib.settings.selectedAuth || "not set", missing: !ib.settings.selectedAuth });
+    }
+    sec.push({ k: "settings.method", v: "shadowsocks only", na: true });
+  } else {
+    sec.push({ k: "settings.ipsecEnable", v: String(s.ipsecEnable), mono: true });
+    sec.push({ k: "settings.ipsecPsk", v: s.ipsecPsk || '"" (not set)', mono: true, copy: s.ipsecPsk || null, na: !s.ipsecEnable, missing: s.ipsecEnable && !s.ipsecPsk });
+    sec.push({ k: "settings.allowRaw", v: String(s.allowRaw), mono: true, note: s.allowRaw ? "unencrypted tunnels accepted" : "unencrypted tunnels refused" });
+    sec.push({ k: "streamSettings.security", v: "not applicable to " + ib.protocol, na: true });
+  }
+  G.push({ name: "Security", rows: sec });
+
+  const acc = [
+    { k: "clients", v: String(ib.clients) + (ib.clients ? "" : "  (nobody can connect)"), missing: !ib.clients },
+    { k: "online now", v: String(ib.online) },
+    { k: "up", v: bytes(ib.up), mono: true },
+    { k: "down", v: bytes(ib.down), mono: true },
+    { k: "allTime", v: bytes(ib.allTime), mono: true },
+  ];
+  if (!xray) acc.push({ k: "settings.userLimit", v: s.userLimit + " (" + s.userLimitStrategy + ")", mono: true });
+  else acc.push({ k: "settings.userLimit", v: "not applicable to " + ib.protocol, na: true, note: "the address-pool limit, VPN families only" });
+  G.push({ name: "Accounts", rows: acc });
+
+  G.push({
+    name: "Limits",
+    rows: [
+      { k: "total", v: ib.total ? bytes(ib.total) : "0 (unlimited)", mono: true },
+      { k: "expiryTime", v: ib.expiryTime || "0 (never)", mono: true },
+      { k: "trafficReset", v: ib.trafficReset + (ib.lastReset ? ", last " + ib.lastReset : ""), mono: true },
+      { k: "speedLimitEnable", v: String(ib.speedLimitEnable), mono: true },
+      {
+        k: "speedLimitDown", v: ib.speedLimitDown ? ib.speedLimitDown + " KB/s" : "0 (unlimited)", mono: true,
+        na: !ib.speedLimitEnable,
+        note: ib.speedLimitEnable && !ib.speedLimitSeparate ? "speedLimitSeparate is false, so this caps BOTH directions" : null,
+      },
+      { k: "speedLimitUp", v: ib.speedLimitUp ? ib.speedLimitUp + " KB/s" : "0", mono: true, na: !ib.speedLimitSeparate, note: "unused while speedLimitSeparate is false" },
+      { k: "speedLimitAfter", v: ib.speedLimitAfter ? bytes(ib.speedLimitAfter) : "0 (immediately)", mono: true, na: !ib.speedLimitEnable },
+      { k: "ipLimit", v: ib.ipLimit ? String(ib.ipLimit) : "0 (no limit)", mono: true, note: "counts ADDRESSES, devices behind one NAT count as one" },
+      { k: "ipLimitStrategy", v: ib.ipLimitStrategy, mono: true, na: !ib.ipLimit },
+      { k: "trafficMultiplierEnable", v: String(ib.trafficMultiplierEnable), mono: true },
+      { k: "trafficMultiplier", v: ib.trafficMultiplier + "x", mono: true, na: !ib.trafficMultiplierEnable },
+      { k: "trafficMultiplierAfter", v: bytes(ib.trafficMultiplierAfter), mono: true, na: !ib.trafficMultiplierEnable },
+    ],
+  });
+
+  return G;
+}
+
+function buildSheet(ib) {
+  const m = el("div", "modal");
+  m.append(panelHead(ib));
+  const body = el("div", "sheet");
+
+  sheetGroups(ib).forEach((g) => {
+    const sec = el("div", "grp");
+    const naRows = g.rows.filter((r) => r.na).length;
+    const h = el("h3");
+    h.append(document.createTextNode(g.name));
+    if (naRows) {
+      const t = el("button", "natoggle", "show " + naRows + " not applicable");
+      t.type = "button";
+      t.addEventListener("click", () => {
+        const on = sec.classList.toggle("show-na");
+        t.textContent = (on ? "hide " : "show ") + naRows + " not applicable";
+      });
+      h.append(t);
+    }
+    sec.append(h);
+
+    g.rows.forEach((r) => {
+      const row = el("div", "srow" + (r.na ? " hidden-na" : ""));
+      row.append(el("div", "k", r.k));
+      const v = el("div", "v" + (r.mono ? " mono" : ""));
+      // A multi-value field (two ipRanges, several externalProxy entries) is one
+      // line PER value. Joined onto one line they read as a single malformed
+      // string, which is how "10.0.5.2-10.0.5.254 10.0.9.2-10.0.9.254" looked.
+      String(r.v).split("\n").forEach((line) => {
+        v.append(el("div", "wrapv" + (r.na ? " na" : "") + (r.missing ? " notset" : ""), line));
+      });
+      if (r.note) {
+        const n = el("div", "dim");
+        n.style.fontFamily = "var(--ui)";
+        n.style.fontSize = "11px";
+        n.textContent = r.note;
+        v.append(n);
+      }
+      row.append(v);
+      const a = el("div", "a");
+      if (r.copy) a.append(copyBtn(r.copy, "Copy " + r.k));
+      row.append(a);
+      sec.append(row);
+    });
+    body.append(sec);
+  });
+
+  m.append(body);
+  return m;
+}
+
+/* ================================================================== *
+ * 3 - VERDICT
+ * ================================================================== */
+function buildVerdict(ib) {
+  const f = findings(ib);
+  const tone = worst(f);
+  const m = el("div", "modal");
+  m.append(panelHead(ib));
+
+  const banner = el("div", "vbanner " + tone);
+  const icon = el("div", "icon", tone === "ok" ? "OK" : tone === "warn" ? "!" : "X");
+  icon.style.fontSize = tone === "ok" ? "10px" : "15px";
+  const say = el("div");
+  const errs = f.filter((x) => x.sev === "error");
+  const warns = f.filter((x) => x.sev === "warn");
+  say.append(el("div", "say",
+    tone === "error" ? "Cannot serve" : tone === "warn" ? "Serving, with warnings" : "Serving"));
+  say.append(el("div", "because",
+    tone === "error" ? errs.length + (errs.length === 1 ? " blocking finding" : " blocking findings") + ", " + ib.clients + " accounts, " + bytes(used(ib)) + " carried"
+    : tone === "warn" ? warns.length + (warns.length === 1 ? " warning" : " warnings") + ", " + ib.online + " of " + ib.clients + " accounts online"
+    : ib.online + " of " + ib.clients + " accounts online, " + bytes(used(ib)) + " carried, nothing to report"));
+  banner.append(icon, say);
+  m.append(banner);
+
+  const fl = el("div", "findings");
+  if (!f.length) {
+    const row = el("div", "finding");
+    row.append(el("span", "lamp ok"));
+    const t = el("div", "txt");
+    t.append(el("div", "what", "Enabled, has accounts, security configured, no quota in sight."));
+    t.append(el("div", "from", "checked: enable, settings.clients, streamSettings.security, total, externalProxy"));
+    row.append(t);
+    fl.append(row);
+  } else {
+    f.forEach((x) => {
+      const row = el("div", "finding");
+      row.append(el("span", "lamp " + x.sev + " sev"));
+      const t = el("div", "txt");
+      t.append(el("div", "what", x.what));
+      t.append(el("div", "from", x.from));
+      row.append(t);
+      if (x.fix) {
+        const b = el("div", "fix");
+        b.append(el("button", "btn", x.fix));
+        b.querySelector("button").type = "button";
+        row.append(b);
+      }
+      fl.append(row);
+    });
+  }
+  m.append(fl);
+
+  // Everything else, folded. The fold a finding points at opens by default, so
+  // acting on a finding never costs a hunt.
+  const folds = el("div", "folds");
+  const groups = sheetGroups(ib);
+  const flagged = {
+    Reachability: f.some((x) => x.from.indexOf("externalProxy") >= 0),
+    Security: f.some((x) => x.from.indexOf("certificateFile") >= 0 || x.from.indexOf("ipsec") >= 0),
+    Accounts: f.some((x) => x.from.indexOf("clients") >= 0),
+    Limits: f.some((x) => x.from.indexOf("total") >= 0 || x.from.indexOf("Multiplier") >= 0),
+  };
+  groups.filter((g) => g.name !== "Identity").forEach((g) => {
+    const d = el("details");
+    const hasErr = g.name === "Security" && f.some((x) => x.sev === "error" && x.from.indexOf("certificateFile") >= 0);
+    const hasErr2 = g.name === "Accounts" && f.some((x) => x.sev === "error" && x.from.indexOf("clients") >= 0);
+    if (hasErr || hasErr2) d.className = "flagerr";
+    else if (flagged[g.name]) d.className = "flag";
+    if (flagged[g.name]) d.open = true;
+    const sm = el("summary");
+    sm.append(document.createTextNode(g.name));
+    const shown = g.rows.filter((r) => !r.na);
+    sm.append(el("span", "hint", shown.length + " fields"));
+    d.append(sm);
+    const fb = el("div", "fbody");
+    shown.forEach((r) => {
+      const row = el("div", "fact");
+      row.append(el("div", "k", r.k));
+      const v = el("div", "v");
+      const span = el("span", "clip" + (r.missing ? " notset" : ""), r.v.replace(/\n/g, ", "));
+      span.title = r.v;
+      v.append(span);
+      row.append(v);
+      const a = el("div", "a");
+      if (r.copy) a.append(copyBtn(r.copy, "Copy " + r.k));
+      row.append(a);
+      fb.append(row);
+    });
+    d.append(fb);
+    folds.append(d);
+  });
+  m.append(folds);
+  return m;
+}
+
+/* ================================================================== *
+ * 4 - HANDOFF
+ * ================================================================== */
+
+// One recipient list per family. The Xray outbound blocks below are real Xray
+// shapes and would paste into an outbounds array as they stand. The router
+// commands are iproute2 as this fork's own GRE notes describe it. The panel
+// generates NONE of the outbound blocks today: that is the proposal.
+function recipientsFor(ib) {
+  const s = ib.settings || {};
+  const st = ib.stream;
+  const host = advertised(ib) ? (s.externalProxy[0].dest) : ib.address;
+  const port = advertised(ib) ? (s.externalProxy[0].port || ib.port) : ib.port;
+  const out = [];
+
+  if (ib.family === "xray" && st.security === "reality") {
+    const r = st.reality;
+    out.push({
+      id: "link", name: "A customer", sub: "share link",
+      title: "vless share link", why: "One account's link. The panel builds this today, in genVLESSLink.",
+      kind: "code",
+      text: "vless://" + ib.sampleClientId + "@" + host + ":" + port +
+        "?type=tcp&security=reality&pbk=" + r.publicKey +
+        "&fp=" + r.fingerprint + "&sni=" + r.serverNames.split(",")[0] +
+        "&sid=" + r.shortIds.split(",")[0] + "&spx=%2F&flow=#" + encodeURIComponent(ib.remark),
+    });
+    out.push({
+      id: "outbound", name: "Another panel", sub: "Xray outbound",
+      title: "Xray outbound block", why: "Paste into the other box's outbounds array. Not generated today.",
+      kind: "code", propose: true,
+      text: JSON.stringify({
+        tag: "to-" + ib.remark,
+        protocol: "vless",
+        settings: { vnext: [{ address: host, port: port, users: [{ id: ib.sampleClientId, encryption: "none", flow: "" }] }] },
+        streamSettings: {
+          network: "tcp",
+          security: "reality",
+          realitySettings: {
+            serverName: r.serverNames.split(",")[0],
+            fingerprint: r.fingerprint,
+            publicKey: r.publicKey,
+            shortId: r.shortIds.split(",")[0],
+            spiderX: r.spiderX,
+          },
+        },
+      }, null, 2),
+    });
+  }
+
+  if (ib.family === "xray" && st.security === "tls") {
+    const t = st.tls;
+    out.push({
+      id: "link", name: "A customer", sub: "share link",
+      title: "vmess share link", why: "Base64 of the vmess JSON, as genVmessLink builds it.",
+      kind: "code",
+      warn: !t.certFile ? "This link cannot work. TLS is on with no certificate set, so the listener never completes a handshake." : null,
+      warnSev: "err",
+      // Derived, not pasted. A hand-written base64 blob in a mockup is a value
+      // that looks real and decodes to nothing, and reviewers do decode them.
+      text: "vmess://" + btoa(JSON.stringify({
+        v: "2", ps: ib.remark, add: host, port: String(port),
+        id: ib.sampleClientId, aid: "0", net: st.network, type: "none",
+        host: st.ws.host, path: st.ws.path,
+        tls: "tls", sni: t.sni, alpn: t.alpn.join(","), fp: t.fingerprint,
+      })),
+    });
+    out.push({
+      id: "outbound", name: "Another panel", sub: "Xray outbound",
+      title: "Xray outbound block", why: "Paste into the other box's outbounds array. Not generated today.",
+      kind: "code", propose: true,
+      text: JSON.stringify({
+        tag: "to-" + ib.remark,
+        protocol: "vmess",
+        settings: { vnext: [{ address: host, port: port, users: [{ id: ib.sampleClientId, security: "auto" }] }] },
+        streamSettings: {
+          network: "ws",
+          security: "tls",
+          tlsSettings: { serverName: t.sni, fingerprint: t.fingerprint, alpn: t.alpn },
+          wsSettings: { path: st.ws.path, headers: { Host: st.ws.host } },
+        },
+      }, null, 2),
+    });
+  }
+
+  if (ib.protocol === "l2tp") {
+    out.push({
+      id: "fields", name: "A customer", sub: "four fields",
+      title: "What to read down a phone line", why: "L2TP has no share link. hasLink() is false for it, and there is nothing to encode.",
+      kind: "fields",
+      warn: advertised(ib) ? "Server is the relay, not this box. settings.externalProxy overrides what the customer is told." : null,
+      rows: [
+        ["Server", advertised(ib) || listener(ib)],
+        ["IPsec PSK", s.ipsecPsk],
+        ["Username", "per account, from the Clients page"],
+        ["Password", "per account, from the Clients page"],
+        ["Encryption", s.allowRaw ? "IPsec, raw also accepted" : "IPsec required"],
+      ],
+    });
+    out.push({
+      id: "outbound", name: "Another panel", sub: "VPN outbound",
+      title: "vpn-ui outbound fields", why: "The other panel's VPN outbound form takes exactly these. Xray core has no l2tp outbound, this fork dials it with a bundled client and pins the route with sockopt.interface.",
+      kind: "fields", propose: true,
+      rows: [
+        ["Protocol", "l2tp"],
+        ["Server", advertised(ib) || listener(ib)],
+        ["PSK", s.ipsecPsk],
+        ["Username", "an account on this inbound"],
+        ["Password", "that account's password"],
+      ],
+    });
+  }
+
+  if (ib.protocol === "gre") {
+    const hasPool = (s.ipRanges || []).length > 0;
+    out.push({
+      id: "router", name: "A peer router", sub: "iproute2",
+      title: "Linux or OpenWrt peer", why: "The commands that bring up the far end of this tunnel. Not generated today, and the reported gap.",
+      kind: "code", propose: true,
+      warn: hasPool ? null : "Nothing to hand over yet. The tunnel addresses are allocated with the first account, so there is no inner address to put in these commands.",
+      warnSev: hasPool ? null : "err",
+      text: hasPool
+        ? "ip tunnel add gre1 mode gre \\\n    local <this router's public ip> remote " + ib.address + " \\\n    ttl " + s.ttl + "\nip link set gre1 up\nip addr add <account address>/32 peer <gateway> dev gre1"
+        : "# add an account first: its tunnel address is what goes on the peer\nip tunnel add gre1 mode gre \\\n    local <this router's public ip> remote " + ib.address + " \\\n    ttl " + s.ttl + "\nip link set gre1 up\nip addr add <allocated on save>/32 peer <allocated on save> dev gre1",
+    });
+    out.push({
+      id: "fou", name: "A peer behind NAT", sub: "FOU variant",
+      title: "GRE over UDP", why: "For a peer that cannot pass protocol 47. Linux and OpenWrt only, MikroTik and Cisco do not implement FOU.",
+      kind: "code", propose: true,
+      warn: s.fouEnable ? null : "settings.fouEnable is false. Turn it on before handing this out.",
+      text: "ip fou add port " + s.fouPort + " ipproto 47\nip link add gre1 type gre \\\n    local <this router's public ip> remote " + ib.address + " \\\n    encap fou encap-sport auto encap-dport " + s.fouPort + "\nethtool -K <wan> gro off   # the receiver must have GRO off",
+    });
+    out.push({
+      id: "mikrotik", name: "A MikroTik", sub: "RouterOS",
+      title: "RouterOS peer", why: "The same tunnel in RouterOS terms. Plain GRE only, no FOU.",
+      kind: "code", propose: true,
+      warn: s.ipsecEnable ? null : "IPsec is off on this inbound, so this tunnel is unencrypted.",
+      text: "/interface gre add name=gre1 \\\n    local-address=<this router's public ip> \\\n    remote-address=" + ib.address + "\n/ip address add interface=gre1 \\\n    address=<account address>/32 network=<gateway>",
+    });
+  }
+
+  out.push({
+    id: "audit", name: "Your notes", sub: "plain text",
+    title: "Copy every field", why: "The whole inbound as key=value, for a ticket or a runbook.",
+    kind: "code",
+    text: sheetGroups(ib).map((g) =>
+      "# " + g.name + "\n" + g.rows.filter((r) => !r.na).map((r) => r.k + " = " + r.v.replace(/\n/g, " ")).join("\n")
+    ).join("\n\n"),
+  });
+
+  return out;
+}
+
+function buildHandoff(ib) {
+  const m = el("div", "modal");
+  m.append(panelHead(ib));
+  const wrap = el("div", "handoff");
+  const list = el("div", "hrecips");
+  list.append(el("div", "cap", "Hand it to"));
+  const pane = el("div", "hpane");
+  const recips = recipientsFor(ib);
+  const buttons = [];
+
+  function render(r) {
+    pane.textContent = "";
+    const t = el("div", "ptitle");
+    t.append(document.createTextNode(r.title));
+    if (r.propose) t.append(el("span", "pill info", "not built yet"));
+    pane.append(t);
+    pane.append(el("div", "pwhy", r.why));
+    if (r.warn) pane.append(el("div", "warnstrip" + (r.warnSev === "err" ? " err" : ""), r.warn));
+
+    if (r.kind === "code") {
+      const pre = el("pre", "code wrapv");
+      pre.textContent = r.text;
+      pane.append(pre);
+      const bar = el("div", "barrow");
+      const b = el("button", "btn", "Copy");
+      b.type = "button";
+      b.addEventListener("click", () => {
+        writeClipboard(r.text);
+        b.textContent = "Copied";
+        setTimeout(() => { b.textContent = "Copy"; }, 1100);
+      });
+      bar.append(b, el("span", "dim", r.text.length + " characters"));
+      pane.append(bar);
+    } else {
+      const fl = el("div", "fieldlist");
+      r.rows.forEach(([k, v]) => {
+        const row = el("div", "hf");
+        row.append(el("div", "k", k));
+        const vv = el("div", "v");
+        const span = el("span", "clip", v);
+        span.title = v;
+        vv.append(span);
+        row.append(vv);
+        row.append(copyBtn(v, "Copy " + k));
+        fl.append(row);
+      });
+      pane.append(fl);
+    }
+  }
+
+  recips.forEach((r, i) => {
+    const b = el("button");
+    b.type = "button";
+    b.setAttribute("aria-current", i === 0 ? "true" : "false");
+    b.append(document.createTextNode(r.name));
+    b.append(el("span", "sub2", r.sub));
+    b.addEventListener("click", () => {
+      buttons.forEach((x) => x.setAttribute("aria-current", String(x === b)));
+      render(r);
+    });
+    buttons.push(b);
+    list.append(b);
+  });
+  render(recips[0]);
+
+  wrap.append(list, pane);
+  m.append(wrap);
+  return m;
+}
+
+/* ================================================================== *
+ * 5 - METER
+ * ================================================================== */
+function buildMeter(ib) {
+  const m = el("div", "modal");
+  m.append(panelHead(ib));
+
+  const metric = el("dl", "metric");
+  const mk = (k, v, sub) => {
+    const w = el("div");
+    w.append(el("dt", "", k));
+    const dd = el("dd", "num", v);
+    if (sub) dd.append(el("small", "", sub));
+    w.append(dd);
+    return w;
+  };
+  metric.append(
+    mk("Carried", bytes(used(ib)), bytes(ib.up) + " up, " + bytes(ib.down) + " down"),
+    mk("All time", bytes(ib.allTime), ib.trafficReset === "never" ? "never reset" : "resets " + ib.trafficReset),
+    mk("Accounts", String(ib.clients), ib.clients ? ib.online + " online" : "nobody provisioned"),
+  );
+  m.append(metric);
+
+  // Quota.
+  const q = el("div", "msec");
+  const qh = el("h3");
+  qh.append(document.createTextNode("Quota"));
+  qh.append(el("span", "r", ib.total ? Math.round(quotaPct(ib)) + "% used" : "unlimited"));
+  q.append(qh);
+  const figs = el("div", "quotafigs num");
+  figs.append(el("b", "", bytes(used(ib))));
+  figs.append(el("span", "dim", ib.total ? "of " + bytes(ib.total) : "of no limit"));
+  q.append(figs);
+  const bar = el("div", "meter " + (ib.total ? quotaTone(ib) : "inf"));
+  if (ib.total) { const f = el("i"); f.style.width = quotaPct(ib) + "%"; bar.append(f); }
+  q.append(bar);
+  if (ib.total) {
+    const qn = el("div", "dim", "At 100% the inbound stops serving. trafficReset is " + ib.trafficReset +
+      (ib.lastReset ? ", last reset " + ib.lastReset : "") + ".");
+    qn.style.fontSize = "11.5px";
+    qn.style.marginTop = "6px";
+    q.append(qn);
+  }
+  m.append(q);
+
+  // The address pool, or the honest absence of one.
+  const p = el("div", "msec");
+  const ph = el("h3");
+  ph.append(document.createTextNode("Address pool"));
+  if (ib.family === "vpn") {
+    const st = poolStats(ib);
+    ph.append(el("span", "r", st.slots ? st.usedSlots + " of " + st.slots + " account slots" : "none allocated"));
+    p.append(ph);
+    if (st.rows.length) {
+      st.rows.forEach((r) => {
+        const row = el("div", "poolrow");
+        const rng = el("span", "rng clip", r.range);
+        rng.title = r.range;
+        row.append(rng);
+        row.append(el("span", "cap2", r.addrs + " addresses, " + r.slots + " slots"));
+        p.append(row);
+      });
+      // 60 cells at most, and when the pool is bigger than that each cell stands
+      // for several slots. Drawing 60 of 252 and filling 18 of them would read as
+      // 30% full when the truth is 7%, which is the exact kind of lie a capacity
+      // view exists to prevent.
+      const slots = el("div", "slots");
+      const per = Math.ceil(st.slots / 60);
+      const cells = Math.ceil(st.slots / per);
+      const fill = Math.round(st.usedSlots / per);
+      for (let i = 0; i < cells; i++) slots.append(el("i", i < fill ? "used" : ""));
+      if (per > 1) slots.append(el("span", "more", "1 cell = " + per + " slots"));
+      p.append(slots);
+      const note = el("div", "dim");
+      note.style.fontSize = "11.5px";
+      note.style.marginTop = "8px";
+      note.textContent = "settings.userLimit is " + st.k + ", so each account reserves " + st.k +
+        " consecutive addresses. Raising it does not add capacity, it divides the same pool into fewer slots.";
+      p.append(note);
+    } else {
+      const note = el("div", "dim");
+      note.style.fontSize = "12px";
+      note.textContent = "settings.ipRanges is empty. A block is allocated when the first account is added, and it grows automatically as more are.";
+      p.append(note);
+    }
+  } else {
+    ph.append(el("span", "r", "not applicable"));
+    p.append(ph);
+    const note = el("div", "na");
+    note.style.fontSize = "12.5px";
+    note.textContent = "A " + ib.protocol + " account has no address. Every account is multiplexed onto the one listener, so there is no pool to fill and no capacity ceiling to draw here.";
+    p.append(note);
+  }
+  m.append(p);
+
+  // Where the bytes went.
+  const t = el("div", "msec");
+  const th = el("h3");
+  th.append(document.createTextNode("Where the traffic is"));
+  th.append(el("span", "r", ib.top.length ? "top " + ib.top.length : "nothing yet"));
+  t.append(th);
+  if (ib.top.length) {
+    const list = el("div", "talkers");
+    const max = ib.top[0][1];
+    ib.top.forEach(([who, n]) => {
+      const row = el("div", "talker");
+      const w = el("div", "who");
+      w.append(el("span", "lamp ok"));
+      const nm = el("span", "nm clip", who);
+      nm.title = who;
+      w.append(nm);
+      row.append(w, el("div", "amt num", bytes(n)));
+      const b = el("div", "meter bar");
+      const f = el("i");
+      f.style.width = (n / max) * 100 + "%";
+      b.append(f);
+      row.append(b);
+      list.append(row);
+    });
+    t.append(list);
+    const note = el("div", "dim");
+    note.style.fontSize = "11.5px";
+    note.style.marginTop = "9px";
+    note.textContent = "This inbound's share of each account's usage, from client_traffics. An account served on several inbounds appears on each with only its share.";
+    t.append(note);
+  } else {
+    const note = el("div", "na");
+    note.style.fontSize = "12.5px";
+    note.textContent = ib.clients
+      ? ib.clients + " accounts and 0 B carried. Nothing has ever connected."
+      : "No accounts, so no traffic. Nothing here will change until one is added.";
+    t.append(note);
+  }
+  m.append(t);
+
+  // Ceilings. Per account, not per inbound, which is the thing operators get wrong.
+  const c = el("div", "msec");
+  c.append(el("h3", "", "Ceilings, per account"));
+  const grid = el("div", "ceilings");
+  const ceil = (k, v, sub) => {
+    const w = el("div", "ceil");
+    w.append(el("div", "k", k));
+    const vv = el("div", "v");
+    vv.append(el("b", "", v));
+    if (sub) { vv.append(document.createTextNode(" ")); vv.append(el("span", "dim", sub)); }
+    w.append(vv);
+    return w;
+  };
+  grid.append(ceil("Speed",
+    ib.speedLimitEnable ? Math.round(ib.speedLimitDown / 1024) + " MB/s" : "unlimited",
+    ib.speedLimitEnable ? (ib.speedLimitSeparate ? "down only" : "both directions") : null));
+  grid.append(ceil("Addresses", ib.ipLimit ? String(ib.ipLimit) : "unlimited", ib.ipLimit ? ib.ipLimitStrategy : null));
+  if (ib.family === "vpn") {
+    grid.append(ceil("Devices", String(ib.settings.userLimit), ib.settings.userLimitStrategy));
+  } else {
+    grid.append(ceil("Devices", "not applicable", "no address pool"));
+  }
+  grid.append(ceil("Weighting",
+    ib.trafficMultiplierEnable ? ib.trafficMultiplier + "x" : "1x",
+    ib.trafficMultiplierEnable ? "past " + bytes(ib.trafficMultiplierAfter) : null));
+  c.append(grid);
+  m.append(c);
+
+  return m;
+}
+
+/* --------------------------------- assembly -------------------------------- */
+const BUILDERS = {
+  path: buildPath,
+  sheet: buildSheet,
+  verdict: buildVerdict,
+  handoff: buildHandoff,
+  meter: buildMeter,
+};
+
+Object.keys(BUILDERS).forEach((name) => {
+  const deck = document.getElementById("d-" + name);
+  INBOUNDS.forEach((ib) => {
+    const panel = BUILDERS[name](ib);
+    panel.dataset.ib = ib.key;
+    deck.append(panel);
+  });
+});
+
+/* --------------------------------- controls -------------------------------- */
+document.querySelectorAll(".tabs[role=tablist] .tab[data-view]").forEach((t) => {
+  t.addEventListener("click", () => {
+    document.querySelectorAll(".tab[data-view]").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("on"));
+    document.getElementById("v-" + t.dataset.view).classList.add("on");
+  });
+});
+
+const ibfilter = document.getElementById("ibfilter");
+let ibShown = "all";
+function applyIbFilter() {
+  document.querySelectorAll(".modal[data-ib]").forEach((p) => {
+    p.hidden = !(ibShown === "all" || p.dataset.ib === ibShown);
+  });
+  ibfilter.querySelectorAll(".tab").forEach((b) => {
+    b.setAttribute("aria-selected", String(b.dataset.ib === ibShown));
+  });
+}
+[{ key: "all", label: "All four" }].concat(
+  INBOUNDS.map((ib) => ({ key: ib.key, label: ib.remark }))
+).forEach((o) => {
+  const b = el("button", "tab");
+  b.type = "button";
+  b.setAttribute("role", "tab");
+  b.dataset.ib = o.key;
+  b.textContent = o.label;
+  b.addEventListener("click", () => { ibShown = o.key; applyIbFilter(); });
+  ibfilter.append(b);
+});
+applyIbFilter();
+
+const themeBtn = document.getElementById("theme");
+function isDark() {
+  return document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+}
+function syncThemeLabel() { themeBtn.textContent = isDark() ? "Light" : "Dark"; }
+themeBtn.addEventListener("click", () => {
+  document.documentElement.dataset.theme = isDark() ? "light" : "dark";
+  syncThemeLabel();
+});
+syncThemeLabel();
+</script>
+</body>
+</html>

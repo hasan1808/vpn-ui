@@ -1,0 +1,235 @@
+{{define "modals/membershipInfoModal"}}
+<!--
+  More Information, redesigned: ONE membership, the account as it is served on one
+  inbound.
+
+  It used to open modals/inboundInfoModal, which is inbound-centric and titled
+  "Details": transport tags first, the client's slot below a divider, and the
+  account's subscription URL reprinted inside it even though the subscription
+  belongs to the account and not to this inbound. On an account with six inbounds
+  that meant the same URL six times and the actual credential buried under it.
+
+  This inverts it. What the customer installs is first and largest, because that
+  is what the button is pressed for. The transport facts follow, for the times it
+  does not work. The subscription is gone entirely: it is the account's, and the
+  Account Info panel is where the account lives.
+
+  Deliberately NOT a replacement for inboundInfoModal. That modal still serves the
+  Inbounds page, which opens it for non-multi-user inbounds with no client at all
+  (tunnel, socks, http, Xray-native WireGuard peers, single-config Shadowsocks).
+  ClientActionsMixin.showInfo routes to whichever fits, so neither page changes
+  the other.
+-->
+<a-modal id="membership-info-modal" v-model="membershipInfoModal.visible"
+  :title='membershipInfoModal.record ? (membershipInfoModal.record.remark || ("#" + membershipInfoModal.record.id)) : "{{ i18n "info" }}"'
+  :closable="true" :mask-closable="true" :class="themeSwitcher.currentTheme"
+  :footer="null" :width="620">
+  <div v-if="membershipInfoModal.record" class="mi-wrap">
+
+    <div class="mi-head">
+      <span class="ai-chip">[[ ProtocolLabels[record.protocol] || record.protocol ]]</span>
+      <span class="ai-chip" :class="enabled ? 'ok' : 'err'">
+        [[ enabled ? '{{ i18n "enable" }}' : '{{ i18n "disabled" }}' ]]
+      </span>
+      <span class="ai-chip">[[ email ]]</span>
+      <span class="mi-head-sp"></span>
+      <!-- This membership only, the same pair the account panel puts on each row. -->
+      <a-tooltip>
+        <template slot="title">{{ i18n "pages.inbounds.exportTxt" }}</template>
+        <a-button size="small" icon="file-text" @click="exportTxt()"></a-button>
+      </a-tooltip>
+      <a-tooltip>
+        <template slot="title">{{ i18n "pages.inbounds.exportPdf" }}</template>
+        <a-button size="small" icon="file-pdf" @click="exportPdf()"></a-button>
+      </a-tooltip>
+    </div>
+
+    <a-spin :spinning="membershipInfoModal.loading">
+      <!-- What the customer installs, first and largest. -->
+      <div v-if="!cards.length && !membershipInfoModal.loading" class="ai-none">
+        {{ i18n "pages.clients.nothingToHandOver" }}
+      </div>
+
+      <div class="ai-card" v-for="(card, ci) in cards" :key="ci">
+        <div class="ai-card-t" v-if="cards.length > 1">[[ card.remark ]]</div>
+
+        <div class="ai-art" v-if="card.qr">
+          <canvas :id="'mi-qr-' + ci" class="ai-art-qr ai-zoomable"
+            @click="openZoom(card.qr)"></canvas>
+          <div class="ai-art-body">
+            <a-textarea v-if="card.configText" :value="card.configText" read-only
+              :auto-size="{ minRows: 5, maxRows: 12 }"
+              :style="{ fontFamily: 'monospace', fontSize: '11px' }"></a-textarea>
+            <div class="ai-link" v-else>[[ card.link ]]</div>
+            <div class="ai-btns">
+              <a-button size="small" type="primary"
+                @click="copy(card.configText || card.link)">{{ i18n "copy" }}</a-button>
+              <a-button size="small" v-if="card.configText"
+                @click="download(card.configText, (card.remark || 'config') + '.conf')">
+                {{ i18n "download" }}
+              </a-button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="ai-creds">
+          <div class="ai-kv" v-if="card.server">
+            <span class="k">{{ i18n "pages.xray.outbound.address" }}</span>
+            <span class="v mono">[[ card.server ]][[ card.port ? ':' + card.port : '' ]]</span>
+          </div>
+          <div class="ai-kv" v-if="card.username && !card.hideUserPass">
+            <span class="k">{{ i18n "username" }}</span>
+            <span class="v mono">[[ card.username ]]</span>
+          </div>
+          <div class="ai-kv" v-if="card.password && !card.hideUserPass">
+            <span class="k">{{ i18n "password" }}</span>
+            <span class="v mono">[[ card.password ]]</span>
+          </div>
+          <div class="ai-kv" v-if="card.uuid">
+            <span class="k">ID</span><span class="v mono">[[ card.uuid ]]</span>
+          </div>
+          <div class="ai-kv" v-if="card.psk">
+            <span class="k">PSK</span><span class="v mono">[[ card.psk ]]</span>
+          </div>
+          <div class="ai-kv" v-if="card.remoteId">
+            <span class="k">Remote ID</span><span class="v mono">[[ card.remoteId ]]</span>
+          </div>
+          <div class="ai-btns" v-if="credText(card)">
+            <a-button size="small" type="primary" @click="copy(credText(card))">{{ i18n "copy" }}</a-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- The transport, for when it does not work. -->
+      <div class="ai-lbl ai-more">{{ i18n "info" }}</div>
+      <div class="ai-kv">
+        <span class="k">{{ i18n "pages.inbounds.protocol" }}</span>
+        <span class="v">[[ ProtocolLabels[record.protocol] || record.protocol ]]</span>
+      </div>
+      <div class="ai-kv">
+        <span class="k">{{ i18n "pages.xray.outbound.address" }}</span>
+        <span class="v mono">[[ record.address ]]:[[ record.port ]]</span>
+      </div>
+      <div class="ai-kv" v-if="first && first.network">
+        <span class="k">{{ i18n "transmission" }}</span>
+        <span class="v">[[ first.network ]]</span>
+      </div>
+      <div class="ai-kv">
+        <span class="k">{{ i18n "pages.clients.summaryUsed" }}</span>
+        <span class="v">[[ used ]]</span>
+      </div>
+      <div class="ai-kv" v-if="first && first.expiry">
+        <span class="k">{{ i18n "pages.clients.summaryExpires" }}</span>
+        <span class="v">[[ first.expiry ]]</span>
+      </div>
+    </a-spin>
+  </div>
+
+  <a-modal id="membership-info-zoom" v-model="membershipInfoModal.zoom.visible"
+    :title="membershipInfoModal.record ? (membershipInfoModal.record.remark || '') : ''"
+    :closable="true" :mask-closable="true" :class="themeSwitcher.currentTheme"
+    :footer="null" :width="380">
+    <div class="ai-zoom-body">
+      <canvas id="mi-zoom-qr"></canvas>
+      <div class="ai-link ai-zoom-link">[[ membershipInfoModal.zoom.value ]]</div>
+      <div class="ai-btns">
+        <a-button size="small" type="primary" @click="copy(membershipInfoModal.zoom.value)">{{ i18n "copy" }}</a-button>
+      </div>
+    </div>
+  </a-modal>
+</a-modal>
+
+<script>
+  const membershipInfoModal = {
+    visible: false,
+    record: null,   // the DBInbound
+    client: null,   // its entry for this account
+    cards: [],
+    loading: false,
+    zoom: { visible: false, value: '' },
+
+    show(record, client) {
+      this.record = record;
+      this.client = client;
+      this.cards = [];
+      this.zoom = { visible: false, value: '' };
+      this.visible = true;
+      membershipInfoModalApp.load();
+    },
+    close() { this.visible = false; },
+  };
+
+  const membershipInfoModalApp = new Vue({
+    delimiters: ['[[', ']]'],
+    el: '#membership-info-modal',
+    data: { themeSwitcher, membershipInfoModal, app: null },
+    computed: {
+      record() { return this.membershipInfoModal.record; },
+      client() { return this.membershipInfoModal.client; },
+      cards() { return this.membershipInfoModal.cards || []; },
+      first() { return this.cards[0] || null; },
+      email() { return (this.client && this.client.email) || ''; },
+      enabled() { return !!(this.client && this.client.enable); },
+      used() {
+        if (!this.app || !this.record || !this.client) return '';
+        return SizeFormatter.sizeFormat(this.app.getInboundSumStats(this.record, this.client.email) || 0);
+      },
+    },
+    methods: {
+      // Same builder the exports and the account panel use, so all three agree.
+      async load() {
+        const m = this.membershipInfoModal;
+        if (!this.app || !m.record || !m.client) return;
+        m.loading = true;
+        try {
+          m.cards = await AccountExport.buildCards(this.app, [{ inboundId: m.record.id, email: m.client.email }]);
+        } catch (e) {
+          console.error('membership info: could not build cards', e);
+          m.cards = [];
+        }
+        m.loading = false;
+        this.$nextTick(() => this.renderQrs());
+      },
+      credText(card) {
+        const rows = [];
+        if (card.server) rows.push(card.server + (card.port ? ':' + card.port : ''));
+        if (card.username && !card.hideUserPass) rows.push(card.username);
+        if (card.password && !card.hideUserPass) rows.push(card.password);
+        if (card.uuid) rows.push(card.uuid);
+        if (card.psk) rows.push('PSK: ' + card.psk);
+        if (card.remoteId) rows.push('Remote ID: ' + card.remoteId);
+        return rows.join('\n');
+      },
+      exportTxt() { if (this.app) this.app.exportClientTxt(this.record, this.client); },
+      exportPdf() { if (this.app) this.app.exportClientPdf(this.record, this.client); },
+      copy(text) { if (this.app) this.app.copyText(text); },
+      download(text, name) { FileManager.downloadTextFile(text, name, { type: 'text/plain' }); },
+      openZoom(value) {
+        if (!value) return;
+        this.membershipInfoModal.zoom = { visible: true, value: value };
+        this.$nextTick(() => this.qr('#mi-zoom-qr', value, 620));
+      },
+      // a-modal portals its body to the document root, so these are looked up there.
+      qr(selector, value, size) {
+        const el = document.querySelector(selector);
+        if (!el || !value) return;
+        new QRious({
+          element: el, size: size || 320, value: value,
+          background: 'white', backgroundAlpha: 1, foreground: 'black',
+          padding: 8, level: 'L',
+        });
+      },
+      renderQrs() {
+        if (!this.membershipInfoModal.visible) return;
+        if (this.membershipInfoModal.zoom.visible) {
+          this.qr('#mi-zoom-qr', this.membershipInfoModal.zoom.value, 620);
+        }
+        this.cards.forEach((card, ci) => { if (card.qr) this.qr('#mi-qr-' + ci, card.qr, 300); });
+      },
+    },
+    updated() {
+      if (this.membershipInfoModal.visible) this.$nextTick(() => this.renderQrs());
+    },
+  });
+</script>
+{{end}}

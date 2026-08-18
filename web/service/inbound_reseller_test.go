@@ -199,13 +199,22 @@ func TestGetInboundsForResellerWithNoAccountsHasNoUsage(t *testing.T) {
 // the same way or a reseller's band reads lower than the rows it is summing.
 func TestRescopedAllTimeFallsBackToUpPlusDown(t *testing.T) {
 	s := &InboundService{}
+	// The band sums the per-INBOUND share (InboundUp/InboundDown/InboundAllTime),
+	// not the account totals on the same rows: an account is now listed under every
+	// inbound serving it, so adding up Up/Down would count a two-inbound account
+	// twice and hand the reseller a band larger than the traffic they have sold.
+	// Up/Down/AllTime are set to match here only because a single-inbound account's
+	// share IS its total.
 	inbound := &model.Inbound{
 		Id:       7,
 		Settings: sharedInboundSettings,
 		ClientStats: []xray.ClientTraffic{
-			{Email: "admins-client", Up: 700, Down: 300, AllTime: 4000},
-			{Email: "resellers-client", Up: 20, Down: 5}, // pre-dates all_time
-			{Email: "Resellers-Client-2", Up: 1, Down: 2, AllTime: 30},
+			{Email: "admins-client", Up: 700, Down: 300, AllTime: 4000,
+				InboundUp: 700, InboundDown: 300, InboundAllTime: 4000},
+			// pre-dates all_time
+			{Email: "resellers-client", Up: 20, Down: 5, InboundUp: 20, InboundDown: 5},
+			{Email: "Resellers-Client-2", Up: 1, Down: 2, AllTime: 30,
+				InboundUp: 1, InboundDown: 2, InboundAllTime: 30},
 		},
 	}
 	s.FilterInboundForReseller(inbound, map[string]bool{

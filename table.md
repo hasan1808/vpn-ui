@@ -1,6 +1,6 @@
 ## Supported distributions
 
-pro-ui is built and tested on these Linux distributions. Each cell is a separately tested release.
+vpn-ui is built and tested on these Linux distributions. Each cell is a separately tested release.
 
 | | Distribution | | | |
 |:---:|:---|:---:|:---:|:---:|

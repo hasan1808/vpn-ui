@@ -1,35 +1,12 @@
 [English](/README.md) | [فارسی](/README_FA.md) | [العربية](/README_AR.md) | [中文](/README_ZH.md) | [Español](/README_ES.md) | [Русский](/README_RU.md) | [Türkçe](/README_TR.md)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/logo.png" alt="PRO-UI Logo" width="260">
+  <img src="https://raw.githubusercontent.com/Sir-MmD/PRO-UI/refs/heads/main/media/logo.png" alt="PRO-UI Logo" width="260">
 </p>
 
 This project is an enhanced version of the **[3X-UI](https://github.com/MHSanaei/3x-ui)** panel (version 2.9.3). The goal of this project is to add various protocols and set it up as an all-in-one panel with support for **Xray-core** features.
 
-![Overview](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/overview.png)
-
-## New Features
-
-- **Multi-Admin** with per-inbound access, so each admin only sees the inbounds you assign it
-- **Reseller** accounts with a metered traffic balance an admin recharges, spent only on the inbounds it was given
-- **Client to Client** support, even as **Cross Inbound** (an internal connection between an L2TP user and an OpenVPN user)
-- Added **AES-256-GCM** and **AES-128-GCM** **Encryption** to the **Shadowsocks** protocol
-- Support for **XHTTP Object** in **Inbound** and **Outbound**
-- Automatic installation script for **[WARP-CLI](https://github.com/Sir-MmD/warp-cli)** (Cloudflare's official version)
-- A [patched **Xray-core**](https://github.com/Sir-MmD/Xray-core) that fixes the "Unsupported Cipher" error in the **Shadowsocks** protocol, and adds **AnyTLS**, **TUIC** and **NaiveProxy** as native protocols, so they inherit per-account traffic accounting, speed limits, device limits and online detection instead of needing a second core
-- Bundling all files (**Geofile**, **Xray-core**, and **Backend** cores) into a single binary
-- **Real SSL for a bare server IP**, for a host with no domain at all (Let's Encrypt issues these; the certificate names the address itself)
-- Certificate renewals are picked up **without restarting the panel**, so nobody is disconnected when a certificate rolls over
-- Exporting account links as **TXT** and **PDF**
-- Ability to **Freeze** accounts
-- Added **checkboxes** to clients and **Inbound**s
-- **Bulk Operation** support:
-    * Bulk change of accounts' traffic
-    * Bulk change of accounts' days
-    * Bulk enable/disable of accounts
-    * Bulk delete of accounts
-    * Bulk delete of Inbounds
-    * Bulk **Freeze/Un-Freeze** of accounts
+![Overview](https://raw.githubusercontent.com/Sir-MmD/PRO-UI/refs/heads/main/media/overview.png)
 
 ## New Protocols
 
@@ -53,32 +30,28 @@ the core rather than by a daemon, and they work as **inbounds and outbounds**:
 - TUIC (v5)
 - NaiveProxy
 
-## What's Fixed
+## New Features
 
-- **Logger data race** — `logBuffer` protected with `sync.Mutex` to prevent concurrent write crashes
-- **LDAP sync panic** — refactored `panic()` helpers to return errors; split `splitCsv`/`splitCsvOrDefault`
-- **TLS guard** — fixed `||` to `&&` in TLS certificate validation
-- **DB directory permissions** — changed from `0777` to `0750`
-- **Unreachable code** — removed dead returns after `log.Fatalf` in 3 places (main.go)
-- **Cron entry variable** — fixed uninitialized entry variable in task scheduler
-- **GetSecret() side effect** — removed DB mutation from getter function
-- **Regex recompile** — precompiled `md5Re` regex instead of recompiling on every call
-- **Template variable shadowing** — renamed conflicting template variable in web.go
-- **Port validation** — added missing lower bound check (min 1)
-- **GetAllSetting** — fixed silently dropping unknown settings
-- **Variable shadowing** — fixed `t` shadow in setting.go
-- **TG bot startup** — consolidated duplicate bot check into single `startTask()`
-- **runSeeders log message** — fixed wrong log message text
-- **splitCsv** — fixed returning `DefaultTruthyValues` on empty input
-- **AllPermissions order** — corrected permission list order mismatch
-- **.gitignore** — updated `x-ui` reference to `vpn-ui`
-- **Unused imports** — removed `unsafe` imports from main.go and global.go
-- **RADIUS secret** — removed hardcoded fallback, uses empty string
-- **Vue 2 reactivity** — fixed client credential fields not updating in edit modal
-- **Config name** — changed from `x-ui` to `vpn-ui`
-- **Session cookie** — uses `config.GetName()` instead of hardcoded name
-- **LocalizerWeb race** — added `sync.RWMutex` to prevent translation map races
-- **i18n fixes** — Vietnamese diacritics, zh_TW cross-locale leak, Arabic missing sections, Persian missing sections
+- **Multi-Admin** with per-inbound access, so each admin only sees the inbounds you assign it
+- **Reseller** accounts with a metered traffic balance an admin recharges, spent only on the inbounds it was given
+- **Client to Client** support, even as **Cross Inbound** (an internal connection between an L2TP user and an OpenVPN user)
+- Added **AES-256-GCM** and **AES-128-GCM** **Encryption** to the **Shadowsocks** protocol
+- Support for **XHTTP Object** in **Inbound** and **Outbound**
+- Automatic installation script for **[WARP-CLI](https://github.com/Sir-MmD/warp-cli)** (Cloudflare's official version)
+- A [patched **Xray-core**](https://github.com/Sir-MmD/Xray-core) that fixes the "Unsupported Cipher" error in the **Shadowsocks** protocol, and adds **AnyTLS**, **TUIC** and **NaiveProxy** as native protocols, so they inherit per-account traffic accounting, speed limits, device limits and online detection instead of needing a second core
+- Bundling all files (**Geofile**, **Xray-core**, and **Backend** cores) into a single binary
+- **Real SSL for a bare server IP**, for a host with no domain at all (Let's Encrypt issues these; the certificate names the address itself)
+- Certificate renewals are picked up **without restarting the panel**, so nobody is disconnected when a certificate rolls over
+- Exporting account links as **TXT** and **PDF**
+- Ability to **Freeze** accounts
+- Added **checkboxes** to clients and **Inbound**s
+- **Bulk Operation** support:
+    * Bulk change of accounts' traffic
+    * Bulk change of accounts' days
+    * Bulk enable/disable of accounts
+    * Bulk delete of accounts
+    * Bulk delete of Inbounds
+    * Bulk **Freeze/Un-Freeze** of accounts
 
 ## Tested Operating Systems
 
@@ -105,13 +78,13 @@ the core rather than by a daemon, and they work as **inbounds and outbounds**:
 ## Installing the Panel
 
 ```bash
-curl -Ls https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/deploy.sh | sudo bash
+curl -Ls https://raw.githubusercontent.com/Sir-MmD/PRO-UI/refs/heads/main/deploy.sh | sudo bash
 ```
 
 ## Uninstalling the Panel
 
 ```bash
-sudo /opt/vpn-ui/vpn-ui-amd64 --uninstall
+sudo /opt/PRO-UI/PRO-UI-amd64 --uninstall
 ```
 
 > [!NOTE]
@@ -126,7 +99,7 @@ flowchart TB
   SSHC["SSH Client<br/>(ssh -D dynamic SOCKS · badvpn-udpgw for UDP)"]
   GREC["Customer Router<br/>(GRE · IP protocol 47 · optional IPsec / FOU)"]
 
-  subgraph PANEL["pro-ui panel — root process"]
+  subgraph PANEL["PRO-UI panel — root process"]
     PROC["procmgr<br/>supervises the daemons"]
     RAD["in-binary RADIUS<br/>127.0.0.1:1812 auth · :1813 acct"]
     HOOK["OpenVPN hooks<br/>auth / connect / disconnect / evict"]
@@ -236,13 +209,13 @@ flowchart TB
 ## Building from Source
 
 ```bash
-git clone https://github.com/hasan1808/vpn-ui.git && cd vpn-ui
+git clone https://github.com/Sir-MmD/PRO-UI.git && cd PRO-UI
 ./build.sh
 ```
 
 ## E2E Testing
 
-![E2E Test](https://raw.githubusercontent.com/hasan1808/vpn-ui/refs/heads/main/media/test_unit.png)
+![E2E Test](https://raw.githubusercontent.com/Sir-MmD/PRO-UI/refs/heads/main/media/test_unit.png)
 
 A complete **E2E** test written in Python has been designed for this project inside the `test_unit` folder, which you are welcome to use. The steps are as follows:
 
@@ -290,4 +263,18 @@ To test on only one specific operating system, you can use the `--only` switch:
 sudo ./run.sh --only ubuntu-24
 ```
 
+## Donate
 
+🔹USDC-Polygon: ```0xdC2Ab962954e8fA1502C44656c5A32CF2979568C```
+
+🔹USDT-BEP20: ```0xdC2Ab962954e8fA1502C44656c5A32CF2979568C```
+
+🔹USDT-TRC20: ```TXEhckDXtdLGAjP5PZXfNnQjPHzEVTcBmR```
+
+🔹TRX: ```TXEhckDXtdLGAjP5PZXfNnQjPHzEVTcBmR```
+
+🔹LTC: ```ltc1qmapmnuf6cq9x679nmu0k4uyq779mxxcwnkgdll```
+
+🔹BTC: ```bc1q62w7lyndzndsp74vj4dsayvun8xnapzq6hx5ea```
+
+🔹ETH: ```0xdC2Ab962954e8fA1502C44656c5A32CF2979568C```

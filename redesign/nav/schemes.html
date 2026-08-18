@@ -1,0 +1,1394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Section navigation: five schemes</title>
+
+<style>
+/* ==========================================================================
+   Document layer. Same drawing-set treatment as redesign/ssl/schemes.html:
+   numbered sheets, a title block on each, the mockup rendered at honest size.
+
+   Two palettes live in this file and they must not be confused:
+     :root       the PAPER the schemes are drawn on
+     .frame      the PANEL itself, values copied from web/assets/css/tokens.css
+   Both flip together off the one theme control in the masthead.
+   ========================================================================== */
+
+:root{
+  --paper:#eceef1;
+  --sheet:#ffffff;
+  --sheet-2:#f5f7f9;
+  --ink:#131a23;
+  --ink-2:#4e5b6a;
+  --ink-3:#7b8796;
+  --rule:#d5dce3;
+  --rule-strong:#b9c3cd;
+  --accent:#00705e;
+  --accent-weak:rgba(0,112,94,.10);
+  --cut:#9e3b32;
+  --cut-weak:rgba(158,59,50,.09);
+  --well:#e3e7eb;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0d1117;
+    --sheet:#141a22;
+    --sheet-2:#1a212b;
+    --ink:rgba(255,255,255,.90);
+    --ink-2:rgba(255,255,255,.62);
+    --ink-3:rgba(255,255,255,.45);
+    --rule:#28313d;
+    --rule-strong:#3a4553;
+    --accent:#3fd2b0;
+    --accent-weak:rgba(63,210,176,.13);
+    --cut:#e08b82;
+    --cut-weak:rgba(224,139,130,.12);
+    --well:#0a0e13;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0d1117;
+  --sheet:#141a22;
+  --sheet-2:#1a212b;
+  --ink:rgba(255,255,255,.90);
+  --ink-2:rgba(255,255,255,.62);
+  --ink-3:rgba(255,255,255,.45);
+  --rule:#28313d;
+  --rule-strong:#3a4553;
+  --accent:#3fd2b0;
+  --accent-weak:rgba(63,210,176,.13);
+  --cut:#e08b82;
+  --cut-weak:rgba(224,139,130,.12);
+  --well:#0a0e13;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box;}
+
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px;
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+
+.mono{
+  font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+
+.wrap{ max-width:1080px; margin:0 auto; padding:0 20px 96px; }
+
+/* ---- masthead ---- */
+
+.masthead{ padding:56px 0 28px; border-bottom:2px solid var(--rule-strong); }
+.masthead h1{ font-size:30px; line-height:1.15; margin:0 0 10px; letter-spacing:-.015em; font-weight:650; }
+.masthead p{ margin:0; color:var(--ink-2); max-width:62ch; }
+.mast-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:24px; flex-wrap:wrap; }
+
+.themebtn{
+  flex:none; display:inline-flex; align-items:center; gap:7px;
+  font:inherit; font-size:12.5px; font-weight:600;
+  padding:7px 13px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--rule-strong); background:var(--sheet); color:var(--ink-2);
+}
+.themebtn:hover{ border-color:var(--accent); color:var(--accent); }
+
+.stamp{
+  display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--ink-3); margin-bottom:14px;
+}
+
+/* ---- sheets ---- */
+
+.sheet{ margin-top:52px; }
+
+.sheet-title{
+  display:flex; align-items:baseline; gap:14px;
+  border-bottom:1px solid var(--rule-strong); padding-bottom:9px; margin-bottom:22px;
+}
+.sheet-no{
+  font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  font-size:12px; font-weight:700; letter-spacing:.1em; color:var(--ink-3);
+  padding-top:3px; flex:none;
+}
+.sheet-title h2{ font-size:21px; margin:0; font-weight:640; letter-spacing:-.01em; }
+.sheet-title .thesis{ font-size:13px; color:var(--ink-3); margin-inline-start:auto; text-align:end; flex:1 1 200px; }
+
+.sheet p{ color:var(--ink-2); max-width:76ch; }
+.sheet p strong{ color:var(--ink); font-weight:620; }
+.sheet ul{ color:var(--ink-2); max-width:76ch; padding-inline-start:20px; }
+.sheet li{ margin-bottom:5px; }
+.sheet li strong{ color:var(--ink); font-weight:620; }
+
+.lede{ font-size:16px; color:var(--ink) !important; }
+
+/* the note blocks under each mockup */
+.cols{ display:grid; grid-template-columns:1fr 1fr; gap:0; border:1px solid var(--rule); border-radius:10px; overflow:hidden; margin-top:20px; background:var(--sheet); }
+@media (max-width:760px){ .cols{ grid-template-columns:1fr; } }
+.cols > div{ padding:16px 18px 18px; }
+.cols > div + div{ border-inline-start:1px solid var(--rule); }
+@media (max-width:760px){ .cols > div + div{ border-inline-start:0; border-top:1px solid var(--rule); } }
+.cols h4{
+  margin:0 0 8px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
+  font-weight:700; color:var(--ink-3);
+}
+.cols ul{ margin:0; font-size:13.5px; }
+.cols li{ margin-bottom:6px; }
+.cols li:last-child{ margin-bottom:0; }
+
+.cost{
+  display:inline-flex; align-items:center; gap:7px;
+  font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  padding:4px 10px; border-radius:999px; background:var(--accent-weak); color:var(--accent);
+}
+.cost.mid{ background:var(--well); color:var(--ink-2); }
+.cost.high{ background:var(--cut-weak); color:var(--cut); }
+
+.callout{
+  border-inline-start:3px solid var(--cut); background:var(--cut-weak);
+  padding:13px 16px; border-radius:0 8px 8px 0; margin:20px 0;
+  font-size:14px; color:var(--ink-2); max-width:76ch;
+}
+.callout strong{ color:var(--ink); }
+
+/* the hint strip that sits above every live mockup */
+.hint{
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+  font-size:12px; color:var(--ink-3); margin:22px 0 9px;
+}
+.hint b{ color:var(--ink-2); font-weight:600; }
+.hint .dot{ width:3px; height:3px; border-radius:50%; background:var(--rule-strong); flex:none; }
+
+/* ==========================================================================
+   Panel layer. From here down the values are the real panel's, lifted out of
+   web/assets/css/tokens.css so the mockups read at the right weight.
+   ========================================================================== */
+
+.frame{
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eef2f4;
+  --border:#e4e9ee;
+  --border-strong:#d2dae1;
+  --text:#1b2430;
+  --text-2:#5a6675;
+  --text-3:#6b7787;
+  --brand:#008771;
+  --brand-strong:#00806b;
+  --brand-weak:#e2f2ee;
+  --on-brand:#ffffff;
+  --warn:#8a6008;
+  --warn-weak:rgba(138,96,8,.12);
+
+  position:relative;
+  border:1px solid var(--rule-strong);
+  border-radius:12px;
+  overflow:hidden;
+  background:var(--bg);
+  color:var(--text);
+  font-size:13px;
+  box-shadow:0 1px 2px rgba(0,0,0,.05), 0 12px 30px -18px rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .frame{
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740;
+    --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+    --brand:#1bbf9f; --brand-strong:#1bbf9f; --brand-weak:rgba(27,191,159,.14); --on-brand:#071a16;
+    --warn:#e0a94a; --warn-weak:rgba(224,169,74,.14);
+  }
+}
+:root[data-theme="dark"] .frame{
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740;
+  --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --brand:#1bbf9f; --brand-strong:#1bbf9f; --brand-weak:rgba(27,191,159,.14); --on-brand:#071a16;
+  --warn:#e0a94a; --warn-weak:rgba(224,169,74,.14);
+}
+
+.frame-body{ display:flex; height:492px; }
+
+/* ---- the global rail, as it exists today ---- */
+
+.ui-rail{
+  flex:0 0 96px; width:96px; background:var(--surface);
+  border-inline-end:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center;
+  padding:14px 0; gap:16px;
+}
+.ui-brand{
+  font-size:11px; font-weight:800; letter-spacing:.06em; color:var(--brand);
+  text-align:center; line-height:1.2;
+}
+.ui-rail-nav{
+  display:flex; flex-direction:column; gap:2px; width:100%; align-items:center;
+  flex:1 1 auto; min-height:0; overflow-y:auto;
+}
+.ui-rail-item{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  width:84px; padding:8px 4px 7px; border-radius:10px;
+  color:var(--text-3); cursor:pointer; border:none; background:transparent;
+  font:inherit; font-size:10.5px; font-weight:600; text-align:center; line-height:1.2;
+}
+.ui-rail-item svg{ width:17px; height:17px; }
+.ui-rail-item:hover{ background:var(--surface-2); color:var(--text-2); }
+.ui-rail-item.is-active{ background:var(--brand-weak); color:var(--brand); }
+
+/* ---- the page area ---- */
+
+.ui-main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+
+.ui-topbar{
+  flex:none; display:flex; align-items:center; gap:10px;
+  padding:11px 16px; border-bottom:1px solid var(--border); background:var(--surface);
+}
+.ui-topbar h3{ margin:0; font-size:14.5px; font-weight:640; letter-spacing:-.01em; }
+.ui-topbar .spacer{ flex:1 1 auto; }
+
+.ui-btn{
+  font:inherit; font-size:12px; font-weight:600; padding:5px 12px; border-radius:7px;
+  border:1px solid var(--border-strong); background:var(--surface); color:var(--text-2); cursor:pointer;
+}
+.ui-btn.primary{ background:var(--brand-strong); border-color:var(--brand-strong); color:var(--on-brand); }
+.ui-btn.quiet{ background:transparent; }
+.ui-btn:disabled{ opacity:.45; cursor:default; }
+
+.ui-page{ flex:1 1 auto; min-height:0; display:flex; }
+
+/* the settings card that holds real fields */
+.ui-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  padding:2px 14px;
+}
+.ui-card + .ui-card{ margin-top:10px; }
+
+.ui-sechead{
+  font-size:13px; font-weight:650; padding:12px 2px 10px; letter-spacing:-.005em;
+  display:flex; align-items:center; gap:8px;
+}
+.ui-sechead .num{ font-size:10px; color:var(--text-3); font-weight:700; letter-spacing:.08em; }
+
+.fld{
+  display:flex; align-items:center; gap:12px;
+  padding:9px 2px; border-top:1px solid var(--border);
+}
+.fld span{ flex:1 1 auto; color:var(--text-2); font-size:12.5px; }
+.fld .bar{ flex:none; width:104px; height:22px; border-radius:5px; border:1px solid var(--border-strong); background:var(--bg); }
+.fld .sw{ flex:none; width:32px; height:17px; border-radius:999px; background:var(--border-strong); position:relative; }
+.fld .sw::after{ content:""; position:absolute; inset-block:2px; inset-inline-start:2px; width:13px; border-radius:50%; background:var(--surface); }
+.fld .sw.on{ background:var(--brand-strong); }
+.fld .sw.on::after{ inset-inline-start:auto; inset-inline-end:2px; }
+
+/* the dirty marker, shared by every scheme */
+.pip{ width:6px; height:6px; border-radius:50%; background:var(--warn); flex:none; }
+
+.empty{
+  color:var(--text-3); font-size:12.5px; padding:18px 2px; font-style:italic;
+}
+
+/* ---- scheme 01: tree ---- */
+
+.tree{
+  flex:0 0 208px; width:208px; border-inline-end:1px solid var(--border);
+  background:var(--surface); padding:10px 8px; overflow-y:auto;
+}
+.tree-sec{
+  display:flex; align-items:center; gap:8px; width:100%;
+  padding:8px 9px; border-radius:8px; border:none; background:transparent;
+  font:inherit; font-size:12.5px; font-weight:600; color:var(--text-2); cursor:pointer; text-align:start;
+}
+.tree-sec:hover{ background:var(--surface-2); color:var(--text); }
+.tree-sec.is-open{ color:var(--text); }
+.tree-sec.is-active{ background:var(--brand-weak); color:var(--brand); }
+.tree-sec svg.ic{ width:15px; height:15px; flex:none; }
+.tree-sec .lbl{ flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tree-sec .chev{ width:11px; height:11px; flex:none; color:var(--text-3); transition:transform .16s ease; }
+.tree-sec.is-open .chev{ transform:rotate(90deg); }
+[dir="rtl"] .tree-sec .chev{ transform:scaleX(-1); }
+
+.tree-subs{ overflow:hidden; padding:1px 0 5px; }
+.tree-sub{
+  display:flex; align-items:center; gap:8px; width:100%;
+  padding:6px 9px 6px 32px; border-radius:7px; border:none; background:transparent;
+  font:inherit; font-size:12px; color:var(--text-3); cursor:pointer; text-align:start;
+  position:relative;
+}
+[dir="rtl"] .tree-sub{ padding:6px 32px 6px 9px; }
+.tree-sub::before{
+  content:""; position:absolute; inset-inline-start:16px; inset-block:0;
+  border-inline-start:1px solid var(--border);
+}
+.tree-sub:hover{ background:var(--surface-2); color:var(--text-2); }
+.tree-sub.is-active{ color:var(--brand); font-weight:600; }
+.tree-sub.is-active::before{ border-color:var(--brand); }
+
+.pane{ flex:1 1 auto; min-width:0; overflow-y:auto; padding:12px 14px; }
+
+/* ---- scheme 02: column ---- */
+
+.col-list{
+  flex:0 0 216px; width:216px; border-inline-end:1px solid var(--border);
+  background:var(--surface); padding:8px 8px 14px; overflow-y:auto;
+}
+.col-group{
+  display:flex; align-items:center; gap:7px;
+  font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--text-3); padding:13px 10px 6px;
+}
+.col-group svg{ width:12px; height:12px; }
+.col-item{
+  display:flex; align-items:center; gap:8px; width:100%;
+  padding:7px 10px; border-radius:7px; border:none; background:transparent;
+  font:inherit; font-size:12.5px; color:var(--text-2); cursor:pointer; text-align:start;
+}
+.col-item:hover{ background:var(--surface-2); color:var(--text); }
+.col-item.is-active{ background:var(--brand-weak); color:var(--brand); font-weight:600; }
+.col-item .lbl{ flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ---- scheme 03: rail ---- */
+
+.rail-wide{ flex:0 0 232px; width:232px; }
+.rail-wide .ui-rail-item{
+  flex-direction:row; width:100%; padding:8px 12px; gap:9px; font-size:12.5px; text-align:start;
+}
+.rail-wide .ui-rail-item .lbl{ flex:1 1 auto; }
+.rail-wide .ui-rail-nav{ padding:0 8px; }
+.rail-wide .chev{ width:11px; height:11px; color:var(--text-3); transition:transform .16s ease; }
+.rail-wide .ui-rail-item.is-open .chev{ transform:rotate(90deg); }
+.rail-wide .ui-brand{ align-self:flex-start; padding-inline-start:20px; }
+
+.rail-subs{ padding:1px 0 6px; }
+.rail-sub{
+  display:flex; align-items:center; gap:8px; width:100%;
+  padding:6px 12px 6px 41px; border-radius:7px; border:none; background:transparent;
+  font:inherit; font-size:12px; color:var(--text-3); cursor:pointer; text-align:start; position:relative;
+}
+[dir="rtl"] .rail-sub{ padding:6px 41px 6px 12px; }
+.rail-sub::before{
+  content:""; position:absolute; inset-inline-start:25px; inset-block:0; border-inline-start:1px solid var(--border);
+}
+.rail-sub:hover{ background:var(--surface-2); color:var(--text-2); }
+.rail-sub.is-active{ color:var(--brand); font-weight:600; }
+.rail-sub.is-active::before{ border-color:var(--brand); }
+
+/* ---- scheme 04: scroll ---- */
+
+.doc{ flex:1 1 auto; min-width:0; overflow-y:auto; padding:14px 16px 260px; scroll-behavior:smooth; }
+.doc-h{
+  font-size:16px; font-weight:660; letter-spacing:-.015em; margin:26px 0 10px;
+  padding-top:6px; display:flex; align-items:center; gap:9px;
+}
+.doc-h:first-child{ margin-top:2px; }
+.doc-h svg{ width:16px; height:16px; color:var(--brand); }
+
+.index{
+  flex:0 0 200px; width:200px; border-inline-start:1px solid var(--border);
+  background:var(--surface); padding:12px 6px; overflow-y:auto;
+}
+.idx-sec{
+  display:flex; align-items:center; gap:7px;
+  font-size:11.5px; font-weight:650; color:var(--text-2);
+  padding:9px 10px 4px; cursor:pointer;
+}
+.idx-sec svg{ width:12px; height:12px; }
+.idx-sec.is-active{ color:var(--brand); }
+.idx-sub{
+  display:block; width:100%; text-align:start; border:none; background:transparent;
+  font:inherit; font-size:11.5px; color:var(--text-3); cursor:pointer;
+  padding:4px 10px 4px 27px; position:relative;
+}
+[dir="rtl"] .idx-sub{ padding:4px 27px 4px 10px; }
+.idx-sub::before{
+  content:""; position:absolute; inset-inline-start:14px; inset-block:0;
+  border-inline-start:2px solid transparent;
+}
+.idx-sub:hover{ color:var(--text-2); }
+.idx-sub.is-active{ color:var(--brand); font-weight:600; }
+.idx-sub.is-active::before{ border-color:var(--brand); }
+
+/* ---- scheme 05: strip ---- */
+
+.strip-top{ flex:none; background:var(--surface); border-bottom:1px solid var(--border); }
+.strip-tabs{
+  display:flex; gap:2px; padding:0 10px; overflow-x:auto; scrollbar-width:thin;
+}
+.strip-tab{
+  flex:none; display:flex; align-items:center; gap:7px;
+  padding:11px 12px 9px; border:none; background:transparent; cursor:pointer;
+  font:inherit; font-size:12.5px; font-weight:600; color:var(--text-3);
+  border-bottom:2px solid transparent; white-space:nowrap;
+}
+.strip-tab svg{ width:14px; height:14px; }
+.strip-tab:hover{ color:var(--text-2); }
+.strip-tab.is-active{ color:var(--brand); border-bottom-color:var(--brand); }
+
+.strip-pills{
+  display:flex; gap:6px; padding:8px 12px; overflow-x:auto;
+  border-top:1px solid var(--border); background:var(--bg);
+}
+.strip-pill{
+  flex:none; padding:4px 11px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--border-strong); background:var(--surface);
+  font:inherit; font-size:11.5px; font-weight:600; color:var(--text-2); white-space:nowrap;
+}
+.strip-pill:hover{ border-color:var(--brand); color:var(--brand); }
+.strip-pill.is-active{ background:var(--brand-weak); border-color:var(--brand); color:var(--brand); }
+
+.kbd{
+  display:inline-flex; align-items:center; gap:5px;
+  border:1px solid var(--border-strong); background:var(--bg); color:var(--text-3);
+  border-radius:6px; padding:4px 9px; font-size:11.5px; font-weight:600; cursor:pointer;
+}
+.kbd svg{ width:12px; height:12px; }
+
+.palette{
+  position:absolute; inset:0; background:rgba(8,12,20,.42);
+  display:none; align-items:flex-start; justify-content:center; padding-top:56px; z-index:5;
+}
+.palette.is-open{ display:flex; }
+.palette-box{
+  width:min(430px,86%); background:var(--surface); border:1px solid var(--border-strong);
+  border-radius:11px; overflow:hidden; box-shadow:0 20px 50px -20px rgba(0,0,0,.6);
+}
+.palette-in{
+  display:flex; align-items:center; gap:9px; padding:11px 13px; border-bottom:1px solid var(--border);
+}
+.palette-in svg{ width:14px; height:14px; color:var(--text-3); flex:none; }
+.palette-in input{
+  flex:1 1 auto; border:none; outline:none; background:transparent; color:var(--text);
+  font:inherit; font-size:13px;
+}
+.palette-res{ max-height:236px; overflow-y:auto; padding:5px; }
+.palette-row{
+  display:flex; align-items:baseline; gap:9px; width:100%;
+  padding:7px 9px; border-radius:7px; border:none; background:transparent;
+  font:inherit; cursor:pointer; text-align:start; color:var(--text);
+}
+.palette-row:hover, .palette-row.is-cursor{ background:var(--surface-2); }
+.palette-row .f{ font-size:12.5px; }
+.palette-row .p{ font-size:11px; color:var(--text-3); margin-inline-start:auto; white-space:nowrap; }
+.palette-none{ padding:16px 12px; font-size:12.5px; color:var(--text-3); text-align:center; }
+
+/* ---- comparison table ---- */
+
+.tbl{ width:100%; border-collapse:collapse; margin-top:20px; font-size:13.5px; }
+.tbl th, .tbl td{ border:1px solid var(--rule); padding:9px 11px; text-align:start; vertical-align:top; }
+.tbl th{ background:var(--sheet-2); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); font-weight:700; }
+.tbl td{ background:var(--sheet); color:var(--ink-2); }
+.tbl td:first-child{ color:var(--ink); font-weight:620; white-space:nowrap; }
+.tbl tr.pick td{ background:var(--accent-weak); }
+.tbl-scroll{ overflow-x:auto; }
+
+.foot{
+  margin-top:56px; padding-top:18px; border-top:1px solid var(--rule);
+  font-size:12px; color:var(--ink-3);
+}
+
+@media (max-width:820px){
+  .frame-body{ height:auto; min-height:440px; }
+  .tree, .col-list, .index, .rail-wide{ flex-basis:170px; width:170px; }
+  .ui-rail{ display:none; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="mast-row">
+      <div>
+        <div class="stamp">PRO-UI / navigation / five schemes</div>
+        <h1>Every sub-category under its section</h1>
+        <p>
+          Five ways to replace the tab strip on Settings, Xray and Core. Each one is live: click it.
+          The content is the real inventory, twenty sub-categories across seven sections, with the
+          real labels from <span class="mono">translate.en_US.toml</span>.
+        </p>
+      </div>
+      <button class="themebtn" id="theme">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+        <span id="theme-label">Theme</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
+  <section class="sheet">
+    <div class="sheet-title">
+      <span class="sheet-no">00</span>
+      <h2>What is on the page today</h2>
+      <span class="thesis">Two levels of navigation that do not know about each other</span>
+    </div>
+
+    <p class="lede">
+      Settings, Xray and Core each open with a row of seven <span class="mono">a-tabs</span>.
+      Inside every tab sits a second navigation layer, an <span class="mono">a-collapse</span>
+      whose panels are the actual sub-categories. Nothing outside the open tab is visible,
+      and nothing inside a closed collapse is visible either.
+    </p>
+
+    <p>The real inventory, counted from the templates:</p>
+
+    <div class="tbl-scroll">
+      <table class="tbl">
+        <thead><tr><th>Page</th><th>Section (tab)</th><th>Sub-categories (collapse panels)</th></tr></thead>
+        <tbody id="inv"></tbody>
+      </table>
+    </div>
+
+    <p>Four properties of that inventory decide every scheme below.</p>
+
+    <ul>
+      <li><strong>The depth is uneven.</strong> General carries six sub-categories, SSL Certificate and
+        Advanced carry none at all. A scheme that always draws two levels will look broken on half the sections.</li>
+      <li><strong>One Save governs all seven sections.</strong> The button at the top of
+        <span class="mono">settings.html</span> posts the whole <span class="mono">AllSetting</span> blob.
+        Wandering between sections with edits pending is therefore safe, but only if the user can see
+        that a section they are no longer looking at is holding an unsaved change. Every scheme below
+        carries that as an amber pip.</li>
+      <li><strong>Section five is conditional.</strong> Subscription Formats is rendered only when
+        <span class="mono">subJsonEnable || subClashEnable</span>. Any nav has to survive a section
+        appearing and disappearing while the page is open.</li>
+      <li><strong>The tab row already overflows.</strong> Seven labels in en_US are tight; in ru_RU and
+        fa_IR they wrap or clip. This is the concrete failure that starts the redesign.</li>
+    </ul>
+
+    <div class="callout">
+      <strong>The trap to avoid.</strong> The panel already has a nav column, the 124px
+      <span class="mono">.bo-rail</span>. Adding a second permanent column inside the page means two
+      vertical navs side by side, which is what makes most settings screens feel like a filing cabinet.
+      Schemes 01, 02 and 04 pay that cost knowingly. Scheme 03 refuses to pay it.
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <section class="sheet">
+    <div class="sheet-title">
+      <span class="sheet-no">01</span>
+      <h2>Tree</h2>
+      <span class="thesis">The proposal, built properly</span>
+    </div>
+
+    <p class="lede">
+      Sections stack down the left of the page. The open one unfolds and lists its sub-categories
+      underneath it, indented, on a hairline. One section open at a time.
+    </p>
+    <p>
+      Clicking a sub-category does not swap the pane, it <strong>scrolls to that block</strong> inside the
+      section. All of a section's fields stay in one scrollable document, so related settings remain
+      adjacent and one Save still covers everything you can see. Sections with no sub-categories
+      (SSL, Advanced) show no chevron and simply navigate, which is how the uneven depth stops mattering.
+    </p>
+
+    <div class="hint">
+      <b>Try:</b> open Telegram Bot <span class="dot"></span> pick a sub-category
+      <span class="dot"></span> note General keeps its amber pip while you are away
+    </div>
+
+    <div class="frame" id="s1"></div>
+
+    <div class="cols">
+      <div>
+        <h4>What it costs</h4>
+        <ul>
+          <li><span class="cost">Front-end only</span></li>
+          <li>One new component, roughly the shape of <span class="mono">aSidebar.html</span>, plus a
+            scroll-spy binding.</li>
+          <li><span class="mono">a-tabs</span> comes out of settings.html, xray.html, core.html. The tab
+            bodies are already separate templates, so the templates themselves do not move.</li>
+          <li>The collapse panels stay as they are. They become scroll anchors instead of the only way in.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What it breaks</h4>
+        <ul>
+          <li>Two vertical navs at once on wide screens, the rail and the tree.</li>
+          <li>Under about 900px the tree has to become a drawer, so mobile gets a second nav gesture.</li>
+          <li>Everything in a section must render at once for scroll-to to work, so the six panels of
+            General mount together rather than on demand.</li>
+          <li>Indentation and the chevron both mirror in RTL. Cheap, but easy to forget.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <section class="sheet">
+    <div class="sheet-title">
+      <span class="sheet-no">02</span>
+      <h2>Column</h2>
+      <span class="thesis">No expanding at all, everything is one click</span>
+    </div>
+
+    <p class="lede">
+      The same left column, but nothing folds. Every sub-category in the whole page is listed at all
+      times, grouped under a section heading that is a label, not a button.
+    </p>
+    <p>
+      The pane on the right shows exactly one sub-category. This is the macOS System Settings model.
+      Its advantage is that <strong>the whole surface area of the page is legible without any interaction</strong>:
+      you can see that LDAP exists without knowing it lives under General. Its cost is length. Settings
+      has twenty sub-categories plus seven headings, which is about 750px of list against a 500px viewport,
+      so the column scrolls while the pane does not.
+    </p>
+
+    <div class="hint">
+      <b>Try:</b> scroll the left column <span class="dot"></span> every destination on the page is in it
+    </div>
+
+    <div class="frame" id="s2"></div>
+
+    <div class="cols">
+      <div>
+        <h4>What it costs</h4>
+        <ul>
+          <li><span class="cost mid">Front-end, plus a save-model decision</span></li>
+          <li>Same component as scheme 01 with the folding removed, so it is marginally simpler to build.</li>
+          <li>The panes get small enough that per-sub-category Save becomes tempting. That is a backend
+            change, <span class="mono">AllSetting</span> posts whole today.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What it breaks</h4>
+        <ul>
+          <li>A section with no sub-categories (SSL, Service, Advanced, all four Xray tables) becomes a
+            lone entry under its own heading, which reads oddly.</li>
+          <li>Related fields end up in different panes. Sub certificates and panel certificates are the
+            same job in two places already; this makes that further apart, not closer.</li>
+          <li>The list is long enough that its own scroll position needs remembering between visits.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <section class="sheet">
+    <div class="sheet-title">
+      <span class="sheet-no">03</span>
+      <h2>Rail</h2>
+      <span class="thesis">One tree for the whole panel, no second column</span>
+    </div>
+
+    <p class="lede">
+      There is no page-level nav, because the rail becomes the page-level nav. Settings, Xray and Core
+      expand in place inside the existing sidebar and list their sections and sub-categories there.
+    </p>
+    <p>
+      This is the only scheme that <strong>removes</strong> a navigation layer instead of rearranging one.
+      Dashboard, Inbounds and Clients keep behaving exactly as they do now; the three configuration pages
+      simply grow a subtree. The content area gets the full width back, which matters most on Xray, where
+      Outbounds and Routing are wide tables. The rail widens from 124px to about 232px while a subtree is
+      open and returns when it closes.
+    </p>
+
+    <div class="hint">
+      <b>Try:</b> click Xray, then Settings <span class="dot"></span> the rail is the only nav on screen
+    </div>
+
+    <div class="frame" id="s3"></div>
+
+    <div class="cols">
+      <div>
+        <h4>What it costs</h4>
+        <ul>
+          <li><span class="cost high">Front-end, plus routing</span></li>
+          <li>The rail is currently a flat list of anchors. It gains a subtree, an open state and a width
+            that changes, so <span class="mono">aSidebar.html</span> is largely rewritten.</li>
+          <li>The subtree must be built server-side from the same permission gates the rail already uses,
+            or a reseller sees section names they cannot open.</li>
+          <li>Deep links need to work: <span class="mono">/panel/settings#telegram/proxy</span> has to
+            open the right section on a cold load, which is new behaviour.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What it breaks</h4>
+        <ul>
+          <li>The rail's collapsed mode. Today collapsing hides labels; with a subtree there is nothing
+            sensible to collapse to except a flyout, which is a third interaction to design.</li>
+          <li>Navigating between pages currently reloads. Expanding Settings from the Xray page has to
+            either navigate first and then expand, or the panel becomes an SPA, which it is not.</li>
+          <li>Nine top-level entries plus a twenty-entry subtree is a tall rail on a 720px laptop screen.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <section class="sheet">
+    <div class="sheet-title">
+      <span class="sheet-no">04</span>
+      <h2>Scroll</h2>
+      <span class="thesis">Delete the tabs, keep an index</span>
+    </div>
+
+    <p class="lede">
+      No sections in the interaction sense at all. The page is one document, every section and every
+      sub-category is a heading in it, and a sticky index on the right tracks where you are.
+    </p>
+    <p>
+      The index is navigation and progress indicator at once, and the page gains something no other
+      scheme has: <strong>the browser's own find works across the entire settings surface</strong>.
+      Searching for "fragment" or "LDAP" with Ctrl+F simply finds it. That is a real answer to
+      "I know the setting exists, I do not know which tab it is under", which is the actual complaint
+      behind most settings redesigns.
+    </p>
+
+    <div class="hint">
+      <b>Try:</b> scroll the document <span class="dot"></span> the index follows
+      <span class="dot"></span> or click an index entry
+    </div>
+
+    <div class="frame" id="s4"></div>
+
+    <div class="cols">
+      <div>
+        <h4>What it costs</h4>
+        <ul>
+          <li><span class="cost mid">Front-end, plus a render-cost problem</span></li>
+          <li>Simplest markup of the five: headings and an <span class="mono">IntersectionObserver</span>.</li>
+          <li>No new component if the index is a plain sticky list.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What it breaks</h4>
+        <ul>
+          <li>Everything mounts at once. Today <span class="mono">a-tabs</span> keeps six of seven bodies
+            unmounted; here the SSL manager, the Telegram form and the LDAP block all initialise on load.
+            Xray is worse: Outbounds and Routing are full tables.</li>
+          <li>Scroll position and the amber pip fight each other. A dirty field three thousand pixels up
+            is out of sight in a way tabs never allowed.</li>
+          <li>Xray Advanced is a full-height JSON editor. It cannot live in a scrolling document without
+            trapping the wheel.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <section class="sheet">
+    <div class="sheet-title">
+      <span class="sheet-no">05</span>
+      <h2>Strip</h2>
+      <span class="thesis">Keep the tabs, add the missing row and a search</span>
+    </div>
+
+    <p class="lede">
+      The conservative option. The tab row stays and gains horizontal scroll so it stops clipping in
+      ru_RU and fa_IR. A second row of pills below it exposes the sub-categories of whichever tab is open.
+      Ctrl+K searches every individual field, not just category names.
+    </p>
+    <p>
+      Two rows of chrome is more than the other schemes spend, and the pill row is empty on the sections
+      that have no sub-categories, which is visible dead space. In exchange this is the only scheme that
+      <strong>keeps <span class="mono">a-tabs</span> and its lazy mounting</strong>, so it is the one that
+      can ship in an afternoon and cannot regress page load.
+    </p>
+
+    <div class="hint">
+      <b>Try:</b> the tab row scrolls sideways <span class="dot"></span> pick a pill
+      <span class="dot"></span> click the search box and type "frag", "ldap" or "port"
+    </div>
+
+    <div class="frame" id="s5"></div>
+
+    <div class="cols">
+      <div>
+        <h4>What it costs</h4>
+        <ul>
+          <li><span class="cost">Smallest change of the five</span></li>
+          <li><span class="mono">a-tabs</span> keeps its structure. The pill row is one loop over the
+            collapse panels of the active tab.</li>
+          <li>The palette needs a flat index of every field label, which is a build-time list, but it also
+            needs those labels translated in all thirteen locale files.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What it breaks</h4>
+        <ul>
+          <li>It does not fix the thing you asked to fix. Sub-categories are still hidden until you pick
+            the section, one level at a time.</li>
+          <li>Horizontally scrolling tabs hide their own overflow. Seven tabs where two are off-screen is
+            the same discoverability problem in a different shape.</li>
+          <li>Two stacked rows eat 84px of vertical space on every configuration page.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <section class="sheet">
+    <div class="sheet-title">
+      <span class="sheet-no">06</span>
+      <h2>Side by side</h2>
+      <span class="thesis">Counted against the real inventory, not a hypothetical one</span>
+    </div>
+
+    <div class="tbl-scroll">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Scheme</th>
+            <th>Clicks to any sub-category</th>
+            <th>Visible without interacting</th>
+            <th>Navs on screen</th>
+            <th>Lazy mount kept</th>
+            <th>Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="pick">
+            <td>01 Tree</td>
+            <td>2, or 1 within the open section</td>
+            <td>7 sections + the open section's subs</td>
+            <td>2</td>
+            <td>Per section</td>
+            <td>Front-end</td>
+          </tr>
+          <tr>
+            <td>02 Column</td>
+            <td>1</td>
+            <td>All 27 rows, by scrolling</td>
+            <td>2</td>
+            <td>Per sub-category</td>
+            <td>Front-end + save model</td>
+          </tr>
+          <tr>
+            <td>03 Rail</td>
+            <td>2 plus a page load</td>
+            <td>9 pages + the open subtree</td>
+            <td>1</td>
+            <td>Per section</td>
+            <td>Front-end + routing</td>
+          </tr>
+          <tr>
+            <td>04 Scroll</td>
+            <td>1</td>
+            <td>All 27, in the index</td>
+            <td>2</td>
+            <td>None, all mounts</td>
+            <td>Front-end + render budget</td>
+          </tr>
+          <tr>
+            <td>05 Strip</td>
+            <td>2</td>
+            <td>7 sections, minus overflow</td>
+            <td>1 (two rows)</td>
+            <td>Per section, unchanged</td>
+            <td>Smallest</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin-top:26px;">
+      <strong>The recommendation is 01, shaped so it can become 03 later.</strong> Tree is what you
+      described, it survives the uneven depth without special cases, and it keeps one Save honest by
+      keeping a section's fields in one scroll. If the tree is built as a standalone component that takes
+      a section list and emits a selection, rather than as markup baked into settings.html, then moving it
+      into <span class="mono">aSidebar.html</span> later is a re-parenting rather than a redesign, and
+      scheme 03 stops being a rewrite.
+    </p>
+    <p>
+      Two things are worth taking from the other sheets regardless of which is chosen. The amber pip from
+      every scheme here is not decoration: with one Save covering seven sections, it is the only way a
+      user can tell that leaving a section did not lose their edit. And the Ctrl+K palette from 05 is
+      orthogonal to all of this, so it can ship on its own, before or after.
+    </p>
+
+    <div class="callout">
+      <strong>Not yet decided by any of these.</strong> Whether Core joins Settings and Xray under one
+      nav, or stays its own page. Core is the only one of the three whose tabs are a workflow rather than
+      a set of forms, and the schemes above all assume forms.
+    </div>
+  </section>
+
+  <p class="foot">
+    Mockups only. Labels are the real i18n strings; the field rows are stand-ins. Inventory counted from
+    <span class="mono">web/html/settings.html</span>, <span class="mono">web/html/xray.html</span> and the
+    templates under <span class="mono">web/html/settings/</span>.
+  </p>
+
+</div>
+
+<script>
+/* ==========================================================================
+   Icons. Stroke glyphs standing in for the ant types the tabs use today
+   (setting, safety, message, cloud-server, code, cluster, safety-certificate,
+   swap, upload, import, database).
+   ========================================================================== */
+const P = 'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"';
+const ICONS = {
+  gear:   `<circle cx="12" cy="12" r="3.2" ${P}/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-3-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-3l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.9-1.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 3 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z" ${P}/>`,
+  shield: `<path d="M12 2.8 4.8 5.9v5.4c0 4.5 3 8.2 7.2 9.6 4.2-1.4 7.2-5.1 7.2-9.6V5.9z" ${P}/>`,
+  cert:   `<path d="M12 2.8 4.8 5.9v5.4c0 4.5 3 8.2 7.2 9.6 4.2-1.4 7.2-5.1 7.2-9.6V5.9z" ${P}/><path d="m8.8 11.7 2.3 2.3 4.3-4.3" ${P}/>`,
+  msg:    `<path d="M20.4 12.6c0 3.9-3.8 7-8.4 7a10 10 0 0 1-2.6-.3l-5 1.6 1.7-4.2a6.5 6.5 0 0 1-2.5-4.9c0-3.9 3.7-7 8.4-7s8.4 3.1 8.4 6.8z" ${P}/>`,
+  cloud:  `<path d="M17.5 18.5H7a4.5 4.5 0 0 1-.6-9 6.2 6.2 0 0 1 11.8 1.6 3.7 3.7 0 0 1-.7 7.4z" ${P}/>`,
+  code:   `<path d="m8.6 8.4-4 3.6 4 3.6M15.4 8.4l4 3.6-4 3.6M13.4 5.6l-2.8 12.8" ${P}/>`,
+  cluster:`<circle cx="12" cy="5" r="2.4" ${P}/><circle cx="5.4" cy="18.6" r="2.4" ${P}/><circle cx="18.6" cy="18.6" r="2.4" ${P}/><path d="M12 7.4v4.4M10.4 13.4 6.9 16.7M13.6 13.4l3.5 3.3" ${P}/>`,
+  swap:   `<path d="M4.6 8.6h13.2l-3.4-3.4M19.4 15.4H6.2l3.4 3.4" ${P}/>`,
+  upload: `<path d="M12 16.4V4.6M8 8.4l4-3.8 4 3.8M4.6 15.4v3.2c0 .5.4.8.9.8h13c.5 0 .9-.3.9-.8v-3.2" ${P}/>`,
+  imprt:  `<path d="M12 4.6v11.8M8 12.4l4 3.8 4-3.8M4.6 15.4v3.2c0 .5.4.8.9.8h13c.5 0 .9-.3.9-.8v-3.2" ${P}/>`,
+  db:     `<ellipse cx="12" cy="6.2" rx="7" ry="2.8" ${P}/><path d="M5 6.2v11.6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8V6.2M5 12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8" ${P}/>`,
+  chev:   `<path d="m9.5 5.5 6.5 6.5-6.5 6.5" ${P}/>`,
+  search: `<circle cx="11" cy="11" r="6.2" ${P}/><path d="m15.6 15.6 4 4" ${P}/>`
+};
+const svg = (n, cls) => `<svg class="${cls||''}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
+
+/* ==========================================================================
+   The inventory. Sections are the a-tab-panes, subs are the a-collapse-panels
+   inside them. Labels are the en_US strings. `dirty` marks a section holding
+   an unsaved edit, to demonstrate the pip the one-Save model requires.
+   ========================================================================== */
+
+const SETTINGS = [
+  { id:'general', icon:'gear', label:'General', dirty:true, subs:[
+      { id:'g-general', label:'General',       fields:['Panel Listen IP','Panel Port','URL Root Path','Page Size'] },
+      { id:'g-notif',   label:'Notifications', fields:['Traffic notification','Notify threshold'] },
+      { id:'g-certs',   label:'Certificates',  fields:['Public key path','Private key path'] },
+      { id:'g-ext',     label:'External Traffic', fields:['External Traffic Inform','Inform URI'] },
+      { id:'g-time',    label:'Date and Time', fields:['Timezone','Date format'] },
+      { id:'g-ldap',    label:'LDAP',          fields:['Enable LDAP','Server URL','Bind DN','User filter'] }
+  ]},
+  { id:'auth', icon:'shield', label:'Authentication', subs:[
+      { id:'a-admin', label:'Admin credentials',        fields:['Username','Password'] },
+      { id:'a-2fa',   label:'Two-factor authentication', fields:['Enable 2FA'] }
+  ]},
+  { id:'tg', icon:'msg', label:'Telegram Bot', subs:[
+      { id:'t-general', label:'General',          fields:['Enable bot','Bot token','Admin chat ID'] },
+      { id:'t-notif',   label:'Notifications',    fields:['Login notification','Report time'] },
+      { id:'t-proxy',   label:'Proxy and Server', fields:['Proxy type','Proxy address'] }
+  ]},
+  { id:'sub', icon:'cloud', label:'Subscription', subs:[
+      { id:'s-general', label:'General',      fields:['Enable subscription','Listen port','URI path'] },
+      { id:'s-info',    label:'Information',  fields:['Subscription host','Title'] },
+      { id:'s-certs',   label:'Certificates', fields:['Cert file','Key file'] },
+      { id:'s-int',     label:'Intervals',    fields:['Update interval'] }
+  ]},
+  { id:'fmt', icon:'code', label:'Subscription (Formats)', cond:true, subs:[
+      { id:'f-general', label:'General',       fields:['JSON enable','Clash enable'] },
+      { id:'f-frag',    label:'Fragmentation', fields:['Enable','Packets','Length','Interval'] },
+      { id:'f-noise',   label:'Noises',        fields:['Noise 1'] },
+      { id:'f-mux',     label:'Mux',           fields:['Enable','Concurrency'] },
+      { id:'f-direct',  label:'Direct',        fields:['Direct domains'] }
+  ]},
+  { id:'svc', icon:'cluster', label:'Systemd Service', subs:[
+      { id:'v-svc', label:'Systemd Service', fields:['Install unit','Enable at boot','Unit name'] }
+  ]},
+  { id:'ssl', icon:'cert', label:'SSL Certificate', subs:[
+      { id:'l-ssl', label:'SSL Certificate', fields:['Domain','Issue certificate','Slot A','Slot B'] }
+  ]}
+];
+
+const XRAY = [
+  { id:'x-basic', icon:'gear', label:'Basics', subs:[
+      { id:'xb-gen',  label:'General',       fields:['Sniffing','Route only'] },
+      { id:'xb-stat', label:'Statistics',    fields:['Inbound uplink','Outbound downlink'] },
+      { id:'xb-log',  label:'Log',           fields:['Log level','Access log'] },
+      { id:'xb-rout', label:'Basic Routing', fields:['Block ads','Direct IR'] }
+  ]},
+  { id:'x-route', icon:'swap',    label:'Routing Rules', subs:[ { id:'xr', label:'Routing Rules', fields:['Rule 1','Rule 2'] } ] },
+  { id:'x-out',   icon:'upload',  label:'Outbounds',     subs:[ { id:'xo', label:'Outbounds',     fields:['freedom','blackhole'] } ] },
+  { id:'x-rev',   icon:'imprt',   label:'Reverse',       subs:[ { id:'xv', label:'Reverse',       fields:['Bridge','Portal'] } ] },
+  { id:'x-bal',   icon:'cluster', label:'Balancers',     subs:[ { id:'xl', label:'Balancers',     fields:['Balancer 1'] } ] },
+  { id:'x-dns',   icon:'db',      label:'DNS', subs:[
+      { id:'xd-gen',  label:'General',  fields:['Enable DNS'] },
+      { id:'xd-dns',  label:'DNS',      fields:['Servers','Hosts'] },
+      { id:'xd-fake', label:'Fake DNS', fields:['Enable','IP pool'] }
+  ]},
+  { id:'x-adv', icon:'code', label:'Advanced', subs:[ { id:'xa', label:'Advanced', fields:['Raw JSON template'] } ] }
+];
+
+/* A section is "flat" when its only sub-category is itself, ie. the template
+   has no a-collapse inside it. Those must not sprout a chevron. */
+const isFlat = s => s.subs.length === 1 && s.subs[0].label === s.label;
+
+/* ---- sheet 00 table ---- */
+const invRows = [];
+SETTINGS.forEach((s,i) => invRows.push(
+  `<tr><td>${i===0?'Settings':''}</td><td>${s.label}${s.cond?' <span class="mono" style="font-size:11px;color:var(--ink-3)">(conditional)</span>':''}</td>` +
+  `<td>${isFlat(s) ? '<span style="color:var(--ink-3)">none</span>' : s.subs.map(x=>x.label).join(', ')}</td></tr>`));
+XRAY.forEach((s,i) => invRows.push(
+  `<tr><td>${i===0?'Xray':''}</td><td>${s.label}</td>` +
+  `<td>${isFlat(s) ? '<span style="color:var(--ink-3)">none</span>' : s.subs.map(x=>x.label).join(', ')}</td></tr>`));
+document.getElementById('inv').innerHTML = invRows.join('');
+
+/* ==========================================================================
+   Shared bits of panel chrome.
+   ========================================================================== */
+
+const RAIL = [
+  { icon:'db',      label:'Dashboard' },
+  { icon:'shield',  label:'Inbounds'  },
+  { icon:'msg',     label:'Clients'   },
+  { icon:'gear',    label:'Settings', active:true },
+  { icon:'swap',    label:'Xray'      },
+  { icon:'cluster', label:'Core'      }
+];
+
+const rail = () => `
+  <aside class="ui-rail">
+    <div class="ui-brand">PRO-UI</div>
+    <div class="ui-rail-nav">
+      ${RAIL.map(r => `<button class="ui-rail-item ${r.active?'is-active':''}">${svg(r.icon)}<span>${r.label}</span></button>`).join('')}
+    </div>
+  </aside>`;
+
+const topbar = (title, extra) => `
+  <div class="ui-topbar">
+    <h3>${title}</h3>
+    ${extra || ''}
+    <span class="spacer"></span>
+    <button class="ui-btn primary">Save</button>
+    <button class="ui-btn quiet" disabled>Restart Panel</button>
+  </div>`;
+
+/* One sub-category rendered as a card of fields. Alternating control types so
+   the block reads as a form rather than a wireframe. */
+const card = (sub, n) => `
+  <div class="ui-card" data-anchor="${sub.id}">
+    <div class="ui-sechead">${n!=null?`<span class="num">${String(n).padStart(2,'0')}</span>`:''}${sub.label}</div>
+    ${sub.fields.map((f,i) => `
+      <div class="fld"><span>${f}</span>${ i%2 ? `<span class="sw ${i%4===1?'on':''}"></span>` : `<span class="bar"></span>` }</div>`).join('')}
+  </div>`;
+
+const pip = on => on ? '<span class="pip" title="unsaved changes"></span>' : '';
+
+/* ==========================================================================
+   01 Tree
+   ========================================================================== */
+(function(){
+  const root = document.getElementById('s1');
+  let openSec = 'tg', activeSub = null;
+
+  function draw(){
+    root.innerHTML = `
+      <div class="frame-body">
+        ${rail()}
+        <div class="ui-main">
+          ${topbar('Settings')}
+          <div class="ui-page">
+            <nav class="tree">
+              ${SETTINGS.map(s => {
+                const open = s.id === openSec;
+                return `
+                <button class="tree-sec ${open?'is-open':''} ${open?'is-active':''}" data-sec="${s.id}">
+                  ${svg(s.icon,'ic')}
+                  <span class="lbl">${s.label}</span>
+                  ${pip(s.dirty)}
+                  ${isFlat(s) ? '' : svg('chev','chev')}
+                </button>
+                ${ open && !isFlat(s) ? `<div class="tree-subs">${
+                  s.subs.map(sub => `<button class="tree-sub ${activeSub===sub.id?'is-active':''}" data-sub="${sub.id}">${sub.label}</button>`).join('')
+                }</div>` : '' }`;
+              }).join('')}
+            </nav>
+            <div class="pane" id="s1-pane"></div>
+          </div>
+        </div>
+      </div>`;
+
+    const sec = SETTINGS.find(s => s.id === openSec);
+    document.getElementById('s1-pane').innerHTML =
+      sec.subs.map((sub,i) => card(sub, isFlat(sec) ? null : i+1)).join('');
+
+    root.querySelectorAll('.tree-sec').forEach(b => b.onclick = () => {
+      openSec = b.dataset.sec; activeSub = null; draw();
+    });
+    root.querySelectorAll('.tree-sub').forEach(b => b.onclick = () => {
+      activeSub = b.dataset.sub;
+      draw();
+      const t = root.querySelector(`[data-anchor="${activeSub}"]`);
+      if (t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+    });
+  }
+  draw();
+})();
+
+/* ==========================================================================
+   02 Column
+   ========================================================================== */
+(function(){
+  const root = document.getElementById('s2');
+  let active = 'g-ldap';
+
+  function draw(){
+    root.innerHTML = `
+      <div class="frame-body">
+        ${rail()}
+        <div class="ui-main">
+          ${topbar('Settings')}
+          <div class="ui-page">
+            <nav class="col-list">
+              ${SETTINGS.map(s => `
+                <div class="col-group">${svg(s.icon)}<span>${s.label}</span>${pip(s.dirty)}</div>
+                ${s.subs.map(sub => `
+                  <button class="col-item ${active===sub.id?'is-active':''}" data-sub="${sub.id}">
+                    <span class="lbl">${sub.label}</span>
+                  </button>`).join('')}`).join('')}
+            </nav>
+            <div class="pane" id="s2-pane"></div>
+          </div>
+        </div>
+      </div>`;
+
+    let found = null, parent = null;
+    SETTINGS.forEach(s => s.subs.forEach(sub => { if (sub.id === active) { found = sub; parent = s; } }));
+    document.getElementById('s2-pane').innerHTML =
+      `<div style="font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);font-weight:700;padding:2px 2px 10px;">${parent.label}</div>` +
+      card(found);
+
+    root.querySelectorAll('.col-item').forEach(b => b.onclick = () => { active = b.dataset.sub; draw(); });
+  }
+  draw();
+})();
+
+/* ==========================================================================
+   03 Rail
+   ========================================================================== */
+(function(){
+  const root = document.getElementById('s3');
+  const PAGES = [
+    { icon:'db',      label:'Dashboard' },
+    { icon:'shield',  label:'Inbounds'  },
+    { icon:'msg',     label:'Clients'   },
+    { icon:'gear',    label:'Settings', tree:SETTINGS },
+    { icon:'swap',    label:'Xray',     tree:XRAY },
+    { icon:'cluster', label:'Core'      }
+  ];
+  let openPage = 'Settings', openSec = 'general', activeSub = null;
+
+  function draw(){
+    const page = PAGES.find(p => p.label === openPage);
+    const tree = page && page.tree;
+    const sec  = tree ? (tree.find(s => s.id === openSec) || tree[0]) : null;
+
+    root.innerHTML = `
+      <div class="frame-body">
+        <aside class="ui-rail rail-wide">
+          <div class="ui-brand">PRO-UI</div>
+          <div class="ui-rail-nav">
+            ${PAGES.map(p => {
+              const isOpen = p.label === openPage;
+              return `
+              <button class="ui-rail-item ${isOpen?'is-active':''} ${isOpen&&p.tree?'is-open':''}" data-page="${p.label}">
+                ${svg(p.icon)}<span class="lbl">${p.label}</span>${p.tree?svg('chev','chev'):''}
+              </button>
+              ${ isOpen && p.tree ? `<div class="rail-subs">${
+                p.tree.map(s => `
+                  <button class="rail-sub ${(!activeSub && s.id===openSec)?'is-active':''}" data-sec="${s.id}">
+                    <span>${s.label}</span>${pip(s.dirty)}
+                  </button>
+                  ${ s.id === openSec && !isFlat(s) ? s.subs.map(sub => `
+                    <button class="rail-sub ${activeSub===sub.id?'is-active':''}" data-sub="${sub.id}"
+                            style="padding-inline-start:56px;font-size:11.5px;">${sub.label}</button>`).join('') : '' }
+                `).join('')
+              }</div>` : '' }`;
+            }).join('')}
+          </div>
+        </aside>
+        <div class="ui-main">
+          ${topbar(tree ? `${openPage} / ${sec.label}` : openPage)}
+          <div class="ui-page">
+            <div class="pane" id="s3-pane"></div>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById('s3-pane').innerHTML = sec
+      ? sec.subs.map((sub,i) => card(sub, isFlat(sec) ? null : i+1)).join('')
+      : `<div class="empty">${openPage} keeps its own layout. Only the three configuration pages grow a subtree.</div>`;
+
+    root.querySelectorAll('[data-page]').forEach(b => b.onclick = () => {
+      const p = PAGES.find(x => x.label === b.dataset.page);
+      openPage = b.dataset.page;
+      openSec = p.tree ? p.tree[0].id : null;
+      activeSub = null; draw();
+    });
+    root.querySelectorAll('[data-sec]').forEach(b => b.onclick = () => {
+      openSec = b.dataset.sec; activeSub = null; draw();
+    });
+    root.querySelectorAll('[data-sub]').forEach(b => b.onclick = () => {
+      activeSub = b.dataset.sub; draw();
+      const t = root.querySelector(`[data-anchor="${activeSub}"]`);
+      if (t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+    });
+  }
+  draw();
+})();
+
+/* ==========================================================================
+   04 Scroll
+   ========================================================================== */
+(function(){
+  const root = document.getElementById('s4');
+
+  root.innerHTML = `
+    <div class="frame-body">
+      ${rail()}
+      <div class="ui-main">
+        ${topbar('Settings')}
+        <div class="ui-page">
+          <div class="doc" id="s4-doc">
+            ${SETTINGS.map(s => `
+              <div class="doc-h" data-secanchor="${s.id}">${svg(s.icon)}<span>${s.label}</span>${pip(s.dirty)}</div>
+              ${s.subs.map(sub => card(sub)).join('')}`).join('')}
+          </div>
+          <nav class="index" id="s4-idx">
+            ${SETTINGS.map(s => `
+              <div class="idx-sec" data-goto="${s.id}" data-sec="${s.id}">${svg(s.icon)}<span>${s.label}</span>${pip(s.dirty)}</div>
+              ${isFlat(s) ? '' : s.subs.map(sub =>
+                `<button class="idx-sub" data-goto="${sub.id}" data-sub="${sub.id}">${sub.label}</button>`).join('')}`).join('')}
+          </nav>
+        </div>
+      </div>
+    </div>`;
+
+  const doc = document.getElementById('s4-doc');
+  const idx = document.getElementById('s4-idx');
+
+  root.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => {
+    const id = b.dataset.goto;
+    const t = doc.querySelector(`[data-anchor="${id}"]`) || doc.querySelector(`[data-secanchor="${id}"]`);
+    if (t) doc.scrollTo({ top:t.offsetTop - doc.offsetTop - 8, behavior:'smooth' });
+  });
+
+  /* Scroll-spy. offsetTop against the scroller, rather than an observer, so it
+     stays correct when the frame itself is scrolled into view on the page. */
+  const marks = [...doc.querySelectorAll('[data-anchor],[data-secanchor]')].map(el => ({
+    id: el.dataset.anchor || el.dataset.secanchor, el
+  }));
+  function spy(){
+    const y = doc.scrollTop + 30;
+    let cur = marks[0];
+    for (const m of marks) if (m.el.offsetTop - doc.offsetTop <= y) cur = m;
+    idx.querySelectorAll('.is-active').forEach(e => e.classList.remove('is-active'));
+    const sub = idx.querySelector(`[data-sub="${cur.id}"]`);
+    if (sub) sub.classList.add('is-active');
+    /* light the owning section too */
+    const owner = SETTINGS.find(s => s.id === cur.id || s.subs.some(x => x.id === cur.id));
+    if (owner) { const e = idx.querySelector(`[data-sec="${owner.id}"]`); if (e) e.classList.add('is-active'); }
+  }
+  doc.addEventListener('scroll', spy, { passive:true });
+  spy();
+})();
+
+/* ==========================================================================
+   05 Strip
+   ========================================================================== */
+(function(){
+  const root = document.getElementById('s5');
+  let tab = 'general', pill = null, paletteOpen = false, q = '';
+
+  /* Flat index of every field on the page, which is what Ctrl+K searches. */
+  const INDEX = [];
+  SETTINGS.forEach(s => s.subs.forEach(sub => sub.fields.forEach(f =>
+    INDEX.push({ field:f, path:`${s.label} / ${sub.label}`, sec:s.id, sub:sub.id }))));
+
+  function results(){
+    const t = q.trim().toLowerCase();
+    if (!t) return INDEX.slice(0, 6);
+    return INDEX.filter(r => (r.field + ' ' + r.path).toLowerCase().includes(t)).slice(0, 8);
+  }
+
+  function draw(keepFocus){
+    const sec = SETTINGS.find(s => s.id === tab);
+    const flat = isFlat(sec);
+    const shown = pill ? sec.subs.filter(x => x.id === pill) : sec.subs;
+    const res = results();
+
+    root.innerHTML = `
+      <div class="frame-body">
+        ${rail()}
+        <div class="ui-main">
+          ${topbar('Settings', `<button class="kbd" id="s5-open">${svg('search')}<span>Search settings</span><span style="opacity:.7">Ctrl K</span></button>`)}
+          <div class="strip-top">
+            <div class="strip-tabs">
+              ${SETTINGS.map(s => `
+                <button class="strip-tab ${s.id===tab?'is-active':''}" data-tab="${s.id}">
+                  ${svg(s.icon)}<span>${s.label}</span>${pip(s.dirty)}
+                </button>`).join('')}
+            </div>
+            <div class="strip-pills">
+              ${flat
+                ? `<span style="font-size:11.5px;color:var(--text-3);padding:4px 2px;">No sub-categories</span>`
+                : `<button class="strip-pill ${!pill?'is-active':''}" data-pill="">All</button>` +
+                  sec.subs.map(sub => `<button class="strip-pill ${pill===sub.id?'is-active':''}" data-pill="${sub.id}">${sub.label}</button>`).join('')}
+            </div>
+          </div>
+          <div class="ui-page">
+            <div class="pane">${shown.map(sub => card(sub)).join('')}</div>
+          </div>
+        </div>
+      </div>
+      <div class="palette ${paletteOpen?'is-open':''}" id="s5-pal">
+        <div class="palette-box">
+          <div class="palette-in">
+            ${svg('search')}
+            <input id="s5-q" placeholder="Jump to a setting" value="${q.replace(/"/g,'&quot;')}">
+          </div>
+          <div class="palette-res">
+            ${res.length
+              ? res.map(r => `<button class="palette-row" data-sec="${r.sec}" data-sub="${r.sub}"><span class="f">${r.field}</span><span class="p">${r.path}</span></button>`).join('')
+              : `<div class="palette-none">Nothing matches "${q}"</div>`}
+          </div>
+        </div>
+      </div>`;
+
+    root.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; pill = null; draw(); });
+    root.querySelectorAll('[data-pill]').forEach(b => b.onclick = () => { pill = b.dataset.pill || null; draw(); });
+
+    document.getElementById('s5-open').onclick = () => { paletteOpen = true; q = ''; draw(true); };
+    const pal = document.getElementById('s5-pal');
+    pal.onclick = e => { if (e.target === pal) { paletteOpen = false; draw(); } };
+
+    const input = document.getElementById('s5-q');
+    input.oninput = e => { q = e.target.value; draw(true); };
+    input.onkeydown = e => { if (e.key === 'Escape') { paletteOpen = false; draw(); } };
+    if (keepFocus && paletteOpen) { input.focus(); input.setSelectionRange(q.length, q.length); }
+
+    root.querySelectorAll('.palette-row').forEach(b => b.onclick = () => {
+      tab = b.dataset.sec; pill = b.dataset.sub; paletteOpen = false; q = ''; draw();
+    });
+  }
+  draw();
+
+  /* Ctrl+K only while the pointer is over this scheme, so the five mockups on
+     one page cannot fight over the shortcut. */
+  root.addEventListener('mouseenter', () => root.dataset.hot = '1');
+  root.addEventListener('mouseleave', () => delete root.dataset.hot);
+  window.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && root.dataset.hot) {
+      e.preventDefault(); paletteOpen = true; q = ''; draw(true);
+    }
+  });
+})();
+
+/* ==========================================================================
+   Theme control. Three states: follow the OS, force light, force dark.
+   ========================================================================== */
+(function(){
+  const btn = document.getElementById('theme');
+  const lbl = document.getElementById('theme-label');
+  const order = ['system','light','dark'];
+  const names = { system:'Theme: system', light:'Theme: light', dark:'Theme: dark' };
+  let i = 0;
+  btn.onclick = () => {
+    i = (i + 1) % order.length;
+    const t = order[i];
+    if (t === 'system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', t);
+    lbl.textContent = names[t];
+  };
+  lbl.textContent = names.system;
+})();
+</script>
+</body>
+</html>

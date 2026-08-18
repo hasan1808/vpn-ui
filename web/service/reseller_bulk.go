@@ -56,6 +56,12 @@ const (
 	bulkOpAddDays    = "addDays"
 	bulkOpSubDays    = "subDays"
 	bulkOpDelete     = "delete"
+	// The two membership operations. They do not run through BulkUpdateClients at
+	// all (the controller routes them to the accounts layer instead), and are named
+	// here so the reseller policy for every bulk op is stated in one table: an op
+	// missing from bulkOpAllowed is silently ALLOWED.
+	bulkOpAddInbounds    = "addInbounds"
+	bulkOpRemoveInbounds = "removeInbounds"
 )
 
 var (
@@ -79,6 +85,15 @@ var (
 	// takes bytes away while debiting a negative number, which CREDITS the
 	// reseller. Same class of bug as the negative quota Quote refuses.
 	ErrBulkAmount = errors.New("that is not an amount of traffic to add or subtract")
+	// Which inbounds an account is served on is the ADMIN's decision, not a lever
+	// a reseller holds. Their grant says which inbounds they may sell FROM; it
+	// says nothing about moving a customer between them, and the move is not
+	// priced in bytes so the ledger has no opinion either. Concretely, a reseller
+	// re-homing accounts would spend another admin's IP pool and user-limit
+	// capacity on a shared inbound, and could park an account on an inbound with
+	// a laxer limit than the one it was sold on. Refused for now: allowing it
+	// needs a rule for whose capacity is being spent, not just an ownership test.
+	ErrBulkNoMembership = errors.New("only an admin can move accounts between inbounds")
 )
 
 // BulkCharge is one account's new standing under a priced batch.
@@ -235,6 +250,13 @@ func bulkOpAllowed(p model.ResellerProfile, req *BulkClientUpdateRequest) error 
 	switch req.Op {
 	case bulkOpSubDays:
 		return ErrBulkNoSubDays
+	case bulkOpAddInbounds, bulkOpRemoveInbounds:
+		// Belt and braces. The membership handler refuses a reseller before it
+		// reads anything, and BulkUpdateClients does not know these ops, so this
+		// arm is only reachable if one of them is ever wired through the shared
+		// bulk endpoint. Stated here anyway, because silence in this table reads
+		// as permission.
+		return ErrBulkNoMembership
 	case bulkOpAddDays:
 		if p.DaysPerGB > 0 {
 			return ErrBulkDaysAreDerived

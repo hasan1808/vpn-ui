@@ -89,6 +89,12 @@ func LinkPptpCtrl() error {
 	return os.Symlink(ctrl, PptpCtrlLink)
 }
 
+// DistroUnitExists is distroUnitExists for callers outside this package. The
+// panel asks it before disabling a unit: a unit the DISTRO ships is the
+// operator's, so its enabled/active state is recorded and handed back on
+// uninstall, while one of our own generated units is simply deleted.
+func DistroUnitExists(name string) bool { return distroUnitExists(name) }
+
 // distroUnitExists reports whether a distro package already provides this unit
 // (in /usr/lib or /lib). If so we leave it alone and use the packaged daemon.
 func distroUnitExists(name string) bool {

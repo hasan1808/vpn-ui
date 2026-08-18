@@ -25,7 +25,7 @@
                    gap over a --border background with opaque cells, so the
                    dividers come from the grid rather than per-cell borders. -->
               <div class="bo-tile" :style="{ padding: '0', overflow: 'hidden' }">
-                <div class="bo-stat-grid bo-stat-grid--6">
+                <div class="bo-stat-grid bo-stat-grid--5">
                   <div class="bo-stat-cell">
                     <span class="bo-stat-cell-label">{{ i18n "pages.inbounds.totalDownUp" }}</span>
                     <span class="bo-stat-cell-value num">[[ SizeFormatter.sizeFormat(total.up) ]] / [[ SizeFormatter.sizeFormat(total.down) ]]</span>
@@ -35,16 +35,12 @@
                     <span class="bo-stat-cell-value num">[[ SizeFormatter.sizeFormat(total.up + total.down) ]]</span>
                   </div>
                   <div class="bo-stat-cell">
-                    <span class="bo-stat-cell-label">{{ i18n "pages.inbounds.outboundTraffic" }}</span>
-                    <span class="bo-stat-cell-value num">[[ SizeFormatter.sizeFormat(outboundTrafficTotal.up) ]] / [[ SizeFormatter.sizeFormat(outboundTrafficTotal.down) ]]</span>
-                  </div>
-                  <div class="bo-stat-cell">
                     <span class="bo-stat-cell-label">{{ i18n "pages.inbounds.allTimeTrafficUsage" }}</span>
                     <span class="bo-stat-cell-value num">[[ SizeFormatter.sizeFormat(total.allTime) ]]</span>
                   </div>
                   <div class="bo-stat-cell">
                     <span class="bo-stat-cell-label">{{ i18n "pages.inbounds.inboundCount" }}</span>
-                    <span class="bo-stat-cell-value num">[[ protocolInbounds.length ]]</span>
+                    <span class="bo-stat-cell-value num">[[ dbInbounds.length ]]</span>
                   </div>
                   <div class="bo-stat-cell">
                     <span class="bo-stat-cell-label">{{ i18n "clients" }}</span>
@@ -155,35 +151,71 @@
                   </a-space>
                 </template>
                 <template #extra>
-                  <a-button-group>
-                    <a-button icon="sync" @click="manualRefresh"
-                      :loading="refreshing"></a-button>
-                    <a-popover placement="bottomRight" trigger="click"
-                      :overlay-class-name="themeSwitcher.currentTheme">
-                      <template #title>
-                        <div class="ant-custom-popover-title">
-                          <a-switch v-model="isRefreshEnabled"
-                            @change="toggleRefresh" size="small"></a-switch>
-                          <span>{{ i18n "pages.inbounds.autoRefresh" }}</span>
-                        </div>
-                      </template>
-                      <template #content>
-                        <a-space direction="vertical">
-                          <span>{{ i18n "pages.inbounds.autoRefreshInterval"
-                            }}</span>
-                          <a-select v-model="refreshInterval"
-                            :disabled="!isRefreshEnabled"
-                            :style="{ width: '100%' }"
-                            @change="changeRefreshInterval"
-                            :dropdown-class-name="themeSwitcher.currentTheme">
-                            <a-select-option v-for="key in [5,10,30,60]"
-                              :value="key*1000">[[ key ]]s</a-select-option>
-                          </a-select>
-                        </a-space>
-                      </template>
-                      <a-button icon="down"></a-button>
-                    </a-popover>
-                  </a-button-group>
+                  <div
+                    :style="{ display: 'flex', alignItems: 'center', gap: '10px' }">
+                    <!-- Offered only to panel-settings holders because it is one
+                         setting for the whole panel, and the route that writes it
+                         takes that same permission: showing the switch to a
+                         delegated admin or a reseller would give them a control
+                         whose every use is refused.
+
+                         Hardcoded English, like the section names in the form
+                         itself: an en_US-only key blanks the label in the other
+                         twelve locales and grows the parity ratchet in
+                         web/i18n_toml_test.go. -->
+                    {{ if .perms.accessPanelSettings }}
+                    <span
+                      :style="{ display: 'inline-flex', alignItems: 'center', gap: '6px' }">
+                      <a-switch :checked="legacyInboundForm"
+                        :loading="legacyInboundFormSaving"
+                        @change="toggleLegacyInboundForm" size="small"></a-switch>
+                      <!-- The card header is one flex row and the title beside it
+                           carries the Add Inbound and General Actions buttons, so on
+                           a phone the words are dropped rather than left to squeeze
+                           them. The tooltip still says what the switch does, which
+                           is why its text names the dialog instead of relying on
+                           this label. -->
+                      <span v-if="!isMobile">Old inbound modify UI</span>
+                      <a-tooltip :overlay-class-name="themeSwitcher.currentTheme">
+                        <template slot="title">
+                          <span>Serves the Add and Edit inbound dialog as it was
+                            before the redesign, to every admin on this panel. The
+                            page reloads when this changes.</span>
+                        </template>
+                        <a-icon type="question-circle"></a-icon>
+                      </a-tooltip>
+                    </span>
+                    {{ end }}
+                    <a-button-group>
+                      <a-button icon="sync" @click="manualRefresh"
+                        :loading="refreshing"></a-button>
+                      <a-popover placement="bottomRight" trigger="click"
+                        :overlay-class-name="themeSwitcher.currentTheme">
+                        <template #title>
+                          <div class="ant-custom-popover-title">
+                            <a-switch v-model="isRefreshEnabled"
+                              @change="toggleRefresh" size="small"></a-switch>
+                            <span>{{ i18n "pages.inbounds.autoRefresh" }}</span>
+                          </div>
+                        </template>
+                        <template #content>
+                          <a-space direction="vertical">
+                            <span>{{ i18n "pages.inbounds.autoRefreshInterval"
+                              }}</span>
+                            <a-select v-model="refreshInterval"
+                              :disabled="!isRefreshEnabled"
+                              :style="{ width: '100%' }"
+                              @change="changeRefreshInterval"
+                              :dropdown-class-name="themeSwitcher.currentTheme">
+                              <a-select-option v-for="key in [5,10,30,60]"
+                                :value="key*1000">[[ key ]]s</a-select-option>
+                            </a-select>
+                          </a-space>
+                        </template>
+                        <a-button icon="down"></a-button>
+                      </a-popover>
+                    </a-button-group>
+                  </div>
                 </template>
                 <a-space direction="vertical">
                   <div
@@ -270,26 +302,6 @@
                               <a-icon type="edit"></a-icon>
                               {{ i18n "edit" }}
                             </a-menu-item>
-                            <!-- OpenVPN: fetch the .ovpn profile straight from the row
-                                 menu, without opening the edit dialog. One item per
-                                 enabled transport, mirroring the modal's Client Config
-                                 section (labels match it, hardcoded English as there).
-                                 The endpoint reads the SAVED inbound, which is exactly
-                                 the row state, so nothing needs persisting first. -->
-                            <template v-if="dbInbound.isOpenvpn">
-                              <a-menu-item key="ovpnUdp"
-                                v-if="dbInbound.toInbound().settings.udpEnable">
-                                <a-icon type="download"></a-icon>
-                                UDP Config (.ovpn)
-                              </a-menu-item>
-                              <a-menu-item key="ovpnTcp"
-                                v-if="dbInbound.toInbound().settings.tcpEnable">
-                                <a-icon type="download"></a-icon>
-                                TCP Config (.ovpn)
-                              </a-menu-item>
-                              <a-menu-divider
-                                v-if="dbInbound.toInbound().settings.udpEnable || dbInbound.toInbound().settings.tcpEnable"></a-menu-divider>
-                            </template>
                             <a-menu-item key="qrcode"
                               v-if="(dbInbound.isSS && !dbInbound.toInbound().isSSMultiUser) || dbInbound.isWireguard">
                               <a-icon type="qrcode"></a-icon>
@@ -338,172 +350,94 @@
                         </a-dropdown>
                       </span>
                     </template>
-                    <template slot="port" slot-scope="text, dbInbound">
-                      <template v-if="dbInbound.isOpenvpn">
-                        <span v-if="dbInbound.toInbound().settings.tcpEnable"
-                          :style="{ display: 'block', whiteSpace: 'nowrap' }">TCP:
-                          [[ dbInbound.toInbound().settings.separatePorts ? (dbInbound.toInbound().settings.tcpPort || 443) : dbInbound.port ]]</span>
-                        <span v-if="dbInbound.toInbound().settings.udpEnable"
-                          :style="{ display: 'block', whiteSpace: 'nowrap' }">UDP:
-                          [[ dbInbound.port ]]</span>
-                      </template>
-                      <!-- GRE is IP protocol 47 and binds no port. The row still carries
-                           one because the inbound tag is built from it, but the server
-                           assigns it and the form has no box for it, so printing it here
-                           would show a number the operator never chose and cannot change.
-                           Matches what the TXT/PDF export already prints. -->
-                      <a-tooltip v-else-if="dbInbound.protocol === 'gre'">
-                        <template slot="title">GRE is IP protocol 47 and has no ports</template>
-                        <span :style="{ color: '#888' }">n/a</span>
-                      </a-tooltip>
-                      <template v-else>[[ dbInbound.port ]]</template>
+                    <!-- One identity cell in place of four columns. The remark
+                         names the inbound; the line under it is its technical
+                         signature, protocol then where it listens then how it is
+                         wrapped, built by inboundMeta() so the whole thing is one
+                         string rather than four tags that reflow. The lamp reports
+                         HEALTH; the switch two columns left reports INTENT, and
+                         they disagree on exactly the rows worth looking at. -->
+                    <template slot="identity" slot-scope="text, dbInbound">
+                      <div class="bo-il-ident">
+                        <span class="bo-il-lamp"
+                          :data-state="inboundState(dbInbound)"
+                          :title="inboundStateText(dbInbound)"></span>
+                        <span class="bo-il-lines">
+                          <span class="bo-il-name">[[ dbInbound.remark ]]</span>
+                          <span class="bo-il-meta">
+                            <b>[[ ProtocolLabels[dbInbound.protocol] ||
+                              dbInbound.protocol ]]</b><!--
+                            OpenVPN's artifact is a FILE the operator hands to a
+                            person, not a share link, and it is the reason most
+                            visits to an OpenVPN row happen. It sits against the
+                            protocol name because that is the word that says why
+                            it exists: it is not a row action like edit or
+                            delete, it is what "OpenVPN" means here.
+                            --><template v-if="dbInbound.isOpenvpn">
+                              <!-- One transport enabled, the common case: the
+                                   icon IS the download, not a menu of one. -->
+                              <a-icon class="bo-il-dl"
+                                v-if="ovpnTransports(dbInbound).length === 1"
+                                type="download"
+                                @click="downloadOvpn(dbInbound.id, ovpnTransports(dbInbound)[0])"
+                                :title="'OpenVPN client config (.ovpn, ' + ovpnTransports(dbInbound)[0].toUpperCase() + ')'"></a-icon>
+                              <a-dropdown v-else :trigger="['click']">
+                                <a-icon class="bo-il-dl" type="download"
+                                  @click="e => e.preventDefault()"
+                                  title="OpenVPN client config (.ovpn)"></a-icon>
+                                <a-menu slot="overlay"
+                                  @click="a => clickAction(a, dbInbound)"
+                                  :theme="themeSwitcher.currentTheme">
+                                  <a-menu-item key="ovpnUdp"
+                                    v-if="dbInbound.toInbound().settings.udpEnable">
+                                    <a-icon type="download"></a-icon>
+                                    .ovpn (UDP)
+                                  </a-menu-item>
+                                  <a-menu-item key="ovpnTcp"
+                                    v-if="dbInbound.toInbound().settings.tcpEnable">
+                                    <a-icon type="download"></a-icon>
+                                    .ovpn (TCP)
+                                  </a-menu-item>
+                                </a-menu>
+                              </a-dropdown>
+                            </template> [[ inboundMeta(dbInbound) ]]</span>
+                        </span>
+                      </div>
                     </template>
-                    <template slot="protocol" slot-scope="text, dbInbound">
-                      <!-- Coloured by protocol FAMILY, not per protocol. There
-                           are 12+ protocols and a hue per protocol is not
-                           colourblind-safe at tag text sizes (see the note in
-                           ant-bridge.css). Families are few, meaningful, and
-                           the tag still spells the name. -->
-                      <a-tag :style="{ margin: '0' }" class="bo-proto"
-                        :class="'bo-proto--' + protocolFamily(dbInbound.protocol)">[[
-                        ProtocolLabels[dbInbound.protocol] || dbInbound.protocol ]]</a-tag>
-                      <template
-                        v-if="dbInbound.isVMess || dbInbound.isVLess || dbInbound.isTrojan || dbInbound.isSS">
-                        <a-tag :style="{ margin: '0' }" color="green">[[
-                          dbInbound.toInbound().stream.network ]]</a-tag>
-                        <a-tag :style="{ margin: '0' }"
-                          v-if="dbInbound.toInbound().stream.isTls"
-                          color="blue">TLS</a-tag>
-                        <a-tag :style="{ margin: '0' }"
-                          v-if="dbInbound.toInbound().stream.isReality"
-                          color="blue">Reality</a-tag>
-                      </template>
-                      <template v-if="dbInbound.isOpenvpn">
-                        <a-tooltip
-                          v-if="dbInbound.toInbound().settings.udpEnable"
-                          title="Export OpenVPN UDP config (.ovpn)">
-                          <a-button size="small" icon="download"
-                            :style="{ marginLeft: '4px', padding: '0 6px' }"
-                            @click="downloadOvpn(dbInbound.id, 'udp')">UDP</a-button>
-                        </a-tooltip>
-                        <a-tooltip
-                          v-if="dbInbound.toInbound().settings.tcpEnable"
-                          title="Export OpenVPN TCP config (.ovpn)">
-                          <a-button size="small" icon="download"
-                            :style="{ marginLeft: '4px', padding: '0 6px' }"
-                            @click="downloadOvpn(dbInbound.id, 'tcp')">TCP</a-button>
-                        </a-tooltip>
-                      </template>
+                    <!-- The address a client dials, not the port on its own: a
+                         port is half an address, and the half it is missing is
+                         the half that is sometimes not this panel at all.
+                         Right-aligned so the ports stack and the eye runs down
+                         one edge; click to copy the whole thing. -->
+                    <template slot="endpoint" slot-scope="text, dbInbound">
+                      <div class="bo-il-ep">
+                        <template v-if="inboundEndpoints(dbInbound).length">
+                          <span class="bo-il-ep-line" v-for="ep in endpointsShown(dbInbound)"
+                            :key="ep.label + ':' + ep.host + ':' + ep.port"
+                            :title="(ep.label ? ep.label + ' ' : '') + endpointText(ep) + ' — ' + '{{ i18n "copy" }}'"
+                            @click="copyEndpoint(ep)">
+                            <span class="bo-il-ep-tag" v-if="ep.label && ep.label.length <= 4">[[ ep.label ]]</span
+                            ><span class="bo-il-ep-host">[[ endpointHost(ep) ]]:</span
+                            ><span class="bo-il-ep-port">[[ ep.port ]]</span>
+                            <a-icon type="copy" class="bo-il-ep-copy"></a-icon>
+                          </span>
+                          <span class="bo-il-ep-more" v-if="endpointsHidden(dbInbound)"
+                            :title="endpointTitle(dbInbound)">+[[ endpointsHidden(dbInbound) ]]</span>
+                        </template>
+                        <!-- GRE is IP protocol 47. It binds no port, so there is
+                             no address for a client to dial - which is a
+                             different thing from an empty cell, and worth
+                             saying rather than dashing out. -->
+                        <span class="bo-il-none" v-else
+                          title="GRE is IP protocol 47 and has no ports">proto 47</span>
+                      </div>
                     </template>
-                    <template slot="clients" slot-scope="text, dbInbound">
-                      <template v-if="clientCount[dbInbound.id]">
-                        <a-tag :style="{ margin: '0' }" color="green">[[
-                          clientCount[dbInbound.id].clients ]]</a-tag>
-                        <a-popover title='{{ i18n "disabled" }}'
-                          :overlay-class-name="themeSwitcher.currentTheme">
-                          <template slot="content">
-                            <div
-                              v-for="clientEmail in clientCount[dbInbound.id].deactive"
-                              :key="clientEmail"
-                              class="client-popup-item">
-                              <span>[[ clientEmail ]]</span>
-                              <a-tooltip
-                                :overlay-class-name="themeSwitcher.currentTheme">
-                                <template #title>
-                                  [[
-                                  clientCount[dbInbound.id].comments.get(clientEmail)
-                                  ]]
-                                </template>
-                                <a-icon type="message"
-                                  v-if="clientCount[dbInbound.id].comments.get(clientEmail)"></a-icon>
-                              </a-tooltip>
-                            </div>
-                          </template>
-                          <a-tag :style="{ margin: '0', padding: '0 2px' }"
-                            v-if="clientCount[dbInbound.id].deactive.length">[[
-                            clientCount[dbInbound.id].deactive.length ]]</a-tag>
-                        </a-popover>
-                        <a-popover title='{{ i18n "depleted" }}'
-                          :overlay-class-name="themeSwitcher.currentTheme">
-                          <template slot="content">
-                            <div
-                              v-for="clientEmail in clientCount[dbInbound.id].depleted"
-                              :key="clientEmail"
-                              class="client-popup-item">
-                              <span>[[ clientEmail ]]</span>
-                              <a-tooltip
-                                :overlay-class-name="themeSwitcher.currentTheme">
-                                <template #title>
-                                  [[
-                                  clientCount[dbInbound.id].comments.get(clientEmail)
-                                  ]]
-                                </template>
-                                <a-icon type="message"
-                                  v-if="clientCount[dbInbound.id].comments.get(clientEmail)"></a-icon>
-                              </a-tooltip>
-                            </div>
-                          </template>
-                          <a-tag :style="{ margin: '0', padding: '0 2px' }"
-                            color="red"
-                            v-if="clientCount[dbInbound.id].depleted.length">[[
-                            clientCount[dbInbound.id].depleted.length ]]</a-tag>
-                        </a-popover>
-                        <a-popover title='{{ i18n "depletingSoon" }}'
-                          :overlay-class-name="themeSwitcher.currentTheme">
-                          <template slot="content">
-                            <div
-                              v-for="clientEmail in clientCount[dbInbound.id].expiring"
-                              :key="clientEmail"
-                              class="client-popup-item">
-                              <span>[[ clientEmail ]]</span>
-                              <a-tooltip
-                                :overlay-class-name="themeSwitcher.currentTheme">
-                                <template #title>
-                                  [[
-                                  clientCount[dbInbound.id].comments.get(clientEmail)
-                                  ]]
-                                </template>
-                                <a-icon type="message"
-                                  v-if="clientCount[dbInbound.id].comments.get(clientEmail)"></a-icon>
-                              </a-tooltip>
-                            </div>
-                          </template>
-                          <a-tag :style="{ margin: '0', padding: '0 2px' }"
-                            color="orange"
-                            v-if="clientCount[dbInbound.id].expiring.length">[[
-                            clientCount[dbInbound.id].expiring.length ]]</a-tag>
-                        </a-popover>
-                        <a-popover title='{{ i18n "online" }}'
-                          :overlay-class-name="themeSwitcher.currentTheme">
-                          <template slot="content">
-                            <div
-                              v-for="clientEmail in clientCount[dbInbound.id].online"
-                              :key="clientEmail"
-                              class="client-popup-item">
-                              <span>[[ clientEmail ]]</span>
-                              <a-tooltip
-                                :overlay-class-name="themeSwitcher.currentTheme">
-                                <template #title>
-                                  [[
-                                  clientCount[dbInbound.id].comments.get(clientEmail)
-                                  ]]
-                                </template>
-                                <a-icon type="message"
-                                  v-if="clientCount[dbInbound.id].comments.get(clientEmail)"></a-icon>
-                              </a-tooltip>
-                            </div>
-                          </template>
-                          <a-tag :style="{ margin: '0', padding: '0 2px' }"
-                            color="blue"
-                            v-if="clientCount[dbInbound.id].online.length">[[
-                            clientCount[dbInbound.id].online.length
-                            ]]</a-tag>
-                        </a-popover>
-                      </template>
-                    </template>
-                    <template slot="traffic" slot-scope="text, dbInbound">
-                      <a-popover
-                        :overlay-class-name="themeSwitcher.currentTheme">
+                    <!-- Used against cap, over a meter, over the all-time figure
+                         that used to be a column of its own. The popover keeps
+                         the up/down/remaining split, which is the only thing the
+                         old tag carried that a bar cannot. -->
+                    <template slot="data" slot-scope="text, dbInbound">
+                      <a-popover :overlay-class-name="themeSwitcher.currentTheme">
                         <template slot="content">
                           <table cellpadding="2" width="100%">
                             <tr>
@@ -520,28 +454,55 @@
                             </tr>
                           </table>
                         </template>
-                        <a-tag
-                          :color="ColorUtils.usageColor(dbInbound.up + dbInbound.down, app.trafficDiff, dbInbound.total)">
-                          [[ SizeFormatter.sizeFormat(dbInbound.up +
-                          dbInbound.down) ]] /
-                          <template v-if="dbInbound.total > 0">
-                            [[ SizeFormatter.sizeFormat(dbInbound.total) ]]
-                          </template>
-                          <template v-else>
-                            <svg height="10px" width="14px"
-                              viewBox="0 0 640 512" fill="currentColor">
-                              <path
-                                d="M484.4 96C407 96 349.2 164.1 320 208.5C290.8 164.1 233 96 155.6 96C69.75 96 0 167.8 0 256s69.75 160 155.6 160C233.1 416 290.8 347.9 320 303.5C349.2 347.9 407 416 484.4 416C570.3 416 640 344.2 640 256S570.3 96 484.4 96zM155.6 368C96.25 368 48 317.8 48 256s48.25-112 107.6-112c67.75 0 120.5 82.25 137.1 112C276 285.8 223.4 368 155.6 368zM484.4 368c-67.75 0-120.5-82.25-137.1-112C364 226.2 416.6 144 484.4 144C543.8 144 592 194.2 592 256S543.8 368 484.4 368z"
-                                fill="currentColor"></path>
-                            </svg>
-                          </template>
-                        </a-tag>
+                        <div>
+                          <div class="bo-il-top">
+                            <span class="bo-il-used num">[[
+                              SizeFormatter.sizeFormat(dbInbound.up +
+                              dbInbound.down) ]]</span>
+                            <span class="bo-il-cap num"
+                              v-if="dbInbound.total > 0">[[
+                              SizeFormatter.sizeFormat(dbInbound.total)
+                              ]]</span>
+                            <span class="bo-il-cap bo-il-inf" v-else
+                              title='{{ i18n "pages.inbounds.noLimit" }}'>&infin;</span>
+                          </div>
+                          <div class="bo-il-meter"
+                            :class="usageMeterClass(dbInbound)">
+                            <i :style="{ width: usagePercent(dbInbound) + '%' }"></i>
+                          </div>
+                          <span class="bo-il-sub">[[
+                            SizeFormatter.sizeFormat(dbInbound.allTime || 0) ]]
+                            {{ i18n "pages.inbounds.allTimeShort" }}</span>
+                        </div>
                       </a-popover>
                     </template>
-                    <template slot="allTimeInbound"
-                      slot-scope="text, dbInbound">
-                      <a-tag>[[ SizeFormatter.sizeFormat(dbInbound.allTime || 0)
-                        ]]</a-tag>
+                    <!-- One segmented bar in place of five popover tags. The five
+                         numbers were only ever read to answer "is anything wrong
+                         on this inbound", so the bar answers it at a glance and
+                         the line under it says which categories in words. The
+                         per-account email lists those popovers carried live on
+                         the Clients page, which owns accounts. -->
+                    <template slot="accounts" slot-scope="text, dbInbound">
+                      <template v-if="clientCount[dbInbound.id]">
+                        <div class="bo-il-top">
+                          <span class="bo-il-n num">[[
+                            clientCount[dbInbound.id].clients ]]</span>
+                          <span class="bo-il-online num"
+                            v-if="clientCount[dbInbound.id].online.length">[[
+                            clientCount[dbInbound.id].online.length ]] {{ i18n
+                            "online" }}</span>
+                        </div>
+                        <div class="bo-il-acc">
+                          <i v-for="seg in accountSegments(dbInbound)"
+                            :key="seg.name" :class="'bo-il-acc--' + seg.name"
+                            :style="{ flex: seg.n }"></i>
+                        </div>
+                        <span class="bo-il-sub">[[ accountNote(dbInbound) ]]</span>
+                      </template>
+                      <!-- No account list at all: a single-user protocol, or one
+                           whose peers Xray synthesises rather than stores. Not an
+                           empty cell, which reads as a load that never arrived. -->
+                      <span class="bo-il-none" v-else>&mdash;</span>
                     </template>
                     <template slot="enable" slot-scope="text, dbInbound">
                       <a-switch v-model="dbInbound.enable"
@@ -553,255 +514,113 @@
                         <template slot="content">
                           [[ IntlUtil.formatDate(dbInbound.expiryTime) ]]
                         </template>
-                        <a-tag :style="{ minWidth: '50px' }"
-                          :color="ColorUtils.usageColor(new Date().getTime(), app.expireDiff, dbInbound._expiryTime)">
-                          [[ IntlUtil.formatRelativeTime(dbInbound.expiryTime)
-                          ]]
-                        </a-tag>
+                        <span class="bo-il-exp num"
+                          :class="expiryClass(dbInbound)">[[
+                          IntlUtil.formatRelativeTime(dbInbound.expiryTime)
+                          ]]</span>
                       </a-popover>
-                      <a-tag v-else color="purple" class="infinite-tag">
-                        <svg height="10px" width="14px" viewBox="0 0 640 512"
-                          fill="currentColor">
-                          <path
-                            d="M484.4 96C407 96 349.2 164.1 320 208.5C290.8 164.1 233 96 155.6 96C69.75 96 0 167.8 0 256s69.75 160 155.6 160C233.1 416 290.8 347.9 320 303.5C349.2 347.9 407 416 484.4 416C570.3 416 640 344.2 640 256S570.3 96 484.4 96zM155.6 368C96.25 368 48 317.8 48 256s48.25-112 107.6-112c67.75 0 120.5 82.25 137.1 112C276 285.8 223.4 368 155.6 368zM484.4 368c-67.75 0-120.5-82.25-137.1-112C364 226.2 416.6 144 484.4 144C543.8 144 592 194.2 592 256S543.8 368 484.4 368z"
-                            fill="currentColor"></path>
-                        </svg>
-                      </a-tag>
+                      <span v-else class="bo-il-inf"
+                        title='{{ i18n "pages.inbounds.noLimit" }}'>&infin;</span>
                     </template>
+                    <!-- The mobile row's second half. The narrow table drops the
+                         data, accounts and expiry columns, so this carries exactly
+                         those three, drawn in the same vocabulary the wide table
+                         uses rather than in a second set of tags: the phone and the
+                         desktop then teach the same reading. -->
                     <template slot="info" slot-scope="text, dbInbound">
                       <a-popover placement="bottomRight"
                         :overlay-class-name="themeSwitcher.currentTheme"
                         trigger="click">
                         <template slot="content">
-                          <table cellpadding="2">
-                            <tr>
-                              <td>{{ i18n "pages.inbounds.protocol" }}</td>
-                              <td>
-                                <a-tag :style="{ margin: '0' }"
-                                  color="purple">[[ ProtocolLabels[dbInbound.protocol] || dbInbound.protocol
-                                  ]]</a-tag>
-                                <template
-                                  v-if="dbInbound.isVMess || dbInbound.isVLess || dbInbound.isTrojan || dbInbound.isSS">
-                                  <a-tag :style="{ margin: '0' }"
-                                    color="blue">[[
-                                    dbInbound.toInbound().stream.network
-                                    ]]</a-tag>
-                                  <a-tag :style="{ margin: '0' }"
-                                    v-if="dbInbound.toInbound().stream.isTls"
-                                    color="green">tls</a-tag>
-                                  <a-tag :style="{ margin: '0' }"
-                                    v-if="dbInbound.toInbound().stream.isReality"
-                                    color="green">reality</a-tag>
-                                </template>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td>{{ i18n "pages.inbounds.port" }}</td>
-                              <td><a-tag>[[ dbInbound.port ]]</a-tag></td>
-                            </tr>
-                            <tr v-if="clientCount[dbInbound.id]">
-                              <td>{{ i18n "clients" }}</td>
-                              <td>
-                                <a-tag :style="{ margin: '0' }" color="blue">[[
-                                  clientCount[dbInbound.id].clients
-                                  ]]</a-tag>
-                                <a-popover title='{{ i18n "disabled" }}'
-                                  :overlay-class-name="themeSwitcher.currentTheme">
-                                  <template slot="content">
-                                    <div
-                                      v-for="clientEmail in clientCount[dbInbound.id].deactive"
-                                      :key="clientEmail"
-                                      class="client-popup-item">
-                                      <span>[[ clientEmail ]]</span>
-                                      <a-tooltip
-                                        :overlay-class-name="themeSwitcher.currentTheme">
-                                        <template #title>
-                                          [[
-                                          clientCount[dbInbound.id].comments.get(clientEmail)
-                                          ]]
-                                        </template>
-                                        <a-icon type="message"
-                                          v-if="clientCount[dbInbound.id].comments.get(clientEmail)"></a-icon>
-                                      </a-tooltip>
-                                    </div>
-                                  </template>
-                                  <a-tag
-                                    :style="{ margin: '0', padding: '0 2px' }"
-                                    v-if="clientCount[dbInbound.id].deactive.length">[[
-                                    clientCount[dbInbound.id].deactive.length
-                                    ]]</a-tag>
-                                </a-popover>
-                                <a-popover title='{{ i18n "depleted" }}'
-                                  :overlay-class-name="themeSwitcher.currentTheme">
-                                  <template slot="content">
-                                    <div
-                                      v-for="clientEmail in clientCount[dbInbound.id].depleted"
-                                      :key="clientEmail"
-                                      class="client-popup-item">
-                                      <span>[[ clientEmail ]]</span>
-                                      <a-tooltip
-                                        :overlay-class-name="themeSwitcher.currentTheme">
-                                        <template #title>
-                                          [[
-                                          clientCount[dbInbound.id].comments.get(clientEmail)
-                                          ]]
-                                        </template>
-                                        <a-icon type="message"
-                                          v-if="clientCount[dbInbound.id].comments.get(clientEmail)"></a-icon>
-                                      </a-tooltip>
-                                    </div>
-                                  </template>
-                                  <a-tag
-                                    :style="{ margin: '0', padding: '0 2px' }"
-                                    color="red"
-                                    v-if="clientCount[dbInbound.id].depleted.length">[[
-                                    clientCount[dbInbound.id].depleted.length
-                                    ]]</a-tag>
-                                </a-popover>
-                                <a-popover title='{{ i18n "depletingSoon" }}'
-                                  :overlay-class-name="themeSwitcher.currentTheme">
-                                  <template slot="content">
-                                    <div
-                                      v-for="clientEmail in clientCount[dbInbound.id].expiring"
-                                      :key="clientEmail"
-                                      class="client-popup-item">
-                                      <span>[[ clientEmail ]]</span>
-                                      <a-tooltip
-                                        :overlay-class-name="themeSwitcher.currentTheme">
-                                        <template #title>
-                                          [[
-                                          clientCount[dbInbound.id].comments.get(clientEmail)
-                                          ]]
-                                        </template>
-                                        <a-icon type="message"
-                                          v-if="clientCount[dbInbound.id].comments.get(clientEmail)"></a-icon>
-                                      </a-tooltip>
-                                    </div>
-                                  </template>
-                                  <a-tag
-                                    :style="{ margin: '0', padding: '0 2px' }"
-                                    color="orange"
-                                    v-if="clientCount[dbInbound.id].expiring.length">[[
-                                    clientCount[dbInbound.id].expiring.length
-                                    ]]</a-tag>
-                                </a-popover>
-                                <a-popover title='{{ i18n "online" }}'
-                                  :overlay-class-name="themeSwitcher.currentTheme">
-                                  <template slot="content">
-                                    <div
-                                      v-for="clientEmail in clientCount[dbInbound.id].online"
-                                      :key="clientEmail"
-                                      class="client-popup-item">
-                                      <span>[[ clientEmail ]]</span>
-                                      <a-tooltip
-                                        :overlay-class-name="themeSwitcher.currentTheme">
-                                        <template #title>
-                                          [[
-                                          clientCount[dbInbound.id].comments.get(clientEmail)
-                                          ]]
-                                        </template>
-                                        <a-icon type="message"
-                                          v-if="clientCount[dbInbound.id].comments.get(clientEmail)"></a-icon>
-                                      </a-tooltip>
-                                    </div>
-                                  </template>
-                                  <a-tag
-                                    :style="{ margin: '0', padding: '0 2px' }"
-                                    color="green"
-                                    v-if="clientCount[dbInbound.id].online.length">[[
-                                    clientCount[dbInbound.id].online.length
-                                    ]]</a-tag>
-                                </a-popover>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td>{{ i18n "pages.inbounds.traffic" }}</td>
-                              <td>
-                                <a-popover
-                                  :overlay-class-name="themeSwitcher.currentTheme">
-                                  <template slot="content">
-                                    <table cellpadding="2" width="100%">
-                                      <tr>
-                                        <td>↑[[
-                                          SizeFormatter.sizeFormat(dbInbound.up)
-                                          ]]</td>
-                                        <td>↓[[
-                                          SizeFormatter.sizeFormat(dbInbound.down)
-                                          ]]</td>
-                                      </tr>
-                                      <tr
-                                        v-if="dbInbound.total > 0 &&  dbInbound.up + dbInbound.down < dbInbound.total">
-                                        <td>{{ i18n "remained" }}</td>
-                                        <td>[[
-                                          SizeFormatter.sizeFormat(dbInbound.total
-                                          - dbInbound.up - dbInbound.down)
-                                          ]]</td>
-                                      </tr>
-                                    </table>
-                                  </template>
-                                  <a-tag
-                                    :color="ColorUtils.usageColor(dbInbound.up + dbInbound.down, app.trafficDiff, dbInbound.total)">
-                                    [[ SizeFormatter.sizeFormat(dbInbound.up +
-                                    dbInbound.down) ]] /
-                                    <template v-if="dbInbound.total > 0">
-                                      [[
-                                      SizeFormatter.sizeFormat(dbInbound.total)
-                                      ]]
-                                    </template>
-                                    <template v-else>
-                                      <svg height="10px" width="14px"
-                                        viewBox="0 0 640 512"
-                                        fill="currentColor">
-                                        <path
-                                          d="M484.4 96C407 96 349.2 164.1 320 208.5C290.8 164.1 233 96 155.6 96C69.75 96 0 167.8 0 256s69.75 160 155.6 160C233.1 416 290.8 347.9 320 303.5C349.2 347.9 407 416 484.4 416C570.3 416 640 344.2 640 256S570.3 96 484.4 96zM155.6 368C96.25 368 48 317.8 48 256s48.25-112 107.6-112c67.75 0 120.5 82.25 137.1 112C276 285.8 223.4 368 155.6 368zM484.4 368c-67.75 0-120.5-82.25-137.1-112C364 226.2 416.6 144 484.4 144C543.8 144 592 194.2 592 256S543.8 368 484.4 368z"
-                                          fill="currentColor"></path>
-                                      </svg>
-                                    </template>
-                                  </a-tag>
-                                </a-popover>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td>{{ i18n "pages.inbounds.expireDate" }}</td>
-                              <td>
-                                <a-tag
-                                  :style="{ minWidth: '50px', textAlign: 'center' }"
-                                  v-if="dbInbound.expiryTime > 0"
-                                  :color="dbInbound.isExpiry? 'red': 'blue'">
-                                  [[ IntlUtil.formatDate(dbInbound.expiryTime)
-                                  ]]
-                                </a-tag>
-                                <a-tag v-else :style="{ textAlign: 'center' }"
-                                  color="purple" class="infinite-tag">
-                                  <svg height="10px" width="14px"
-                                    viewBox="0 0 640 512" fill="currentColor">
-                                    <path
-                                      d="M484.4 96C407 96 349.2 164.1 320 208.5C290.8 164.1 233 96 155.6 96C69.75 96 0 167.8 0 256s69.75 160 155.6 160C233.1 416 290.8 347.9 320 303.5C349.2 347.9 407 416 484.4 416C570.3 416 640 344.2 640 256S570.3 96 484.4 96zM155.6 368C96.25 368 48 317.8 48 256s48.25-112 107.6-112c67.75 0 120.5 82.25 137.1 112C276 285.8 223.4 368 155.6 368zM484.4 368c-67.75 0-120.5-82.25-137.1-112C364 226.2 416.6 144 484.4 144C543.8 144 592 194.2 592 256S543.8 368 484.4 368z"
-                                      fill="currentColor"></path>
-                                  </svg>
-                                </a-tag>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td>{{ i18n
+                          <div :style="{ minWidth: '210px', maxWidth: '260px' }">
+                            <span class="bo-il-meta bo-il-meta--wrap">
+                              <b>[[ ProtocolLabels[dbInbound.protocol] ||
+                                dbInbound.protocol ]]</b> [[
+                              inboundMeta(dbInbound) ]]</span>
+                            <!-- The narrow table has no room for the Endpoint
+                                 column, so it lands here, in the same shape. -->
+                            <div class="bo-il-ep bo-il-ep--start">
+                              <template v-if="inboundEndpoints(dbInbound).length">
+                                <span class="bo-il-ep-line"
+                                  v-for="ep in inboundEndpoints(dbInbound)"
+                                  :key="ep.label + ':' + ep.host + ':' + ep.port"
+                                  @click="copyEndpoint(ep)">
+                                  <span class="bo-il-ep-tag" v-if="ep.label">[[ ep.label ]]</span
+                                  ><span class="bo-il-ep-host">[[ endpointHost(ep, 26) ]]:</span
+                                  ><span class="bo-il-ep-port">[[ ep.port ]]</span>
+                                  <a-icon type="copy" class="bo-il-ep-copy"></a-icon>
+                                </span>
+                              </template>
+                              <span class="bo-il-none" v-else>proto 47</span>
+                            </div>
+                            <div class="bo-il-rule"></div>
+                            <div class="bo-il-top">
+                              <span class="bo-il-used num">[[
+                                SizeFormatter.sizeFormat(dbInbound.up +
+                                dbInbound.down) ]]</span>
+                              <span class="bo-il-cap num"
+                                v-if="dbInbound.total > 0">[[
+                                SizeFormatter.sizeFormat(dbInbound.total)
+                                ]]</span>
+                              <span class="bo-il-cap bo-il-inf" v-else
+                                title='{{ i18n "pages.inbounds.noLimit" }}'>&infin;</span>
+                            </div>
+                            <div class="bo-il-meter"
+                              :class="usageMeterClass(dbInbound)">
+                              <i :style="{ width: usagePercent(dbInbound) + '%' }"></i>
+                            </div>
+                            <span class="bo-il-sub">[[
+                              SizeFormatter.sizeFormat(dbInbound.allTime || 0) ]]
+                              {{ i18n "pages.inbounds.allTimeShort" }}</span>
+                            <template v-if="clientCount[dbInbound.id]">
+                              <div class="bo-il-rule"></div>
+                              <div class="bo-il-top">
+                                <span class="bo-il-n num">[[
+                                  clientCount[dbInbound.id].clients ]] {{ i18n
+                                  "clients" }}</span>
+                                <span class="bo-il-online num"
+                                  v-if="clientCount[dbInbound.id].online.length">[[
+                                  clientCount[dbInbound.id].online.length ]] {{
+                                  i18n "online" }}</span>
+                              </div>
+                              <div class="bo-il-acc">
+                                <i v-for="seg in accountSegments(dbInbound)"
+                                  :key="seg.name"
+                                  :class="'bo-il-acc--' + seg.name"
+                                  :style="{ flex: seg.n }"></i>
+                              </div>
+                              <span class="bo-il-sub">[[ accountNote(dbInbound)
+                                ]]</span>
+                            </template>
+                            <div class="bo-il-rule"></div>
+                            <div class="bo-kv-row">
+                              <span class="bo-kv-label">{{ i18n
+                                "pages.inbounds.expireDate" }}</span>
+                              <span class="bo-il-exp num"
+                                :class="expiryClass(dbInbound)"
+                                v-if="dbInbound.expiryTime > 0">[[
+                                IntlUtil.formatDate(dbInbound.expiryTime)
+                                ]]</span>
+                              <span class="bo-il-inf" v-else
+                                title='{{ i18n "pages.inbounds.noLimit" }}'>&infin;</span>
+                            </div>
+                            <div class="bo-kv-row">
+                              <span class="bo-kv-label">{{ i18n
                                 "pages.inbounds.periodicTrafficResetTitle"
-                                }}</td>
-                              <td>
-                                <a-tag color="blue">[[ dbInbound.trafficReset
-                                  ]]</a-tag>
-                              </td>
-                            </tr>
-                          </table>
+                                }}</span>
+                              <span class="bo-il-exp">[[ dbInbound.trafficReset
+                                ]]</span>
+                            </div>
+                          </div>
                         </template>
-                        <a-badge>
-                          <a-icon v-if="!dbInbound.enable" slot="count"
-                            type="pause-circle"
-                            :style="{ color: themeSwitcher.isDarkTheme ? '#2c3950' : '#bcbcbc' }"></a-icon>
-                          <a-button shape="round" size="small"
-                            :style="{ fontSize: '14px', padding: '0 10px' }">
-                            <a-icon type="info"></a-icon>
-                          </a-button>
-                        </a-badge>
+                        <!-- A bare icon, the same weight as the kebab beside it,
+                             rather than a round button inside a badge. At this
+                             width the button chrome cost 23px of a column the
+                             remark needed, and the badge it carried only marked
+                             a disabled inbound - which the lamp in the identity
+                             cell now says, in the same row, with a tooltip. -->
+                        <a-icon type="info-circle"
+                          :style="{ fontSize: '18px', color: 'var(--text-3)' }"></a-icon>
                       </a-popover>
                     </template>
                   </a-table-sortable>
@@ -814,41 +633,55 @@
 {{template "page/shell_end" . }}
 {{template "page/body_scripts" .}}
 <script
-  src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/uri/URI.min.js?{{ .cur_ver }}"></script>
+  src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .asset_ver }}"></script>
+<script src="{{ .base_path }}assets/uri/URI.min.js?{{ .asset_ver }}"></script>
 <script
-  src="{{ .base_path }}assets/js/model/reality_targets.js?{{ .cur_ver }}"></script>
+  src="{{ .base_path }}assets/js/model/reality_targets.js?{{ .asset_ver }}"></script>
 <script
-  src="{{ .base_path }}assets/js/model/inbound.js?{{ .cur_ver }}"></script>
+  src="{{ .base_path }}assets/js/model/inbound.js?{{ .asset_ver }}"></script>
 <script
-  src="{{ .base_path }}assets/js/model/dbinbound.js?{{ .cur_ver }}"></script>
+  src="{{ .base_path }}assets/js/model/dbinbound.js?{{ .asset_ver }}"></script>
 <script
-  src="{{ .base_path }}assets/jspdf/jspdf.umd.min.js?{{ .cur_ver }}"></script>
+  src="{{ .base_path }}assets/jspdf/jspdf.umd.min.js?{{ .asset_ver }}"></script>
 <script
-  src="{{ .base_path }}assets/js/util/export.js?{{ .cur_ver }}"></script>
+  src="{{ .base_path }}assets/js/util/export.js?{{ .asset_ver }}"></script>
 {{template "component/aSidebar" .}}
 {{template "component/aThemeSwitch" .}}
 {{template "component/aCustomStatistic" .}}
 {{template "component/aPersianDatepicker" .}}
 {{template "component/aTableSortable" .}}
 {{template "component/clientActions" .}}
-{{template "modals/inboundModal"}}
+{{/* Takes the page data because it picks between the rail form and the old one
+     server-side, off .legacyInboundForm. Without the dot the define runs with a
+     nil context and that key cannot be read. */}}
+{{template "modals/inboundModal" .}}
 {{template "modals/promptModal"}}
 {{template "modals/qrcodeModal"}}
 {{template "modals/textModal"}}
 {{template "modals/inboundInfoModal"}}
 <script>
+  // Five columns of content, plus the checkbox and the menu.
+  //
+  // It was eleven: select, id, menu, enable, remark, port, protocol, clients,
+  // traffic, all-time traffic, expiry. Four of those described the SAME thing
+  // from four angles (what it is, where it listens, how it is wrapped, what it
+  // is called) and were read as one, so they are one cell now; traffic and
+  // all-time traffic were the same measurement at two horizons, so they are
+  // one cell too.
+  //
+  // The two ID columns are gone rather than merged. Both were already dead:
+  // the wide one is responsive:["xs"], and at xs this page is on mobileColumns
+  // instead (isMobile is width <= 768, xs is <= 575), while the narrow one asked
+  // for a breakpoint named "s" that antd does not have. Neither has rendered a
+  // cell in a long time.
+  //
+  // Widths are proportions, not pixels: the table scrolls at x:1000 and antd
+  // shares the surplus out in these ratios.
   const columns = [{
     align: 'center',
     width: 25,
     slots: { title: 'selectAllHeader' },
     scopedSlots: { customRender: 'select' },
-  }, {
-    title: "ID",
-    align: 'right',
-    dataIndex: "id",
-    width: 30,
-    responsive: ["xs"],
   }, {
     title: '{{ i18n "pages.inbounds.operate" }}',
     align: 'center',
@@ -860,67 +693,60 @@
     width: 35,
     scopedSlots: { customRender: 'enable' },
   }, {
-    title: '{{ i18n "pages.inbounds.remark" }}',
-    align: 'center',
-    width: 60,
-    dataIndex: "remark",
-  }, {
-    title: '{{ i18n "pages.inbounds.port" }}',
-    align: 'center',
-    width: 40,
-    scopedSlots: { customRender: 'port' },
-  }, {
-    title: '{{ i18n "pages.inbounds.protocol" }}',
+    title: '{{ i18n "pages.inbounds.inbound" }}',
     align: 'left',
-    width: 70,
-    scopedSlots: { customRender: 'protocol' },
+    width: 110,
+    scopedSlots: { customRender: 'identity' },
+  }, {
+    title: '{{ i18n "pages.inbounds.endpoint" }}',
+    align: 'right',
+    width: 120,
+    scopedSlots: { customRender: 'endpoint' },
+  }, {
+    title: '{{ i18n "pages.inbounds.traffic" }}',
+    align: 'left',
+    width: 90,
+    scopedSlots: { customRender: 'data' },
   }, {
     title: '{{ i18n "clients" }}',
     align: 'left',
-    width: 50,
-    scopedSlots: { customRender: 'clients' },
-  }, {
-    title: '{{ i18n "pages.inbounds.traffic" }}',
-    align: 'center',
-    width: 90,
-    scopedSlots: { customRender: 'traffic' },
-  }, {
-    title: '{{ i18n "pages.inbounds.allTimeTraffic" }}',
-    align: 'center',
-    width: 60,
-    scopedSlots: { customRender: 'allTimeInbound' },
+    width: 80,
+    scopedSlots: { customRender: 'accounts' },
   }, {
     title: '{{ i18n "pages.inbounds.expireDate" }}',
     align: 'center',
-    width: 40,
+    width: 48,
     scopedSlots: { customRender: 'expiryTime' },
   }];
 
+  // A phone fits the identity cell and nothing else beside it. The three cells
+  // dropped here are not lost: the info popover carries all three, in the same
+  // shapes. The enable switch lives in the row menu at this width already.
+  //
+  // The menu and info headers are deliberately blank. This table has no
+  // horizontal scroll at this width, so every column is taken out of ~226px,
+  // and the words "Menu" and "Info" were each wider than the control beneath
+  // them: 80px of the identity cell was being spent on labelling a kebab and an
+  // i-in-a-circle. The select column has always been headed this way.
   const mobileColumns = [{
     align: 'center',
     width: 20,
     slots: { title: 'selectAllHeader' },
     scopedSlots: { customRender: 'select' },
   }, {
-    title: "ID",
-    align: 'right',
-    dataIndex: "id",
-    width: 10,
-    responsive: ["s"],
-  }, {
-    title: '{{ i18n "pages.inbounds.operate" }}',
+    title: '',
     align: 'center',
     width: 25,
     scopedSlots: { customRender: 'action' },
   }, {
-    title: '{{ i18n "pages.inbounds.remark" }}',
+    title: '{{ i18n "pages.inbounds.inbound" }}',
     align: 'left',
-    width: 70,
-    dataIndex: "remark",
+    width: 90,
+    scopedSlots: { customRender: 'identity' },
   }, {
-    title: '{{ i18n "pages.inbounds.info" }}',
+    title: '',
     align: 'center',
-    width: 10,
+    width: 20,
     scopedSlots: { customRender: 'info' },
   }];
 
@@ -932,13 +758,6 @@
       themeSwitcher,
       pageTitle: '{{ i18n "menu.inbounds"}}',
       pageClass: 'inbounds-page',
-      mobileMenuOpen: false,
-      sidebarHidden: window.__sidebarHidden || false,
-      langOpen: false,
-      currentLang: window.__langData.currentLang,
-      supportedLangs: window.__langData.supportedLangs,
-      currentLangName: window.__langData.currentLangName,
-      setLang: window.__langData.setLang,
       persianDatepicker,
       loadingStates: {
         fetched: false,
@@ -953,13 +772,29 @@
       expireDiff: 0,
       trafficDiff: 0,
       defaultCert: '',
+      // The certificates the SSL manager holds, for the inbound TLS picker.
+      // Withheld by getDefaultSettings from callers without PermPanelSettings, so
+      // an empty list here is the normal state for a reseller, not a failure.
+      sslCertificates: [],
       defaultKey: '',
       clientCount: [],
       onlineClients: [],
+      // "<inboundId>:<email>" for each pair seen in the last traffic tick. Consumed
+      // by membershipOnline (component/clientActions.html), which is what the
+      // accounts cell counts its online tally with.
+      onlineMemberships: [],
       lastOnlineMap: {},
       isRefreshEnabled: localStorage.getItem("isRefreshEnabled") === "true" ? true : false,
       refreshing: false,
       refreshInterval: Number(localStorage.getItem("refreshInterval")) || 5000,
+      // Which inbound dialog this panel serves. Seeded from the server-rendered
+      // flag rather than fetched, because the page was already WRITTEN with one
+      // of the two forms in it: asking afterwards could only ever disagree with
+      // what is on screen. Not localStorage either - it is one panel-wide
+      // setting, so a second admin sees the same dialog without flipping
+      // anything on their own machine.
+      legacyInboundForm: {{ if .legacyInboundForm }}true{{ else }}false{{ end }},
+      legacyInboundFormSaving: false,
       subSettings: {
         enable: false,
         subTitle: '',
@@ -986,23 +821,8 @@
       pageSize: 0,
       provisioned: true,
       missingProtocols: [],
-      outboundsTraffic: [],
-      // The protocol scope this page was rendered for. Empty on the unfiltered
-      // /panel/inbounds route, a protocol slug on /inbounds/:proto — where the
-      // server has already validated it against model.IsInboundProtocol.
-      // protocolScope normalizes the empty string to 'all'.
-      activeProtocol: '{{ .Protocol }}',
-      basePath: '{{ .base_path }}',
     },
     methods: {
-      toggleSidebar() {
-        if (this.isMobile) {
-          this.mobileMenuOpen = !this.mobileMenuOpen;
-          return;
-        }
-        this.sidebarHidden = !this.sidebarHidden;
-        localStorage.setItem('isSidebarHidden', this.sidebarHidden);
-      },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;
       },
@@ -1016,18 +836,12 @@
 
         await this.getLastOnlineMap();
         await this.getOnlineUsers();
-        await this.getOutboundsTraffic();
+        await this.getOnlineMemberships();
 
         this.setInbounds(msg.obj);
         setTimeout(() => {
           this.refreshing = false;
         }, 500);
-      },
-      async getOutboundsTraffic() {
-        const msg = await HttpUtil.get("/panel/xray/getOutboundsTraffic");
-        if (msg.success) {
-          this.outboundsTraffic = msg.obj || [];
-        }
       },
       // Re-reads the caller's own reseller balance after anything that can move it.
       // Deliberately failure-tolerant: the chip is informational, the server is what
@@ -1062,6 +876,18 @@
         }
         this.onlineClients = msg.obj != null ? msg.obj : [];
       },
+      // WHICH inbound each online account was seen on, as "<inboundId>:<email>" pairs,
+      // with inbound 0 for a session the core could not place (see
+      // web/service/coreattribution.go). The account-wide list above cannot answer
+      // that, and using it per inbound is what reported a customer connected over one
+      // inbound as online on all ten they hold.
+      async getOnlineMemberships() {
+        const msg = await HttpUtil.post('/panel/api/inbounds/onlineMemberships');
+        if (!msg.success) {
+          return;
+        }
+        this.onlineMemberships = msg.obj != null ? msg.obj : [];
+      },
       async getLastOnlineMap() {
         const msg = await HttpUtil.post('/panel/api/inbounds/lastOnline');
         if (!msg.success || !msg.obj) return;
@@ -1079,6 +905,7 @@
         // cannot author an inbound, which is the only thing these pre-fill), so keep
         // the empty-string default rather than writing undefined into the form.
         this.defaultCert = settings.defaultCert ?? '';
+        this.sslCertificates = settings.sslCertificates ?? [];
         this.defaultKey = settings.defaultKey ?? '';
         this.tgBotEnable = settings.tgBotEnable;
         this.subSettings = {
@@ -1124,8 +951,12 @@
           this.searchInbounds(this.searchKey);
         }
       },
+      // The five tallies the accounts cell draws its bar from. The per-account
+      // comment map that used to be built here went with the popovers that
+      // showed it: the account bar counts, it does not name, and naming
+      // accounts is the Clients page's job.
       getClientCounts(dbInbound, inbound) {
-        let clientCount = 0, active = [], deactive = [], depleted = [], expiring = [], online = [], comments = new Map();
+        let clientCount = 0, active = [], deactive = [], depleted = [], expiring = [], online = [];
         clients = inbound.clients;
         clientStats = dbInbound.clientStats
         now = new Date().getTime()
@@ -1133,12 +964,19 @@
           clientCount = clients.length;
           if (dbInbound.enable) {
             clients.forEach(client => {
-              if (client.comment) {
-                comments.set(client.email, client.comment)
-              }
               if (client.enable) {
                 active.push(client.email);
-                if (this.isClientOnline(client.email)) online.push(client.email);
+                // Online ON THIS INBOUND, not online anywhere. isClientOnline is an
+                // account-wide answer, and asking it once per inbound is what made a
+                // customer connected over one of their ten inbounds count as an
+                // online client on all ten - every row's tally inflated by the same
+                // session. membershipOnlineShared covers the case the core still
+                // cannot place, which the tooltip and the Clients page both call out
+                // as shared rather than certain.
+                if (this.membershipOnline(dbInbound, client.email) ||
+                  this.membershipOnlineShared(dbInbound, client.email)) {
+                  online.push(client.email);
+                }
               } else {
                 deactive.push(client.email);
               }
@@ -1167,21 +1005,27 @@
           depleted: depleted,
           expiring: expiring,
           online: online,
-          comments: comments,
         };
       },
 
       searchInbounds(key) {
         if (ObjectUtil.isEmpty(key)) {
-          this.searchedInbounds = this.protocolInbounds.slice();
+          this.searchedInbounds = this.dbInbounds.slice();
         } else {
           this.searchedInbounds.splice(0, this.searchedInbounds.length);
-          this.protocolInbounds.forEach(inbound => {
+          this.dbInbounds.forEach(inbound => {
             if (ObjectUtil.deepSearch(inbound, key)) {
               const newInbound = new DBInbound(inbound);
               const inboundSettings = JSON.parse(inbound.settings);
               if (inboundSettings.hasOwnProperty('clients')) {
-                const searchedSettings = { "clients": [] };
+                // Everything the inbound had, with ONLY the client list narrowed.
+                // Rebuilding from a bare { clients } dropped every other setting
+                // and Settings.fromJson filled the holes with class defaults, so
+                // under a search a UDP-only OpenVPN inbound claimed to be
+                // listening on tcp:1194 - the default, not its own data. Anything
+                // reading settings off a searched row (the endpoint, the .ovpn
+                // download) was reading a fiction.
+                const searchedSettings = Object.assign({}, inboundSettings, { clients: [] });
                 inboundSettings.clients.forEach(client => {
                   if (ObjectUtil.deepSearch(client, key)) {
                     searchedSettings.clients.push(client);
@@ -1196,16 +1040,18 @@
       },
       filterInbounds() {
         if (ObjectUtil.isEmpty(this.filterBy)) {
-          this.searchedInbounds = this.protocolInbounds.slice();
+          this.searchedInbounds = this.dbInbounds.slice();
         } else {
           this.searchedInbounds.splice(0, this.searchedInbounds.length);
-          this.protocolInbounds.forEach(inbound => {
+          this.dbInbounds.forEach(inbound => {
             const newInbound = new DBInbound(inbound);
             const inboundSettings = JSON.parse(inbound.settings);
             if (this.clientCount[inbound.id] && this.clientCount[inbound.id].hasOwnProperty(this.filterBy)) {
               const list = this.clientCount[inbound.id][this.filterBy];
               if (list.length > 0) {
-                const filteredSettings = { "clients": [] };
+                // Same as searchInbounds: keep every setting, narrow only the
+                // client list, or the row's own ports become class defaults.
+                const filteredSettings = Object.assign({}, inboundSettings, { clients: [] });
                 if (inboundSettings.clients) {
                   inboundSettings.clients.forEach(client => {
                     if (list.includes(client.email)) {
@@ -1225,7 +1071,7 @@
           this.searchKey = '';
         } else {
           this.filterBy = '';
-          this.searchedInbounds = this.protocolInbounds.slice();
+          this.searchedInbounds = this.dbInbounds.slice();
         }
       },
       generalActions(action) {
@@ -1281,6 +1127,16 @@
           case "subs":
             this.exportSubs(dbInbound.id);
             break;
+          // Moved off the row. These were two download buttons sitting inside
+          // the protocol cell, which made OpenVPN the only protocol whose row
+          // was twice as wide as the rest; they are actions, and every other
+          // action on this row is in this menu.
+          case "ovpnUdp":
+            this.downloadOvpn(dbInbound.id, 'udp');
+            break;
+          case "ovpnTcp":
+            this.downloadOvpn(dbInbound.id, 'tcp');
+            break;
           case "clipboard":
             this.copy(dbInbound.id);
             break;
@@ -1302,21 +1158,7 @@
           case "moveDown":
             this.moveInbound(this.inboundPosition(dbInbound), this.inboundPosition(dbInbound) + 1);
             break;
-          case "ovpnTcp":
-            this.downloadOvpnConfig(dbInbound.id, 'tcp');
-            break;
-          case "ovpnUdp":
-            this.downloadOvpnConfig(dbInbound.id, 'udp');
-            break;
         }
-      },
-      // OpenVPN "Client Config" download straight from the row menu. The export
-      // endpoint reads the SAVED inbound, which is exactly the row state, so there
-      // is nothing to persist first (unlike the in-modal button, which must save
-      // the form before it can export what the operator just changed).
-      downloadOvpnConfig(id, proto) {
-        const url = '/panel/api/inbounds/' + id + '/ovpn/' + proto;
-        window.open((this.basePath || '/').replace(/\/$/, '') + url, '_blank');
       },
       // Where this inbound sits in the real list, which is dbInbounds and never
       // searchedInbounds: the table may be showing a search result, a filter or one
@@ -1365,6 +1207,14 @@
           // have.
           await this.getDBInbounds();
         }
+      },
+      // Which .ovpn files this inbound actually has to offer. Both transports can
+      // be on at once, and either can be off; the row's download control is a
+      // menu only when there is genuinely something to choose between.
+      ovpnTransports(dbInbound) {
+        if (!dbInbound.isOpenvpn) return [];
+        const s = dbInbound.toInbound().settings;
+        return ['udp', 'tcp'].filter(t => s[t + 'Enable']);
       },
       downloadOvpn(dbInboundId, proto) {
         const url = "/panel/api/inbounds/" + dbInboundId + "/ovpn/" + proto;
@@ -1417,13 +1267,6 @@
         await this.submit('/panel/api/inbounds/add', data, inModal);
       },
       openAddInbound() {
-        // On a protocol-scoped page (/panel/inbounds/:proto) the Add modal opens
-        // already set to that protocol, so creating a second VLESS inbound from the
-        // VLESS page is a no-brainer. 'all' and the literal "hysteria2" string
-        // (acceptable in the URL but not creatable through the form) keep the
-        // default VLESS. The form still lets the operator change it.
-        const addProtocol = (this.protocolScope !== 'all' && Object.values(Protocols).includes(this.protocolScope))
-          ? this.protocolScope : null;
         inModal.show({
           title: '{{ i18n "pages.inbounds.addInbound"}}',
           okText: '{{ i18n "create"}}',
@@ -1431,8 +1274,7 @@
           confirm: async (inbound, dbInbound) => {
             await this.addInbound(inbound, dbInbound, inModal);
           },
-          isEdit: false,
-          protocol: addProtocol,
+          isEdit: false
         });
       },
       openEditInbound(dbInboundId) {
@@ -1660,18 +1502,201 @@
           await this.refreshResellerBalance();
         }
       },
-      // Two buckets only: protocols carried by the Xray core, and everything
-      // else. An earlier version split this four ways and painted the families
-      // with the RESERVED status hues, so a healthy IKEv2 inbound rendered in
-      // the same amber that means "stopped" elsewhere in the panel. Two
-      // categories need two hues, neither of which is warn or error.
-      protocolFamily(p) {
-        const k = String(p || '').toLowerCase();
-        const xrayNative = [
-          'vless', 'vmess', 'trojan', 'shadowsocks',
-          'socks', 'http', 'dokodemo-door', 'wireguard',
-        ];
-        return xrayNative.includes(k) ? 'xray' : 'vpn';
+      // The line under the remark: what kind of thing this is. Transport and
+      // security only, since the Endpoint column now carries where it listens.
+      //
+      // Built as one string on purpose. As separate tags this was the widest
+      // thing in the row and the only part of it that reflowed, so a list of
+      // inbounds had no left edge to read down.
+      //
+      // Transport and security only exist on the Xray-carried protocols; asking
+      // for .stream on an L2TP row would reach into an object that has none.
+      inboundMeta(dbInbound) {
+        const parts = [];
+        if (dbInbound.isVMess || dbInbound.isVLess || dbInbound.isTrojan || dbInbound.isSS) {
+          const stream = dbInbound.toInbound().stream;
+          if (stream) {
+            if (stream.network) parts.push(stream.network);
+            if (stream.isTls) parts.push('tls');
+            if (stream.isReality) parts.push('reality');
+          }
+        }
+        return parts.join(' · ');
+      },
+      // The addresses a client actually dials, which is not always this panel.
+      //
+      // Deliberately the SAME resolution Inbound.links() uses, in the same
+      // order, so the column and the share link can never disagree:
+      //
+      //   1. An External Proxy list, wherever it lives - on the stream for the
+      //      Xray protocols, on the settings for the VPN ones. When it is set,
+      //      the panel's own address is not advertised at all, so printing it
+      //      here would be printing an address nobody dials. Its per-entry
+      //      remark is the label, because the operator chose it.
+      //   2. A listen address, when the inbound is bound to one interface.
+      //   3. This panel's own hostname, which is the usual answer.
+      //
+      // OpenVPN can answer on two ports at once and gets one entry per
+      // transport. GRE answers on none: it is IP protocol 47 and has no port
+      // for a client to dial, which is a different thing from an empty cell.
+      inboundEndpoints(dbInbound) {
+        if (dbInbound.protocol === 'gre') return [];
+        const inbound = dbInbound.toInbound();
+        const proxies =
+          (inbound.stream && !ObjectUtil.isArrEmpty(inbound.stream.externalProxy)
+            ? inbound.stream.externalProxy
+            : null) ||
+          (inbound.settings && !ObjectUtil.isArrEmpty(inbound.settings.externalProxy)
+            ? inbound.settings.externalProxy
+            : null);
+        if (proxies) {
+          return proxies.map(p => ({ label: p.remark || '', host: p.dest, port: p.port }));
+        }
+        const host = dbInbound.address;
+        if (dbInbound.isOpenvpn) {
+          const s = inbound.settings;
+          const out = [];
+          if (s.tcpEnable) {
+            out.push({ label: 'tcp', host, port: s.separatePorts ? (s.tcpPort || 443) : dbInbound.port });
+          }
+          if (s.udpEnable) out.push({ label: 'udp', host, port: dbInbound.port });
+          if (out.length) return out;
+        }
+        return [{ label: '', host, port: dbInbound.port }];
+      },
+      endpointText(ep) {
+        return ep.host + ':' + ep.port;
+      },
+      // At most two lines in a table cell. An External Proxy list can hold
+      // several endpoints, and a row that grows a line per entry sets the
+      // height of every other row in the table. The rest are counted, and the
+      // full list is on the tooltip.
+      endpointsShown(dbInbound) {
+        return this.inboundEndpoints(dbInbound).slice(0, 2);
+      },
+      endpointsHidden(dbInbound) {
+        return Math.max(0, this.inboundEndpoints(dbInbound).length - 2);
+      },
+      endpointTitle(dbInbound) {
+        return this.inboundEndpoints(dbInbound)
+          .map(ep => (ep.label ? ep.label + ' ' : '') + this.endpointText(ep))
+          .join('\n');
+      },
+      // Middle-elided, never left-elided. A hostname's distinguishing part is
+      // its FIRST label, so cutting from the left keeps the half every inbound
+      // on this box shares and throws away the half that identifies it. The
+      // whole value stays on the tooltip and on the clipboard.
+      endpointHost(ep, max = 19) {
+        const h = String(ep.host || '');
+        if (h.length <= max) return h;
+        const head = Math.ceil((max - 1) / 2), tail = Math.floor((max - 1) / 2);
+        return h.slice(0, head) + '…' + h.slice(h.length - tail);
+      },
+      async copyEndpoint(ep) {
+        const ok = await ClipboardManager.copyText(this.endpointText(ep));
+        if (ok) this.$message.success('{{ i18n "copied" }}');
+      },
+      // The row lamp. HEALTH, which is not the same question as the enable
+      // switch beside it: the switch is what was asked for, this is what the
+      // inbound is. Every state here is derived from what the panel already
+      // knows - the enable flag, the quota and the expiry - and nothing is
+      // inferred about whether the core accepted the configuration, because the
+      // panel does not record that.
+      inboundState(dbInbound) {
+        if (!dbInbound.enable) return 'off';
+        const now = new Date().getTime();
+        const used = dbInbound.up + dbInbound.down;
+        if (dbInbound.expiryTime > 0 && dbInbound.expiryTime <= now) return 'error';
+        if (dbInbound.total > 0 && used >= dbInbound.total) return 'error';
+        if (dbInbound.expiryTime > 0 && dbInbound.expiryTime - now < this.expireDiff) return 'warn';
+        if (dbInbound.total > 0 && dbInbound.total - used < this.trafficDiff) return 'warn';
+        return 'ok';
+      },
+      // Said in words as well, on the lamp's own tooltip: the hue is a cue, never
+      // the whole message.
+      inboundStateText(dbInbound) {
+        if (!dbInbound.enable) return '{{ i18n "disabled" }}';
+        const now = new Date().getTime();
+        if (dbInbound.expiryTime > 0 && dbInbound.expiryTime <= now) {
+          return '{{ i18n "pages.settings.ssl.expired" }}';
+        }
+        const state = this.inboundState(dbInbound);
+        if (state === 'error') return '{{ i18n "depleted" }}';
+        if (state === 'warn') return '{{ i18n "depletingSoon" }}';
+        return '{{ i18n "pages.inbounds.healthy" }}';
+      },
+      // How full the traffic meter is drawn.
+      //
+      // No quota means no proportion, so nothing is drawn: the empty track holds
+      // the row's rhythm and the infinity beside the figure says why it is empty.
+      // A neutral FULL track was tried first and is worse than useless - it made
+      // an uncapped inbound that had moved 56 GB look fuller than a capped one at
+      // 86% of its allowance, which is the opposite of the truth.
+      usagePercent(dbInbound) {
+        if (!(dbInbound.total > 0)) return 0;
+        const used = dbInbound.up + dbInbound.down;
+        return Math.min(100, Math.max(0, (used / dbInbound.total) * 100));
+      },
+      // Same three thresholds ColorUtils.usageColor used on the tag this
+      // replaced, so a row does not change its mind about being nearly out.
+      usageMeterClass(dbInbound) {
+        if (!(dbInbound.total > 0)) return '';
+        const used = dbInbound.up + dbInbound.down;
+        if (used >= dbInbound.total) return 'bo-il-meter--error';
+        if (used >= dbInbound.total - this.trafficDiff) return 'bo-il-meter--warn';
+        return '';
+      },
+      expiryClass(dbInbound) {
+        if (!(dbInbound.expiryTime > 0)) return '';
+        const now = new Date().getTime();
+        if (dbInbound.expiryTime <= now) return 'bo-il-exp--error';
+        if (dbInbound.expiryTime - now < this.expireDiff) return 'bo-il-exp--warn';
+        return '';
+      },
+      // The account bar's segments, in the order they are drawn: healthy and
+      // connected, healthy and idle, then the three kinds of trouble.
+      //
+      // Only the non-zero ones, because a zero-width flex item still takes the
+      // 1px gap between segments and a row with nothing wrong would be drawn
+      // with three hairlines of warn and error in it.
+      //
+      // idle is what is left over rather than a count of its own, and it is
+      // floored at zero: the trouble categories come from client_traffics while
+      // deactive comes from the settings blob, so a client that is both disabled
+      // and out of quota is counted twice and the remainder can go negative.
+      // The bar shows proportions, so a double count skews a share; a negative
+      // flex would drop the segment entirely.
+      accountSegments(dbInbound) {
+        const c = this.clientCount[dbInbound.id];
+        if (!c) return [];
+        const online = c.online.length;
+        const off = c.deactive.length;
+        const depleted = c.depleted.length;
+        const expiring = c.expiring.length;
+        const idle = Math.max(0, c.clients - online - off - depleted - expiring);
+        return [
+          { name: 'online', n: online },
+          { name: 'idle', n: idle },
+          { name: 'expiring', n: expiring },
+          { name: 'depleted', n: depleted },
+          { name: 'off', n: off },
+        ].filter(seg => seg.n > 0);
+      },
+      // The bar in words, under it. Only the categories that are not empty, so
+      // an inbound with nothing wrong says so in one word instead of printing
+      // three zeroes for the reader to check.
+      accountNote(dbInbound) {
+        const c = this.clientCount[dbInbound.id];
+        if (!c) return '';
+        // An inbound that CAN carry accounts and carries none. Distinct from the
+        // em-dash cell, which is an inbound that can carry none at all, and it
+        // must not read "healthy": there is nothing there to be healthy.
+        if (!c.clients) return '{{ i18n "none" }}';
+        const parts = [];
+        if (c.depleted.length) parts.push(c.depleted.length + ' {{ i18n "depleted" }}');
+        if (c.expiring.length) parts.push(c.expiring.length + ' {{ i18n "depletingSoon" }}');
+        if (c.deactive.length) parts.push(c.deactive.length + ' {{ i18n "disabled" }}');
+        return parts.length ? parts.join(' · ') : '{{ i18n "pages.inbounds.healthy" }}';
       },
       resetAllTraffic() {
         this.$confirm({
@@ -1769,6 +1794,30 @@
       changeRefreshInterval() {
         localStorage.setItem("refreshInterval", this.refreshInterval);
       },
+      // Switch the whole panel between the old inbound dialog and the current one.
+      //
+      // Reloads on success because the two are different Go templates and the
+      // choice was made when this page was served: the dialog already in the DOM
+      // cannot become the other one. The switch is driven by :checked rather than
+      // v-model so a refused or failed save leaves it showing what is actually
+      // stored - a denial here is an HTTP 200 carrying success:false, so the body
+      // is what decides, never the status.
+      async toggleLegacyInboundForm(checked) {
+        const previous = this.legacyInboundForm;
+        this.legacyInboundForm = checked;
+        this.legacyInboundFormSaving = true;
+        try {
+          const msg = await HttpUtil.post('/panel/setting/inboundForm', { enabled: checked });
+          if (msg && msg.success) {
+            window.location.reload();
+            return;
+          }
+          this.legacyInboundForm = previous;
+        } catch (e) {
+          this.legacyInboundForm = previous;
+        }
+        this.legacyInboundFormSaving = false;
+      },
       async manualRefresh() {
         if (!this.refreshing) {
           this.loadingStates.spinning = true;
@@ -1853,13 +1902,6 @@
           }
         });
 
-        // Listen for outbounds traffic updates
-        window.wsClient.on('outbounds', (payload) => {
-          if (payload) {
-            this.outboundsTraffic = payload;
-          }
-        });
-
         // Listen for traffic updates
         window.wsClient.on('traffic', (payload) => {
           // Note: Do NOT update total consumed traffic (stats.up, stats.down) from this event
@@ -1869,7 +1911,23 @@
           // Update online clients list in real-time
           if (payload && Array.isArray(payload.onlineClients)) {
             const nextOnlineClients = payload.onlineClients;
-            let onlineChanged = this.onlineClients.length !== nextOnlineClients.length;
+            // Which inbound each of them is on, from the same tick. Taken first,
+            // because the recount below reads it.
+            let onlineChanged = false;
+            if (Array.isArray(payload.onlineMemberships)) {
+              const prev = this.onlineMemberships || [];
+              const next = payload.onlineMemberships;
+              // A recount is owed when the PAIRS change, not only when the set of
+              // online accounts does: a customer moving from one of their inbounds
+              // to another leaves the account-wide list identical while every
+              // per-inbound tally on the page is now wrong.
+              onlineChanged = prev.length !== next.length ||
+                next.some((pair, i) => pair !== prev[i]);
+              this.onlineMemberships = next;
+            }
+            if (!onlineChanged) {
+              onlineChanged = this.onlineClients.length !== nextOnlineClients.length;
+            }
             if (!onlineChanged) {
               const prevSet = new Set(this.onlineClients);
               for (const email of nextOnlineClients) {
@@ -1930,29 +1988,11 @@
       }
     },
     computed: {
-      // The protocol page is scoped to. Empty string (the unfiltered route)
-      // reads as 'all', so the tabs, the filter and the drag gate share one
-      // comparison without each remembering to guard the empty case.
-      protocolScope() {
-        return this.activeProtocol || 'all';
-      },
-      // The inbounds visible on the current protocol page: everything on /all,
-      // only the matching protocol otherwise. Stored Hysteria v2 rows can carry
-      // the literal "hysteria2" string, which the hysteria tab must still show.
-      protocolInbounds() {
-        const proto = this.protocolScope;
-        if (proto === 'all') return this.dbInbounds;
-        return this.dbInbounds.filter(b =>
-          b.protocol === proto || (proto === 'hysteria' && b.protocol === 'hysteria2'));
-      },
       // Whether to offer reordering at all. The order is the PANEL's and shared by
       // every admin, so it is gated on editInbound, which a reseller never holds.
       // Presentation only: /reorder re-checks the bit and the grants.
-      // Reordering also needs the unfiltered page: on a protocol tab the visible
-      // order is a subset, and a move whose neighbours are a different protocol
-      // would change nothing the operator can see.
       canReorderInbounds() {
-        return !!PERMS.editInbound && this.dbInbounds.length > 1 && this.protocolScope === 'all';
+        return !!PERMS.editInbound && this.dbInbounds.length > 1;
       },
       // Whether the DRAG HANDLE specifically can be trusted. It reports a position in
       // the table as rendered, and the reorder applies it to dbInbounds, so it is only
@@ -1984,7 +2024,7 @@
       total() {
         let down = 0, up = 0, allTime = 0;
         let clients = 0, deactive = [], depleted = [], expiring = [];
-        this.protocolInbounds.forEach(dbInbound => {
+        this.dbInbounds.forEach(dbInbound => {
           down += dbInbound.down;
           up += dbInbound.up;
           allTime += (dbInbound.allTime || (dbInbound.up + dbInbound.down));
@@ -2004,14 +2044,6 @@
           depleted: depleted,
           expiring: expiring,
         };
-      },
-      outboundTrafficTotal() {
-        let up = 0, down = 0;
-        this.outboundsTraffic.forEach(t => {
-          up += t.up || 0;
-          down += t.down || 0;
-        });
-        return { up, down };
       }
     },
   });
@@ -2044,6 +2076,28 @@
     align-items: center;
     gap: 7px;
     white-space: nowrap;
+  }
+  /* ant-bridge sets every table in the panel to --fs-sm, one step under the
+     shell. That works for a table whose cell is a single value; this one's
+     identity cell is a name over a signature, and the name is the row's
+     primary text, so the cells run at --fs-base and the header would otherwise
+     sit two steps below its own content. Page-scoped: the other tables have
+     not been re-typed and should not move under this. */
+  .inbounds-page .ant-table-thead > tr > th {
+    font-size: var(--fs-sm);
+  }
+
+  /* On a phone the card body is ~226px wide, and antd's stock 16px of padding
+     on each side of every cell spent 128px of that on four columns' worth of
+     whitespace. The table then could not fit and scrolled sideways, taking the
+     info button off the right edge - which is the one control that carries
+     everything the narrow table drops. The padding is what gives, not the
+     content. Untouched above 768px, where the table has room for it. */
+  @media (max-width: 768px) {
+    .inbounds-page .ant-table-tbody > tr > td,
+    .inbounds-page .ant-table-thead > tr > th {
+      padding-inline: 6px;
+    }
   }
   .inbounds-page .sortable-icon {
     opacity: 0.65;

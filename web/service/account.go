@@ -162,10 +162,108 @@ func validateClientIdentities(protocol model.Protocol, clients []model.Client) e
 	return validateChangedClientIdentities(protocol, clients, nil)
 }
 
+// ValidateShadowsocksKeys refuses a password a 2022-blake3 cipher cannot use.
+//
+// This family is the one protocol whose password is not free text: the user PSK must
+// be base64 of EXACTLY the cipher's key length, and the core rejects anything else at
+// handshake time. Nothing refused a bad one, at any layer. A hand-typed "hunter2" on
+// a 2022-blake3-aes-256-gcm inbound was accepted by the form, spliced into the
+// settings blob, and KEPT by the projection (an entry that already carries a password
+// keeps it, which is what makes a minted PSK stable). The account was created,
+// listed, looked healthy, and could never connect, with nothing logged anywhere.
+//
+// validShadowsocksKey already existed and was called at exactly one site, and only to
+// decide whether to REUSE the account password rather than to refuse a write.
+//
+// Judged only where the value CHANGED, exactly like the identity rules above and for
+// the same reason: an account created before this check must stay editable, or an
+// upgrade would make an inbound unsaveable until every historical row was fixed by
+// hand. `stored` nil means every client is new and all of them are judged.
+func ValidateShadowsocksKeys(inbound *model.Inbound, clients []model.Client, stored []model.Client) error {
+	if inbound == nil || inbound.Protocol != model.Shadowsocks {
+		return nil
+	}
+	unchanged := make(map[string]struct{}, len(stored))
+	for i := range stored {
+		unchanged[accountKey(stored[i].Email)+"\x00"+stored[i].Password] = struct{}{}
+	}
+	for i := range clients {
+		client := &clients[i]
+		if _, exempt := unchanged[accountKey(client.Email)+"\x00"+client.Password]; exempt {
+			continue
+		}
+		// Blank is not a failure: the projection mints a correct PSK for a membership
+		// that has none, which is the ordinary path for an account joining one of
+		// these inbounds from another protocol.
+		if client.Password == "" {
+			continue
+		}
+		// The account's OWN cipher when it carries one. Multi-user shadowsocks lets
+		// each account pick its method and the inbound-level one is only the default,
+		// so judging a 128-bit account by the inbound's 256-bit cipher would refuse a
+		// key that is perfectly correct.
+		method := client.Method
+		if strings.TrimSpace(method) == "" {
+			method = inboundMethod(inbound.Settings)
+		}
+		size := shadowsocksMethodKeySize(method)
+		if size == 0 {
+			// Every other cipher takes any string.
+			continue
+		}
+		if !validShadowsocksKey(client.Password, size) {
+			return common.NewErrorf(
+				"the password for %q is not usable by this inbound's cipher: a %s key must be "+
+					"base64 of exactly %d bytes. Leave it blank and the panel will generate one.",
+				client.Email, method, size)
+		}
+	}
+	return nil
+}
+
+// validateClientLimits refuses a per-client limit override that no reader can act on.
+//
+// The read paths already absorb a negative: kbpsToBps reads one as unlimited,
+// resolveIPLimit reads one as absent, resolveUserLimitOverride reads one as "inherit".
+// That is the right last line of defence for a hand-edited or imported DB, but as the
+// ONLY defence it is silent in the worst way: an operator posting -1 gets a 200 and an
+// account with no limit at all, and nothing anywhere says why. This is the same
+// reasoning, and the same pairing of a loud validator with a quiet resolver, that the
+// inbound-level rates and IP cap already have in validateInboundConfig.
+//
+// A value ABOVE the inbound's User Limit is deliberately not an error: the override is
+// defined as a clamp, so the honest reading of "more than the ceiling" is the ceiling,
+// and refusing it would make an inbound whose K was later LOWERED unsaveable until every
+// account that had asked for more was edited by hand.
+//
+// Called from all four write paths beside validateClientIdentities, for the reason stated
+// there: each is separately reachable from the HTTP API, and one left out is a hole.
+func validateClientLimits(clients []model.Client) error {
+	for i := range clients {
+		c := &clients[i]
+		if c.SpeedLimitDown != nil && *c.SpeedLimitDown < 0 {
+			return common.NewErrorf("the download speed limit for %q cannot be negative.", c.Email)
+		}
+		if c.SpeedLimitUp != nil && *c.SpeedLimitUp < 0 {
+			return common.NewErrorf("the upload speed limit for %q cannot be negative.", c.Email)
+		}
+		if c.LimitIP < 0 {
+			return common.NewErrorf("the IP limit for %q cannot be negative.", c.Email)
+		}
+		if c.UserLimitOverride != nil && *c.UserLimitOverride < 0 {
+			return common.NewErrorf("the device limit for %q cannot be negative.", c.Email)
+		}
+	}
+	return nil
+}
+
 // clientIdentityTuple is the exact triple these rules judge. Two clients with the
 // same tuple are indistinguishable to every check below.
+// The carried VPN login name is part of it: without that, editing ONLY that field
+// leaves the tuple unchanged, the entry is exempted as byte-identical to the stored
+// one, and the new value is never judged.
 func clientIdentityTuple(c *model.Client) string {
-	return c.Email + "\x00" + c.SubID + "\x00" + c.ID
+	return c.Email + "\x00" + c.SubID + "\x00" + c.ID + "\x00" + c.VpnUsername
 }
 
 // validateChangedClientIdentities is validateClientIdentities with an exemption
@@ -208,6 +306,24 @@ func validateChangedClientIdentities(protocol model.Protocol, clients []model.Cl
 			if err := ValidateVpnUsername(client.ID); err != nil {
 				return err
 			}
+		}
+		// The same rules on the CARRIED key, and keyed on the field rather than on
+		// the addressed inbound's protocol, because that is the whole of how this
+		// check was walked past.
+		//
+		// The Clients form edits an ACCOUNT and posts every credential column of it
+		// to whichever inbound the write is addressed to, so a VPN login name
+		// legitimately rides on a vless or trojan entry under its own key. The
+		// switch above sees only client.ID, which on such an entry is a uuid, so the
+		// login name was validated as whatever the anchor happened to be. The
+		// accounts sync then lifted it onto account.VpnUsername and the projection
+		// wrote it onto the account's openvpn membership, where it becomes a CCD
+		// filename written as root: "../../../../etc/cron.d/x" landed there.
+		//
+		// Unconditional on protocol, and it has to be: the value's meaning comes
+		// from the key it arrived under, not from the inbound it was posted to.
+		if err := ValidateVpnUsername(client.VpnUsername); err != nil {
+			return err
 		}
 	}
 	return nil

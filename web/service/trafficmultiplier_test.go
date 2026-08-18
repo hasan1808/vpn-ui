@@ -177,31 +177,31 @@ func TestFoldClientTrafficAppliesMultiplier(t *testing.T) {
 	weighted, normal := seedMultiplierDB(t)
 
 	// Below the threshold: billed 1:1 even under a policy.
-	foldClientTraffic(weighted, "", 100*mb, 100*mb)
+	foldClientTraffic(weighted, "", 0, 100*mb, 100*mb)
 	if got := storedUpDown(t, weighted); got != 200*mb {
 		t.Errorf("below threshold: stored %d; want %d (unweighted)", got, 200*mb)
 	}
 
 	// Straddle: 824 MiB left at 1x, then 200 MiB at 2x = 1224 MiB more.
-	foldClientTraffic(weighted, "", 0, 1024*mb)
+	foldClientTraffic(weighted, "", 0, 0, 1024*mb)
 	if got, want := storedUpDown(t, weighted), int64(200*mb+1224*mb); got != want {
 		t.Errorf("straddling the threshold: stored %d; want %d", got, want)
 	}
 
 	// Wholly past: doubled.
-	foldClientTraffic(weighted, "", 0, 10*mb)
+	foldClientTraffic(weighted, "", 0, 0, 10*mb)
 	if got, want := storedUpDown(t, weighted), int64(200*mb+1224*mb+20*mb); got != want {
 		t.Errorf("past the threshold: stored %d; want %d", got, want)
 	}
 
 	// An inbound with no policy is untouched no matter how much it moves.
-	foldClientTraffic(normal, "", 0, 5*gb)
+	foldClientTraffic(normal, "", 0, 0, 5*gb)
 	if got := storedUpDown(t, normal); got != 5*gb {
 		t.Errorf("unpolicied inbound: stored %d; want %d (raw)", got, 5*gb)
 	}
 
 	// A fold for an unknown client must not error or invent a row.
-	foldClientTraffic("ghost@test", "", 1*mb, 1*mb)
+	foldClientTraffic("ghost@test", "", 0, 1*mb, 1*mb)
 }
 
 // The three columns must survive AutoMigrate and a save/load round-trip, and

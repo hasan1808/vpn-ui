@@ -70,13 +70,13 @@ func TestTrimToLimitDoesNotMutateInput(t *testing.T) {
 
 type fakeSink struct {
 	disabled map[string]bool
-	got      map[string]map[string]string // protocol -> desired ip->email
+	got      map[string]map[string]Reconciled // protocol -> desired ip->(email, inbound)
 }
 
 func (f *fakeSink) DisabledEmails() map[string]bool { return f.disabled }
-func (f *fakeSink) ReconcileLocalSessions(protocol string, desired map[string]string) {
+func (f *fakeSink) ReconcileLocalSessions(protocol string, desired map[string]Reconciled) {
 	if f.got == nil {
-		f.got = map[string]map[string]string{}
+		f.got = map[string]map[string]Reconciled{}
 	}
 	f.got[protocol] = desired
 }
@@ -89,10 +89,10 @@ type fakeAdapter struct {
 	evicted  []string
 }
 
-func (a *fakeAdapter) Protocol() string             { return a.proto }
-func (a *fakeAdapter) Poll() ([]Live, error)        { return a.poll, nil }
-func (a *fakeAdapter) Limit(int) (int, string)      { return a.k, a.strategy }
-func (a *fakeAdapter) Evict(l Live) error           { a.evicted = append(a.evicted, l.DeviceKey); return nil }
+func (a *fakeAdapter) Protocol() string        { return a.proto }
+func (a *fakeAdapter) Poll() ([]Live, error)   { return a.poll, nil }
+func (a *fakeAdapter) Limit(int) (int, string) { return a.k, a.strategy }
+func (a *fakeAdapter) Evict(l Live) error      { a.evicted = append(a.evicted, l.DeviceKey); return nil }
 
 func TestSweeperTickEnforcesDisabledThenLimit(t *testing.T) {
 	// One inbound: a disabled account's tunnel, plus three tunnels for an enabled account
@@ -114,7 +114,10 @@ func TestSweeperTickEnforcesDisabledThenLimit(t *testing.T) {
 		t.Errorf("evicted = %v, want {banned, a}", ad.evicted)
 	}
 	// Survivors b and c are handed to the sink under the adapter's protocol.
-	want := map[string]string{"10.7.0.2": "ok", "10.7.0.3": "ok"}
+	want := map[string]Reconciled{
+		"10.7.0.2": {Email: "ok", InboundID: 1},
+		"10.7.0.3": {Email: "ok", InboundID: 1},
+	}
 	if got := sink.got["test"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("desired = %v, want %v", got, want)
 	}
@@ -157,7 +160,10 @@ func TestSweeperTickPerAccountLimit(t *testing.T) {
 	if !sameSet(ad.evicted, []string{"a1", "b1"}) {
 		t.Errorf("evicted = %v, want {a1, b1} (oldest of each account)", ad.evicted)
 	}
-	want := map[string]string{"10.7.0.2": "a", "10.7.0.4": "b"}
+	want := map[string]Reconciled{
+		"10.7.0.2": {Email: "a", InboundID: 1},
+		"10.7.0.4": {Email: "b", InboundID: 1},
+	}
 	if got := sink.got["test"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("desired = %v, want %v", got, want)
 	}

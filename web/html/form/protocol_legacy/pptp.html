@@ -1,0 +1,183 @@
+{{/*
+  The pptp inbound form as it stood before the rail redesign (b2e71a68), kept
+  whole for the old dialog. The live form/protocol/pptp.html is the same body
+  cut into network/security/access/reach sections for the rail; this is the one
+  the operator sees when Old inbound modify UI is on. Adding a field to one and not
+  the other is caught by TestLegacyInboundFormsCarryEveryField.
+*/}}
+{{define "form/legacy/pptp"}}
+<a-form
+    :colon="false"
+    :label-col="{ md: {span:8} }"
+    :wrapper-col="{ md: {span:14} }"
+>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Leave empty to auto-assign; a new range is added automatically when a
+                    range fills up.
+                </template>
+                IP Range
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-button
+            icon="plus"
+            type="primary"
+            size="small"
+            @click="inbound.settings.ipRanges.push('')"
+        ></a-button>
+        <template v-for="(row, index) in inbound.settings.ipRanges">
+            <a-input
+                :style="{ marginTop: '8px' }"
+                v-model.trim="inbound.settings.ipRanges[index]"
+                placeholder="auto-assigned (e.g. 10.1.5.2-10.1.5.254)"
+            >
+                <a-button
+                    icon="minus"
+                    slot="addonAfter"
+                    size="small"
+                    @click="inbound.settings.ipRanges.splice(index, 1)"
+                ></a-button>
+            </a-input>
+        </template>
+    </a-form-item>
+    <a-form-item label="DNS 1">
+        <a-input
+            v-model.trim="inbound.settings.dns1"
+            placeholder="8.8.8.8"
+        ></a-input>
+    </a-form-item>
+    <a-form-item label="DNS 2">
+        <a-input
+            v-model.trim="inbound.settings.dns2"
+            placeholder="8.8.4.4"
+        ></a-input>
+    </a-form-item>
+    <a-form-item label="MTU">
+        <a-input-number
+            v-model.number="inbound.settings.mtu"
+            :min="1000"
+            :max="1500"
+        ></a-input-number>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Simultaneous devices per account (each gets its own IP). 10 = ten consecutive IPs per account (default). Lower it to fit more accounts in the pool, raise it for accounts that run more devices; 0 reserves a 16-IP block, which is still a cap and not unlimited. Max 64.
+                </template>
+                User Limit
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            :value="inbound.settings.userLimit"
+            @change="inbound.settings.userLimit = Math.max(0, Math.min(64, Math.floor($event || 0)))"
+            :min="0" :max="64" :step="1" :precision="0" style="width: 90px"
+        ></a-input-number>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    When an account is already at its device limit and another
+                    device connects: reject the new one, or accept it and
+                    disconnect that account's oldest device.
+                </template>
+                User Limit Strategy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-radio-group v-model="inbound.settings.userLimitStrategy" button-style="solid">
+            <a-radio-button value="accept">Accept</a-radio-button>
+            <a-radio-button value="reject">Reject</a-radio-button>
+        </a-radio-group>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Allow connected clients to reach each other
+                </template>
+                Client to Client
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.clientToClient"
+            @change="val => { if (!val) inbound.settings.crossInbound = false }"
+        ></a-switch>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Also reach clients of other inbounds (both inbounds must enable this)
+                </template>
+                Cross Inbound
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.crossInbound"
+            :disabled="!inbound.settings.clientToClient"
+        ></a-switch>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Advertise an alternate server address (a relay / port-forward host)
+                    in the exported credentials and account info instead of the panel
+                    host. Add one entry per endpoint.
+                </template>
+                External Proxy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="vpnExternalProxy"></a-switch>
+        <a-button
+            icon="plus"
+            v-if="vpnExternalProxy"
+            type="primary"
+            :style="{ marginLeft: '10px' }"
+            size="small"
+            @click="inbound.settings.externalProxy.push({dest: '', port: inbound.port, remark: ''})"
+        ></a-button>
+    </a-form-item>
+    <a-input-group
+        :style="{ margin: '8px 0' }"
+        compact
+        v-for="(row, index) in inbound.settings.externalProxy"
+    >
+        <a-input
+            :style="{ width: '45%' }"
+            v-model.trim="row.dest"
+            placeholder='{{ i18n "host" }}'
+        ></a-input>
+        <a-tooltip title='{{ i18n "pages.inbounds.port" }}'>
+            <a-input-number
+                :style="{ width: '20%' }"
+                v-model.number="row.port"
+                min="1"
+                max="65535"
+            ></a-input-number>
+        </a-tooltip>
+        <a-input
+            :style="{ width: '30%', top: '0' }"
+            v-model.trim="row.remark"
+            placeholder='{{ i18n "remark" }}'
+        >
+            <template slot="addonAfter">
+                <a-button
+                    icon="minus"
+                    size="small"
+                    @click="inbound.settings.externalProxy.splice(index, 1)"
+                ></a-button>
+            </template>
+        </a-input>
+    </a-input-group>
+</a-form>
+{{end}}

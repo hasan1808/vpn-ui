@@ -35,6 +35,13 @@ type OpenVpnService struct {
 }
 
 // openvpnSettings represents the OpenVPN-specific settings stored in the inbound's Settings JSON.
+// ovpnMaxMssfix is the largest encapsulated packet the server will let a tunnelled TCP
+// session produce, whatever the tun MTU says. 1400 leaves ~100 bytes under a 1500 byte
+// path, which is enough for the UDP/IP/OpenVPN headers plus the common paths that are not
+// really 1500 (PPPoE 1492, DS-Lite, a carrier tunnel). See the mssfix line in
+// genServerConfig for why this is a clamp on the OUTER size rather than a smaller tun-mtu.
+const ovpnMaxMssfix = 1400
+
 type openvpnSettings struct {
 	UdpEnable     *bool  `json:"udpEnable"` // nil == enabled (back-compat with pre-toggle inbounds)
 	TcpEnable     *bool  `json:"tcpEnable"` // nil == enabled
@@ -51,11 +58,20 @@ type openvpnSettings struct {
 	// TLS cert source (Xray-style): inline PEM content (default) or file paths.
 	// In path mode OpenVPN references these files directly instead of the content
 	// fields written into configDir.
-	TlsUseFile        *bool               `json:"tlsUseFile"`
-	CaCertFile        string              `json:"caCertFile"`
-	ServerCertFile    string              `json:"serverCertFile"`
-	ServerKeyFile     string              `json:"serverKeyFile"`
-	TlsCryptFile      string              `json:"tlsCryptFile"`
+	TlsUseFile     *bool  `json:"tlsUseFile"`
+	CaCertFile     string `json:"caCertFile"`
+	ServerCertFile string `json:"serverCertFile"`
+	ServerKeyFile  string `json:"serverKeyFile"`
+	TlsCryptFile   string `json:"tlsCryptFile"`
+	// tls-crypt wraps the control channel in a pre-shared key. It is optional in
+	// OpenVPN, so it is a toggle here: nil == on, which keeps every inbound created
+	// before the toggle exactly as it was rather than silently dropping the wrapper
+	// out from under clients that already carry the key.
+	TlsCryptEnable *bool `json:"tlsCryptEnable"`
+	// FriendlyName becomes `setenv FRIENDLY_NAME` in the exported .ovpn, which is
+	// the profile name OpenVPN Connect shows in its list. Server-side it means
+	// nothing, so it is written to the client profile only.
+	FriendlyName      string              `json:"friendlyName"`
 	CipherMode        string              `json:"cipherMode"` // old | new | all | custom (informative; Ciphers is authoritative)
 	Ciphers           []string            `json:"ciphers"`
 	ExternalProxy     []ovpnExternalProxy `json:"externalProxy"`
@@ -272,16 +288,43 @@ func (o *openvpnSettings) useCertFiles() bool {
 	return o.TlsUseFile != nil && *o.TlsUseFile
 }
 
+// tlsCryptEnabled reports whether the control channel is wrapped in tls-crypt.
+// Nil (every inbound predating the toggle) == enabled.
+func (o *openvpnSettings) tlsCryptEnabled() bool {
+	return o.TlsCryptEnable == nil || *o.TlsCryptEnable
+}
+
+// friendlyName returns the .ovpn profile name, stripped of everything that would
+// break the directive it is written into: OpenVPN parses a quoted argument, so a
+// quote, backslash or newline inside the value would end it early (or split the
+// config). Empty means "emit no FRIENDLY_NAME at all".
+func (o *openvpnSettings) friendlyName() string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if r == '"' || r == '\\' || r < ' ' || r == 0x7f {
+			return -1
+		}
+		return r
+	}, o.FriendlyName))
+}
+
 // certPaths returns the ca/cert/key/tls-crypt file paths OpenVPN's config should
 // reference: the operator's own paths in file mode, else the files writeCertFiles
 // writes into configDir from the inline PEM content.
+//
+// tlsCrypt comes back empty when the inbound has no key, because writeCertFiles
+// only writes tc.key when there is content for it — naming the file anyway would
+// point the directive at something that isn't there.
 func (s *OpenVpnService) certPaths(inbound *model.Inbound, settings *openvpnSettings) (ca, cert, key, tlsCrypt string) {
 	if settings.useCertFiles() {
 		return strings.TrimSpace(settings.CaCertFile), strings.TrimSpace(settings.ServerCertFile),
 			strings.TrimSpace(settings.ServerKeyFile), strings.TrimSpace(settings.TlsCryptFile)
 	}
 	dir := s.configDir(inbound.Id)
-	return dir + "/ca.crt", dir + "/server.crt", dir + "/server.key", dir + "/tc.key"
+	tlsCrypt = ""
+	if strings.TrimSpace(settings.TlsCrypt) != "" {
+		tlsCrypt = dir + "/tc.key"
+	}
+	return dir + "/ca.crt", dir + "/server.crt", dir + "/server.key", tlsCrypt
 }
 
 type openvpnClient struct {
@@ -289,7 +332,10 @@ type openvpnClient struct {
 	Password string `json:"password"` // OpenVPN password
 	Email    string `json:"email"`    // tracking identifier
 	Enable   bool   `json:"enable"`
-	Slot     *int   `json:"slot"`     // address-pool slot; nil = fall back to list index
+	Slot     *int   `json:"slot"` // address-pool slot; nil = fall back to list index
+	// This account's own device cap. nil = inherit the inbound's K, and it can only
+	// LOWER it: see resolveUserLimitOverride.
+	UserLimitOverride *int `json:"userLimitOverride"`
 }
 
 // SetRadius configures the RADIUS service and shared secret for OpenVPN authentication.
@@ -421,8 +467,17 @@ func (s *OpenVpnService) generateServerConfigs(inbound *model.Inbound, preserveL
 	}
 
 	dir := s.configDir(inbound.Id)
+	// Recorded before each MkdirAll so uninstall can tell a directory we created from
+	// one the distro's openvpn package owns. /etc/openvpn/server is the case that
+	// matters: on Debian/Ubuntu/Fedora it is the distro's own server-config directory
+	// and the panel only ever mkdir's it (nothing is written inside), yet uninstall
+	// used to delete it whole, taking the operator's server configs with it.
+	ownPrepareDir("/etc/openvpn", "openvpn")
+	ownPrepareDir(dir, "openvpn")
 	os.MkdirAll(dir, 0755)
+	ownPrepareDir("/var/run/openvpn", "openvpn")
 	os.MkdirAll("/var/run/openvpn", 0755)
+	ownPrepareDir("/etc/openvpn/server", "openvpn")
 	os.MkdirAll("/etc/openvpn/server", 0755)
 
 	// Path to the running panel binary, used as OpenVPN's auth/connect/disconnect
@@ -445,7 +500,8 @@ func (s *OpenVpnService) generateServerConfigs(inbound *model.Inbound, preserveL
 			continue
 		}
 		confPath := fmt.Sprintf("%s/server-%s.conf", dir, proto)
-		conf := s.buildServerConfig(inbound, settings, proto, ports[proto], binaryPath)
+		conf := applyCoreConfigOverride("openvpn", inbound.Id, "server-"+proto+".conf",
+			s.buildServerConfig(inbound, settings, proto, ports[proto], binaryPath))
 		if err := s.writeFile(confPath, conf); err != nil {
 			return err
 		}
@@ -529,8 +585,35 @@ func (s *OpenVpnService) writeClientConfigDir(inbound *model.Inbound, settings *
 			}
 		} else {
 			ips = vpnAccountDeviceIPs(subnets, slot, k)
+			// The account's own cap, applied by TRIMMING the block the inbound's K
+			// laid out. The connect hook leases a free IP from whatever this file
+			// lists and rejects (or evicts) once they are all held, so a shorter list
+			// is the whole of the enforcement. Never a WIDER one: the addresses are a
+			// fixed grid on a stride of K, so extra entries here would be the next
+			// account's addresses (see resolveUserLimitOverride).
+			if kAcct := resolveUserLimitOverride(k, client.UserLimitOverride); kAcct < len(ips) {
+				ips = ips[:kAcct]
+			}
 		}
 		if len(ips) == 0 {
+			continue
+		}
+		// The login name becomes a PATH here, so it is checked again at the point of
+		// use rather than trusted to have been checked on the way in.
+		//
+		// Not belt-and-braces. ValidateVpnUsername runs on the write paths, and a
+		// value can reach this row without passing one: a DB import, a restored
+		// backup, a row written by a binary that predates the rule, or a future
+		// carrier key nobody remembered to validate (which is exactly how
+		// "vpnUsername" got in). The panel runs as root and os.MkdirAll would
+		// happily create the parent, so the cost of being wrong once here is
+		// arbitrary file creation anywhere on the box.
+		//
+		// Skipped rather than failed: one bad row must not stop the other accounts
+		// on the inbound from being configured.
+		if err := ValidateVpnUsername(client.ID); err != nil {
+			logger.Warningf("openvpn inbound %d: refusing to write a block file for %q: %v",
+				inbound.Id, client.Email, err)
 			continue
 		}
 		// "<serverBlockMask> <ip1> <ip2> ...": the hook leases a free IP from the list
@@ -655,11 +738,44 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 		mtu = 1280
 	}
 	b.WriteString(fmt.Sprintf("tun-mtu %d\n", mtu))
+	// mssfix, explicitly, INSTEAD of lowering tun-mtu.
+	//
+	// 1500 is the right INNER size and is OpenVPN's own default: it is what a client's
+	// stack expects on a LAN-like link, and shrinking it would cost every packet on every
+	// path, including the paths that never needed it. What is wrong at 1500 is the OUTER
+	// size, and mssfix is the knob for that.
+	//
+	// This build's default mssfix is "tun-mtu size or --fragment max value, whichever is
+	// lower" (openvpn --help), so with tun-mtu 1500 and no --fragment it lets the
+	// ENCAPSULATED packet reach exactly 1500 bytes: the whole path budget, with nothing
+	// left over for a path that is even slightly smaller. PPPoE at 1492, DS-Lite, a mobile
+	// carrier's own tunnel and any GRE/IPsec hop upstream are all under it, and the symptom
+	// is the one this protocol gets reported for: the tunnel connects, small requests work,
+	// and anything with full-size segments hangs.
+	//
+	// It does NOT make UDP safe at a 1500 inner MTU. Nothing but --fragment would, and that
+	// costs 4 bytes on every datagram and is refused by DCO, so it is not worth paying for
+	// every user to fix the rarer half. TCP is where the hangs are reported.
+	//
+	// Written bare rather than as `mssfix 1400 mtu`: the mtu/fixed flag is 2.6+, and the
+	// bare form means the same thing on every openvpn this panel might be running. Verified
+	// accepted by the bundled 2.6.12 in both udp and tcp-server mode.
+	mssfix := mtu
+	if mssfix > ovpnMaxMssfix {
+		mssfix = ovpnMaxMssfix
+	}
+	b.WriteString(fmt.Sprintf("mssfix %d\n", mssfix))
 	caPath, certPath, keyPath, tcPath := s.certPaths(inbound, settings)
 	b.WriteString(fmt.Sprintf("ca %s\n", caPath))
 	b.WriteString(fmt.Sprintf("cert %s\n", certPath))
 	b.WriteString(fmt.Sprintf("key %s\n", keyPath))
-	b.WriteString(fmt.Sprintf("tls-crypt %s\n", tcPath))
+	// tls-crypt is optional. Emitting the directive with an empty path (the shape a
+	// file-mode inbound that left the key box blank used to produce) makes openvpn
+	// refuse the whole config, so the line is written only when there is a key to
+	// point it at.
+	if settings.tlsCryptEnabled() && tcPath != "" {
+		b.WriteString(fmt.Sprintf("tls-crypt %s\n", tcPath))
+	}
 	b.WriteString("dh none\n")
 	ciphers := s.effectiveCiphers(settings.dataCiphers())
 	_, legacyOK := s.cipherSupport()
@@ -760,11 +876,7 @@ func (s *OpenVpnService) SetupRouting() error {
 
 	// Deliver fwmark-1 packets locally so TPROXY can hand them to the dokodemo
 	// socket (shared table 100 with L2TP/PPTP; add/replace are idempotent).
-	output, _ := exec.Command("ip", "rule", "show").Output()
-	if !strings.Contains(string(output), "fwmark 0x1 lookup 100") {
-		s.runCmd("ip", "rule", "add", "fwmark", "1", "lookup", "100")
-	}
-	s.runCmd("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", "100")
+	ensureVpnPolicyRoute(s.runCmd)
 
 	return s.nftService.ApplyNftRules()
 }
@@ -833,8 +945,16 @@ func (s *OpenVpnService) GenerateClientConfig(inbound *model.Inbound, proto stri
 	}
 
 	caContent, tcContent := s.clientCertContent(settings)
-	if strings.TrimSpace(caContent) == "" || strings.TrimSpace(tcContent) == "" {
-		return "", fmt.Errorf("certificates not available — generate a self-signed CA or set the CA/tls-crypt file paths first")
+	if strings.TrimSpace(caContent) == "" {
+		return "", fmt.Errorf("certificates not available — generate a self-signed CA or set the CA file path first")
+	}
+	// The tls-crypt key is only part of the profile when the inbound uses tls-crypt.
+	tcContent = strings.TrimSpace(tcContent)
+	if settings.tlsCryptEnabled() && tcContent == "" {
+		return "", fmt.Errorf("TLS-Crypt is enabled but no key is set — generate a self-signed CA, set the TLS-Crypt key file path, or turn TLS-Crypt off")
+	}
+	if !settings.tlsCryptEnabled() {
+		tcContent = ""
 	}
 
 	// Refuse to hand out a profile for a transport the admin has switched off.
@@ -928,6 +1048,11 @@ func (s *OpenVpnService) GenerateClientConfig(inbound *model.Inbound, proto stri
 	// certificate"; this directive tells it no client certificate is expected.
 	// The community CLI just treats it as a harmless env var.
 	b.WriteString("setenv CLIENT_CERT 0\n")
+	// The name OpenVPN Connect lists the imported profile under. Without it the app
+	// falls back to the file name, so every inbound's profile looks alike.
+	if name := settings.friendlyName(); name != "" {
+		b.WriteString(fmt.Sprintf("setenv FRIENDLY_NAME %q\n", name))
+	}
 	ciphers := s.effectiveCiphers(settings.dataCiphers())
 	_, legacyOK := s.cipherSupport()
 	joined := strings.Join(ciphers, ":")
@@ -955,9 +1080,11 @@ func (s *OpenVpnService) GenerateClientConfig(inbound *model.Inbound, proto stri
 	b.WriteString("<ca>\n")
 	b.WriteString(strings.TrimSpace(caContent))
 	b.WriteString("\n</ca>\n")
-	b.WriteString("<tls-crypt>\n")
-	b.WriteString(strings.TrimSpace(tcContent))
-	b.WriteString("\n</tls-crypt>\n")
+	if tcContent != "" {
+		b.WriteString("<tls-crypt>\n")
+		b.WriteString(tcContent)
+		b.WriteString("\n</tls-crypt>\n")
+	}
 
 	return b.String(), nil
 }

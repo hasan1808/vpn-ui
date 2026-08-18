@@ -294,10 +294,6 @@
         <span class="bo-ip-label">IPv4</span>
         <span class="bo-ip-value num">[[ showIp ? status.publicIP.ipv4 : maskIp(status.publicIP.ipv4) ]]</span>
       </div>
-      <div class="bo-ip-row" v-for="(ip, i) in extraIpv4s()" :key="i">
-        <span class="bo-ip-label">IPv4 +[[ i + 1 ]]</span>
-        <span class="bo-ip-value num">[[ showIp ? ip : maskIp(ip) ]]</span>
-      </div>
       <div class="bo-ip-row">
         <span class="bo-ip-label">IPv6</span>
         <span class="bo-ip-value num">[[ showIp ? status.publicIP.ipv6 : maskIp(status.publicIP.ipv6) ]]</span>
@@ -420,84 +416,25 @@
     {{ if .perms.manageOverview }}
     <article class="bo-tile bo-t-manage" aria-label='{{ i18n "menu.link" }}'>
       <div class="bo-tile-head"><h3 class="bo-tile-title">{{ i18n "menu.link" }}</h3></div>
-      <!-- The Manage tile is split in two: the operator's actions on the left,
-           the server's outbound connectivity check on the right. -->
-      <div class="bo-manage-split">
-        <div class="bo-manage-actions">
-          <div class="bo-btn-row bo-btn-row--compact">
-            <button type="button" class="bo-icon-btn" @click="openAllLogs()">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
-            </button>
-            <button type="button" class="bo-icon-btn" @click="openConfig">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-sliders"></use></svg>{{ i18n "pages.index.config" }}
-            </button>
-            <button type="button" class="bo-icon-btn" @click="openBackup">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-download"></use></svg>{{ i18n "pages.index.backup" }}
-            </button>
-            <button type="button" class="bo-icon-btn" @click="openRestore">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.restore" }}
-            </button>
-          </div>
-        </div>
-        <div class="bo-manage-ping">
-          <div class="bo-ping-head">
-            <h4 class="bo-ping-title">{{ i18n "pages.index.internet" }}</h4>
-            <button type="button" class="bo-icon-btn bo-icon-btn--accent" :disabled="pingChecking" @click="checkInternet()">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.ping" }}
-            </button>
-          </div>
-          <span v-if="ping && ping.overall" class="bo-ping-overall" :class="'bo-ping-overall--' + ping.overall">
-            [[ pingOverallText ]]
-          </span>
-          <ul class="bo-ping-list">
-            <li v-for="t in pingList" :key="t.name" class="bo-ping-row" :title="t.ip || t.detail || ''">
-              <span class="bo-ping-dot" :class="'bo-ping-dot--' + rowState(t)"></span>
-              <span class="bo-ping-name">[[ t.name ]]</span>
-              <span v-if="t.status === 'ok'" class="bo-ping-value num">[[ formatPing(t.rttMs) ]]</span>
-              <span v-else-if="t.status === 'fail'" class="bo-ping-value bo-ping-value--fail">{{ i18n "pages.index.pingUnreachable" }}</span>
-              <span v-else class="bo-ping-value bo-ping-value--pending">[[ pingText.loading ]]</span>
-            </li>
-          </ul>
-        </div>
+      <div class="bo-btn-row bo-btn-row--compact">
+        <button type="button" class="bo-icon-btn" @click="openAllLogs()">
+          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
+        </button>
+        <button type="button" class="bo-icon-btn" @click="openConfig">
+          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-sliders"></use></svg>{{ i18n "pages.index.config" }}
+        </button>
+        <button type="button" class="bo-icon-btn" @click="openBackup">
+          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-download"></use></svg>{{ i18n "pages.index.backup" }}
+        </button>
+        <button type="button" class="bo-icon-btn" @click="openRestore">
+          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.restore" }}
+        </button>
       </div>
     </article>
     {{ end }}
 
-    <!-- ===== outbound connectivity ===== -->
-    <!-- Read-only for anyone who can see the overview: the endpoints behind
-         this tile are registered outside the PermXraySettings gate (see
-         XraySettingController.initRouter) so a dashboard-only user is not
-         locked out of the traffic picture. Only rendered when the current
-         config actually has an outbound the operator created: a panel whose
-         outbounds list is nothing but built-in routing targets (direct,
-         blocked, …) gets no card. -->
-    <article v-if="outboundStatusList.length > 0" class="bo-tile bo-t-outbounds"
-      aria-label='{{ i18n "pages.index.outbounds" }}'>
-      <div class="bo-tile-head">
-        <h3 class="bo-tile-title">{{ i18n "pages.index.outbounds" }}</h3>
-        <button type="button" class="bo-icon-btn bo-icon-btn--accent"
-          :disabled="outboundStatusTesting" @click="runOutboundTests()">
-          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
-          {{ i18n "pages.index.outboundTestAll" }}
-        </button>
-      </div>
-      <ul class="bo-ping-list">
-        <li v-for="row in outboundStatusList" :key="row.tag" class="bo-ping-row"
-          :title="outboundRowError(row)">
-          <span class="bo-ping-dot" :class="'bo-ping-dot--' + outboundRowState(row)"></span>
-          <span class="bo-ping-name">[[ outboundRowLabel(row) ]]</span>
-          <span v-if="row.status && row.status.success" class="bo-ping-value num">
-            [[ row.status.delay ]]ms <span class="bo-ping-traffic num">[[ outboundTrafficText(row) ]]</span>
-          </span>
-          <span v-else-if="row.status" class="bo-ping-value bo-ping-value--fail">[[
-            outboundRowError(row) ]]</span>
-          <span v-else class="bo-ping-value bo-ping-value--pending">[[ pingText.loading ]]</span>
-        </li>
-      </ul>
-    </article>
-
     <!-- ===== PRO-UI panel + updater ===== -->
-    <article class="bo-tile bo-t-proui" aria-label="PRO-UI">
+    <article class="bo-tile bo-t-vpnui" aria-label="PRO-UI">
       <div class="bo-tile-head">
         <h3 class="bo-tile-title">PRO-UI</h3>
         <button type="button" class="bo-icon-btn bo-icon-btn--accent"
@@ -506,11 +443,11 @@
           {{ i18n "pages.index.checkUpdate" }}
         </button>
       </div>
-      <div class="bo-proui-body">
+      <div class="bo-vpnui-body">
         <div>
-          <a rel="noopener" href="https://github.com/hasan1808/vpn-ui" target="_blank"
+          <a rel="noopener" href="https://github.com/Sir-MmD/PRO-UI" target="_blank"
             :style="{ color: 'inherit', textDecoration: 'none' }">
-            <div class="bo-proui-version num">v{{ .cur_ver }}</div>
+            <div class="bo-vpnui-version num">v{{ .cur_ver }}</div>
           </a>
           <p v-if="panelUpdate.checked && !panelUpdate.available && !panelUpdate.checking"
             class="bo-status-line bo-status-line--ok">
@@ -580,22 +517,14 @@
           </button>
           <input type="file" ref="panelBinaryInput" :style="{ display: 'none' }"
             @change="onPanelBinaryPicked">
-          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
-            v-if="!panelUpdate.updating" :disabled="panelUpdate.checking" @click="reinstallPanel">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
-            {{ i18n "pages.index.reinstall" }}
-          </button>
-          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
-            v-if="!panelUpdate.updating" :disabled="rebooting" @click="confirmReboot">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-power"></use></svg>
-            {{ i18n "pages.index.rebootServer" }}
-          </button>
-          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
-            v-if="!panelUpdate.updating" @click="openRestore">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
-            {{ i18n "pages.index.restore" }}
-          </button>
           {{ end }}
+          <!-- Always offered, unlike Update Now: it is the one action on this
+               tile that does not depend on the release check having run. -->
+          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
+            @click="openDonateModal">
+            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-heart"></use></svg>
+            {{ i18n "pages.index.donate" }}
+          </button>
         </div>
       </div>
     </article>
@@ -689,7 +618,7 @@
     @ok="fetchPanelBinaryFromUrl">
     <p :style="{ color: 'var(--text-3)' }">{{ i18n "pages.index.updateFromUrlIntro" }}</p>
     <a-input v-model="urlModal.url" :disabled="urlModal.fetching"
-      placeholder="https://example.com/vpn-ui-amd64"
+      placeholder="https://example.com/PRO-UI-amd64"
       @pressEnter="urlModal.url.trim() && !urlModal.fetching && fetchPanelBinaryFromUrl()"></a-input>
   </a-modal>
 
@@ -754,18 +683,41 @@
     <p class="bo-relnotes-foot" v-if="updatedModal.from && updatedModal.from !== updatedModal.to">
       {{ i18n "pages.index.updateDoneFrom" }} <span class="num">v[[ updatedModal.from ]]</span>
     </p>
+    <!-- Where the database the old binary was running on ended up. Behind a v-if
+         because the snapshot is best-effort and does not block the update: a line
+         naming no file would read as a promise the panel did not keep. -->
+    <div class="bo-update-backup" v-if="updatedModal.backup">
+      <div>{{ i18n "pages.index.updateDoneBackup" }} <span class="num">v[[ updatedModal.from ]]</span></div>
+      <div class="bo-update-backup-path">[[ updatedModal.backup ]]</div>
+    </div>
   </a-modal>
 
-  <!-- Rebooting overlay: shown after the operator clicks Reboot Server -->
-  <a-modal :visible="rebooting" :title="null" :footer="null" :closable="false"
-    :maskClosable="false" :keyboard="false" :class="themeSwitcher.currentTheme"
-    :width="isMobile ? '95%' : '420px'">
-    <div style="text-align:center; padding:24px 0;">
-      <a-icon type="poweroff" :style="{ fontSize: '48px', color: 'var(--primary)', marginBottom: '16px', display: 'block' }"></a-icon>
-      <div :style="{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }">{{ i18n "pages.index.rebooting" }}</div>
-      <div :style="{ color: 'var(--text-3)', marginBottom: '16px' }">{{ i18n "pages.index.rebootingDesc" }}</div>
-      <a-spin :spinning="true"></a-spin>
-    </div>
+  <!-- Donate dialog (PRO-UI tile). The addresses are rendered server-side from
+       web/controller/donate.go, which a test pins to README.md's Donate section
+       so the panel can never show an address the README has moved on from.
+       Each row is a copy target: these are pasted into a wallet, so the address
+       is monospaced, selectable, and copied verbatim rather than retyped. -->
+  <a-modal id="donate-modal" v-model="donateModal.visible" title='{{ i18n "pages.index.donateTitle" }}'
+    :closable="true" :class="themeSwitcher.currentTheme" :width="isMobile ? '95%' : 620"
+    @cancel="() => donateModal.visible = false" footer="">
+    <p class="bo-donate-intro">{{ i18n "pages.index.donateIntro" }}</p>
+    <ul class="bo-donate-list">
+      <li class="bo-donate-row" v-for="(d, i) in donateList" :key="d.chain">
+        <div class="bo-donate-chain">[[ d.chain ]]</div>
+        <code class="bo-donate-addr num">[[ d.addr ]]</code>
+        <button type="button" class="bo-icon-btn bo-donate-copy"
+          :class="donateModal.copied === i ? 'bo-icon-btn--ok' : ''"
+          @click="copyDonateAddress(i, d.addr)">
+          <!-- v-if/v-else rather than a bound :href: html/template treats an href
+               as a URL context and would rewrite a Vue expression to ZgotmplZ. -->
+          <svg class="bo-icon bo-icon-14" aria-hidden="true">
+            <use v-if="donateModal.copied === i" href="#bo-i-check-circle"></use>
+            <use v-else href="#bo-i-copy"></use>
+          </svg>
+          [[ donateModal.copied === i ? '{{ i18n "copied" }}' : '{{ i18n "copy" }}' ]]
+        </button>
+      </li>
+    </ul>
   </a-modal>
 
   <a-modal id="version-modal" v-model="versionModal.visible" title='{{ i18n "pages.index.xraySwitch" }}'
@@ -845,6 +797,24 @@
       <a-collapse-panel key="2" header='Geofiles'>
         <a-alert type="info" show-icon class="mb-10"
           message='{{ i18n "pages.index.geofileBundledHint" }}'></a-alert>
+        <!-- Auto-update. On by default, because these files go stale SILENTLY: a
+             routing rule naming a geosite category keeps parsing and the core keeps
+             starting, the categories are just months out of date and the rule
+             quietly stops matching what the operator thinks it matches. -->
+        <div class="mb-10"
+          :style="{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }">
+          <!-- The reason lives in the "?" rather than under the label: it explains a
+               failure mode nobody is looking for, which is worth a sentence when you
+               go looking and worth no vertical space when you do not. -->
+          <span>
+            {{ i18n "pages.index.geofileAutoUpdate" }}
+            <a-tooltip :title="geofileText.autoUpdateDesc">
+              <a-icon type="question-circle" :style="{ marginInlineStart: '4px', opacity: 0.65 }"></a-icon>
+            </a-tooltip>
+          </span>
+          <a-switch :checked="geofileAutoUpdate" :loading="geofileAutoUpdateSaving"
+            @change="toggleGeofileAutoUpdate"></a-switch>
+        </div>
         <a-list class="ant-version-list w-100" bordered>
           <a-list-item class="ant-version-list-item"
             v-for="file in ['geosite.dat', 'geoip.dat', 'geosite_IR.dat', 'geoip_IR.dat', 'geosite_RU.dat', 'geoip_RU.dat']">
@@ -855,8 +825,15 @@
             <a-icon type="reload" @click="updateGeofile(file)" class="mr-8" />
           </a-list-item>
         </a-list>
-        <div class="mt-5 d-flex justify-end"><a-button @click="updateGeofile('')">{{ i18n
-            "pages.index.geofilesUpdateAll" }}</a-button></div>
+        <!-- Reads the SERVER's job state, not a local boolean, so it is still here
+             after the operator left the overview and came back mid-download. -->
+        <div v-if="geofileRun.running || geofileRun.done" class="mt-5">
+          <a-progress :percent="geofileRunPercent()" size="small"
+            :status="geofileRun.running ? 'active' : (geofileRun.failed ? 'exception' : 'success')"></a-progress>
+          <div :style="{ fontSize: '12px', opacity: 0.65 }">[[ geofileRunText() ]]</div>
+        </div>
+        <div class="mt-5 d-flex justify-end"><a-button @click="updateGeofile('')"
+            :loading="geofileRun.running">{{ i18n "pages.index.geofilesUpdateAll" }}</a-button></div>
       </a-collapse-panel>
       <a-collapse-panel key="3" header='{{ i18n "pages.index.customGeoTitle" }}'>
         <div class="custom-geo-section">
@@ -957,7 +934,7 @@
       </a-form-item>
 
       <a-form-item style="float: right;">
-        <a-button type="primary" icon="download" @click="FileManager.downloadTextFile(logModal.plain, 'vpn-ui.log')"></a-button>
+        <a-button type="primary" icon="download" @click="FileManager.downloadTextFile(logModal.plain, 'PRO-UI.log')"></a-button>
       </a-form-item>
     </a-form>
     <!-- Core filter. Client-side over the already-fetched lines, so ticking a
@@ -1024,50 +1001,12 @@
           <template #title>{{ i18n "pages.index.exportDatabase" }}</template>
           <template #description>{{ i18n "pages.index.exportDatabaseDesc" }}</template>
         </a-list-item-meta>
-        <a-button @click="exportDatabase()" type="primary" icon="download" />
+        <a-button @click="openBackupName()" type="primary" icon="download" />
       </a-list-item>
       <a-list-item class="ant-backup-list-item">
         <a-list-item-meta>
           <template #title>{{ i18n "pages.index.importDatabase" }}</template>
           <template #description>{{ i18n "pages.index.importDatabaseDesc" }}</template>
-        </a-list-item-meta>
-        <a-button @click="importDatabase()" type="primary" icon="upload" />
-      </a-list-item>
-    </a-list>
-  </a-modal>
-  <a-modal id="restore-modal" v-model="restoreModal.visible" title='{{ i18n "pages.index.restore" }}' :closable="true"
-    footer="" :class="themeSwitcher.currentTheme" @open="loadLocalBackups">
-    <div :style="{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }">
-      <span :style="{ fontWeight: 500 }">{{ i18n "pages.index.localBackups" }}</span>
-      <a-button size="small" type="primary" ghost :loading="restoreModal.creating" @click="createLocalBackup">
-        {{ i18n "pages.index.createBackup" }}
-      </a-button>
-    </div>
-    <a-list class="ant-backup-list w-100" bordered :loading="restoreModal.loading">
-      <a-list-item v-if="!restoreModal.loading && localBackups.length === 0" class="ant-backup-list-item">
-        <a-list-item-meta>
-          <template #title>{{ i18n "pages.index.noLocalBackups" }}</template>
-          <template #description>{{ i18n "pages.index.noLocalBackupsDesc" }}</template>
-        </a-list-item-meta>
-      </a-list-item>
-      <a-list-item v-for="b in localBackups" :key="b.fileName" class="ant-backup-list-item">
-        <a-list-item-meta>
-          <template #title><span class="num">[[ b.fileName ]]</span></template>
-          <template #description>
-            [[ formatBackupTime(b.created) ]] &middot; [[ formatBytes(b.size) ]]
-          </template>
-        </a-list-item-meta>
-        <a-button @click="restoreLocalBackup(b.fileName)" type="primary" size="small" icon="reload">
-          {{ i18n "pages.index.restore" }}
-        </a-button>
-      </a-list-item>
-    </a-list>
-    <a-divider :style="{ margin: '16px 0 12px' }"></a-divider>
-    <a-list class="ant-backup-list w-100" bordered>
-      <a-list-item class="ant-backup-list-item">
-        <a-list-item-meta>
-          <template #title>{{ i18n "pages.index.restoreFromVpnUi" }}</template>
-          <template #description>{{ i18n "pages.index.restoreFromVpnUiDesc" }}</template>
         </a-list-item-meta>
         <a-button @click="importDatabase()" type="primary" icon="upload" />
       </a-list-item>
@@ -1079,6 +1018,39 @@
         <a-button @click="importForeignDatabase()" type="primary" icon="import" />
       </a-list-item>
     </a-list>
+  </a-modal>
+  <!-- Names the .db before it is downloaded. A dialog rather than a rename
+       afterwards because the download is a plain navigation (see exportDatabase),
+       so Content-Disposition is the only thing that can name the file and the
+       ticks have to reach the server as query params.
+
+       The preview is the point of the dialog, not decoration: unticking every box
+       is a legitimate choice and it produces a bare PRO-UI.db, which reads as a
+       bug unless the resulting name is on screen while you tick. -->
+  <a-modal id="backup-name-modal" v-model="backupNameModal.visible"
+    title='{{ i18n "pages.index.backupNameTitle" }}' :closable="true"
+    :class="themeSwitcher.currentTheme" :width="isMobile ? '95%' : 440"
+    ok-text='{{ i18n "confirm" }}' cancel-text='{{ i18n "cancel" }}'
+    @ok="exportDatabase()" @cancel="() => backupNameModal.hide()">
+    <p class="bo-backup-name-desc">{{ i18n "pages.index.backupNameDesc" }}</p>
+    <a-checkbox-group v-model="backupNameModal.parts" :style="{ width: '100%' }">
+      <div class="bo-cf-ib" :class="{ on: backupNameModal.parts.includes('panelName') }">
+        <a-checkbox value="panelName">{{ i18n "pages.index.backupNamePanel" }}</a-checkbox>
+      </div>
+      <div class="bo-cf-ib" :class="{ on: backupNameModal.parts.includes('domain') }">
+        <a-checkbox value="domain">{{ i18n "pages.index.backupNameDomain" }}</a-checkbox>
+      </div>
+      <div class="bo-cf-ib" :class="{ on: backupNameModal.parts.includes('date') }">
+        <a-checkbox value="date">{{ i18n "pages.index.backupNameDate" }}</a-checkbox>
+      </div>
+      <div class="bo-cf-ib" :class="{ on: backupNameModal.parts.includes('time') }">
+        <a-checkbox value="time">{{ i18n "pages.index.backupNameTime" }}</a-checkbox>
+      </div>
+    </a-checkbox-group>
+    <div class="bo-backup-name-preview">
+      <span class="bo-backup-name-label">{{ i18n "pages.index.backupNamePreview" }}</span>
+      <span class="bo-backup-name-file">[[ backupFilename ]]</span>
+    </div>
   </a-modal>
   <!-- CPU History Modal -->
   <a-modal id="cpu-history-modal" v-model="cpuHistoryModal.visible" :closable="true"
@@ -1110,7 +1082,7 @@
     </template>
     <div style="padding:4px 2px">
       <p style="margin-bottom:10px">
-        <b>[[ distroModal.pretty ]]</b> is not on pro-ui's officially tested distro list.
+        <b>[[ distroModal.pretty ]]</b> is not on PRO-UI's officially tested distro list.
         The panel may still run, but <b style="color:#cf1322">expect errors</b>.
       </p>
       <p style="margin-bottom:0;opacity:0.7;font-size:12px;line-height:1.5">
@@ -1469,6 +1441,7 @@
       this.cpuCores = 0;
       this.logicalPro = 0;
       this.cpuSpeedMhz = 0;
+      this.cpuSpeedCurMhz = 0;
       this.disk = new CurTotal(0, 0);
       this.loads = [0, 0, 0];
       this.mem = new CurTotal(0, 0);
@@ -1476,7 +1449,7 @@
       this.swapIO = { in: 0, out: 0 };
       this.diskIO = { read: 0, write: 0 };
       this.netTraffic = { sent: 0, recv: 0 };
-      this.publicIP = { ipv4: 0, ipv6: 0, localIp4: [] };
+      this.publicIP = { ipv4: 0, ipv6: 0 };
       this.swap = new CurTotal(0, 0);
       this.tcpCount = 0;
       this.udpCount = 0;
@@ -1504,6 +1477,7 @@
       this.cpuCores = data.cpuCores;
       this.logicalPro = data.logicalPro;
       this.cpuSpeedMhz = data.cpuSpeedMhz;
+      this.cpuSpeedCurMhz = data.cpuSpeedCurMhz;
       this.cpuModel = data.cpuModel || "";
       this.osName = data.osName || "";
       this.osVersion = data.osVersion || "";
@@ -1596,7 +1570,7 @@
       this.visible = true;
       this.mode = 'panel';
       this.logs = logs;
-      this.render([{ source: 'pro-ui', text: (logs || []).join('\n') }]);
+      this.render([{ source: 'PRO-UI', text: (logs || []).join('\n') }]);
     },
     // Every log the panel shows goes through LogFormatter, so the panel's own
     // lines, Xray's and each daemon's are coloured and laid out identically.
@@ -1760,10 +1734,15 @@
     },
   };
 
-  const restoreModal = {
+  // Which components the downloaded .db is named after. Held as the names the
+  // server reads off the query string, so nothing has to be translated between
+  // the tick and the request.
+  //
+  // All four to start with: the picker exists to let an operator take parts AWAY
+  // from the full name, so the default has to be the full name.
+  const backupNameModal = {
     visible: false,
-    loading: false,
-    creating: false,
+    parts: ['panelName', 'domain', 'date', 'time'],
     show() {
       this.visible = true;
     },
@@ -1771,6 +1750,11 @@
       this.visible = false;
     },
   };
+
+  // The order the components appear in, which is the SERVER's order and not the
+  // order they were ticked in. Kept beside the state so the preview and the
+  // request cannot disagree about it.
+  const BACKUP_NAME_ORDER = ['panelName', 'domain', 'date', 'time'];
 
   const customGeoColumns = [
     { title: '{{ i18n "pages.index.customGeoExtColumn" }}', key: 'extDat', scopedSlots: { customRender: 'extDat' }, ellipsis: true },
@@ -1797,8 +1781,7 @@
       logModal,
       xraylogModal,
       backupModal,
-      restoreModal,
-      localBackups: [],
+      backupNameModal,
       loadingTip: '{{ i18n "loading"}}',
       showAlert: false,
       showIp: false,
@@ -1826,14 +1809,7 @@
         url: '{{ i18n "pages.index.customGeoValidationUrl" }}',
       },
       coreStatuses: [],
-      rebooting: false,
       panelUpdate: { checking: false, checked: false, available: false, latest: '', current: '', notes: '', publishedAt: '', url: '', updating: false, cancelling: false, error: '', percent: 0, phase: '', speed: 0, bytes: 0, total: 0 },
-      // Outbound connectivity card: tag/protocol/traffic per outbound plus the
-      // last test outcome persisted by the Xray page (or refreshed from here).
-      outboundStatusList: [],
-      outboundStatusLoading: false,
-      outboundStatusTesting: false,
-      outboundStatusTimer: null,
       // The dialog that asks which of the two manual-update sources to use. It holds
       // nothing else: whichever is picked hands straight over to that source's own
       // flow, which owns everything from there.
@@ -1855,7 +1831,19 @@
       updateModal: { visible: false },
       // Opened only by the server's one-shot post-update record; see
       // announceUpdateResult().
-      updatedModal: { visible: false, from: '', to: '' },
+      // `backup` is where the pre-update DB snapshot landed, empty when there
+      // isn't one.
+      updatedModal: { visible: false, from: '', to: '', backup: '' },
+      // `copied` is the index of the row showing its "copied" confirmation, or
+      // -1 for none. An index rather than a boolean so two rows carrying the
+      // SAME address (several chains share one) confirm independently.
+      donateModal: { visible: false, copied: -1 },
+      // Rendered from web/controller/donate.go, which a test pins to README.md's
+      // Donate section. Emitted here as JS rather than as markup so each address
+      // lands in a JS string context, where html/template escapes it correctly -
+      // interpolating one into a Vue attribute expression instead would leave the
+      // escaping to whatever context the attribute happened to be classified as.
+      donateList: [{{ range .donate }}{ chain: '{{ .Chain }}', addr: '{{ .Address }}' },{{ end }}],
       geofilesModal: { visible: false },
       // Which geo files are actually on disk. Four of the six the list offers do
       // not ship with the panel, and until this is fetched the list has no way to
@@ -1867,7 +1855,29 @@
       geofileText: {
         installed: '{{ i18n "pages.index.geofileInstalled" }}',
         notInstalled: '{{ i18n "pages.index.geofileNotInstalled" }}',
+        // Emitted here, not into the a-tooltip's :title, for the reason above: a
+        // translation with an apostrophe pasted into a Vue attribute expression
+        // ends the attribute's string and blanks the whole page with an empty console.
+        autoUpdateDesc: '{{ i18n "pages.index.geofileAutoUpdateDesc" }}',
       },
+      // The server-side geofile download, mirrored here so the dialog can show a
+      // transfer it did not start. Leaving the overview destroys this whole Vue
+      // instance (navigation is a full page load, see aSidebar.openLink), so the
+      // ONLY way progress can survive is to re-read it from the server - which is
+      // what geofileRunPoll does on open and on mount.
+      geofileRun: { running: false, done: false, files: [], current: '', fetched: [], failed: false, summary: '' },
+      geofileRunTimer: null,
+      geofileRunSeq: 0,
+      // True only between "we sent the POST" and "it answered". Until the server has
+      // claimed the run, its progress endpoint still describes the previous one.
+      geofileRunPosting: false,
+      // Drives watchPanelUpdate, which follows a self-update this page did not start.
+      panelUpdateTimer: null,
+      panelUpdateReloadArmed: false,
+      // Whether the panel refreshes the geo data on its own. On by default; the real
+      // value arrives with the defaultSettings call in mounted().
+      geofileAutoUpdate: true,
+      geofileAutoUpdateSaving: false,
       distroModal: { visible: false, pretty: '', tested: '' },
 
       // --- redesign shell + bento tiles ---------------------------------
@@ -1889,31 +1899,6 @@
       // '' means every interface, which is what the aggregate netIO already is.
       ifaceFilter: '',
       userStats: { total: 0, online: 0, depleted: 0, expiring: 0 },
-      // Manage tile connectivity check (Google / Cloudflare / YouTube). `ping`
-      // holds the last server answer; null until the first check lands.
-      ping: null,
-      pingChecking: false,
-      // Matches the server's requireOverviewManage gate on /panel/api/server/ping
-      // so the auto-check on mount does not fire a 403 for an operator who cannot
-      // see the Manage tile it feeds.
-      canPing: {{ if .perms.manageOverview }}true{{ else }}false{{ end }},
-      // Emitted as JS (like geofileText above) so html/template escapes the
-      // translations as JS strings; an apostrophe would otherwise end the
-      // attribute's string.
-      pingText: {
-        online: '{{ i18n "pages.index.internetOnline" }}',
-        partial: '{{ i18n "pages.index.internetPartial" }}',
-        offline: '{{ i18n "pages.index.internetOffline" }}',
-        loading: '{{ i18n "pages.index.pingChecking" }}',
-        unreachable: '{{ i18n "pages.index.pingUnreachable" }}',
-      },
-      mobileMenuOpen: false,
-      sidebarHidden: window.__sidebarHidden || false,
-      langOpen: false,
-      currentLang: window.__langData.currentLang,
-      supportedLangs: window.__langData.supportedLangs,
-      currentLangName: window.__langData.currentLangName,
-      setLang: window.__langData.setLang,
     },
     computed: {
       // geofileStatus keyed by file name, for the Geofiles list. Empty until the
@@ -1925,19 +1910,6 @@
         (this.geofileStatus || []).forEach(state => { byName[state.name] = state; });
         return byName;
       },
-      // The Manage tile's ping rows. Before the first answer lands, show the
-      // three known services as pending so the widget never reads empty.
-      pingList() {
-        const targets = (this.ping && this.ping.targets) || [];
-        if (targets.length) return targets;
-        return ['Google', 'Cloudflare', 'YouTube'].map(name => ({ name }));
-      },
-      pingOverallText() {
-        if (!this.ping || !this.ping.overall) {
-          return this.pingChecking ? this.pingText.loading : '';
-        }
-        return this.pingText[this.ping.overall] || this.ping.overall;
-      },
       // Identity tile. A user-set name wins; otherwise the distro name; the
       // hostname is the last resort so the tile is never blank.
       // Hostname, not distro: the distro now has its own line below, and
@@ -1946,6 +1918,31 @@
       // which is usually just the IP the admin typed.
       serverLabel() {
         return this.serverName || this.status.hostname || '{{ .host }}';
+      },
+      // The name /getDb is about to send back, assembled the way the server does
+      // it (BuildBackupFilename in web/service/server.go): the stem, then the
+      // ticked components joined by "_".
+      //
+      // The panel name and the domain arrive already sanitized from the server so
+      // the two cannot disagree on what a space or a unicode label becomes. Date
+      // and time are the browser's clock while the file carries the server's, so
+      // those digits can differ by a timezone. That is fine for what this is for:
+      // showing WHICH parts appear, and above all that unticking every box is a
+      // real choice that really does yield a bare PRO-UI.db.
+      backupFilename() {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const values = {
+          panelName: '{{ .backup_panel_name }}',
+          domain: '{{ .backup_domain }}',
+          date: '' + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()),
+          time: pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds()),
+        };
+        const picked = BACKUP_NAME_ORDER
+          .filter(part => this.backupNameModal.parts.includes(part))
+          .map(part => values[part])
+          .filter(Boolean);
+        return 'PRO-UI' + (picked.length ? '_' + picked.join('_') : '') + '.db';
       },
       // "Ubuntu 24.04 - kernel 6.8.0-31-generic", degrading gracefully when the
       // backend has not supplied a field.
@@ -2089,7 +2086,20 @@
           {
             key: 'cpu', icon: 'cpu', label: '{{ i18n "pages.index.cpu" }}',
             percent: this.status.cpu.percent,
-            meta: CPUFormatter.cpuCoreFormat(this.status.cpuCores),
+            // Cores  ·  clock, the same two-part shape the swap and disk rows use.
+            //
+            // cpuSpeedCurMhz FIRST, and that is the whole point of the field: this
+            // row is a live readout, and cpuSpeedMhz is the speed the chip is RATED
+            // for, which never moves (4900 on the machine this was written on, the
+            // literal cpuinfo_max_freq). The spec tile above still shows the rated
+            // one, where it belongs. Falls back to it only on a host with no
+            // cpufreq and no "cpu MHz" - usually a VM, where there is no live clock
+            // to read - and shows nothing at all rather than a confident 0.00 MHz.
+            meta: CPUFormatter.cpuCoreFormat(this.status.cpuCores)
+              + ((this.status.cpuSpeedCurMhz || this.status.cpuSpeedMhz)
+                ? '  ·  ' + CPUFormatter.cpuSpeedFormat(
+                    this.status.cpuSpeedCurMhz || this.status.cpuSpeedMhz)
+                : ''),
           },
           {
             key: 'mem', icon: 'ram', label: '{{ i18n "pages.index.memory" }}',
@@ -2176,19 +2186,6 @@
       },
     },
     methods: {
-      toggleSidebar() {
-        // On mobile the rail is an off-canvas drawer driven by mobileMenuOpen
-        // (is-mobile-open slides it in and the overlay blocks the page behind
-        // it); sidebarHidden would only flip its desktop collapse state and
-        // persist it, so the drawer would never open. On desktop the hamburger
-        // is the collapse toggle, persisted across visits.
-        if (this.isMobile) {
-          this.mobileMenuOpen = !this.mobileMenuOpen;
-          return;
-        }
-        this.sidebarHidden = !this.sidebarHidden;
-        localStorage.setItem('isSidebarHidden', this.sidebarHidden);
-      },
       // --- bento tile helpers -------------------------------------------
       // 2*pi*r for the r=16 ring in the markup. components.css sets the same
       // number as stroke-dasharray; both derive from that one radius.
@@ -2237,13 +2234,6 @@
       // address rather than a blob.
       maskIp(ip) {
         return (ip || '').replace(/[^:.]/g, '•');
-      },
-      // Local IPv4s beyond the public exit IP, so a server with several bound
-      // addresses shows all of them instead of only the single public one.
-      extraIpv4s() {
-        const pub = this.status && this.status.publicIP;
-        if (!pub || !Array.isArray(pub.localIp4)) return [];
-        return pub.localIp4.filter(ip => ip !== pub.ipv4);
       },
       // Rate for the selected interface, falling back to the aggregate when
       // "All" is chosen or the backend has not sent per-NIC counters yet.
@@ -2304,85 +2294,6 @@
           const msg = await HttpUtil.get('/panel/api/server/userStats');
           if (msg && msg.success && msg.obj) this.userStats = msg.obj;
         } catch (e) { /* best-effort */ }
-      },
-      // The Manage tile's connectivity widget: asks the server to probe Google,
-      // Cloudflare and YouTube and keeps the answer for the rows to render.
-      async checkInternet() {
-        if (this.pingChecking) return;
-        this.pingChecking = true;
-        try {
-          const msg = await HttpUtil.get('/panel/api/server/ping');
-          if (msg && msg.success && msg.obj) this.ping = msg.obj;
-        } catch (e) { /* best-effort; the tile keeps its previous state */ }
-        finally { this.pingChecking = false; }
-      },
-      formatPing(rttMs) {
-        if (rttMs == null || rttMs < 0) return '';
-        return rttMs.toFixed(0) + ' ms';
-      },
-      rowState(t) {
-        return (t && t.status) || 'pending';
-      },
-      // Loads the dashboard outbound card: tag/protocol/traffic plus the last
-      // test outcome for each outbound. Read-only, so it runs for any user who
-      // can see the overview, not only PermXraySettings holders.
-      async fetchOutboundStatus() {
-        if (this.outboundStatusLoading) return;
-        this.outboundStatusLoading = true;
-        try {
-          const msg = await HttpUtil.get('/panel/xray/outboundStatus');
-          if (msg && msg.success && Array.isArray(msg.obj)) {
-            this.outboundStatusList = msg.obj;
-          }
-        } finally {
-          this.outboundStatusLoading = false;
-        }
-      },
-      // Kicks off a server-side test of every testable outbound (sequenced by
-      // the service's semaphore), then polls until the persisted results catch
-      // up. Nothing else on the dashboard is this expensive, but the card has a
-      // spinner and the request is fire-and-forget, so the page never blocks.
-      async runOutboundTests() {
-        if (this.outboundStatusTesting) return;
-        this.outboundStatusTesting = true;
-        try {
-          const msg = await HttpUtil.post('/panel/xray/testAllOutbounds');
-          if (!msg || !msg.success) {
-            return;
-          }
-          // Poll every 3s until every TESTABLE row has a result (blackhole and
-          // blocked are never tested) or ~90s elapses.
-          const deadline = Date.now() + 90000;
-          while (Date.now() < deadline) {
-            await PromiseUtil.sleep(3000);
-            await this.fetchOutboundStatus();
-            const testable = this.outboundStatusList.filter((r) => r.protocol !== 'blackhole' && r.tag !== 'blocked');
-            if (testable.length === 0 || testable.every((r) => r.status)) {
-              break;
-            }
-          }
-        } finally {
-          this.outboundStatusTesting = false;
-        }
-      },
-      outboundRowState(row) {
-        if (row && row.status) {
-          return row.status.success ? 'ok' : 'fail';
-        }
-        return 'pending';
-      },
-      outboundRowLabel(row) {
-        if (!row) return '';
-        return row.protocol ? row.protocol + ' - ' + row.tag : row.tag;
-      },
-      outboundTrafficText(row) {
-        if (!row) return '';
-        const up = this.formatBytes(row.up);
-        const down = this.formatBytes(row.down);
-        return '↑ ' + up + ' ↓ ' + down;
-      },
-      outboundRowError(row) {
-        return (row && row.status && row.status.error) || '{{ i18n "pages.index.pingUnreachable" }}';
       },
       // The modal's row/level/syslog controls and its refresh icon go through
       // here, so they re-run the loader that opened it instead of always
@@ -2456,75 +2367,7 @@
         logModal.loading = false;
       },
       openRestore() {
-        restoreModal.show();
-      },
-      formatBackupTime(ts) {
-        if (!ts) return '';
-        return typeof moment !== 'undefined' ? moment(ts * 1000).format('YYYY-MM-DD HH:mm') : String(ts);
-      },
-      formatBytes(bytes) {
-        if (bytes === undefined || bytes === null || isNaN(bytes)) return '';
-        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        let i = 0;
-        let v = Number(bytes);
-        while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-        return v.toFixed(v >= 10 || i === 0 ? 0 : 1) + ' ' + units[i];
-      },
-      async loadLocalBackups() {
-        restoreModal.loading = true;
-        try {
-          const msg = await HttpUtil.post('/panel/api/server/backupList');
-          if (msg.success && Array.isArray(msg.obj)) {
-            this.localBackups = msg.obj;
-          }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          restoreModal.loading = false;
-        }
-      },
-      async createLocalBackup() {
-        restoreModal.creating = true;
-        try {
-          const msg = await HttpUtil.post('/panel/api/server/createBackup');
-          if (!msg.success) {
-            this.$message.error(msg.msg || '{{ i18n "pages.index.createBackupError" }}');
-            return;
-          }
-          this.$message.success('{{ i18n "pages.index.createBackupSuccess" }}');
-          await this.loadLocalBackups();
-        } catch (e) {
-          console.error(e);
-        } finally {
-          restoreModal.creating = false;
-        }
-      },
-      restoreLocalBackup(fileName) {
-        this.$confirm({
-          title: '{{ i18n "pages.index.restoreBackupConfirmTitle" }}',
-          content: `[[ fileName ]]`,
-          class: themeSwitcher.currentTheme,
-          okText: '{{ i18n "confirm" }}',
-          cancelText: '{{ i18n "cancel" }}',
-          onOk: async () => {
-            this.loading(true);
-            const formData = new FormData();
-            formData.append('fileName', fileName);
-            const msg = await HttpUtil.post('/panel/api/server/restoreBackup', formData, {
-              headers: { 'Content-Type': 'multipart/form-data' }
-            });
-            this.loading(false);
-            if (!msg.success) return;
-            this.loading(true);
-            const restartMsg = await HttpUtil.post("/panel/setting/restartPanel");
-            this.loading(false);
-            if (restartMsg.success) {
-              this.loading(true);
-              await PromiseUtil.sleep(5000);
-              location.reload();
-            }
-          },
-        });
+        this.openBackup();
       },
       pushHistory() {
         const cap = this.HISTORY_POINTS;
@@ -2580,6 +2423,7 @@
           if (!obj || !obj.updated) return;
           this.updatedModal.from = obj.from || '';
           this.updatedModal.to = obj.to || '';
+          this.updatedModal.backup = obj.backupPath || '';
           this.updatedModal.visible = true;
         } catch (e) { /* nothing to announce */ }
       },
@@ -2621,6 +2465,26 @@
       openUpdateModal() {
         this.updateModal.visible = true;
       },
+      // Opens the donate dialog, clearing any stale "copied" tick from a prior
+      // visit so the dialog never opens already claiming something was copied.
+      openDonateModal() {
+        this.donateModal.copied = -1;
+        this.donateModal.visible = true;
+      },
+      // ClipboardManager falls back to execCommand, so this works on the plain
+      // HTTP panels navigator.clipboard refuses to serve. The tick is per row
+      // and self-clears; a failed copy says so rather than silently ticking.
+      async copyDonateAddress(index, address) {
+        const ok = await ClipboardManager.copyText(address);
+        if (!ok) {
+          this.donateModal.copied = -1;
+          this.$message.error('{{ i18n "somethingWentWrong" }}');
+          return;
+        }
+        this.donateModal.copied = index;
+        clearTimeout(this.donateCopyTimer);
+        this.donateCopyTimer = setTimeout(() => { this.donateModal.copied = -1; }, 1800);
+      },
       // The dialog's own OK button. Closes it first so the card's progress bar,
       // which is what reports the rest of the run, is not hidden behind a mask.
       confirmPanelUpdate() {
@@ -2644,20 +2508,7 @@
         // start failing - harmless, they're ignored - until the page reloads.
         // A terminal phase left over from a previous attempt is ignored: this run
         // hasn't reached the server yet, so only forward progress is adopted.
-        const poll = setInterval(async () => {
-          try {
-            const p = await HttpUtil.get('/panel/api/server/updateProgress');
-            if (p && p.success && p.obj) {
-              const phase = p.obj.phase;
-              if (phase === 'error' || phase === 'cancelled') return;
-              if (typeof p.obj.percent === 'number') this.panelUpdate.percent = p.obj.percent;
-              if (phase) this.panelUpdate.phase = phase;
-              if (typeof p.obj.speed === 'number') this.panelUpdate.speed = p.obj.speed;
-              if (typeof p.obj.bytes === 'number') this.panelUpdate.bytes = p.obj.bytes;
-              if (typeof p.obj.total === 'number') this.panelUpdate.total = p.obj.total;
-            }
-          } catch (e) { /* panel restarting - ignore */ }
-        }, 700);
+        const poll = setInterval(() => this.readPanelUpdateProgress(), 700);
         try {
           const msg = await HttpUtil.post('/panel/api/server/updatePanel');
           clearInterval(poll);
@@ -2699,7 +2550,99 @@
           this.panelUpdate.cancelling = false;
         }
       },
+      // One read of the server's self-update progress into panelUpdate. Returns the
+      // raw object so a caller can decide what a phase change means; returns null
+      // when the panel could not answer (which, mid-update, usually means it is
+      // restarting).
+      async readPanelUpdateProgress() {
+        try {
+          const p = await HttpUtil.get('/panel/api/server/updateProgress');
+          if (!p || !p.success || !p.obj) return null;
+          const phase = p.obj.phase;
+          // error/cancelled are written once by UpdatePanel's deferred block and then
+          // never cleared for the life of the process, so they are not evidence about
+          // THIS run. Only forward progress is adopted.
+          if (phase === 'error' || phase === 'cancelled') return p.obj;
+          if (typeof p.obj.percent === 'number') this.panelUpdate.percent = p.obj.percent;
+          if (phase) this.panelUpdate.phase = phase;
+          if (typeof p.obj.speed === 'number') this.panelUpdate.speed = p.obj.speed;
+          if (typeof p.obj.bytes === 'number') this.panelUpdate.bytes = p.obj.bytes;
+          if (typeof p.obj.total === 'number') this.panelUpdate.total = p.obj.total;
+          return p.obj;
+        } catch (e) {
+          return null; // panel restarting - ignore
+        }
+      },
+      // Re-attach to a self-update that was already running when this page loaded.
+      //
+      // Needed because the thing that normally drives the UI - the blocked POST to
+      // /updatePanel - belongs to a page that no longer exists. The download does not
+      // care: its context is context.Background(), and Gin does not kill a handler
+      // when the browser leaves. So the server keeps pulling the binary while the
+      // overview, rebuilt from scratch, shows an idle tile. `running` is what tells
+      // the two apart; the phase alone cannot, because terminal phases stick.
+      async resumePanelUpdate() {
+        let st = null;
+        try {
+          const p = await HttpUtil.get('/panel/api/server/updateProgress');
+          if (p && p.success && p.obj) st = p.obj;
+        } catch (e) { /* nothing to resume if we cannot ask */ }
+        if (!st || !st.running) return;
+        this.panelUpdate.updating = true;
+        this.panelUpdate.error = '';
+        this.panelUpdate.percent = typeof st.percent === 'number' ? st.percent : 0;
+        this.panelUpdate.phase = st.phase || 'downloading';
+        this.panelUpdate.speed = st.speed || 0;
+        this.panelUpdate.bytes = st.bytes || 0;
+        this.panelUpdate.total = st.total || 0;
+        this.watchPanelUpdate();
+      },
+      // Follows a resumed update to its end. Recursive setTimeout rather than
+      // setInterval so a slow answer cannot stack requests behind a panel that is
+      // busy installing.
+      //
+      // The outcome has to be read off the phase here, because nobody is holding the
+      // request that would otherwise report it: `installing`/`restarting` mean the
+      // swap is armed, so hold the bar and reload once the panel should be back.
+      watchPanelUpdate() {
+        clearTimeout(this.panelUpdateTimer);
+        this.panelUpdateTimer = setTimeout(async () => {
+          const st = await this.readPanelUpdateProgress();
+          if (!st) {
+            // No answer. Mid-restart this is expected and the reload below is already
+            // armed; otherwise keep watching.
+            this.watchPanelUpdate();
+            return;
+          }
+          if (st.phase === 'installing' || st.phase === 'restarting') {
+            this.panelUpdate.phase = st.phase;
+            this.panelUpdate.percent = 100;
+            this.panelUpdate.speed = 0;
+            if (!this.panelUpdateReloadArmed) {
+              this.panelUpdateReloadArmed = true;
+              setTimeout(() => location.reload(), 9000);
+            }
+            return;
+          }
+          if (!st.running) {
+            if (st.phase === 'cancelled') { this.resetPanelUpdate(); return; }
+            if (st.phase === 'error') {
+              this.panelUpdate.updating = false;
+              this.panelUpdate.cancelling = false;
+              this.panelUpdate.speed = 0;
+              this.panelUpdate.error = '{{ i18n "pages.index.updateFailed" }}';
+              return;
+            }
+            if (st.phase === 'staged') return; // waiting on the operator to apply it
+            this.resetPanelUpdate();
+            return;
+          }
+          this.watchPanelUpdate();
+        }, 700);
+      },
       resetPanelUpdate() {
+        clearTimeout(this.panelUpdateTimer);
+        this.panelUpdateReloadArmed = false;
         this.panelUpdate.updating = false;
         this.panelUpdate.cancelling = false;
         this.panelUpdate.error = '';
@@ -2708,85 +2651,6 @@
         this.panelUpdate.speed = 0;
         this.panelUpdate.bytes = 0;
         this.panelUpdate.total = 0;
-      },
-      // --- Reinstall current version ------------------------------------
-      // Re-downloads the current version binary and reinstalls it.
-      async reinstallPanel() {
-        this.panelUpdate.updating = true;
-        this.panelUpdate.cancelling = false;
-        this.panelUpdate.error = '';
-        this.panelUpdate.percent = 0;
-        this.panelUpdate.phase = 'downloading';
-        this.panelUpdate.speed = 0;
-        this.panelUpdate.bytes = 0;
-        this.panelUpdate.total = 0;
-        const poll = setInterval(async () => {
-          try {
-            const p = await HttpUtil.get('/panel/api/server/updateProgress');
-            if (p && p.success && p.obj) {
-              const phase = p.obj.phase;
-              if (phase === 'error' || phase === 'cancelled') return;
-              if (typeof p.obj.percent === 'number') this.panelUpdate.percent = p.obj.percent;
-              if (phase) this.panelUpdate.phase = phase;
-              if (typeof p.obj.speed === 'number') this.panelUpdate.speed = p.obj.speed;
-              if (typeof p.obj.bytes === 'number') this.panelUpdate.bytes = p.obj.bytes;
-              if (typeof p.obj.total === 'number') this.panelUpdate.total = p.obj.total;
-            }
-          } catch (e) { /* panel restarting - ignore */ }
-        }, 700);
-        try {
-          const msg = await HttpUtil.post('/panel/api/server/reinstallPanel');
-          clearInterval(poll);
-          if (msg && msg.success && msg.obj && msg.obj.cancelled) {
-            this.resetPanelUpdate();
-            return;
-          }
-          if (!msg || !msg.success) {
-            this.panelUpdate.updating = false;
-            this.panelUpdate.cancelling = false;
-            this.panelUpdate.speed = 0;
-            this.panelUpdate.error = (msg && msg.msg) || 'reinstall failed';
-            return;
-          }
-          this.panelUpdate.phase = 'restarting';
-          this.panelUpdate.percent = 100;
-          this.panelUpdate.speed = 0;
-          setTimeout(() => location.reload(), 9000);
-        } catch (e) {
-          clearInterval(poll);
-          this.panelUpdate.updating = false;
-          this.panelUpdate.cancelling = false;
-          this.panelUpdate.speed = 0;
-          this.panelUpdate.error = '' + e;
-        }
-      },
-      // --- Reboot server -----------------------------------------------
-      confirmReboot() {
-        this.$confirm({
-          title: '{{ i18n "pages.index.rebootConfirmTitle" }}',
-          content: '{{ i18n "pages.index.rebootConfirmContent" }}',
-          okText: '{{ i18n "pages.index.rebootServer" }}',
-          okType: 'danger',
-          cancelText: '{{ i18n "cancel" }}',
-          class: this.themeSwitcher.currentTheme,
-          onOk: () => this.doReboot(),
-        });
-      },
-      async doReboot() {
-        try {
-          const msg = await HttpUtil.post('/panel/api/server/reboot');
-          if (!msg || !msg.success) return;
-          this.rebooting = true;
-          const probe = () => {
-            fetch('panel/api/server/status', { method: 'GET', cache: 'no-store' })
-              .then((r) => {
-                if (r.ok || r.status === 401 || r.status === 302) { location.reload(); }
-                else { setTimeout(probe, 5000); }
-              })
-              .catch(() => { setTimeout(probe, 5000); });
-          };
-          setTimeout(probe, 20000);
-        } catch (e) { /* ignore */ }
       },
       // --- manual update: which source ----------------------------------
       // The picker closes on the way through rather than staying behind whatever it
@@ -3049,7 +2913,7 @@
           if (msg.obj.supported) return;
           // "don't show again" is keyed by the distro name, so moving to a
           // different unsupported distro warns again.
-          if (localStorage.getItem('proui.distroWarnDismissed') === msg.obj.pretty) return;
+          if (localStorage.getItem('vpnui.distroWarnDismissed') === msg.obj.pretty) return;
           this.distroModal.pretty = msg.obj.pretty || 'This system';
           this.distroModal.tested = msg.obj.tested || '';
           this.distroModal.visible = true;
@@ -3057,7 +2921,7 @@
       },
       dismissDistroWarning(forever) {
         if (forever) {
-          try { localStorage.setItem('proui.distroWarnDismissed', this.distroModal.pretty); } catch (e) { /* ignore */ }
+          try { localStorage.setItem('vpnui.distroWarnDismissed', this.distroModal.pretty); } catch (e) { /* ignore */ }
         }
         this.distroModal.visible = false;
       },
@@ -3105,6 +2969,81 @@
         this.geofilesModal.visible = true;
         this.loadCustomGeo();
         this.fetchGeofileStatus();
+        // Re-attach to a download already in flight. Opening the dialog is the most
+        // likely moment for that: the operator started one, went to look at their
+        // inbounds while it ran, and came back.
+        this.geofileRunPoll();
+      },
+      // One poll of the server's geofile job, rescheduling itself while the job is
+      // live. Recursive setTimeout rather than setInterval, matching pollSsl in
+      // settings.html: an interval keeps firing while a slow response is still in
+      // flight and stacks requests behind a panel that is busy restarting Xray.
+      async geofileRunPoll() {
+        clearTimeout(this.geofileRunTimer);
+        // One chain at a time. Without this a call made while an earlier one is still
+        // awaiting its response leaves the earlier one to schedule a timer of its own
+        // after the clearTimeout above has already run, and the two chains then poll
+        // in parallel. openGeofiles and mounted can both land inside the same tick.
+        const seq = ++this.geofileRunSeq;
+        let st = null;
+        try {
+          const msg = await HttpUtil.get('/panel/api/server/geofileProgress');
+          if (msg && msg.success && msg.obj) st = msg.obj;
+        } catch (e) { /* panel busy or restarting - try again on the next tick */ }
+        if (seq !== this.geofileRunSeq) return; // superseded while we waited
+        // While our own POST is still outstanding the server may not have claimed the
+        // run yet, and what it reports is the PREVIOUS run's terminal state. Adopting
+        // that would flash "done" over a download that has not started and stop the
+        // poll before it ever sees one, so only forward progress is taken.
+        if (st && (!this.geofileRunPosting || st.running)) {
+          const wasRunning = this.geofileRun.running;
+          this.geofileRun = st;
+          // The run ended while we were watching: the badges are stale now, because a
+          // download is the one thing that flips a row to installed.
+          if (wasRunning && !st.running) this.fetchGeofileStatus();
+        }
+        if (this.geofileRunPosting || !st || st.running) {
+          this.geofileRunTimer = setTimeout(() => this.geofileRunPoll(), 900);
+        }
+      },
+      // The label under the progress bar: which file is moving right now, or how the
+      // finished run went.
+      geofileRunText() {
+        const r = this.geofileRun;
+        if (r.running) {
+          const done = (r.fetched || []).length;
+          const total = (r.files || []).length;
+          const of = total > 1 ? ' (' + (done + 1) + '/' + total + ')' : '';
+          if (r.current) return r.current + of;
+          // No current file: either nothing has started yet, or every file is in and
+          // what is left is the Xray restart UpdateGeofile ends with.
+          return total && done >= total
+            ? '{{ i18n "pages.index.geofileRestarting" }}'
+            : '{{ i18n "pages.index.geofileRunStarting" }}';
+        }
+        if (r.failed) return r.summary || '{{ i18n "pages.index.geofileRunFailed" }}';
+        return '{{ i18n "pages.index.geofileRunDone" }}';
+      },
+      geofileRunPercent() {
+        const r = this.geofileRun;
+        const total = (r.files || []).length;
+        if (!total) return 0;
+        return Math.round(((r.fetched || []).length / total) * 100);
+      },
+      async toggleGeofileAutoUpdate(checked) {
+        const previous = this.geofileAutoUpdate;
+        // Optimistic, then rolled back on refusal: the switch is the only feedback
+        // there is, so it must not sit on the old value while the request is in
+        // flight and then jump.
+        this.geofileAutoUpdate = checked;
+        this.geofileAutoUpdateSaving = true;
+        try {
+          const msg = await HttpUtil.post('/panel/api/server/geofileAutoUpdate', { enabled: checked });
+          if (!msg || !msg.success) this.geofileAutoUpdate = previous;
+        } catch (e) {
+          this.geofileAutoUpdate = previous;
+        }
+        this.geofileAutoUpdateSaving = false;
       },
       async fetchGeofileStatus() {
         try {
@@ -3340,16 +3279,28 @@
           class: themeSwitcher.currentTheme,
           cancelText: '{{ i18n "cancel"}}',
           onOk: async () => {
-            this.geofilesModal.visible = false;
-            this.loading(true, '{{ i18n "pages.index.dontRefresh"}}');
+            // The dialog STAYS OPEN and the full-page spinner is gone. The transfer
+            // runs server-side and outlives this request, so freezing the whole panel
+            // behind it bought nothing - and it was what made leaving the page look
+            // like the update had been cancelled. Progress now comes from the server,
+            // which means it is still there when the operator comes back.
+            this.geofileRun = {
+              running: true, done: false, current: fileName,
+              files: isSingleFile ? [fileName] : [], fetched: [], failed: false, summary: '',
+            };
+            this.geofileRunPosting = true;
+            this.geofileRunPoll();
             const url = isSingleFile
               ? `/panel/api/server/updateGeofile/${fileName}`
               : `/panel/api/server/updateGeofile`;
-            await HttpUtil.post(url);
+            try {
+              await HttpUtil.post(url);
+            } catch (e) { /* the poll below reports how it actually went */ }
+            this.geofileRunPosting = false;
+            await this.geofileRunPoll();
             // A download is the one thing that flips a row from not-installed to
             // installed, so re-read rather than leaving the badges stale.
             await this.fetchGeofileStatus();
-            this.loading(false);
           },
         });
       },
@@ -3399,7 +3350,7 @@
       },
       downloadXrayLogs() {
         if (!Array.isArray(this.xraylogModal.logs) || this.xraylogModal.logs.length === 0) {
-          FileManager.downloadTextFile('', 'vpn-ui.log');
+          FileManager.downloadTextFile('', 'PRO-UI.log');
           return;
         }
         const lines = this.xraylogModal.logs.map(l => {
@@ -3414,7 +3365,7 @@
             return JSON.stringify(l);
           }
         }).join('\n');
-        FileManager.downloadTextFile(lines, 'vpn-ui.log');
+        FileManager.downloadTextFile(lines, 'PRO-UI.log');
       },
       async openConfig() {
         this.loading(true);
@@ -3428,8 +3379,22 @@
       openBackup() {
         backupModal.show();
       },
+      openBackupName() {
+        backupNameModal.show();
+      },
+      // Navigation, not an XHR: the response is a file the browser saves itself,
+      // and its name comes from the server's Content-Disposition. That is why the
+      // ticks travel as query params instead of a request body.
+      //
+      // All four are always sent, unticked ones included as false. An absent flag
+      // means "no picker was involved" server-side, so omitting the false ones
+      // would silently turn all-unticked back into the default dated name.
       exportDatabase() {
-        window.location = basePath + 'panel/api/server/getDb';
+        backupNameModal.hide();
+        const query = BACKUP_NAME_ORDER
+          .map(part => part + '=' + (backupNameModal.parts.includes(part) ? 'true' : 'false'))
+          .join('&');
+        window.location = basePath + 'panel/api/server/getDb?' + query;
       },
       importDatabase() {
         const fileInput = document.createElement('input');
@@ -3463,7 +3428,7 @@
         });
         fileInput.click();
       },
-      // Import a stock 3x-ui (or vpn-ui) backup over the current data, keeping this
+      // Import a stock 3x-ui (or PRO-UI) backup over the current data, keeping this
       // panel's own address/cert/secret. Distinct from importDatabase (a like-for-like
       // restore): the admin accounts come from the backup, so the operator re-logs-in
       // with the imported panel's credentials afterwards.
@@ -3527,30 +3492,37 @@
         this.showAlert = true;
       }
 
-      // Fire all three critical requests in parallel instead of sequentially
-      const [settingsMsg] = await Promise.all([
-        HttpUtil.post('/panel/setting/defaultSettings'),
-        this.getStatus(),
-        this.getCoreStatuses(),
-      ]);
-      if (settingsMsg && settingsMsg.success) {
-        this.ipLimitEnable = settingsMsg.obj.ipLimitEnable;
-        this.xrayAccessLogEnable = !!settingsMsg.obj.xrayAccessLogEnable;
+      const msg = await HttpUtil.post('/panel/setting/defaultSettings');
+      if (msg.success) {
+        this.ipLimitEnable = msg.obj.ipLimitEnable;
+        this.xrayAccessLogEnable = !!msg.obj.xrayAccessLogEnable;
+        if (typeof msg.obj.geofileAutoUpdate === 'boolean') {
+          this.geofileAutoUpdate = msg.obj.geofileAutoUpdate;
+        }
       }
 
+      // Initial status fetch
+      await this.getStatus();
+      await this.getCoreStatuses();
       this.checkDistroSupport();
       this.fetchUserStats();
       this.fetchServerName();
       this.fetchPanelLocation();
-      if (this.canPing) this.checkInternet();
+      // Up front, not only in openGeofiles(), so the badges are already there when
+      // the list first paints rather than appearing a round-trip later. A row whose
+      // badge has not arrived yet is indistinguishable from one the endpoint could
+      // not answer for, which is the one thing this list exists to tell apart.
+      // openGeofiles() still refreshes on open.
       this.fetchGeofileStatus();
-      this.checkForUpdate(false);
-      this.announceUpdateResult();
-
-      // Outbound card: load once, keep it fresh on a poll (the 60s auto-tests
-      // on the Xray page also persist into this card's view).
-      this.fetchOutboundStatus();
-      this.outboundStatusTimer = setInterval(() => this.fetchOutboundStatus(), 30000);
+      // Pick back up whatever was already running when this page loaded. Leaving the
+      // overview destroys this Vue instance (navigation is a full page load), but it
+      // does NOT stop the work: both downloads run on contexts of their own and Gin
+      // does not kill a handler when the browser walks away. Without these two the
+      // panel looked idle while it was still pulling a binary or 74MB of geo data.
+      this.resumePanelUpdate();
+      this.geofileRunPoll();
+      this.checkForUpdate(false); // best-effort update check on every overview load
+      this.announceUpdateResult(); // "Updated to vX" if this load follows a self-update
 
       // Setup WebSocket for real-time updates
       if (window.wsClient) {
@@ -3600,12 +3572,6 @@
       } else {
         // Fallback to polling if WebSocket is not available
         this.startPolling();
-      }
-    },
-    beforeDestroy() {
-      if (this.outboundStatusTimer) {
-        clearInterval(this.outboundStatusTimer);
-        this.outboundStatusTimer = null;
       }
     },
   });

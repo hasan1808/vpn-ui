@@ -74,12 +74,53 @@ type MtprotoService struct {
 
 // mtprotoSettings is the MTProto slice of an inbound's Settings JSON.
 //
-// The inbound owns only what a LISTENER must own (its port, via inbound.Port).
-// Everything a Telegram user actually experiences (modes, FakeTLS domain, ad tag,
-// device limit, external proxy) is per-CLIENT, because telemt keys those off the
-// authenticated secret rather than the socket.
+// The INBOUND owns the proxy's policy: which connection modes it accepts, the FakeTLS
+// domain it emulates, and the per-account device cap. These used to be per-client
+// fields, which the data model allowed but telemt never honoured:
+//
+//   - [censorship].tls_domain models ONE domain's real certificate for the whole
+//     process, so the old firstTlsDomain() collapsed every account's domain to the
+//     first one anyway.
+//   - modes were a per-account map on top of a process-wide listener union, so the
+//     inbound already had to accept the union of everything any account held.
+//
+// The credential (secret), the link endpoints (externalProxy) and the ad tag are
+// per-account and stay on the client. The ad tag is the awkward one and is called
+// out at anyAdtag: telemt really does key it per user, so two accounts on one inbound
+// can carry different tags, but the middle-proxy path any tag needs is a PROCESS
+// switch, so a tag on ONE account changes the egress of every account beside it.
+//
+// Data in the PRE-MOVE shape still reaches this struct, and still has to mean the same
+// thing when it does. See the compatibility block below (resolveMtprotoPolicy,
+// UnmarshalJSON, MirrorInboundSettingsToClients) before changing any of these five.
 type mtprotoSettings struct {
 	Clients []mtprotoClient `json:"clients"`
+
+	// Connection modes this inbound accepts. The client picks one via its secret's
+	// prefix (bare / dd / ee); these say which the proxy will accept, and which links
+	// the UI offers. Rendered into [general.modes] (the listener) and repeated into
+	// [access.user_modes] for every account, because telemt reads an EMPTY per-account
+	// entry as "no restriction", the exact opposite of what an operator asked for.
+	ModeClassic bool `json:"modeClassic"` // no prefix: obfuscated2 / abridged
+	ModeSecure  bool `json:"modeSecure"`  // "dd" prefix: random padding
+	ModeTls     bool `json:"modeTls"`     // "ee" prefix: FakeTLS
+
+	// TlsDomain is the SNI the FakeTLS links front and the certificate telemt models
+	// its fake ServerHello on. One per process: the listener still runs
+	// unknown_sni_action="accept" (the handshake HMAC, not the SNI, proves secret
+	// possession), so a client presenting another name is not refused, it just gets
+	// an emulation modelled on this domain.
+	TlsDomain string `json:"tlsDomain"`
+
+	// UserLimit is the PER-ACCOUNT device cap, the same shape l2tp/wgc/gre/openconnect
+	// use: nil=absent(legacy=>1); 0=no limit; else 1..64. Enforced by telemt counting
+	// distinct client source IPs per account, not by the panel's IP allocator.
+	UserLimit *int `json:"userLimit"`
+
+	// ExternalProxy is the inbound-wide default set of link endpoints, used for every
+	// account that does not name its own. Like the per-account list it is
+	// link-generation only: telemt never sees it.
+	ExternalProxy []mtprotoExternalProxy `json:"externalProxy"`
 }
 
 // mtprotoClient is a MINIMAL client struct holding only what this service reads.
@@ -95,27 +136,23 @@ type mtprotoClient struct {
 	Secret string `json:"secret"` // 32 hex chars, the credential
 	Enable bool   `json:"enable"`
 
-	// Connection modes this account may use. The client picks one via its secret's
-	// prefix (bare / dd / ee); these say which the proxy will ACCEPT from it, and
-	// which links the UI offers. Enforced per-account by telemt via
-	// [access.user_modes] (our patch), not merely cosmetic.
-	ModeClassic bool `json:"modeClassic"` // no prefix: obfuscated2 / abridged
-	ModeSecure  bool `json:"modeSecure"`  // "dd" prefix: random padding
-	ModeTls     bool `json:"modeTls"`     // "ee" prefix: FakeTLS
+	// This account's own device cap. nil = inherit the inbound's User Limit, and it can
+	// only LOWER it (resolveUserLimitOverride).
+	//
+	// A DIFFERENT key from the "userLimit" this service already mirrors onto every
+	// client: that one is the INBOUND's cap written down for a downgrade, rewritten by
+	// MirrorInboundSettingsToClients on every sweep and read back by deriveMtprotoPolicy
+	// as the MAX across accounts. Overloading it would make an operator's per-account
+	// value both disappear within seconds and raise the inbound's own cap on its way out.
+	UserLimitOverride *int `json:"userLimitOverride"`
 
-	// TlsDomain is the SNI this account's FakeTLS link fronts. Per-account domains
-	// work because the inbound runs unknown_sni_action="accept" and the handshake
-	// HMAC (not the SNI) is what proves secret possession.
-	TlsDomain string `json:"tlsDomain"`
-
-	// AdtagEnable/Adtag credit sponsored channels to this account. telemt keys ad
-	// tags per user, but middle-proxy mode itself is process-wide, so ANY account
-	// with a tag puts the whole inbound on the middle-proxy path and forfeits Xray
-	// routing for every account on it (see usingRouting).
+	// AdtagEnable/Adtag credit sponsored channels to THIS account's tag, from
+	// @MTProxybot. Genuinely per-account storage (telemt's [access.user_ad_tags] is a
+	// per-user map, so two accounts can carry different tags), but NOT a per-account
+	// decision: the middle-proxy path a tag needs is a process switch, so setting one
+	// here takes Xray routing away from every account on the inbound. See anyAdtag.
 	AdtagEnable bool   `json:"adtagEnable"`
 	Adtag       string `json:"adtag"`
-
-	UserLimit *int `json:"userLimit"` // nil=absent(legacy=>1); 0=no limit; else 1..64
 
 	// ExternalProxy holds alternate host:port endpoints rendered into this
 	// account's links instead of the panel's own address (a relay/CDN in front).
@@ -130,21 +167,287 @@ type mtprotoExternalProxy struct {
 	Remark string `json:"remark"`
 }
 
-// modes returns the connection modes this account may use, as telemt's
-// [access.user_modes] spells them. An account with none enabled is unusable, which
-// activeClients rejects rather than silently rendering a dead entry.
-func (c mtprotoClient) modes() []string {
+// modes returns the connection modes this inbound accepts, as telemt's
+// [general.modes] and [access.user_modes] spell them. An inbound with none enabled
+// can be dialed by nothing, which RestartServices refuses to start rather than
+// render a config telemt reads as unrestricted.
+func (m *mtprotoSettings) modes() []string {
 	var out []string
-	if c.ModeClassic {
+	if m.ModeClassic {
 		out = append(out, "classic")
 	}
-	if c.ModeSecure {
+	if m.ModeSecure {
 		out = append(out, "secure")
 	}
-	if c.ModeTls {
+	if m.ModeTls {
 		out = append(out, "tls")
 	}
 	return out
+}
+
+// --- Compatibility with the pre-move settings shape --------------------------------
+//
+// Before the release that moved them, the three modes, the FakeTLS domain and the
+// device cap lived on every CLIENT. Data in that shape keeps arriving long after the
+// upgrade, by paths the startup lift does not sit on: a database restored from an old
+// backup, `vpn-ui migrate`, an API caller scripted against the old field names, or an
+// operator who rolled back to the previous binary, wrote, and rolled forward again.
+// Two halves cover it, and both have to exist:
+//
+//   - READ: resolveMtprotoPolicy resolves the effective policy out of EITHER shape and
+//     mtprotoSettings.UnmarshalJSON applies it, so nothing can read a legacy inbound as
+//     "no modes at all" merely because the lift has not run on it yet.
+//   - WRITE: MirrorInboundSettingsToClients copies the inbound's settled values back
+//     down onto every client, so the same blob still means something to the OLD binary.
+
+// MtprotoInboundPolicy is the inbound-level half of an MTProto inbound's settings:
+// everything telemt applies process-wide (see mtprotoSettings). Exported because the
+// subscription service builds tg:// links off exactly this set and must resolve it the
+// same way, legacy shape included, or a subscriber gets links for transports the proxy
+// refuses.
+type MtprotoInboundPolicy struct {
+	ModeClassic bool
+	ModeSecure  bool
+	ModeTls     bool
+	TlsDomain   string
+	// UserLimit keeps the RAW reading: nil=absent(=>1 device); 0=no limit; else 1..64.
+	// Resolve it through effectiveUserLimit, never by dereferencing.
+	UserLimit *int
+	// ExternalProxy is the inbound's default link endpoints. An account carrying its
+	// own list overrides this one outright rather than adding to it: the two are
+	// alternative answers to "where do this account's links point", and merging them
+	// would hand a subscriber endpoints the operator meant to replace.
+	ExternalProxy []MtprotoEndpoint
+}
+
+// MtprotoEndpoint is one alternate host:port a tg:// link can advertise.
+type MtprotoEndpoint struct {
+	Dest   string `json:"dest"`
+	Port   int    `json:"port"`
+	Remark string `json:"remark"`
+}
+
+// ModeEnabled reports whether this inbound accepts one of telemt's mode names.
+func (p MtprotoInboundPolicy) ModeEnabled(mode string) bool {
+	switch mode {
+	case "classic":
+		return p.ModeClassic
+	case "secure":
+		return p.ModeSecure
+	case "tls":
+		return p.ModeTls
+	}
+	return false
+}
+
+// mtprotoLegacyClient is the PRE-MOVE per-client shape, alive as a read format only.
+//
+// adtagEnable/adtag are deliberately not here. The ad tag never moved: it is still a
+// live per-client field on mtprotoClient, so there is nothing about it to resolve and
+// nothing to mirror.
+type mtprotoLegacyClient struct {
+	ModeClassic bool   `json:"modeClassic"`
+	ModeSecure  bool   `json:"modeSecure"`
+	ModeTls     bool   `json:"modeTls"`
+	TlsDomain   string `json:"tlsDomain"`
+	UserLimit   *int   `json:"userLimit"`
+}
+
+// MtprotoInboundPolicyOf resolves an MTProto inbound's policy straight from its stored
+// settings JSON, in either shape. The entry point for readers outside this package;
+// inside it, parseSettings already returns a resolved mtprotoSettings.
+//
+// Unparseable settings resolve to the zero policy (no mode accepted), which is what
+// every caller already did with a decode error: offer nothing rather than guess.
+func MtprotoInboundPolicyOf(settings string) MtprotoInboundPolicy {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(settings), &root); err != nil || root == nil {
+		return MtprotoInboundPolicy{}
+	}
+	policy, _ := resolveMtprotoPolicy(root)
+	return policy
+}
+
+// liftMtprotoSettingsBlob rewrites a settings blob in the pre-move shape into the
+// current one, with no database involved. The ADD path's entry point, called from
+// NormalizeInboundSettings ahead of FillSettingsDefaults.
+//
+// Order there is the whole reason this exists. An API body in the old shape carries its
+// policy on the CLIENTS and names none of the inbound-level keys, so filling defaults
+// first would stamp the fresh-inbound values (all three modes on, no device cap) over
+// it. The blob would then look already-migrated to every later reader, the startup lift
+// would skip it forever, and the caller's narrower set would be gone with nothing left
+// to recover it from.
+//
+// Returns the input untouched when it is not MTProto, is not a JSON object, or is
+// already in the current shape.
+func liftMtprotoSettingsBlob(protocol model.Protocol, settings string) string {
+	if protocol != model.MTPROTO {
+		return settings
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(settings), &raw); err != nil || raw == nil {
+		return settings
+	}
+	policy, legacy := resolveMtprotoPolicy(raw)
+	if !legacy {
+		return settings
+	}
+	for key, value := range map[string]any{
+		"modeClassic": policy.ModeClassic,
+		"modeSecure":  policy.ModeSecure,
+		"modeTls":     policy.ModeTls,
+		"tlsDomain":   policy.TlsDomain,
+		"userLimit":   *policy.UserLimit, // deriveMtprotoPolicy never leaves this nil
+	} {
+		bs, err := json.Marshal(value)
+		if err != nil {
+			return settings
+		}
+		raw[key] = bs
+	}
+	out, err := json.Marshal(raw)
+	if err != nil {
+		return settings
+	}
+	return string(out)
+}
+
+// resolveMtprotoPolicy answers what a settings blob MEANS, whichever shape it is in,
+// and reports whether it had to fall back to the legacy one.
+//
+// The shape test is key PRESENCE at the settings root, never a value. A blob carrying
+// none of modeClassic/modeSecure/modeTls predates the move: protocoldefaults.go seeds
+// all three onto every inbound created since, and the lift stamps all three onto every
+// one that existed before, so their joint absence is unambiguous. Anything else is read
+// straight off the root, an explicit false included: that is an operator turning a mode
+// off, not an absence to be guessed at.
+//
+// The legacy derivation is the MIGRATION'S, exactly, and sharing one function is the
+// point: the value a pre-lift read resolves to and the value the lift will eventually
+// store are the same one, so nothing an operator can observe changes when the lift
+// lands. A fallback to the fresh-inbound defaults instead would have silently widened
+// every legacy inbound to all three modes and no device cap for as long as the lift had
+// not run, and permanently for any path that writes back what it read (the panel's own
+// inbound form does exactly that).
+func resolveMtprotoPolicy(root map[string]json.RawMessage) (MtprotoInboundPolicy, bool) {
+	_, hasClassic := root["modeClassic"]
+	_, hasSecure := root["modeSecure"]
+	_, hasTls := root["modeTls"]
+	if !hasClassic && !hasSecure && !hasTls {
+		var clients []mtprotoLegacyClient
+		if blob, ok := root["clients"]; ok {
+			// A clients value that is not an array is somebody else's problem
+			// (checkClients refuses it on save); derive from nothing and move on.
+			_ = json.Unmarshal(blob, &clients)
+		}
+		return deriveMtprotoPolicy(clients), true
+	}
+
+	var policy MtprotoInboundPolicy
+	get := func(key string, into any) {
+		if bs, ok := root[key]; ok {
+			// A value of the wrong type leaves the field at its zero value rather than
+			// failing the whole inbound: one bad key must not take the other four down.
+			_ = json.Unmarshal(bs, into)
+		}
+	}
+	get("modeClassic", &policy.ModeClassic)
+	get("modeSecure", &policy.ModeSecure)
+	get("modeTls", &policy.ModeTls)
+	get("tlsDomain", &policy.TlsDomain)
+	get("userLimit", &policy.UserLimit)
+	get("externalProxy", &policy.ExternalProxy)
+	return policy, false
+}
+
+// deriveMtprotoPolicy seeds the inbound-level policy from a pre-move blob's accounts.
+// The one place the seeding rules live; the lift, the read-side fallback and (mirrored
+// by hand) the panel's own form all resolve through them.
+//
+//   - Modes: the UNION over the accounts, which is what the LISTENER already accepted.
+//     Some accounts gain a mode they did not individually hold; that granularity is
+//     what is being removed, on purpose.
+//   - TlsDomain: the first FakeTLS account's domain, which is the one telemt already
+//     modelled its fake certificate on for the whole process.
+//   - UserLimit: the MAX across accounts, and THIS ONE CHANGES BEHAVIOUR. Two accounts
+//     on one inbound really could hold different device caps, each enforced separately
+//     in [access.user_max_unique_ips], and afterwards they cannot. Max is chosen
+//     because it is the most permissive: nobody is locked out by the upgrade, at worst
+//     an account that was capped tighter than its neighbour gains headroom.
+func deriveMtprotoPolicy(clients []mtprotoLegacyClient) MtprotoInboundPolicy {
+	var policy MtprotoInboundPolicy
+	capEff := -1
+	for _, c := range clients {
+		policy.ModeClassic = policy.ModeClassic || c.ModeClassic
+		policy.ModeSecure = policy.ModeSecure || c.ModeSecure
+		policy.ModeTls = policy.ModeTls || c.ModeTls
+		if policy.TlsDomain == "" && c.ModeTls && strings.TrimSpace(c.TlsDomain) != "" {
+			policy.TlsDomain = strings.TrimSpace(c.TlsDomain)
+		}
+		// Compare on the EFFECTIVE cap, not the raw number: an ABSENT value means one
+		// device while an explicit 0 means no limit, which is 16 here (noLimitDevices),
+		// so the raw numbers are not on one scale. Storing the raw value of the winner
+		// keeps the distinction intact.
+		if eff := effectiveUserLimit(c.UserLimit); eff > capEff {
+			capEff, policy.UserLimit = eff, c.UserLimit
+		}
+	}
+	if !policy.ModeClassic && !policy.ModeSecure && !policy.ModeTls {
+		// No account held a usable mode (or there are no accounts at all), so there is
+		// nothing to preserve: fall back to the same all-on default a freshly created
+		// inbound gets rather than resolve to a config that grants everything (telemt
+		// reads an EMPTY per-account mode entry as "no restriction").
+		policy.ModeClassic, policy.ModeSecure, policy.ModeTls = true, true, true
+	}
+	if policy.UserLimit == nil {
+		// Either there were no accounts, or every one of them predates the field. An
+		// absent per-client value resolved to 1 device (effectiveUserLimit), so an
+		// explicit 1 keeps the cap exactly where it was; only a truly empty inbound gets
+		// the fresh-inbound default of 10 devices.
+		legacy := 1
+		if len(clients) == 0 {
+			legacy = 10
+		}
+		policy.UserLimit = &legacy
+	}
+	if policy.TlsDomain == "" {
+		policy.TlsDomain = "www.google.com"
+	}
+	return policy
+}
+
+// UnmarshalJSON decodes an MTProto inbound's settings in EITHER shape.
+//
+// The fallback lives on the TYPE rather than in parseSettings so that it cannot be
+// bypassed by a decode that reaches this struct some other way. What it prevents is
+// specific and silent: a legacy blob decoded plainly comes out with all three modes
+// false, and to telemt that is not "no modes" but "no restriction" (our patch reads an
+// empty [access.user_modes] entry that way), so the proxy would hand every account
+// every transport. startable() catches the rendered case and refuses to run the inbound
+// at all, which is the same outage by a louder route.
+func (m *mtprotoSettings) UnmarshalJSON(bs []byte) error {
+	// A named type with no methods, so this is the ordinary decode and not a recursion.
+	type plain mtprotoSettings
+	var decoded plain
+	if err := json.Unmarshal(bs, &decoded); err != nil {
+		return err
+	}
+	*m = mtprotoSettings(decoded)
+
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(bs, &root); err != nil || root == nil {
+		// Not an object (a literal null is the realistic case): the decode above already
+		// left the zero value, and there is nothing to resolve against.
+		return nil
+	}
+	policy, legacy := resolveMtprotoPolicy(root)
+	if !legacy {
+		return nil
+	}
+	m.ModeClassic, m.ModeSecure, m.ModeTls = policy.ModeClassic, policy.ModeSecure, policy.ModeTls
+	m.TlsDomain, m.UserLimit = policy.TlsDomain, policy.UserLimit
+	return nil
 }
 
 // mtprotoProcName is this inbound's procMgr child name. telemt does not retitle
@@ -205,12 +508,17 @@ func (s *MtprotoService) usingRouting(settings *mtprotoSettings) bool {
 
 // anyAdtag reports whether ANY account on this inbound carries an ad tag.
 //
-// Ad tags are per-account (telemt's [access.user_ad_tags]), but the middle-proxy
-// path they need is a PROCESS-wide switch (use_middle_proxy). So one tagged account
-// puts the whole inbound on that path: every account on it then egresses directly
-// and none of them can be routed through Xray. That is Telegram's design, not a
-// telemt gap: the middle-proxy session key is derived from the proxy's own egress
-// IP and port, which any proxied egress rewrites.
+// Any, not each, and that asymmetry is the whole point. The tag is stored per client
+// and telemt writes it per user ([access.user_ad_tags]), so the FIELD looks like a
+// per-account choice. Its EFFECT is not: the middle-proxy path a tag needs is a
+// PROCESS-wide switch (use_middle_proxy), so tagging ONE account puts every account
+// on this inbound onto that path, egressing directly with no Xray routing at all.
+// The operator who ticks the box for one customer silently forfeits their routing
+// rules for every other customer on the same inbound, which is why the client form
+// warns at the switch rather than after the save.
+//
+// That is Telegram's design, not a telemt gap: the middle-proxy session key is
+// derived from the proxy's own egress IP and port, which any proxied egress rewrites.
 func (s *MtprotoService) anyAdtag(settings *mtprotoSettings) bool {
 	for _, c := range settings.Clients {
 		if c.AdtagEnable && strings.TrimSpace(c.Adtag) != "" {
@@ -220,30 +528,12 @@ func (s *MtprotoService) anyAdtag(settings *mtprotoSettings) bool {
 	return false
 }
 
-// unionModes is the set of modes the LISTENER must accept: the union over all
-// accounts. [general.modes] is process-wide, so it cannot express per-account
-// policy on its own: it only decides which handshakes reach the auth step at all.
-// Per-account enforcement is [access.user_modes] (our telemt patch), which rejects
-// an account that used a mode it does not hold even though the listener allowed it.
-func (s *MtprotoService) unionModes(settings *mtprotoSettings) (classic, secure, tls bool) {
-	for _, c := range s.activeClients(settings) {
-		classic = classic || c.ModeClassic
-		secure = secure || c.ModeSecure
-		tls = tls || c.ModeTls
-	}
-	return
-}
-
-// firstTlsDomain picks the domain used for ServerHello emulation. Accounts may each
-// front their own SNI (unknown_sni_action="accept" lets any through, and the HMAC
-// is what actually authenticates), but telemt models its fake ServerHello on ONE
-// domain's real certificate. We use the first FakeTLS account's domain so the
-// emulation matches at least that account exactly.
-func (s *MtprotoService) firstTlsDomain(settings *mtprotoSettings) string {
-	for _, c := range s.activeClients(settings) {
-		if c.ModeTls && strings.TrimSpace(c.TlsDomain) != "" {
-			return strings.TrimSpace(c.TlsDomain)
-		}
+// tlsDomain is the domain used for ServerHello emulation, defaulted rather than left
+// blank because telemt models its fake certificate on a REAL one: an empty value
+// leaves the emulation with nothing to imitate.
+func (s *MtprotoService) tlsDomain(settings *mtprotoSettings) string {
+	if d := strings.TrimSpace(settings.TlsDomain); d != "" {
+		return d
 	}
 	return "www.google.com"
 }
@@ -336,6 +626,187 @@ func (s *MtprotoService) InitMtproto() {
 	}
 }
 
+// LiftClientSettingsToInbound is the one-shot move of modes, FakeTLS domain and
+// device cap from the CLIENTS of a legacy inbound onto the INBOUND itself. The ad tag
+// is NOT among them: it stayed per-client, and lifting it would have flattened two
+// customers' different tags into one.
+//
+// It cannot be a MigrateDB step: that runs only for an explicit migrate/import/restore
+// and never on a plain upgrade, so an operator who just replaced the binary would come
+// back to an inbound with no modes at all, which renders empty [access.user_modes]
+// entries and (per our telemt patch) grants every account every mode. This runs on the
+// ordinary startup path instead, via GenerateAllConfigs.
+//
+// An un-migrated inbound is one whose settings object has NONE of the inbound-level
+// mode keys (resolveMtprotoPolicy, which is also what every READ resolves through, so
+// the two can never disagree about which inbounds still need this). A new inbound always
+// has them (protocoldefaults.go seeds all three), and a migrated one keeps them, so the
+// check is stable and the pass is a no-op from the second call on. That matters:
+// GenerateAllConfigs runs every 10 seconds off the traffic job.
+//
+// The per-client keys that WERE lifted are deliberately left in place, and
+// MirrorInboundSettingsToClients goes further and keeps them CURRENT. Nothing in this
+// binary reads them; they are what the previous binary reads. See that function.
+// adtagEnable/adtag are in neither set: the tag is still a live per-client field and
+// this pass must leave it exactly as it finds it.
+//
+// The seeding rules (union of modes, first FakeTLS domain, largest device cap, and the
+// one behaviour change that last one carries) live in deriveMtprotoPolicy.
+func (s *MtprotoService) LiftClientSettingsToInbound() error {
+	inbounds, err := s.GetMtprotoInbounds()
+	if err != nil {
+		return err
+	}
+	db := database.GetDB()
+
+	for _, inbound := range inbounds {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(inbound.Settings), &raw); err != nil || raw == nil {
+			continue
+		}
+		policy, legacy := resolveMtprotoPolicy(raw)
+		if !legacy {
+			continue // already inbound-level
+		}
+
+		set := func(key string, value any) {
+			bs, err := json.Marshal(value)
+			if err != nil {
+				return
+			}
+			raw[key] = bs
+		}
+		set("modeClassic", policy.ModeClassic)
+		set("modeSecure", policy.ModeSecure)
+		set("modeTls", policy.ModeTls)
+		set("tlsDomain", policy.TlsDomain)
+		set("userLimit", *policy.UserLimit) // deriveMtprotoPolicy never leaves this nil
+
+		out, err := json.Marshal(raw)
+		if err != nil {
+			continue
+		}
+		inbound.Settings = string(out)
+		if db != nil {
+			if err := db.Model(model.Inbound{}).Where("id = ?", inbound.Id).
+				Update("settings", inbound.Settings).Error; err != nil {
+				logger.Warning("MTProto: lifting client settings onto inbound", inbound.Id, "failed:", err)
+				continue
+			}
+		}
+		logger.Info("MTProto: inbound", inbound.Id,
+			"upgraded: connection modes, FakeTLS domain and device limit now belong to the inbound",
+			"(device limit taken from the largest any account held)")
+	}
+	return nil
+}
+
+// MirrorInboundSettingsToClients copies the inbound's effective modes, FakeTLS domain
+// and device cap back down onto every client entry.
+//
+// THIS IS A COMPATIBILITY MIRROR, NOT STATE. Nothing in this binary reads these
+// per-client keys: mtprotoClient does not even model them, and the inbound's own values
+// are the only ones buildServerConfig renders. They exist so one settings blob satisfies
+// the PREVIOUS binary too, which read the modes, the domain and the cap only from the
+// clients. Do not "clean them up" as dead fields, and do not start reading them.
+//
+// Without the mirror a rollback is a silent outage for every account created since the
+// upgrade. Leaving the lifted keys in place (which the lift does) covers accounts that
+// existed BEFORE it, but a client added afterwards carries none of them, and the old
+// activeClients drops a client whose mode set is empty: it disappears from
+// [access.users] entirely, so it cannot authenticate, and nothing in the log says why.
+//
+// The values are chosen so the old binary computes the SAME config, not merely a valid
+// one:
+//
+//   - modes: written explicitly, false included, so the old per-account mode map is the
+//     inbound's set exactly rather than the union of whatever survived.
+//   - tlsDomain: the EFFECTIVE domain (never ""), because an empty per-client domain made
+//     the old firstTlsDomain skip the account, and because "absent" and "" would compare
+//     unequal below and turn this pass into a write on every tick.
+//   - userLimit: the RAW value, so an explicit 0 still means "no limit" over there and
+//     resolves through the same effectiveUserLimit; an ABSENT inbound value meant one
+//     device, so 1 is written for it.
+//
+// It cannot make the generated config churn, which matters because this runs every 10
+// seconds: buildServerConfig reads none of these keys, so the rendered TOML is
+// byte-identical before and after a mirror write and generateServerConfig's
+// write-only-on-change comparison never fires. The pass itself is a no-op once the
+// entries match, and only writes again after something replaces the client list
+// wholesale (an inbound save posts clients the panel's JS builds, which do not carry
+// dead fields).
+func (s *MtprotoService) MirrorInboundSettingsToClients() error {
+	inbounds, err := s.GetMtprotoInbounds()
+	if err != nil {
+		return err
+	}
+	db := database.GetDB()
+
+	for _, inbound := range inbounds {
+		settings, err := s.parseSettings(inbound)
+		if err != nil {
+			continue
+		}
+		var raw map[string]any
+		if err := json.Unmarshal([]byte(inbound.Settings), &raw); err != nil || raw == nil {
+			continue
+		}
+		list, ok := raw["clients"].([]any)
+		if !ok {
+			continue
+		}
+		// float64 for the cap, because that is what the numbers already in `raw` decoded
+		// into: comparing an int against them would report a difference on every pass and
+		// rewrite the row every 10 seconds.
+		want := map[string]any{
+			"modeClassic": settings.ModeClassic,
+			"modeSecure":  settings.ModeSecure,
+			"modeTls":     settings.ModeTls,
+			"tlsDomain":   s.tlsDomain(settings),
+			"userLimit":   float64(mirroredUserLimit(settings.UserLimit)),
+		}
+
+		changed := false
+		for _, item := range list {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			for key, value := range want {
+				if entry[key] != value {
+					entry[key] = value
+					changed = true
+				}
+			}
+		}
+		if !changed {
+			continue
+		}
+		out, err := json.Marshal(raw)
+		if err != nil {
+			continue
+		}
+		inbound.Settings = string(out)
+		if db != nil {
+			if err := db.Model(model.Inbound{}).Where("id = ?", inbound.Id).
+				Update("settings", inbound.Settings).Error; err != nil {
+				logger.Warning("MTProto: mirroring inbound settings onto the clients of inbound",
+					inbound.Id, "failed:", err)
+			}
+		}
+	}
+	return nil
+}
+
+// mirroredUserLimit is the per-client device cap the mirror writes: the inbound's raw
+// value, or the 1 device an absent one has always meant.
+func mirroredUserLimit(p *int) int {
+	if p == nil {
+		return 1
+	}
+	return *p
+}
+
 // ReconcileSecrets mints a secret for any account that has none and persists it.
 //
 // The UI mints secrets client-side so the tg:// link can render on add, but an
@@ -402,6 +873,16 @@ func (s *MtprotoService) ReconcileSecrets() error {
 // GenerateAllConfigs writes every enabled inbound's config.toml, restarting only those
 // whose egress changed (see generateServerConfig).
 func (s *MtprotoService) GenerateAllConfigs() error {
+	// Before anything reads the settings: an inbound stored before modes/domain/tag/cap
+	// moved onto the inbound would otherwise render a config with no modes at all.
+	if err := s.LiftClientSettingsToInbound(); err != nil {
+		logger.Warning("MTProto: lifting legacy client settings failed:", err)
+	}
+	// After it, so the mirror copies the values the lift just settled rather than the
+	// absent ones it was called to replace. Both are no-ops from the second pass on.
+	if err := s.MirrorInboundSettingsToClients(); err != nil {
+		logger.Warning("MTProto: mirroring inbound settings onto clients failed:", err)
+	}
 	if err := s.ReconcileSecrets(); err != nil {
 		logger.Warning("MTProto: secret reconcile failed:", err)
 	}
@@ -477,7 +958,12 @@ func (s *MtprotoService) generateServerConfig(inbound *model.Inbound) (bool, err
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return false, err
 	}
-	content := s.buildServerConfig(inbound, settings)
+	// Fold the operator's override in BEFORE the write-only-on-change check below, so
+	// the comparison is against the bytes that will actually land. Comparing the bare
+	// render would make every tick look like a change once an override existed, and
+	// telemt watches this file with inotify: it would hot-reload every 10 seconds.
+	content := applyCoreConfigOverride("mtproto", inbound.Id, "config.toml",
+		s.buildServerConfig(inbound, settings))
 	path := dir + "/config.toml"
 
 	// Write ONLY on change. telemt watches this file with inotify, and a write is a
@@ -506,7 +992,7 @@ func (s *MtprotoService) restartServer(inbound *model.Inbound) {
 	if err != nil {
 		return
 	}
-	if len(s.activeClients(settings)) == 0 {
+	if !s.startable(settings) {
 		return
 	}
 	dir := s.configDir(inbound.Id)
@@ -531,11 +1017,11 @@ func tomlEscape(v string) string {
 // accounts' live connections. The rest of [general], and [server]/[[upstreams]],
 // are restart-only.
 //
-// [general.modes] MUST stay hot (it is hot only because of our patch): it is the
-// UNION of every account's modes, so a per-client toggle changes it. Were it
-// restart-only, turning a mode ON while another account is connected would write a
-// config saying the mode is enabled while the listener kept refusing it until the
-// next restart, making the toggle look broken rather than deferred.
+// [general.modes] MUST stay hot (it is hot only because of our patch): flipping a
+// mode is an inbound edit, and were it restart-only, turning one ON while accounts
+// are connected would write a config saying the mode is enabled while the listener
+// kept refusing it until the next restart, making the toggle look broken rather
+// than deferred.
 func (s *MtprotoService) buildServerConfig(inbound *model.Inbound, settings *mtprotoSettings) string {
 	var b strings.Builder
 
@@ -545,9 +1031,9 @@ func (s *MtprotoService) buildServerConfig(inbound *model.Inbound, settings *mtp
 	adtag := s.anyAdtag(settings)
 
 	b.WriteString("[general]\n")
-	// Middle-proxy mode carries ad tags and pins egress to a direct path. It is a
-	// PROCESS switch even though the tags themselves are per-account, so one tagged
-	// account turns it on for the whole inbound.
+	// Middle-proxy mode carries the ad tag and pins egress to a direct path. It is a
+	// PROCESS switch, so it is on as soon as ONE account holds a tag: there is no way
+	// to tag that account and keep routing the rest.
 	b.WriteString(fmt.Sprintf("use_middle_proxy = %t\n", adtag))
 	// Fail loudly rather than silently serving an untagged proxy if a middle-proxy
 	// handshake is ever attempted over a SOCKS route whose BND tuple is unusable.
@@ -558,15 +1044,14 @@ func (s *MtprotoService) buildServerConfig(inbound *model.Inbound, settings *mtp
 	// "[0m" garbage around every line in Core Settings -> Logs.
 	b.WriteString("disable_colors = true\n\n")
 
-	// The listener accepts the UNION of every account's modes; [access.user_modes]
-	// below is what holds each account to its own set. Both are required: the union
-	// alone would let any account use any mode, and the per-account map alone would
-	// never see the handshake because the listener would have refused it first.
-	uc, us, ut := s.unionModes(settings)
+	// The listener's modes, which decide which handshakes reach the auth step at all.
+	// [access.user_modes] below repeats the same set per account: the listener alone
+	// is not enough, because our telemt patch reads a MISSING per-account entry as
+	// "no restriction", so an account would keep whatever mode the listener allows.
 	b.WriteString("[general.modes]\n")
-	b.WriteString(fmt.Sprintf("classic = %t\n", uc))
-	b.WriteString(fmt.Sprintf("secure = %t\n", us))
-	b.WriteString(fmt.Sprintf("tls = %t\n\n", ut))
+	b.WriteString(fmt.Sprintf("classic = %t\n", settings.ModeClassic))
+	b.WriteString(fmt.Sprintf("secure = %t\n", settings.ModeSecure))
+	b.WriteString(fmt.Sprintf("tls = %t\n\n", settings.ModeTls))
 
 	b.WriteString("[server]\n")
 	b.WriteString(fmt.Sprintf("port = %d\n", inbound.Port))
@@ -580,11 +1065,11 @@ func (s *MtprotoService) buildServerConfig(inbound *model.Inbound, settings *mtp
 	b.WriteString("enabled = false\n\n")
 
 	b.WriteString("[censorship]\n")
-	// Each account may front its own SNI, so the listener must not insist on one:
+	// A client may present any SNI, so the listener must not insist on this one:
 	// accept an unknown SNI and let the handshake HMAC (which is what actually
-	// proves secret possession) decide. Without this, only accounts using the
+	// proves secret possession) decide. Without this, only clients dialing with the
 	// domain below could connect.
-	b.WriteString(fmt.Sprintf("tls_domain = %q\n", tomlEscape(s.firstTlsDomain(settings))))
+	b.WriteString(fmt.Sprintf("tls_domain = %q\n", tomlEscape(s.tlsDomain(settings))))
 	b.WriteString("unknown_sni_action = \"accept\"\n")
 	b.WriteString("mask = true\n")
 	b.WriteString("tls_emulation = true\n\n")
@@ -633,29 +1118,49 @@ func (s *MtprotoService) buildServerConfig(inbound *model.Inbound, settings *mtp
 
 	// The device cap IS delegated: telemt counts distinct client source IPs per
 	// account natively, which is the closest a relay gets to a tunnel-IP User Limit.
+	// The inbound's value is the PER-ACCOUNT cap (the same reading l2tp/wgc/gre use),
+	// so it is written once per account rather than shared between them.
+	//
+	// Which is also what makes an account's own lower cap free here: the map already
+	// has a row per account, so an override changes one number in a file telemt was
+	// going to be handed anyway. It can only lower the inbound's
+	// (resolveUserLimitOverride) - nothing about a relay forces that, but one rule
+	// across the panel is worth more than mtproto being the exception.
+	deviceCap := effectiveUserLimit(settings.UserLimit)
 	b.WriteString("[access.user_max_unique_ips]\n")
 	for _, c := range clients {
-		b.WriteString(fmt.Sprintf("%q = %d\n", tomlEscape(c.Email), effectiveUserLimit(c.UserLimit)))
+		b.WriteString(fmt.Sprintf("%q = %d\n", tomlEscape(c.Email),
+			resolveUserLimitOverride(deviceCap, c.UserLimitOverride)))
 	}
 	b.WriteString("\n")
 
-	// Per-account mode enforcement (vpn-ui patch, see build/backend/telemt-patches).
-	// Without this the union in [general.modes] would let ANY account use ANY mode
-	// another account enabled, making the per-client toggles cosmetic.
+	// telemt's mode enforcement is a per-USER map (vpn-ui patch, see
+	// build/backend/telemt-patches), and it treats a missing entry as "no
+	// restriction", so the inbound's set has to be spelled out for every account
+	// rather than left to [general.modes] alone.
+	modes := strings.Join(settings.modes(), ",")
 	b.WriteString("[access.user_modes]\n")
 	for _, c := range clients {
-		b.WriteString(fmt.Sprintf("%q = %q\n", tomlEscape(c.Email), strings.Join(c.modes(), ",")))
+		b.WriteString(fmt.Sprintf("%q = %q\n", tomlEscape(c.Email), modes))
 	}
 	b.WriteString("\n")
 
-	// Ad tags are genuinely per-account in telemt; only the middle-proxy path they
-	// ride is process-wide (handled above).
+	// Ad tags are a per-user map in telemt, so each account gets its OWN tag and an
+	// account without one gets no line at all: an empty value is not a valid tag
+	// (telemt wants exactly 32 hex chars and refuses anything else), and crediting an
+	// untagged customer's traffic to a neighbour's channel is not a sane default.
+	//
+	// The section is written whenever ANY account is tagged, because that is already
+	// when use_middle_proxy went on above. Accounts left out of it still ride the
+	// middle-proxy path, they just earn nobody anything.
 	if adtag {
 		b.WriteString("[access.user_ad_tags]\n")
 		for _, c := range clients {
-			if c.AdtagEnable && strings.TrimSpace(c.Adtag) != "" {
-				b.WriteString(fmt.Sprintf("%q = %q\n", tomlEscape(c.Email), tomlEscape(strings.TrimSpace(c.Adtag))))
+			tag := strings.TrimSpace(c.Adtag)
+			if !c.AdtagEnable || tag == "" {
+				continue
 			}
+			b.WriteString(fmt.Sprintf("%q = %q\n", tomlEscape(c.Email), tomlEscape(tag)))
 		}
 		b.WriteString("\n")
 	}
@@ -672,17 +1177,23 @@ func (s *MtprotoService) activeClients(settings *mtprotoSettings) []mtprotoClien
 		if strings.TrimSpace(c.Email) == "" || strings.TrimSpace(c.Secret) == "" {
 			continue
 		}
-		// An account with every mode off cannot be dialed by anything. Rendering it
-		// would put an empty [access.user_modes] entry in the config, which the patch
-		// reads as "no restriction", silently granting it EVERY mode, the exact
-		// opposite of what the operator asked for.
-		if len(c.modes()) == 0 {
-			continue
-		}
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
 	return out
+}
+
+// startable reports whether telemt can serve this inbound at all.
+//
+// Two ways it cannot, and neither is an error worth failing a save over: no account
+// carries a secret, or the inbound has every connection mode off. The second one is
+// the dangerous one to render: with no modes, every [access.user_modes] entry is
+// empty, and our telemt patch reads an empty entry as "no restriction", so the proxy
+// would grant EVERY account EVERY mode, the exact opposite of what was asked. The
+// inbound form refuses to turn off the last mode, so this only catches a blob that
+// arrived some other way (an API caller, an import).
+func (s *MtprotoService) startable(settings *mtprotoSettings) bool {
+	return len(s.activeClients(settings)) > 0 && len(settings.modes()) > 0
 }
 
 // getDisabledEmails returns accounts the panel has switched off (quota hit,
@@ -725,12 +1236,12 @@ func (s *MtprotoService) RestartServices() error {
 			logger.Warning("MTProto: skipping inbound", inbound.Id, err)
 			continue
 		}
-		// telemt refuses to start with no users, and an account with no mode is not
-		// dialable, so an inbound whose accounts are all unusable would just
-		// restart-loop. Skip it with a reason instead.
-		if len(s.activeClients(settings)) == 0 {
+		// telemt refuses to start with no users, and an inbound with no connection mode
+		// is not dialable either, so it would just restart-loop. Skip it with a reason
+		// instead.
+		if !s.startable(settings) {
 			logger.Warning("MTProto: inbound", inbound.Id,
-				"has no usable account (each needs a secret and at least one connection mode), not starting")
+				"is not startable (it needs at least one account with a secret and at least one connection mode), not starting")
 			continue
 		}
 		dir := s.configDir(inbound.Id)
@@ -784,7 +1295,7 @@ func (s *MtprotoService) EnsureServicesRunning() error {
 			logger.Warning("MTProto: skipping inbound", inbound.Id, err)
 			continue
 		}
-		if len(s.activeClients(settings)) == 0 {
+		if !s.startable(settings) {
 			continue
 		}
 		name := mtprotoProcName(inbound.Id)
@@ -877,7 +1388,10 @@ func (s *MtprotoService) CollectTraffic() []*xray.ClientTraffic {
 			if du == 0 && dd == 0 {
 				continue
 			}
-			out = append(out, &xray.ClientTraffic{Email: email, Up: du, Down: dd})
+			// Stamped with the inbound the bytes were scraped from. The delta key
+			// above is already per inbound, so the record was the only place the
+			// source was being dropped.
+			out = append(out, &xray.ClientTraffic{Email: email, InboundId: inbound.Id, Up: du, Down: dd})
 		}
 	}
 	return out

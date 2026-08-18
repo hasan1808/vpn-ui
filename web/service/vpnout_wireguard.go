@@ -39,18 +39,19 @@ const (
 	// the AmneziaWG ones. Both are deliberately NOT the obvious "wgc.../awg..." with
 	// a suffix, and that is load-bearing rather than cosmetic:
 	//
-	// the server-side reconcilers garbage-collect by PREFIX. wgc.go:removeStaleLinks
-	// deletes every link starting with "wgc" that no wg-c inbound claims, and
-	// awg.go:removeStaleLinks does the same for "awg". A client link called "awgo123"
-	// therefore starts with "awg", is claimed by no inbound, and would be DELETED out
-	// from under a working outbound on the next traffic tick. AnyInterfaceUp() reads
-	// the same prefixes and would likewise report a client tunnel as a live server
-	// data plane.
+	// the server-side reconcilers garbage-collect the links they own, and a client
+	// link that looks like one of theirs is claimed by no inbound and would be
+	// DELETED out from under a working outbound on the next traffic tick.
+	// AnyInterfaceUp() applies the same test and would likewise report a client
+	// tunnel as a live server data plane.
 	//
-	// "wgo"/"awo" differ from "wgc"/"awg" at byte 3 and are not prefixed by them, so
-	// neither GC can see them; conversely the server names are "wgc<id>"/"awg<id>"
-	// with a DECIMAL id, so no server link can ever start with our prefixes either
-	// ('o' is not a digit). The two namespaces cannot overlap in either direction.
+	// The ownership test is now an anchored NAME SHAPE plus a link-type check plus
+	// the ownership manifest (ifaceown.go), not the bare prefix scan it used to be,
+	// and "wgo123"/"awo123" match neither `^wgc[0-9]+$` nor `^awg[0-9]+$`. They were
+	// already safe under the old prefix rule too ('o' is not a digit and the prefixes
+	// differ at byte 3), so the two namespaces cannot overlap either way. Keep any new
+	// client-side prefix outside those shapes, and add a case to ifaceown_test.go's
+	// ours-vs-theirs table.
 	vpnOutWgIfacePrefix  = "wgo"
 	vpnOutAwgIfacePrefix = "awo"
 
@@ -172,6 +173,17 @@ func (d *wgOutDriver) settings(cfg VpnOutboundConfig) (*wgOutSettings, error) {
 // iface is the deterministic link name for this outbound.
 func (d *wgOutDriver) iface(cfg VpnOutboundConfig) string {
 	return vpnOutIfaceName(vpnOutWgIfacePrefix, cfg.Tag)
+}
+
+// ServerHost names what the outer UDP goes to, so this tunnel can be carried inside
+// another. The endpoint's port is dropped by the framework: a rule selects on the
+// address alone.
+func (d *wgOutDriver) ServerHost(cfg VpnOutboundConfig) (string, error) {
+	st, err := d.settings(cfg)
+	if err != nil {
+		return "", err
+	}
+	return st.Endpoint, nil
 }
 
 // Validate rejects a config before anything is brought up. Key material and the

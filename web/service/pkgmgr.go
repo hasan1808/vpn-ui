@@ -76,6 +76,17 @@ func detectPackageManager() *packageManager {
 // per-step log) alongside any error. Best-effort refresh — an install can still
 // succeed from a warm cache if the refresh fails (e.g. one mirror is down).
 func (pm *packageManager) installPackage(pkg string) (string, error) {
+	// Record whether the package was ALREADY on this host before we asked for it.
+	// Nothing is ever uninstalled by the panel, so this is not about removing it: it
+	// is so the uninstall report can tell the operator "libreswan was already here,
+	// we left it" apart from "we installed libreswan, remove it yourself if nothing
+	// else needs it", which are very different pieces of advice.
+	if pm.packageInstalled(pkg) {
+		ownNote(ownPackage, pkg, "", "already installed on this host before vpn-ui")
+	} else {
+		ownClaim(ownPackage, pkg, "")
+	}
+
 	var log strings.Builder
 	if len(pm.refresh) > 0 {
 		refresh := exec.Command(pm.refresh[0], pm.refresh[1:]...)
@@ -94,6 +105,40 @@ func (pm *packageManager) installPackage(pkg string) (string, error) {
 		return log.String(), fmt.Errorf("%v: %s", err, lastNonEmptyLine(string(out)))
 	}
 	return log.String(), nil
+}
+
+// packageInstalled asks the host package manager whether a package is already
+// present. Best-effort: a manager whose query we do not know reports false, which
+// makes the ownership record read "we installed it" and is the conservative
+// answer for a report that only ever advises, never removes.
+func (pm *packageManager) packageInstalled(pkg string) bool {
+	var query []string
+	switch pm.name {
+	case "apt":
+		// dpkg-query exits non-zero for an unknown package, and prints the state for
+		// a known one; "install ok installed" is the only state that counts.
+		out, err := exec.Command("dpkg-query", "-W", "-f=${Status}", pkg).Output()
+		return err == nil && strings.Contains(string(out), "install ok installed")
+	case "dnf", "yum":
+		query = []string{"rpm", "-q", pkg}
+	case "zypper":
+		query = []string{"rpm", "-q", pkg}
+	case "pacman":
+		query = []string{"pacman", "-Q", pkg}
+	case "apk":
+		query = []string{"apk", "info", "-e", pkg}
+	default:
+		return false
+	}
+	if !commandExists(query[0]) {
+		return false
+	}
+	out, err := exec.Command(query[0], query[1:]...).Output()
+	if pm.name == "apk" {
+		// `apk info -e` exits 0 either way and prints the name only when installed.
+		return err == nil && strings.TrimSpace(string(out)) != ""
+	}
+	return err == nil
 }
 
 func lastNonEmptyLine(s string) string {
@@ -461,6 +506,12 @@ func unblacklistVpnModules() (cleared []string, log string) {
 			if strings.HasPrefix(dir, "/usr/") || dir == "/lib/modprobe.d" {
 				target = filepath.Join("/etc/modprobe.d", e.Name())
 			}
+			// An /etc or /run file is rewritten IN PLACE, which means editing a file the
+			// operator (or their hardening policy) wrote. Backed up on the first rewrite
+			// so uninstall can restore their deny-list rather than leave it commented out
+			// forever. The /usr case writes a new file to /etc, which is ours outright and
+			// records as such.
+			ownPrepareHostFile(target, "")
 			if err := os.WriteFile(target, []byte(strings.Join(lines, "\n")), 0644); err != nil {
 				b.WriteString("failed to write " + target + ": " + err.Error() + "\n")
 				continue

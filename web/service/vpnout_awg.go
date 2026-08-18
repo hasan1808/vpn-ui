@@ -176,6 +176,17 @@ func (d *awgOutDriver) iface(cfg VpnOutboundConfig) string {
 	return vpnOutIfaceName(vpnOutAwgIfacePrefix, cfg.Tag)
 }
 
+// ServerHost names what the outer UDP goes to, so this tunnel can be carried inside
+// another. The obfuscation parameters change what the packets LOOK like, not where
+// they go, so the endpoint is the whole answer here as it is for plain WireGuard.
+func (d *awgOutDriver) ServerHost(cfg VpnOutboundConfig) (string, error) {
+	st, err := d.settings(cfg)
+	if err != nil {
+		return "", err
+	}
+	return st.Endpoint, nil
+}
+
 // Validate rejects a config before anything is brought up. The kernel module's own
 // parameter checks are left to it: this covers the shapes that would otherwise fail
 // as an unexplained EINVAL from netlink.

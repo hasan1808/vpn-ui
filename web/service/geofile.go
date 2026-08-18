@@ -579,6 +579,101 @@ func sweepStaleGeofileTemps() {
 	}
 }
 
+// geofileRun publishes the one in-flight geofile update so the overview can
+// re-attach to a download it did not start.
+//
+// The download outlives the request that began it: UpdateGeofile blocks, but Gin
+// does not kill a handler when the browser navigates away, so leaving the page
+// abandons the RESPONSE while the transfer keeps going. Before this, the only
+// record that anything was happening was a `loading` boolean inside a Vue
+// instance that the next page load destroyed - come back to the overview and the
+// panel looked idle while 74MB were still landing in bin/.
+//
+// Same shape as sslRun (sslmanager.go) and provisionRun (core.go), which is the
+// house pattern for "long job, pollable status": a mutex-guarded struct, a value
+// copy handed out by a State() method, and a `done` that survives so the page can
+// report the outcome it missed.
+var geofileRun struct {
+	mu      sync.Mutex
+	running bool
+	done    bool
+	files   []string // every name this run intends to fetch, in order
+	current string   // the one being fetched right now, "" between files
+	fetched []string // names that landed successfully
+	failed  bool
+	summary string
+}
+
+// GeofileRunState is the pollable snapshot of geofileRun.
+type GeofileRunState struct {
+	Running bool     `json:"running"`
+	Done    bool     `json:"done"`
+	Files   []string `json:"files"`
+	Current string   `json:"current"`
+	Fetched []string `json:"fetched"`
+	Failed  bool     `json:"failed"`
+	Summary string   `json:"summary"`
+}
+
+// geofileRunBegin claims the run. It reports false when one is already going, so
+// a second click joins the first rather than starting a duplicate transfer (the
+// per-file lock in geofileDownloadLock would serialize them anyway, but the
+// operator would sit through both).
+func geofileRunBegin(files []string) bool {
+	geofileRun.mu.Lock()
+	defer geofileRun.mu.Unlock()
+	if geofileRun.running {
+		return false
+	}
+	geofileRun.running = true
+	geofileRun.done = false
+	geofileRun.files = append([]string(nil), files...)
+	geofileRun.current = ""
+	geofileRun.fetched = nil
+	geofileRun.failed = false
+	geofileRun.summary = ""
+	return true
+}
+
+func geofileRunCurrent(name string) {
+	geofileRun.mu.Lock()
+	defer geofileRun.mu.Unlock()
+	geofileRun.current = name
+}
+
+func geofileRunFetched(name string) {
+	geofileRun.mu.Lock()
+	defer geofileRun.mu.Unlock()
+	geofileRun.fetched = append(geofileRun.fetched, name)
+}
+
+// geofileRunEnd leaves running=false with done=true, so a page that arrives after
+// the fact still sees how it went instead of an idle panel.
+func geofileRunEnd(failed bool, summary string) {
+	geofileRun.mu.Lock()
+	defer geofileRun.mu.Unlock()
+	geofileRun.running = false
+	geofileRun.done = true
+	geofileRun.current = ""
+	geofileRun.failed = failed
+	geofileRun.summary = summary
+}
+
+// GeofileRunState reports the in-flight (or last finished) geofile update.
+func (s *ServerService) GeofileRunState() GeofileRunState {
+	geofileRun.mu.Lock()
+	defer geofileRun.mu.Unlock()
+	return GeofileRunState{
+		Running: geofileRun.running,
+		Done:    geofileRun.done,
+		Files:   append([]string(nil), geofileRun.files...),
+		Current: geofileRun.current,
+		Fetched: append([]string(nil), geofileRun.fetched...),
+		Failed:  geofileRun.failed,
+		Summary: geofileRun.summary,
+	}
+}
+
 // GeofileState is one row of the dashboard's Geofiles list.
 type GeofileState struct {
 	Name      string `json:"name"`

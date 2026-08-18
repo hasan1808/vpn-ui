@@ -1,675 +1,766 @@
 {{define "form/inbound"}}
-<!-- base -->
-<a-form
-    :colon="false"
-    :label-col="{ md: {span:8} }"
-    :wrapper-col="{ md: {span:14} }"
->
-    <a-form-item label='{{ i18n "enable" }}'>
-        <a-switch v-model="dbInbound.enable"></a-switch>
-    </a-form-item>
-    <a-form-item label='{{ i18n "remark" }}'>
-        <a-input v-model.trim="dbInbound.remark"></a-input>
-    </a-form-item>
+<!--
+  The inbound form is a rail and a pane, the same control the client form uses
+  (.bo-cf-* in components.css, web/html/modals/client_membership_modal.html).
+  They are the panel's two "make a thing" dialogs and there was no reason for
+  them to be different shapes.
 
-    <a-form-item label='{{ i18n "protocol" }}'>
-        <a-select
-            v-model="inbound.protocol"
-            :disabled="isEdit"
-            @change="onProtocolChange"
-            :dropdown-class-name="themeSwitcher.currentTheme"
+  What differs is size. An account has four sections; an inbound has up to nine,
+  because the protocol decides what exists: a VLESS inbound can render 195 fields
+  and an SSH inbound 25. So the rail carries a field count per section and a dot
+  on any section holding the reason Create is disabled, and the sections sit under
+  three fixed groups. The groups do not change with the protocol even though their
+  contents do, which is the point: "certificates are under Security" stays true
+  whether the operator is on OpenVPN or on VLESS.
+
+  Section membership lives in ONE place, sectionCatalog in modals/inbound_modal.html.
+  A section whose pane is empty for a protocol is not offered in the rail, so the
+  list stays honest per protocol rather than showing dead entries.
+-->
+<div class="bo-cf bo-if">
+  <div class="bo-cf-rail">
+    <!-- The inbound at a glance. On ADD there is nothing stored, so it previews
+         what is being typed, exactly as the client rail does for a new account. -->
+    <div class="bo-cf-summary">
+      <div class="bo-cf-who">[[ dbInbound.remark || 'New inbound' ]]</div>
+      <div class="bo-cf-sub">
+        <template v-if="isEdit">[[ ProtocolLabels[inbound.protocol] || inbound.protocol ]]</template>
+        <template v-else>Not created yet. This is what you are typing.</template>
+      </div>
+      <!-- The value wraps instead of truncating. A protocol row is 168px wide once
+           the rail's padding is taken out, which "OpenConnect (cisco)" does not fit,
+           and an ellipsis there hides the one thing the row exists to report. -->
+      <div class="bo-cf-kv">
+        <span>Protocol</span>
+        <b class="bo-if-wrap">[[ ProtocolLabels[inbound.protocol] || inbound.protocol ]]</b>
+      </div>
+      <!-- Wraps rather than truncating, same reasoning as Protocol above: an OpenVPN
+           inbound with separate ports reports "1194 udp + 1195 tcp", which overruns
+           the 168px a rail row leaves, and .bo-cf-ell would ellipsis away the second
+           half - hiding one of the two ports this row exists to report. -->
+      <div class="bo-cf-kv">
+        <span>Listens on</span>
+        <b class="bo-if-wrap">[[ listensOn ]]</b>
+      </div>
+      <div class="bo-cf-kv" v-if="isEdit">
+        <span>Accounts</span>
+        <b>[[ dbInbound.clientStats ? dbInbound.clientStats.length : 0 ]]</b>
+      </div>
+      <div class="bo-cf-kv" v-if="isEdit">
+        <span>Moved</span>
+        <b>[[ SizeFormatter.sizeFormat((dbInbound.up || 0) + (dbInbound.down || 0)) ]]</b>
+      </div>
+    </div>
+
+    <div class="bo-cf-tabs" role="tablist">
+      <template v-for="g in sectionGroups">
+        <div class="bo-if-grp" :key="g.key">[[ g.title ]]</div>
+        <button
+          v-for="s in g.items"
+          :key="s.id"
+          class="bo-cf-tab"
+          type="button"
+          role="tab"
+          :aria-selected="inModal.section === s.id ? 'true' : 'false'"
+          @click="inModal.section = s.id"
         >
-            <a-select-option v-for="p in Protocols" :key="p" :value="p"
-                >[[ ProtocolLabels[p] || p ]]</a-select-option
-            >
-        </a-select>
-    </a-form-item>
+          <a-icon :type="s.icon"></a-icon>
+          <span class="bo-if-lb">[[ s.rail ]]</span>
+          <span class="bo-if-dot" v-if="s.bad" :title="s.bad"></span>
+          <span class="bo-if-n" v-if="s.count">[[ s.count ]]</span>
+        </button>
+      </template>
+    </div>
+  </div>
 
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    <span>{{ i18n "pages.inbounds.monitorDesc" }}</span>
-                </template>
-                {{ i18n "monitor" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-input v-model.trim="inbound.listen"></a-input>
-    </a-form-item>
+  <div class="bo-cf-pane" ref="pane">
 
-    <!-- IKEv2 listen ports (Port + NAT-T Port) sit here, directly under Listen IP.
-         Rendered only for ikev2; the single/multi port fields below both exclude
-         ikev2, so there is no duplicate port field. -->
-    <template v-if="inbound.protocol === 'ikev2'">
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        IKE port (UDP), standard 500. Custom clients can use a
-                        different port; each inbound may use its own.
-                    </template>
-                    Port
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                v-model.number="inbound.port"
-                :min="1"
-                :max="65535"
-                :style="{ width: '120px' }"
-            ></a-input-number>
-        </a-form-item>
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        NAT-Traversal port (UDP), standard 4500. Used once a NAT is
-                        detected between client and server.
-                    </template>
-                    NAT-T Port
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                v-model.number="inbound.settings.nattPort"
-                :min="1"
-                :max="65535"
-                :style="{ width: '120px' }"
-            ></a-input-number>
-        </a-form-item>
-    </template>
+    <!-- ============================ Identity ============================ -->
+    <div class="bo-if-sec" data-sec="identity" v-show="inModal.section === 'identity'">
+      <h4 class="bo-if-h">Identity</h4>
+      <p class="bo-if-d">What this inbound is called and where it listens.</p>
+      <a-form
+          :colon="false"
+          :label-col="{ md: {span:8} }"
+          :wrapper-col="{ md: {span:14} }"
+      >
+          <a-form-item label='{{ i18n "enable" }}'>
+              <a-switch v-model="dbInbound.enable"></a-switch>
+          </a-form-item>
+          <a-form-item label='{{ i18n "remark" }}'>
+              <a-input v-model.trim="dbInbound.remark"></a-input>
+          </a-form-item>
 
-    <!-- GRE is excluded as well as openvpn/ikev2, but for the opposite reason: it has no
-         ports at all (IP protocol 47), so there is nothing to ask for. Its row still
-         carries one because the inbound tag is built from it, and the server assigns it
-         (NormalizeGrePort). -->
-    <a-form-item
-        v-if="inbound.protocol !== 'openvpn' && inbound.protocol !== 'ikev2' && inbound.protocol !== 'gre'"
-        :validate-status="portValidateStatus"
-        :help="portHelp"
-    >
-        <template slot="label">
-            <a-tooltip v-if="inbound.protocol === 'l2tp'">
-                <template slot="title">Most clients use port 1701</template>
-                {{ i18n "pages.inbounds.port" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-            <a-tooltip v-else-if="inbound.protocol === 'pptp'">
-                <template slot="title">Most clients use port 1723</template>
-                {{ i18n "pages.inbounds.port" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-            <a-tooltip v-else-if="inbound.protocol === 'sstp'">
-                <template slot="title">
-                    SSTP tunnels PPP over TLS; the client connects over TLS on
-                    this TCP port. Most clients use port 443 (the HTTPS port).
-                </template>
-                {{ i18n "pages.inbounds.port" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-            <a-tooltip v-else-if="inbound.protocol === 'wg-c'">
-                <template slot="title">
-                    UDP port this WireGuard interface listens on. 51820 is the
-                    convention, but each wg-c inbound is its own interface and
-                    needs its OWN port, so additional inbounds must differ.
-                </template>
-                {{ i18n "pages.inbounds.port" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-            <a-tooltip v-else-if="inbound.protocol === 'awg'">
-                <template slot="title">
-                    UDP port this AmneziaWG interface listens on. 51821 is the
-                    convention, but each awg inbound is its own interface and
-                    needs its OWN port, so additional inbounds must differ.
-                </template>
-                {{ i18n "pages.inbounds.port" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-            <template v-else>{{ i18n "pages.inbounds.port" }}</template>
-        </template>
-        <a-input
-            :value="inbound.port"
-            @change="e => { inbound.port = sanitizePort(e.target.value); }"
-            @keypress.native="blockNonDigit"
-            inputmode="numeric"
-            :max-length="5"
-            :style="{ width: '90px' }"
-        ></a-input>
-    </a-form-item>
-    <!-- OpenVPN-only multi-port UI (TCP/UDP, optional separate ports). IKEv2 is
-         excluded from BOTH this and the single-port field above: its Port + NAT-T
-         Port live in the ikev2 protocol form (form/ikev2). Do NOT change this back to
-         a bare v-else — that renders this OpenVPN block for IKEv2 (duplicate ports). -->
-    <template v-else-if="inbound.protocol === 'openvpn'">
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        TCP and UDP are different transports, so both can bind the
-                        same port number. Off (default): they share one port. On:
-                        give TCP its own port.
-                    </template>
-                    Separate Ports
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-switch
-                :checked="inbound.settings.separatePorts"
-                @change="checked => { inbound.settings.separatePorts = checked; }"
-            ></a-switch>
-        </a-form-item>
-        <a-form-item v-if="inbound.settings.separatePorts" label="TCP Port" :validate-status="tcpPortValidateStatus" :help="tcpPortHelp">
-            <a-space>
-                <a-switch
-                    :checked="inbound.settings.tcpEnable"
-                    @change="checked => ovpnToggleTransport('tcp', checked)"
-                ></a-switch>
-                <a-input
-                    v-if="inbound.settings.tcpEnable && inbound.settings.separatePorts"
-                    :value="inbound.settings.tcpPort"
-                    @change="e => { inbound.settings.tcpPort = sanitizePort(e.target.value); }"
-                    @keypress.native="blockNonDigit"
-                    inputmode="numeric"
-                    :max-length="5"
-                    placeholder="1194"
-                    :style="{ width: '90px' }"
-                ></a-input>
-                <span v-else-if="inbound.settings.tcpEnable" :style="{ color: '#888' }">
-                    shares the UDP port ([[ inbound.port ]])
-                </span>
-                <span v-else :style="{ color: '#888' }">Disabled</span>
-            </a-space>
-        </a-form-item>
-        <a-form-item
-            :label="inbound.settings.separatePorts ? 'UDP Port' : 'Port (TCP + UDP)'"
-            :validate-status="portValidateStatus" :help="portHelp"
-        >
-            <a-space>
-                <a-switch
-                    :checked="inbound.settings.udpEnable"
-                    @change="checked => ovpnToggleTransport('udp', checked)"
-                ></a-switch>
-                <a-input
-                    :value="inbound.port"
-                    @change="e => { inbound.port = sanitizePort(e.target.value); }"
-                    @keypress.native="blockNonDigit"
-                    inputmode="numeric"
-                    :max-length="5"
-                    placeholder="1195"
-                    :style="{ width: '90px' }"
-                ></a-input>
-            </a-space>
-        </a-form-item>
-    </template>
+          <a-form-item label='{{ i18n "protocol" }}'>
+              <a-select
+                  v-model="inbound.protocol"
+                  :disabled="isEdit"
+                  @change="onProtocolChange"
+                  :dropdown-class-name="themeSwitcher.currentTheme"
+              >
+                  <a-select-option v-for="p in Protocols" :key="p" :value="p"
+                      >[[ ProtocolLabels[p] || p ]]</a-select-option
+                  >
+              </a-select>
+          </a-form-item>
 
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    0 <span>{{ i18n "pages.inbounds.meansNoLimit" }}</span>
-                </template>
-                {{ i18n "pages.inbounds.totalFlow" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-input-number
-            v-model.number="dbInbound.totalGB"
-            :min="0"
-        ></a-input-number>
-    </a-form-item>
+          <a-form-item>
+              <template slot="label">
+                  <a-tooltip>
+                      <template slot="title">
+                          <span>{{ i18n "pages.inbounds.monitorDesc" }}</span>
+                      </template>
+                      {{ i18n "monitor" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+              </template>
+              <a-input v-model.trim="inbound.listen"></a-input>
+          </a-form-item>
 
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    {{ i18n "pages.inbounds.trafficMultiplierDesc" }}
-                </template>
-                {{ i18n "pages.inbounds.trafficMultiplierTitle" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-switch v-model="dbInbound.trafficMultiplierEnable"></a-switch>
-    </a-form-item>
+          <!-- IKEv2 listen ports (Port + NAT-T Port) sit here, directly under Listen IP.
+               Rendered only for ikev2; the single/multi port fields below both exclude
+               ikev2, so there is no duplicate port field. -->
+          <template v-if="inbound.protocol === 'ikev2'">
+              <a-form-item>
+                  <template slot="label">
+                      <a-tooltip>
+                          <template slot="title">
+                              IKE port (UDP), standard 500. Custom clients can use a
+                              different port; each inbound may use its own.
+                          </template>
+                          Port
+                          <a-icon type="question-circle"></a-icon>
+                      </a-tooltip>
+                  </template>
+                  <a-input-number
+                      v-model.number="inbound.port"
+                      :min="1"
+                      :max="65535"
+                      :style="{ width: '120px' }"
+                  ></a-input-number>
+              </a-form-item>
+              <a-form-item>
+                  <template slot="label">
+                      <a-tooltip>
+                          <template slot="title">
+                              NAT-Traversal port (UDP), standard 4500. Used once a NAT is
+                              detected between client and server.
+                          </template>
+                          NAT-T Port
+                          <a-icon type="question-circle"></a-icon>
+                      </a-tooltip>
+                  </template>
+                  <a-input-number
+                      v-model.number="inbound.settings.nattPort"
+                      :min="1"
+                      :max="65535"
+                      :style="{ width: '120px' }"
+                  ></a-input-number>
+              </a-form-item>
+          </template>
 
-    <template v-if="dbInbound.trafficMultiplierEnable">
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        0 <span>{{ i18n "pages.inbounds.trafficMultiplierFromStart" }}</span>
-                    </template>
-                    {{ i18n "pages.inbounds.trafficMultiplierApplyAfter" }}
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                v-model.number="dbInbound.trafficMultiplierAfterGB"
-                :min="0"
-            ></a-input-number>
-        </a-form-item>
+          <!-- GRE is excluded as well as openvpn/ikev2, but for the opposite reason: it has no
+               ports at all (IP protocol 47), so there is nothing to ask for. Its row still
+               carries one because the inbound tag is built from it, and the server assigns it
+               (NormalizeGrePort). -->
+          <a-form-item
+              v-if="inbound.protocol !== 'openvpn' && inbound.protocol !== 'ikev2' && inbound.protocol !== 'gre'"
+              :validate-status="portValidateStatus"
+              :help="portHelp"
+          >
+              <template slot="label">
+                  <a-tooltip v-if="inbound.protocol === 'l2tp'">
+                      <template slot="title">Most clients use port 1701</template>
+                      {{ i18n "pages.inbounds.port" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+                  <a-tooltip v-else-if="inbound.protocol === 'pptp'">
+                      <template slot="title">Most clients use port 1723</template>
+                      {{ i18n "pages.inbounds.port" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+                  <a-tooltip v-else-if="inbound.protocol === 'sstp'">
+                      <template slot="title">
+                          SSTP tunnels PPP over TLS; the client connects over TLS on
+                          this TCP port. Most clients use port 443 (the HTTPS port).
+                      </template>
+                      {{ i18n "pages.inbounds.port" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+                  <a-tooltip v-else-if="inbound.protocol === 'wg-c'">
+                      <template slot="title">
+                          UDP port this WireGuard interface listens on. 51820 is the
+                          convention, but each wg-c inbound is its own interface and
+                          needs its OWN port, so additional inbounds must differ.
+                      </template>
+                      {{ i18n "pages.inbounds.port" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+                  <a-tooltip v-else-if="inbound.protocol === 'awg'">
+                      <template slot="title">
+                          UDP port this AmneziaWG interface listens on. 51821 is the
+                          convention, but each awg inbound is its own interface and
+                          needs its OWN port, so additional inbounds must differ.
+                      </template>
+                      {{ i18n "pages.inbounds.port" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+                  <template v-else>{{ i18n "pages.inbounds.port" }}</template>
+              </template>
+              <a-input
+                  :value="inbound.port"
+                  @change="e => { inbound.port = sanitizePort(e.target.value); }"
+                  @keypress.native="blockNonDigit"
+                  inputmode="numeric"
+                  :max-length="5"
+                  :style="{ width: '90px' }"
+              ></a-input>
+          </a-form-item>
+          <!-- OpenVPN-only multi-port UI (TCP/UDP, optional separate ports). IKEv2 is
+               excluded from BOTH this and the single-port field above: its Port + NAT-T
+               Port live in the ikev2 protocol form (form/ikev2). Do NOT change this back to
+               a bare v-else - that renders this OpenVPN block for IKEv2 (duplicate ports).
 
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        {{ i18n "pages.inbounds.trafficMultiplierValueDesc" }}
-                    </template>
-                    {{ i18n "pages.inbounds.trafficMultiplierValue" }}
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                v-model.number="dbInbound.trafficMultiplier"
-                :min="1"
-                :step="0.5"
-            ></a-input-number>
-        </a-form-item>
-    </template>
+               WHICH ROWS CARRY AN ENABLE SWITCH, and why it is not all of them. With
+               Separate Ports OFF there is ONE listener serving both transports, so a
+               switch on that row could only ever turn the whole inbound off - which is
+               what the inbound's own Enable does. It is dropped: a control whose only
+               setting is "on" is noise. With Separate Ports ON the two transports are
+               independent listeners, so each gets a switch and you can run TCP-only or
+               UDP-only. Those two can never both be off - see ovpnToggleTransport. -->
+          <template v-else-if="inbound.protocol === 'openvpn'">
+              <a-form-item>
+                  <template slot="label">
+                      <a-tooltip>
+                          <template slot="title">
+                              TCP and UDP are different transports, so both can bind the
+                              same port number. Off (default): they share one port. On:
+                              give TCP its own port.
+                          </template>
+                          Separate Ports
+                          <a-icon type="question-circle"></a-icon>
+                      </a-tooltip>
+                  </template>
+                  <a-switch
+                      :checked="inbound.settings.separatePorts"
+                      @change="checked => ovpnToggleSeparatePorts(checked)"
+                  ></a-switch>
+              </a-form-item>
+              <a-form-item v-if="inbound.settings.separatePorts" label="TCP Port"
+                  :validate-status="tcpPortValidateStatus" :help="tcpPortHelp">
+                  <a-space>
+                      <a-switch
+                          :checked="inbound.settings.tcpEnable"
+                          @change="checked => ovpnToggleTransport('tcp', checked)"
+                      ></a-switch>
+                      <a-input
+                          v-if="inbound.settings.tcpEnable"
+                          :value="inbound.settings.tcpPort"
+                          @change="e => { inbound.settings.tcpPort = sanitizePort(e.target.value); }"
+                          @keypress.native="blockNonDigit"
+                          inputmode="numeric"
+                          :max-length="5"
+                          placeholder="1194"
+                          :style="{ width: '90px' }"
+                      ></a-input>
+                      <span v-else :style="{ color: '#888' }">Disabled</span>
+                  </a-space>
+              </a-form-item>
+              <a-form-item
+                  :label="inbound.settings.separatePorts ? 'UDP Port' : 'Port (TCP + UDP)'"
+                  :validate-status="portValidateStatus" :help="portHelp"
+              >
+                  <a-space>
+                      <a-switch
+                          v-if="inbound.settings.separatePorts"
+                          :checked="inbound.settings.udpEnable"
+                          @change="checked => ovpnToggleTransport('udp', checked)"
+                      ></a-switch>
+                      <a-input
+                          v-if="!inbound.settings.separatePorts || inbound.settings.udpEnable"
+                          :value="inbound.port"
+                          @change="e => { inbound.port = sanitizePort(e.target.value); }"
+                          @keypress.native="blockNonDigit"
+                          inputmode="numeric"
+                          :max-length="5"
+                          placeholder="1194"
+                          :style="{ width: '90px' }"
+                      ></a-input>
+                      <span v-else :style="{ color: '#888' }">Disabled</span>
+                  </a-space>
+              </a-form-item>
+          </template>
+      </a-form>
+    </div>
 
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    {{ i18n "pages.inbounds.speedLimitDesc" }}
-                </template>
-                {{ i18n "pages.inbounds.speedLimitTitle" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-switch v-model="dbInbound.speedLimitEnable"></a-switch>
-    </a-form-item>
+    <!-- ======================== Protocol settings ======================== -->
+    <div class="bo-if-sec" data-sec="proto" v-show="inModal.section === 'proto'">
+      <h4 class="bo-if-h">Settings</h4>
+      <p class="bo-if-d">Options that exist only on [[ ProtocolLabels[inbound.protocol] || inbound.protocol ]].</p>
 
-    <template v-if="dbInbound.speedLimitEnable">
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        {{ i18n "pages.inbounds.speedLimitSeparateDesc" }}
-                    </template>
-                    {{ i18n "pages.inbounds.speedLimitSeparateTitle" }}
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <!--
-              Seed Up from Down when switching to separate boxes. Without this, an
-              operator who capped both directions at one value and then flips this on
-              silently gets an UNLIMITED upload, because 0 means unlimited and Up has
-              never been set. Carrying the value over keeps the toggle from loosening
-              a limit. Only seeds when Up is still unset, so it never clobbers a real
-              value on a second toggle. $event is the NEW checked state, so this does
-              not depend on running before or after v-model's own handler.
-            -->
-            <a-switch
-                v-model="dbInbound.speedLimitSeparate"
-                @change="if ($event && !dbInbound.speedLimitUp) { dbInbound.speedLimitUp = dbInbound.speedLimitDown }"
-            ></a-switch>
-        </a-form-item>
+      <template v-if="inbound.protocol === Protocols.VMESS">{{template "form/vmess"}}</template>
+      <template v-if="inbound.protocol === Protocols.VLESS">{{template "form/vless"}}</template>
+      <template v-if="inbound.protocol === Protocols.TROJAN">{{template "form/trojan"}}</template>
+      <template v-if="inbound.protocol === Protocols.SHADOWSOCKS">{{template "form/shadowsocks"}}</template>
+      <template v-if="inbound.protocol === Protocols.TUNNEL">{{template "form/tunnel"}}</template>
+      <template v-if="inbound.protocol === Protocols.MIXED">{{template "form/mixed"}}</template>
+      <template v-if="inbound.protocol === Protocols.HTTP">{{template "form/http"}}</template>
+      <template v-if="inbound.protocol === Protocols.WIREGUARD">{{template "form/wireguard"}}</template>
+      <template v-if="inbound.protocol === Protocols.TUN">{{template "form/tun"}}</template>
+      <template v-if="inbound.protocol === Protocols.L2TP">{{template "form/l2tp"}}</template>
+      <template v-if="inbound.protocol === Protocols.PPTP">{{template "form/pptp"}}</template>
+      <template v-if="inbound.protocol === Protocols.OPENVPN">{{template "form/openvpn"}}</template>
+      <template v-if="inbound.protocol === Protocols.OPENCONNECT">{{template "form/openconnect"}}</template>
+      <template v-if="inbound.protocol === Protocols.SSTP">{{template "form/sstp"}}</template>
+      <template v-if="inbound.protocol === Protocols.IKEV2">{{template "form/ikev2"}}</template>
+      <template v-if="inbound.protocol === Protocols.WGC">{{template "form/wgc"}}</template>
+      <template v-if="inbound.protocol === Protocols.AWG">{{template "form/awg"}}</template>
+      <template v-if="inbound.protocol === Protocols.GRE">{{template "form/gre"}}</template>
+      <template v-if="inbound.protocol === Protocols.MTPROTO">{{template "form/mtproto"}}</template>
+      <template v-if="inbound.protocol === Protocols.SSH">{{template "form/ssh"}}</template>
+      <template v-if="inbound.protocol === Protocols.HYSTERIA">{{template "form/hysteria"}}</template>
+      <template v-if="inbound.protocol === Protocols.ANYTLS">{{template "form/anytls"}}</template>
+      <template v-if="inbound.protocol === Protocols.TUIC">{{template "form/tuic"}}</template>
+      <template v-if="inbound.protocol === Protocols.NAIVE">{{template "form/naive"}}</template>
+    </div>
 
-        <template v-if="dbInbound.speedLimitSeparate">
-            <a-form-item>
-                <template slot="label">
-                    <a-tooltip>
-                        <template slot="title">
-                            {{ i18n "pages.inbounds.speedLimitDownDesc" }}
-                        </template>
-                        {{ i18n "pages.inbounds.speedLimitDown" }}
-                        <a-icon type="question-circle"></a-icon>
-                    </a-tooltip>
-                </template>
-                <a-input-number
-                    v-model.number="dbInbound.speedLimitDown"
-                    :min="0"
-                ></a-input-number>
-            </a-form-item>
+    <!-- =========================== Transport ============================ -->
+    <div class="bo-if-sec" data-sec="transport" v-show="inModal.section === 'transport'">
+      <h4 class="bo-if-h">Transport</h4>
+      <p class="bo-if-d">How the bytes move, plus the socket options and final mask that ride with it.</p>
+      <template v-if="inbound.canEnableStream()">
+        {{template "form/streamSettings"}}
+      </template>
+    </div>
 
-            <a-form-item>
-                <template slot="label">
-                    <a-tooltip>
-                        <template slot="title">
-                            {{ i18n "pages.inbounds.speedLimitUpDesc" }}
-                        </template>
-                        {{ i18n "pages.inbounds.speedLimitUp" }}
-                        <a-icon type="question-circle"></a-icon>
-                    </a-tooltip>
-                </template>
-                <a-input-number
-                    v-model.number="dbInbound.speedLimitUp"
-                    :min="0"
-                ></a-input-number>
-            </a-form-item>
-        </template>
+    <!-- ============================ Security ============================ -->
+    <div class="bo-if-sec" data-sec="security" v-show="inModal.section === 'security'">
+      <h4 class="bo-if-h">Security</h4>
+      <p class="bo-if-d">
+        <template v-if="inbound.canEnableTls()">TLS, REALITY and the certificate this inbound presents.</template>
+        <template v-else>The certificate and secrets this protocol authenticates with.</template>
+      </p>
+      <template v-if="inbound.canEnableTls()">
+        {{template "form/tlsSettings"}}
+      </template>
+      <!-- VLESS flow and its vision seed. They belong here rather than with the
+           protocol's own settings because they only exist under TLS or REALITY on
+           a TCP transport, which is the decision made directly above them. -->
+      <template v-if="inbound.protocol === Protocols.VLESS">{{template "form/vless/security"}}</template>
+      <template v-if="inbound.protocol === Protocols.OPENVPN">{{template "form/openvpn/security"}}</template>
+      <template v-if="inbound.protocol === Protocols.OPENCONNECT">{{template "form/openconnect/security"}}</template>
+      <template v-if="inbound.protocol === Protocols.SSTP">{{template "form/sstp/security"}}</template>
+      <template v-if="inbound.protocol === Protocols.IKEV2">{{template "form/ikev2/security"}}</template>
+      <template v-if="inbound.protocol === Protocols.L2TP">{{template "form/l2tp/security"}}</template>
+      <template v-if="inbound.protocol === Protocols.WGC">{{template "form/wgc/security"}}</template>
+      <template v-if="inbound.protocol === Protocols.AWG">{{template "form/awg/security"}}</template>
+      <template v-if="inbound.protocol === Protocols.GRE">{{template "form/gre/security"}}</template>
+    </div>
 
-        <template v-else>
-            <a-form-item>
-                <template slot="label">
-                    <a-tooltip>
-                        <template slot="title">
-                            {{ i18n "pages.inbounds.speedLimitValueDesc" }}
-                        </template>
-                        {{ i18n "pages.inbounds.speedLimitValue" }}
-                        <a-icon type="question-circle"></a-icon>
-                    </a-tooltip>
-                </template>
-                <a-input-number
-                    v-model.number="dbInbound.speedLimitDown"
-                    :min="0"
-                ></a-input-number>
-            </a-form-item>
-        </template>
+    <!-- ============================ Network ============================= -->
+    <div class="bo-if-sec" data-sec="network" v-show="inModal.section === 'network'">
+      <h4 class="bo-if-h">Network</h4>
+      <p class="bo-if-d">The addresses and resolvers this inbound hands its clients.</p>
+      <template v-if="inbound.protocol === Protocols.OPENVPN">{{template "form/openvpn/network"}}</template>
+      <template v-if="inbound.protocol === Protocols.OPENCONNECT">{{template "form/openconnect/network"}}</template>
+      <template v-if="inbound.protocol === Protocols.SSTP">{{template "form/sstp/network"}}</template>
+      <template v-if="inbound.protocol === Protocols.IKEV2">{{template "form/ikev2/network"}}</template>
+      <template v-if="inbound.protocol === Protocols.L2TP">{{template "form/l2tp/network"}}</template>
+      <template v-if="inbound.protocol === Protocols.PPTP">{{template "form/pptp/network"}}</template>
+      <template v-if="inbound.protocol === Protocols.WGC">{{template "form/wgc/network"}}</template>
+      <template v-if="inbound.protocol === Protocols.AWG">{{template "form/awg/network"}}</template>
+      <template v-if="inbound.protocol === Protocols.GRE">{{template "form/gre/network"}}</template>
+    </div>
 
-        <a-form-item>
-            <template slot="label">
-                <a-tooltip>
-                    <template slot="title">
-                        0 <span>{{ i18n "pages.inbounds.speedLimitFromStart" }}</span>
-                    </template>
-                    {{ i18n "pages.inbounds.speedLimitApplyAfter" }}
-                    <a-icon type="question-circle"></a-icon>
-                </a-tooltip>
-            </template>
-            <a-input-number
-                v-model.number="dbInbound.speedLimitAfterGB"
-                :min="0"
-            ></a-input-number>
-        </a-form-item>
-    </template>
+    <!-- ========================= Access limits ========================== -->
+    <div class="bo-if-sec" data-sec="access" v-show="inModal.section === 'access'">
+      <h4 class="bo-if-h">Access limits</h4>
+      <p class="bo-if-d">How many devices or addresses one account may hold here, and what happens at the cap.</p>
 
-    <!--
-      IP Limit and the strategy that qualifies it: how many client source addresses one
-      account may hold at once, and what happens when it reaches that number.
+      <!--
+        IP Limit and the strategy that qualifies it: how many client source addresses one
+        account may hold at once, and what happens when it reaches that number.
 
-      The cap here is the inbound's DEFAULT, which the per-client control on the client
-      form overrides, so an operator sets the baseline once instead of on every account.
-      The strategy has NO per-client control on purpose: the entitlement is the account's,
-      the policy at the cap is the operator's.
+        The cap here is the inbound's DEFAULT, which the per-client control on the client
+        form overrides, so an operator sets the baseline once instead of on every account.
+        The strategy has NO per-client control on purpose: the entitlement is the account's,
+        the policy at the cap is the operator's.
 
-      Both are offered ONLY for the Xray-native protocols that have accounts, because only
-      there is the core the enforcement point: it terminates the client connection itself
-      and so counts the client's own source address. The VPN protocols enforce K at RADIUS
-      auth and ssh/mtproto in the relay that terminated the connection (each already
-      carries its own pair of controls on its own form), and the remaining native protocols
-      have no accounts to cap at all. A control that changes nothing is worse than an
-      absent one: it reads as a limit that is set and is not.
+        Both are offered ONLY for the Xray-native protocols that have accounts, because only
+        there is the core the enforcement point: it terminates the client connection itself
+        and so counts the client's own source address. The VPN protocols enforce K at RADIUS
+        auth and ssh/mtproto in the relay that terminated the connection (each already
+        carries its own pair of controls on its own form), and the remaining native protocols
+        have no accounts to cap at all. A control that changes nothing is worse than an
+        absent one: it reads as a limit that is set and is not.
 
-      The strategy stays visible whatever this default is, rather than being gated on it:
-      a client can carry its own cap with the inbound default at 0, and hiding the policy
-      that governs those overrides would strand it.
+        The strategy stays visible whatever this default is, rather than being gated on it:
+        a client can carry its own cap with the inbound default at 0, and hiding the policy
+        that governs those overrides would strand it.
 
-      Gated on inbound.protocol, not dbInbound.protocol, because the Add form binds the
-      picker to the former and the latter is still empty there.
+        Gated on inbound.protocol, not dbInbound.protocol, because the Add form binds the
+        picker to the former and the latter is still empty there.
 
-      Hardcoded English, like the per-protocol forms this copies: an en_US-only i18n key
-      would blank the label in the other 12 locales (see web/i18n_toml_test.go).
-    -->
-    <a-form-item
-        v-if="inbound.protocol === Protocols.VMESS || inbound.protocol === Protocols.VLESS || inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.SHADOWSOCKS || inbound.protocol === Protocols.ANYTLS || inbound.protocol === Protocols.TUIC || inbound.protocol === Protocols.NAIVE"
-    >
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    Max simultaneous client IPs per account on this inbound. 0 = no
-                    limit. A client's own IP Limit overrides this default. Devices
-                    behind one NAT share one IP and count as one, so this caps
-                    addresses, not devices.
-                </template>
-                IP Limit
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-input-number
-            :value="dbInbound.ipLimit"
-            @change="dbInbound.ipLimit = Math.max(0, Math.floor($event || 0))"
-            :min="0"
-            :step="1"
-            :precision="0"
-            style="width: 90px"
-        ></a-input-number>
-    </a-form-item>
+        Hardcoded English, like the per-protocol forms this copies: an en_US-only i18n key
+        would blank the label in the other 12 locales (see web/i18n_toml_test.go).
+      -->
+      <a-form
+          :colon="false"
+          :label-col="{ md: {span:8} }"
+          :wrapper-col="{ md: {span:14} }"
+          v-if="hasNativeIpLimit"
+      >
+          <a-form-item>
+              <template slot="label">
+                  <a-tooltip>
+                      <template slot="title">
+                          Max simultaneous client IPs per account on this inbound. 0 = no
+                          limit. A client's own IP Limit overrides this default. Devices
+                          behind one NAT share one IP and count as one, so this caps
+                          addresses, not devices.
+                      </template>
+                      IP Limit
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+              </template>
+              <a-input-number
+                  :value="dbInbound.ipLimit"
+                  @change="dbInbound.ipLimit = Math.max(0, Math.floor($event || 0))"
+                  :min="0"
+                  :step="1"
+                  :precision="0"
+                  style="width: 90px"
+              ></a-input-number>
+          </a-form-item>
 
-    <a-form-item
-        v-if="inbound.protocol === Protocols.VMESS || inbound.protocol === Protocols.VLESS || inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.SHADOWSOCKS || inbound.protocol === Protocols.ANYTLS || inbound.protocol === Protocols.TUIC || inbound.protocol === Protocols.NAIVE"
-    >
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    When an account is already at its IP Limit and a new client IP
-                    connects: reject the new one, or accept it and disconnect that
-                    account's oldest IP (all of its connections). Applies to every
-                    account on this inbound.
-                </template>
-                IP Limit Strategy
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-radio-group
-            v-model="dbInbound.ipLimitStrategy"
-            button-style="solid"
-        >
-            <a-radio-button value="accept">Accept</a-radio-button>
-            <a-radio-button value="reject">Reject</a-radio-button>
-        </a-radio-group>
-    </a-form-item>
+          <a-form-item>
+              <template slot="label">
+                  <a-tooltip>
+                      <template slot="title">
+                          When an account is already at its IP Limit and a new client IP
+                          connects: reject the new one, or accept it and disconnect that
+                          account's oldest IP (all of its connections). Applies to every
+                          account on this inbound.
+                      </template>
+                      IP Limit Strategy
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+              </template>
+              <a-radio-group
+                  v-model="dbInbound.ipLimitStrategy"
+                  button-style="solid"
+              >
+                  <a-radio-button value="accept">Accept</a-radio-button>
+                  <a-radio-button value="reject">Reject</a-radio-button>
+              </a-radio-group>
+          </a-form-item>
+      </a-form>
 
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    <span
-                        >{{ i18n "pages.inbounds.periodicTrafficResetDesc"
-                        }}</span
-                    >
-                    <br
-                        v-if="dbInbound.lastTrafficResetTime && dbInbound.lastTrafficResetTime > 0"
-                    />
-                    <span
-                        v-if="dbInbound.lastTrafficResetTime && dbInbound.lastTrafficResetTime > 0"
-                    >
-                        <strong>{{ i18n "pages.inbounds.lastReset" }}:</strong>
-                        <span
-                            >[[
-                            IntlUtil.formatDate(dbInbound.lastTrafficResetTime)
-                            ]]</span
-                        >
-                    </span>
-                </template>
-                {{ i18n "pages.inbounds.periodicTrafficResetTitle" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-select
-            v-model="dbInbound.trafficReset"
-            :dropdown-class-name="themeSwitcher.currentTheme"
-        >
-            <a-select-option value="never"
-                >{{ i18n "pages.inbounds.periodicTrafficReset.never"
-                }}</a-select-option
-            >
-            <a-select-option value="hourly"
-                >{{ i18n "pages.inbounds.periodicTrafficReset.hourly"
-                }}</a-select-option
-            >
-            <a-select-option value="daily"
-                >{{ i18n "pages.inbounds.periodicTrafficReset.daily"
-                }}</a-select-option
-            >
-            <a-select-option value="weekly"
-                >{{ i18n "pages.inbounds.periodicTrafficReset.weekly"
-                }}</a-select-option
-            >
-            <a-select-option value="monthly"
-                >{{ i18n "pages.inbounds.periodicTrafficReset.monthly"
-                }}</a-select-option
-            >
-        </a-select>
-    </a-form-item>
+      <template v-if="inbound.protocol === Protocols.OPENVPN">{{template "form/openvpn/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.OPENCONNECT">{{template "form/openconnect/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.SSTP">{{template "form/sstp/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.IKEV2">{{template "form/ikev2/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.L2TP">{{template "form/l2tp/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.PPTP">{{template "form/pptp/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.WGC">{{template "form/wgc/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.AWG">{{template "form/awg/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.GRE">{{template "form/gre/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.MTPROTO">{{template "form/mtproto/access"}}</template>
+      <template v-if="inbound.protocol === Protocols.SSH">{{template "form/ssh/access"}}</template>
+    </div>
 
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    <span
-                        >{{ i18n "pages.inbounds.leaveBlankToNeverExpire"
-                        }}</span
-                    >
-                </template>
-                {{ i18n "pages.inbounds.expireDate" }}
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-date-picker
-            :style="{ width: '100%' }"
-            v-if="datepicker == 'gregorian'"
-            :show-time="{ format: 'HH:mm:ss' }"
-            format="YYYY-MM-DD HH:mm:ss"
-            :dropdown-class-name="themeSwitcher.currentTheme"
-            v-model="dbInbound._expiryTime"
-        ></a-date-picker>
-        <a-persian-datepicker
-            v-else
-            placeholder='{{ i18n "pages.settings.datepickerPlaceholder" }}'
-            value="dbInbound._expiryTime"
-            v-model="dbInbound._expiryTime"
-        >
-        </a-persian-datepicker>
-    </a-form-item>
-</a-form>
+    <!-- ============================= Quota ============================== -->
+    <div class="bo-if-sec" data-sec="quota" v-show="inModal.section === 'quota'">
+      <h4 class="bo-if-h">Quota and billing</h4>
+      <p class="bo-if-d">Stored on the inbound row, and the same on every protocol.</p>
+      <a-form
+          :colon="false"
+          :label-col="{ md: {span:8} }"
+          :wrapper-col="{ md: {span:14} }"
+      >
+          <a-form-item>
+              <template slot="label">
+                  <a-tooltip>
+                      <template slot="title">
+                          0 <span>{{ i18n "pages.inbounds.meansNoLimit" }}</span>
+                      </template>
+                      {{ i18n "pages.inbounds.totalFlow" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+              </template>
+              <a-input-number
+                  v-model.number="dbInbound.totalGB"
+                  :min="0"
+              ></a-input-number>
+          </a-form-item>
 
-<!-- vmess settings -->
-<template v-if="inbound.protocol === Protocols.VMESS">
-    {{template "form/vmess"}}
-</template>
+          <a-form-item>
+              <template slot="label">
+                  <a-tooltip>
+                      <template slot="title">
+                          {{ i18n "pages.inbounds.trafficMultiplierDesc" }}
+                      </template>
+                      {{ i18n "pages.inbounds.trafficMultiplierTitle" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+              </template>
+              <a-switch v-model="dbInbound.trafficMultiplierEnable"></a-switch>
+          </a-form-item>
 
-<!-- vless settings -->
-<template v-if="inbound.protocol === Protocols.VLESS">
-    {{template "form/vless"}}
-</template>
+          <template v-if="dbInbound.trafficMultiplierEnable">
+              <a-form-item>
+                  <template slot="label">
+                      <a-tooltip>
+                          <template slot="title">
+                              0 <span>{{ i18n "pages.inbounds.trafficMultiplierFromStart" }}</span>
+                          </template>
+                          {{ i18n "pages.inbounds.trafficMultiplierApplyAfter" }}
+                          <a-icon type="question-circle"></a-icon>
+                      </a-tooltip>
+                  </template>
+                  <a-input-number
+                      v-model.number="dbInbound.trafficMultiplierAfterGB"
+                      :min="0"
+                  ></a-input-number>
+              </a-form-item>
 
-<!-- trojan settings -->
-<template v-if="inbound.protocol === Protocols.TROJAN">
-    {{template "form/trojan"}}
-</template>
+              <a-form-item>
+                  <template slot="label">
+                      <a-tooltip>
+                          <template slot="title">
+                              {{ i18n "pages.inbounds.trafficMultiplierValueDesc" }}
+                          </template>
+                          {{ i18n "pages.inbounds.trafficMultiplierValue" }}
+                          <a-icon type="question-circle"></a-icon>
+                      </a-tooltip>
+                  </template>
+                  <a-input-number
+                      v-model.number="dbInbound.trafficMultiplier"
+                      :min="1"
+                      :step="0.5"
+                  ></a-input-number>
+              </a-form-item>
+          </template>
 
-<!-- shadowsocks -->
-<template v-if="inbound.protocol === Protocols.SHADOWSOCKS">
-    {{template "form/shadowsocks"}}
-</template>
+          <a-form-item>
+              <template slot="label">
+                  <a-tooltip>
+                      <template slot="title">
+                          {{ i18n "pages.inbounds.speedLimitDesc" }}
+                      </template>
+                      {{ i18n "pages.inbounds.speedLimitTitle" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+              </template>
+              <a-switch v-model="dbInbound.speedLimitEnable"></a-switch>
+          </a-form-item>
 
-<!-- tunnel -->
-<template v-if="inbound.protocol === Protocols.TUNNEL">
-    {{template "form/tunnel"}}
-</template>
+          <template v-if="dbInbound.speedLimitEnable">
+              <a-form-item>
+                  <template slot="label">
+                      <a-tooltip>
+                          <template slot="title">
+                              {{ i18n "pages.inbounds.speedLimitSeparateDesc" }}
+                          </template>
+                          {{ i18n "pages.inbounds.speedLimitSeparateTitle" }}
+                          <a-icon type="question-circle"></a-icon>
+                      </a-tooltip>
+                  </template>
+                  <!--
+                    Seed Up from Down when switching to separate boxes. Without this, an
+                    operator who capped both directions at one value and then flips this on
+                    silently gets an UNLIMITED upload, because 0 means unlimited and Up has
+                    never been set. Carrying the value over keeps the toggle from loosening
+                    a limit. Only seeds when Up is still unset, so it never clobbers a real
+                    value on a second toggle. $event is the NEW checked state, so this does
+                    not depend on running before or after v-model's own handler.
+                  -->
+                  <a-switch
+                      v-model="dbInbound.speedLimitSeparate"
+                      @change="if ($event && !dbInbound.speedLimitUp) { dbInbound.speedLimitUp = dbInbound.speedLimitDown }"
+                  ></a-switch>
+              </a-form-item>
 
-<!-- mixed -->
-<template v-if="inbound.protocol === Protocols.MIXED">
-    {{template "form/mixed"}}
-</template>
+              <template v-if="dbInbound.speedLimitSeparate">
+                  <a-form-item>
+                      <template slot="label">
+                          <a-tooltip>
+                              <template slot="title">
+                                  {{ i18n "pages.inbounds.speedLimitDownDesc" }}
+                              </template>
+                              {{ i18n "pages.inbounds.speedLimitDown" }}
+                              <a-icon type="question-circle"></a-icon>
+                          </a-tooltip>
+                      </template>
+                      <a-input-number
+                          v-model.number="dbInbound.speedLimitDown"
+                          :min="0"
+                      ></a-input-number>
+                  </a-form-item>
 
-<!-- http -->
-<template v-if="inbound.protocol === Protocols.HTTP">
-    {{template "form/http"}}
-</template>
+                  <a-form-item>
+                      <template slot="label">
+                          <a-tooltip>
+                              <template slot="title">
+                                  {{ i18n "pages.inbounds.speedLimitUpDesc" }}
+                              </template>
+                              {{ i18n "pages.inbounds.speedLimitUp" }}
+                              <a-icon type="question-circle"></a-icon>
+                          </a-tooltip>
+                      </template>
+                      <a-input-number
+                          v-model.number="dbInbound.speedLimitUp"
+                          :min="0"
+                      ></a-input-number>
+                  </a-form-item>
+              </template>
 
-<!-- wireguard -->
-<template v-if="inbound.protocol === Protocols.WIREGUARD">
-    {{template "form/wireguard"}}
-</template>
+              <template v-else>
+                  <a-form-item>
+                      <template slot="label">
+                          <a-tooltip>
+                              <template slot="title">
+                                  {{ i18n "pages.inbounds.speedLimitValueDesc" }}
+                              </template>
+                              {{ i18n "pages.inbounds.speedLimitValue" }}
+                              <a-icon type="question-circle"></a-icon>
+                          </a-tooltip>
+                      </template>
+                      <a-input-number
+                          v-model.number="dbInbound.speedLimitDown"
+                          :min="0"
+                      ></a-input-number>
+                  </a-form-item>
+              </template>
 
-<!-- tun -->
-<template v-if="inbound.protocol === Protocols.TUN">
-    {{template "form/tun"}}
-</template>
+              <a-form-item>
+                  <template slot="label">
+                      <a-tooltip>
+                          <template slot="title">
+                              0 <span>{{ i18n "pages.inbounds.speedLimitFromStart" }}</span>
+                          </template>
+                          {{ i18n "pages.inbounds.speedLimitApplyAfter" }}
+                          <a-icon type="question-circle"></a-icon>
+                      </a-tooltip>
+                  </template>
+                  <a-input-number
+                      v-model.number="dbInbound.speedLimitAfterGB"
+                      :min="0"
+                  ></a-input-number>
+              </a-form-item>
+          </template>
 
-<!-- l2tp -->
-<template v-if="inbound.protocol === Protocols.L2TP">
-    {{template "form/l2tp"}}
-</template>
+          <a-form-item>
+              <template slot="label">
+                  <a-tooltip>
+                      <template slot="title">
+                          <span
+                              >{{ i18n "pages.inbounds.periodicTrafficResetDesc"
+                              }}</span
+                          >
+                          <br
+                              v-if="dbInbound.lastTrafficResetTime && dbInbound.lastTrafficResetTime > 0"
+                          />
+                          <span
+                              v-if="dbInbound.lastTrafficResetTime && dbInbound.lastTrafficResetTime > 0"
+                          >
+                              <strong>{{ i18n "pages.inbounds.lastReset" }}:</strong>
+                              <span
+                                  >[[
+                                  IntlUtil.formatDate(dbInbound.lastTrafficResetTime)
+                                  ]]</span
+                              >
+                          </span>
+                      </template>
+                      {{ i18n "pages.inbounds.periodicTrafficResetTitle" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+              </template>
+              <a-select
+                  v-model="dbInbound.trafficReset"
+                  :dropdown-class-name="themeSwitcher.currentTheme"
+              >
+                  <a-select-option value="never"
+                      >{{ i18n "pages.inbounds.periodicTrafficReset.never"
+                      }}</a-select-option
+                  >
+                  <a-select-option value="hourly"
+                      >{{ i18n "pages.inbounds.periodicTrafficReset.hourly"
+                      }}</a-select-option
+                  >
+                  <a-select-option value="daily"
+                      >{{ i18n "pages.inbounds.periodicTrafficReset.daily"
+                      }}</a-select-option
+                  >
+                  <a-select-option value="weekly"
+                      >{{ i18n "pages.inbounds.periodicTrafficReset.weekly"
+                      }}</a-select-option
+                  >
+                  <a-select-option value="monthly"
+                      >{{ i18n "pages.inbounds.periodicTrafficReset.monthly"
+                      }}</a-select-option
+                  >
+              </a-select>
+          </a-form-item>
 
-<!-- pptp -->
-<template v-if="inbound.protocol === Protocols.PPTP">
-    {{template "form/pptp"}}
-</template>
+          <a-form-item>
+              <template slot="label">
+                  <a-tooltip>
+                      <template slot="title">
+                          <span
+                              >{{ i18n "pages.inbounds.leaveBlankToNeverExpire"
+                              }}</span
+                          >
+                      </template>
+                      {{ i18n "pages.inbounds.expireDate" }}
+                      <a-icon type="question-circle"></a-icon>
+                  </a-tooltip>
+              </template>
+              <a-date-picker
+                  :style="{ width: '100%' }"
+                  v-if="datepicker == 'gregorian'"
+                  :show-time="{ format: 'HH:mm:ss' }"
+                  format="YYYY-MM-DD HH:mm:ss"
+                  :dropdown-class-name="themeSwitcher.currentTheme"
+                  v-model="dbInbound._expiryTime"
+              ></a-date-picker>
+              <a-persian-datepicker
+                  v-else
+                  placeholder='{{ i18n "pages.settings.datepickerPlaceholder" }}'
+                  value="dbInbound._expiryTime"
+                  v-model="dbInbound._expiryTime"
+              >
+              </a-persian-datepicker>
+          </a-form-item>
+      </a-form>
+    </div>
 
-<!-- openvpn -->
-<template v-if="inbound.protocol === Protocols.OPENVPN">
-    {{template "form/openvpn"}}
-</template>
+    <!-- ========================= External Proxy ========================= -->
+    <div class="bo-if-sec" data-sec="reach" v-show="inModal.section === 'reach'">
+      <h4 class="bo-if-h">External Proxy</h4>
+      <p class="bo-if-d">Advertise a different host or port to clients than the one this listens on.</p>
+      <template v-if="inbound.canEnableStream()">
+        {{template "form/externalProxy" }}
+      </template>
+      <template v-if="inbound.protocol === Protocols.OPENVPN">{{template "form/openvpn/reach"}}</template>
+      <template v-if="inbound.protocol === Protocols.OPENCONNECT">{{template "form/openconnect/reach"}}</template>
+      <template v-if="inbound.protocol === Protocols.SSTP">{{template "form/sstp/reach"}}</template>
+      <template v-if="inbound.protocol === Protocols.IKEV2">{{template "form/ikev2/reach"}}</template>
+      <template v-if="inbound.protocol === Protocols.L2TP">{{template "form/l2tp/reach"}}</template>
+      <template v-if="inbound.protocol === Protocols.PPTP">{{template "form/pptp/reach"}}</template>
+      <template v-if="inbound.protocol === Protocols.WGC">{{template "form/wgc/reach"}}</template>
+      <template v-if="inbound.protocol === Protocols.AWG">{{template "form/awg/reach"}}</template>
+      <template v-if="inbound.protocol === Protocols.MTPROTO">{{template "form/mtproto/reach"}}</template>
+      <template v-if="inbound.protocol === Protocols.SSH">{{template "form/ssh/reach"}}</template>
+    </div>
 
-<!-- openconnect -->
-<template v-if="inbound.protocol === Protocols.OPENCONNECT">
-    {{template "form/openconnect"}}
-</template>
+    <!-- ============================ Sniffing ============================ -->
+    <div class="bo-if-sec" data-sec="sniff" v-show="inModal.section === 'sniff'">
+      <h4 class="bo-if-h">Sniffing</h4>
+      <p class="bo-if-d">What the core reads out of a connection to route it.</p>
+      {{template "form/sniffing"}}
+    </div>
 
-<!-- sstp -->
-<template v-if="inbound.protocol === Protocols.SSTP">
-    {{template "form/sstp"}}
-</template>
-
-<!-- ikev2 -->
-<template v-if="inbound.protocol === Protocols.IKEV2">
-    {{template "form/ikev2"}}
-</template>
-
-<!-- wgc (WireGuard C) -->
-<template v-if="inbound.protocol === Protocols.WGC">
-    {{template "form/wgc"}}
-</template>
-
-<!-- awg (AmneziaWG) -->
-<template v-if="inbound.protocol === Protocols.AWG">
-    {{template "form/awg"}}
-</template>
-
-<!-- gre (GRE) -->
-<template v-if="inbound.protocol === Protocols.GRE">
-    {{template "form/gre"}}
-</template>
-
-<!-- mtproto (MTProto Proxy) -->
-<template v-if="inbound.protocol === Protocols.MTPROTO">
-    {{template "form/mtproto"}}
-</template>
-
-<!-- ssh (SSH relay) -->
-<template v-if="inbound.protocol === Protocols.SSH">
-    {{template "form/ssh"}}
-</template>
-
-<!-- hysteria -->
-<template v-if="inbound.protocol === Protocols.HYSTERIA">
-    {{template "form/hysteria"}}
-</template>
-
-<!-- anytls -->
-<template v-if="inbound.protocol === Protocols.ANYTLS">
-    {{template "form/anytls"}}
-</template>
-
-<!-- tuic -->
-<template v-if="inbound.protocol === Protocols.TUIC">
-    {{template "form/tuic"}}
-</template>
-
-<!-- naive -->
-<template v-if="inbound.protocol === Protocols.NAIVE">
-    {{template "form/naive"}}
-</template>
-
-<!-- stream settings -->
-<template v-if="inbound.canEnableStream()">
-    {{template "form/streamSettings"}} {{template "form/externalProxy" }}
-</template>
-
-<!-- tls settings -->
-<template v-if="inbound.canEnableTls()">
-    {{template "form/tlsSettings"}}
-</template>
-
-<!-- sniffing -->
-<a-collapse>
-    <a-collapse-panel header="Sniffing">
-        {{template "form/sniffing"}}
-    </a-collapse-panel>
-</a-collapse>
-
+  </div>
+</div>
 {{end}}

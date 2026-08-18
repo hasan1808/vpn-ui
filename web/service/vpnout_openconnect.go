@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -127,12 +129,67 @@ type ocOutSettings struct {
 	// the only thing that works where UDP is blocked.
 	NoDtls bool `json:"noDtls"`
 
+	// The OUTER connection to the gateway, dialled through a proxy instead of straight
+	// out of the host's WAN.
+	//
+	// This is the only mechanism there is for a VPN outbound whose carrier is an
+	// ordinary Xray outbound. sockopt.dialerProxy is on the wrong side of the tunnel:
+	// it makes Xray hand the traffic to another outbound instead of binding this
+	// device, so the exit address becomes the proxy's and the tunnel is skipped
+	// entirely (vpnOutStreamSettings deletes it for that reason). Wrapping the outer
+	// connection, which is what openconnect's own --proxy does, is the version of the
+	// wish that works, and the exit address stays the gateway's.
+	//
+	// ProxyType is the scheme, and openconnect is stricter than it looks: measured
+	// against the bundled v9.21, `socks4://` is refused outright with "Only http or
+	// socks(5) proxies supported", and a URL with NO scheme is silently treated as
+	// http. So the scheme is a choice between exactly two values and is always written.
+	//
+	// DTLS: openconnect refuses the UDP data channel whenever a proxy is set ("No DTLS
+	// when connected via proxy") and falls back to TLS on its own. NoDtls is
+	// deliberately NOT implied from this - see ocOutRenderConfig.
+	//
+	// omitempty on all five is load-bearing rather than tidiness. pppOutFingerprintOf
+	// hashes the MARSHALLED struct, so a new field that marshals as `"proxy":""` would
+	// change the fingerprint of every tunnel that already exists, and the first Up
+	// after the upgrade would tear down and redial every live OpenConnect outbound for
+	// a setting nobody touched.
+	ProxyType string `json:"proxyType,omitempty"`
+	Proxy     string `json:"proxy,omitempty"`
+	ProxyPort int    `json:"proxyPort,omitempty"`
+	// ProxyUser/ProxyPass go into the URL's userinfo, percent-encoded, because
+	// openconnect has no separate option for them. That is safe here and only here:
+	// the URL is written into the 0600 config file and never onto a command line, so
+	// the credentials do not reach `ps` (see writeConfig's header).
+	ProxyUser string `json:"proxyUser,omitempty"`
+	ProxyPass string `json:"proxyPass,omitempty"`
+
 	Mtu int `json:"mtu"`
+}
+
+// ocOutProxyTypes is what this openconnect speaks, verified by running the bundled
+// v9.21: `http` and `socks5` connect, `socks` is an accepted alias for socks5, and
+// `socks4` is rejected at startup with "Only http or socks(5) proxies supported".
+// Kept to the two an operator actually picks between.
+var ocOutProxyTypes = []string{"socks5", "http"}
+
+// ocOutProxyDefaultPort is what a blank port box means, per scheme.
+//
+// A default is needed because openconnect's own is wrong for both: internal_parse_url
+// falls back to 80 whatever the scheme is, so a blank port on a SOCKS proxy dials port
+// 80 and fails with a socks-level error that names nothing. 1080 is the registered
+// SOCKS port and what the OpenVPN driver already defaults to, so the two forms agree.
+func ocOutProxyDefaultPort(scheme string) int {
+	if scheme == "http" {
+		return 8080
+	}
+	return 1080
 }
 
 type ocOutDriver struct{}
 
 var _ VpnOutSecrets = (*ocOutDriver)(nil)
+var _ VpnOutServer = (*ocOutDriver)(nil)
 
 func init() { RegisterVpnOutDriver(VpnOutOpenConnect, &ocOutDriver{}) }
 
@@ -144,8 +201,13 @@ func init() { RegisterVpnOutDriver(VpnOutOpenConnect, &ocOutDriver{}) }
 // `cert`, `caCert` and `serverCert` stay visible: a certificate, the CA that signed the
 // gateway's, and a public-key fingerprint are all public by construction, and they are
 // what an operator reads back when a gateway refuses the handshake.
+//
+// `proxyPass` is here for the same reason the OpenVPN driver's socksProxyPass is: it
+// authenticates to a different machine from the gateway, but it is still a password and
+// /vpnoutbound/list is what the outbound table is drawn from. `proxyUser` stays visible,
+// like every other username in this package.
 func (d *ocOutDriver) SecretKeys() []string {
-	return []string{"password", "key", "keyPassword", "totpSecret"}
+	return []string{"password", "key", "keyPassword", "totpSecret", "proxyPass"}
 }
 
 func (d *ocOutDriver) parse(cfg VpnOutboundConfig) (*ocOutSettings, error) {
@@ -161,6 +223,19 @@ func (d *ocOutDriver) parse(cfg VpnOutboundConfig) (*ocOutSettings, error) {
 	s.Authgroup = strings.TrimSpace(s.Authgroup)
 	s.TotpSecret = strings.TrimSpace(s.TotpSecret)
 	s.ServerCert = strings.TrimSpace(s.ServerCert)
+	s.ProxyType = strings.ToLower(strings.TrimSpace(s.ProxyType))
+	s.Proxy = strings.TrimSpace(s.Proxy)
+	s.ProxyUser = strings.TrimSpace(s.ProxyUser)
+	// With no proxy host there is no proxy, so the scheme and port are noise. Clearing
+	// them is what keeps a tunnel that uses no proxy hashing to the value it hashed
+	// before this feature existed: the form's scheme box has a default and posts
+	// "socks5" whether or not it is used, and a tunnel re-saved with nothing changed
+	// must not fingerprint differently and redial. The credentials are deliberately
+	// left alone so Validate can still name a half-filled form.
+	if s.Proxy == "" {
+		s.ProxyType = ""
+		s.ProxyPort = 0
+	}
 	return s, nil
 }
 
@@ -176,6 +251,25 @@ func (d *ocOutDriver) parse(cfg VpnOutboundConfig) (*ocOutSettings, error) {
 // operator to try. The panel's OpenConnect core installs ocserv, which is the SERVER;
 // Up runs backend.ClientPath alone, so a distribution openconnect is not consulted
 // either. The only fix is a build that carries the client for this architecture.
+// ServerHost names what the outer TLS goes to, so this tunnel can be carried inside
+// another. The framework strips the scheme and the path: `server` is handed to
+// openconnect verbatim and is routinely a full URL, while a rule selects on the address
+// alone.
+//
+// The proxy wins when there is one, for the same reason it does in the OpenVPN driver:
+// with a proxy configured the client never sends a packet to the gateway, so a rule
+// naming the gateway would match nothing and the tunnel would quietly not be carried.
+func (d *ocOutDriver) ServerHost(cfg VpnOutboundConfig) (string, error) {
+	s, err := d.parse(cfg)
+	if err != nil {
+		return "", err
+	}
+	if s.Proxy != "" {
+		return s.Proxy, nil
+	}
+	return s.Server, nil
+}
+
 func (d *ocOutDriver) Available() (bool, string) {
 	ok, why := backend.ClientAvailable(backend.OpenconnectClient)
 	if ok {
@@ -251,7 +345,105 @@ func (d *ocOutDriver) Validate(cfg VpnOutboundConfig) error {
 	if s.Mtu != 0 && (s.Mtu < 576 || s.Mtu > 1500) {
 		return fmt.Errorf("mtu %d is outside 576..1500", s.Mtu)
 	}
+	return ocOutValidateProxy(s)
+}
+
+// ocOutValidateProxy checks the proxy fields, which are one setting spread over five
+// boxes. Every shape refused here fails at dial time as something that names the
+// gateway rather than the proxy, forty-five seconds later.
+func ocOutValidateProxy(s *ocOutSettings) error {
+	host := strings.TrimSpace(s.Proxy)
+	if host == "" {
+		// Credentials pointing at nothing are a half-filled form, not a proxy: the URL
+		// would never be written and the operator would be left believing it was.
+		if s.ProxyUser != "" || strings.TrimSpace(s.ProxyPass) != "" {
+			return errors.New("the proxy has credentials but no address, so nothing would be " +
+				"dialled through it. Give the proxy's host, or clear the credentials")
+		}
+		return nil
+	}
+	if strings.ContainsAny(host, " \t\r\n") {
+		return fmt.Errorf("the proxy address %q has whitespace in it; it is one host or address, "+
+			"and the port goes in its own box", s.Proxy)
+	}
+	// A scheme typed into the host box would end up as socks5://http://host, which
+	// openconnect parses as a host called "http" and then cannot resolve.
+	if strings.Contains(host, "://") {
+		return fmt.Errorf("the proxy address %q carries a scheme; the host goes here on its own "+
+			"and HTTP or SOCKS5 is chosen in the box beside it", s.Proxy)
+	}
+	if s.ProxyType != "" {
+		ok := false
+		for _, t := range ocOutProxyTypes {
+			if t == s.ProxyType {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			// socks4 is the one an operator will reach for and it is genuinely absent:
+			// openconnect refuses it at startup rather than falling back.
+			return fmt.Errorf("proxy type %q is not one openconnect speaks (%s); socks4 in "+
+				"particular is refused by the client itself", s.ProxyType,
+				strings.Join(ocOutProxyTypes, ", "))
+		}
+	}
+	if s.ProxyPort < 0 || s.ProxyPort > 65535 {
+		return fmt.Errorf("the proxy port %d is outside 0-65535", s.ProxyPort)
+	}
+	if s.ProxyUser == "" && strings.TrimSpace(s.ProxyPass) != "" {
+		return errors.New("the proxy password has no username with it; both go into the proxy " +
+			"URL together and a password on its own is never sent")
+	}
+	// They are percent-encoded into the URL, so a line break could not forge a second
+	// config directive. Refused anyway: it is a paste artefact every time, and it would
+	// otherwise be sent to the proxy as a literal newline inside the password.
+	if strings.ContainsAny(s.ProxyUser, "\r\n") || strings.ContainsAny(s.ProxyPass, "\r\n") {
+		return errors.New("the proxy username and password cannot contain line breaks")
+	}
 	return nil
+}
+
+// ocOutProxyScheme is the scheme actually written, defaulting a blank choice to socks5.
+//
+// socks5 rather than http as the default because it is the one that carries anything:
+// an HTTP proxy only does CONNECT, and while that is all this outer TLS connection
+// needs, a SOCKS5 listener is what an operator running Xray already has (every socks
+// inbound in this panel is one).
+func ocOutProxyScheme(t string) string {
+	if t == "http" {
+		return "http"
+	}
+	return "socks5"
+}
+
+// ocOutProxyURL renders the proxy as the single URL openconnect takes, or "" when there
+// is none.
+//
+// The scheme is always written, because a URL without one is silently taken as http and
+// a SOCKS listener answering an HTTP CONNECT fails as a hang rather than as an error.
+// The port is always written for the reason ocOutProxyDefaultPort gives.
+//
+// net/url builds the userinfo rather than string concatenation, because openconnect
+// percent-DECODES both halves: measured against v9.21, `bo%40b:s%3Acr3t@` arrives at
+// the proxy as `bo@b:s:cr3t`. Pasting a password containing % or @ raw would therefore
+// send a different password than the one that was typed, or split the URL at the wrong
+// character. url.UserPassword escapes exactly the set that survives that round trip.
+func ocOutProxyURL(s *ocOutSettings) string {
+	host := strings.TrimSpace(s.Proxy)
+	if host == "" {
+		return ""
+	}
+	scheme := ocOutProxyScheme(s.ProxyType)
+	port := s.ProxyPort
+	if port <= 0 {
+		port = ocOutProxyDefaultPort(scheme)
+	}
+	u := &url.URL{Scheme: scheme, Host: net.JoinHostPort(host, strconv.Itoa(port))}
+	if s.ProxyUser != "" {
+		u.User = url.UserPassword(s.ProxyUser, s.ProxyPass)
+	}
+	return u.String()
 }
 
 // Up dials the gateway and returns the tun device, only once the kernel actually has
@@ -584,9 +776,18 @@ func ocOutWritePem(path, pem string, mode os.FileMode) error {
 // does offer --token-secret and --key-password, and those would. A config file is read
 // before the command line and is not visible to any other user on the box, so the
 // process list shows one thing: `openconnect --config <path>`.
+//
+// 0600: the file carries the TOTP secret, the private key's passphrase and the proxy
+// URL, which has the proxy password inside it.
 func (d *ocOutDriver) writeConfig(dir, iface string, s *ocOutSettings) error {
+	return os.WriteFile(ocOutConfFile(dir), []byte(ocOutRenderConfig(dir, iface, s)), 0600)
+}
+
+// ocOutRenderConfig is the config file's text, split from the write so the generated
+// directives can be asserted on without a filesystem.
+func ocOutRenderConfig(dir, iface string, s *ocOutSettings) string {
 	var b strings.Builder
-	b.WriteString("# Auto-generated by pro-ui (OpenConnect client outbound) - do not edit\n")
+	b.WriteString("# Auto-generated by vpn-ui (OpenConnect client outbound) - do not edit\n")
 	b.WriteString(ocOutFingerprintMark + pppOutFingerprintOf(s) + "\n")
 
 	if s.Protocol != "" {
@@ -600,6 +801,33 @@ func (d *ocOutDriver) writeConfig(dir, iface string, s *ocOutSettings) error {
 	// The guard, not the script itself. See writeGuard.
 	b.WriteString("script " + ocOutGuard(dir) + "\n")
 
+	// The proxy, when there is one. Nothing at all is written otherwise, which is what
+	// keeps every tunnel that already exists byte-identical.
+	//
+	// `proxy-auth` is the half of this that is not guessable and that silently costs an
+	// operator an afternoon. openconnect DISABLES HTTP Basic to a proxy by default, so
+	// an http:// URL carrying credentials authenticates with nothing and stops at
+	// "Proxy requested Basic authentication which is disabled by default" - measured
+	// against v9.21 and a proxy that offers only Basic: no Proxy-Authorization header is
+	// sent at all. The list re-enables Basic without giving up the stronger methods,
+	// because openconnect prefers them by its own fixed table order (Negotiate, NTLM,
+	// Digest, Basic) rather than by the order written here, so Basic is only ever the
+	// fallback. SOCKS5 needs none of this: its username/password sub-negotiation is
+	// taken straight from the URL, which was measured against a SOCKS5 server demanding
+	// method 0x02.
+	//
+	// DTLS is deliberately left alone. openconnect logs "No DTLS when connected via
+	// proxy" and disables the UDP data channel itself the moment a proxy is set, so
+	// writing `no-dtls` here would change nothing about the session and would instead
+	// make the tunnel's own Disable DTLS setting disagree with the form: clear the
+	// proxy later and the operator would be left on TLS with no field explaining it.
+	if proxy := ocOutProxyURL(s); proxy != "" {
+		b.WriteString("proxy " + proxy + "\n")
+		if ocOutProxyScheme(s.ProxyType) == "http" && s.ProxyUser != "" {
+			b.WriteString("proxy-auth digest,ntlm,basic\n")
+		}
+	}
+
 	// The pin. An explicit one is the operator's; otherwise one is DERIVED from a
 	// pasted CA certificate that turns out to be the gateway's own self-signed
 	// certificate rather than a CA at all.
@@ -609,7 +837,7 @@ func (d *ocOutDriver) writeConfig(dir, iface string, s *ocOutSettings) error {
 	// pastes it into the box labelled CA certificate, and `cafile` then cannot work
 	// for two independent reasons. It is not a CA, so it cannot anchor a chain; and a
 	// self-signed leaf carries whatever name it was minted with, which for older
-	// panels was the fixed string "pro-ui OpenConnect Server" and no subjectAltName at
+	// panels was the fixed string "vpn-ui OpenConnect Server" and no subjectAltName at
 	// all, so the host check fails even where the trust check is coaxed into passing.
 	// The result was a gateway an operator could not reach with the very certificate
 	// the panel had given them for it.
@@ -686,8 +914,7 @@ func (d *ocOutDriver) writeConfig(dir, iface string, s *ocOutSettings) error {
 	// down and take every Xray connection through it with it.
 	b.WriteString("reconnect-timeout 3600\n")
 
-	// 0600: the file carries the TOTP secret and the private key's passphrase.
-	return os.WriteFile(ocOutConfFile(dir), []byte(b.String()), 0600)
+	return b.String()
 }
 
 // writeGuard writes the wrapper openconnect actually calls as its config script.
@@ -728,7 +955,7 @@ func (d *ocOutDriver) writeConfig(dir, iface string, s *ocOutSettings) error {
 func (d *ocOutDriver) writeGuard(dir, script string) error {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\n")
-	b.WriteString("# Auto-generated by pro-ui (OpenConnect client outbound) - do not edit.\n")
+	b.WriteString("# Auto-generated by vpn-ui (OpenConnect client outbound) - do not edit.\n")
 	b.WriteString("#\n")
 	b.WriteString("# Runs the bundled vpnc-script with the routing and DNS it would otherwise\n")
 	b.WriteString("# apply to the WHOLE HOST switched off. Egress through this tunnel is opt-in\n")
@@ -772,7 +999,7 @@ func (d *ocOutDriver) writeLauncher(dir, bin string, s *ocOutSettings) error {
 	}
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\n")
-	b.WriteString("# Auto-generated by pro-ui (OpenConnect client outbound) - do not edit.\n")
+	b.WriteString("# Auto-generated by vpn-ui (OpenConnect client outbound) - do not edit.\n")
 	b.WriteString("# The redirect is the point: openconnect reads the password from stdin so that\n")
 	b.WriteString("# it never appears in the process list. See vpnout_openconnect.go.\n")
 	b.WriteString(fmt.Sprintf("exec %s --config %s < %s\n",
@@ -868,6 +1095,32 @@ func ocOutLogTell(log string) string {
 	}
 	tail := pppOutLastLines(log, 80)
 	switch {
+	// The proxy cases come FIRST, because several of them also produce one of the
+	// generic lines below (a proxy that will not carry the connection ends with
+	// "Failed to open HTTPS connection", which reads as the gateway's fault) and the
+	// first match wins. Every string here is one the bundled v9.21 actually prints.
+	case strings.Contains(tail, "Only http or socks(5) proxies supported"),
+		strings.Contains(tail, "Unknown proxy type"), strings.Contains(tail, "Failed to parse proxy"):
+		return "openconnect would not accept the proxy URL; it speaks http and socks5 only"
+	case strings.Contains(tail, "Proxy requested Basic authentication which is disabled by default"):
+		return "the HTTP proxy wants Basic authentication and the client refused to send it; " +
+			"this is a panel bug rather than a setting, since the generated config should " +
+			"already carry proxy-auth"
+	case strings.Contains(tail, "Proxy CONNECT request failed"):
+		return "the HTTP proxy refused to open a connection to the gateway: usually the wrong " +
+			"proxy credentials, or a proxy that does not allow CONNECT to port 443"
+	case strings.Contains(tail, "SOCKS proxy error"),
+		strings.Contains(tail, "Unexpected connect response from SOCKS proxy"),
+		strings.Contains(tail, "Error reading connect response from SOCKS proxy"):
+		return "the SOCKS proxy refused to carry the connection to the gateway"
+	case strings.Contains(tail, "SOCKS server requested username/password but we have none"),
+		strings.Contains(tail, "Password authentication to SOCKS server failed"),
+		strings.Contains(tail, "SOCKS server requires authentication"),
+		strings.Contains(tail, "SOCKS server requested unknown authentication type"):
+		return "the SOCKS proxy would not authenticate this connection; check the proxy " +
+			"username and password"
+	case strings.Contains(tail, "Failed to reconnect to proxy"):
+		return "the proxy stopped answering part way through the connection"
 	case strings.Contains(tail, "Login failed"), strings.Contains(tail, "Authentication failed"),
 		strings.Contains(tail, "Invalid username or password"):
 		return "the gateway rejected the credentials"

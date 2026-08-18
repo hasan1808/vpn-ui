@@ -428,38 +428,34 @@ def _ellipsis(s: str, n: int = 10) -> str:
     return s if len(s) <= n else s[:n] + "…"
 
 
-def _enable_mtproto_modes(panel, sc, phase, log) -> None:
-    """An mtproto membership carries connection MODES, and the account layer does not
-    model them: renderClientEntry overlays the fields the account owns onto whatever
-    the entry already was, and a brand new membership has no entry to overlay onto. So
-    a fresh mtproto membership can arrive with every mode off, which is an account
-    that exists, looks fine, and cannot connect in any transport.
+def _check_mtproto_membership(panel, sc, phase, log) -> None:
+    """A fresh mtproto membership needs exactly one thing of its own: the SECRET.
 
-    Asserted (not assumed), then fixed so the rest of the phase can dial mtproto."""
+    The account layer does not model per-protocol fields (renderClientEntry overlays
+    what the account owns onto whatever the entry already was, and a brand new
+    membership has no entry to overlay onto), so anything a membership cannot inherit
+    has to be minted for it. The connection modes used to be in that category, and a
+    membership arriving with all three off was an account that existed, looked fine
+    and could not connect in any transport. They belong to the INBOUND now, which the
+    membership joins already configured; the secret is what is left."""
     ib = _inbound_of(sc, "mtproto")
     if ib is None or "M" not in ib.accounts:
         return
-    st = phase.add(SubTest("mtproto-membership-modes"))
+    st = phase.add(SubTest("mtproto-membership-secret"))
     try:
         entry = panel.get_client(ib.inbound_id, EMAIL)
-        on = [m for m in ("modeClassic", "modeSecure", "modeTls") if entry.get(m)]
         st.log = json.dumps(entry)[:800]
-        if on:
+        secret = (entry.get("secret") or "").strip()
+        if secret:
             st.status = Status.PASS
-            st.detail = f"the new membership enabled {', '.join(on)}"
+            st.detail = f"the new membership was minted a secret ({len(secret)} chars)"
         else:
             st.status = Status.FAIL
-            st.detail = ("a new mtproto membership arrived with NO connection mode "
-                         "enabled: the account cannot connect in any transport")
-            panel.update_client(ib.inbound_id, EMAIL, {
-                "modeClassic": True, "modeSecure": True, "modeTls": True,
-                "tlsDomain": server_setup.MTPROTO_TLS_DOMAIN,
-                "userLimit": server_setup.MTPROTO_USER_LIMIT,
-            })
-            time.sleep(8)
+            st.detail = ("a new mtproto membership arrived with NO secret: the account "
+                         "is dropped from the proxy config and cannot connect")
     except Exception as e:  # noqa: BLE001
         st.status, st.detail = Status.ERROR, str(e)[:250]
-    log(f"-> mtproto-membership-modes [{st.status.value}] {st.detail}")
+    log(f"-> mtproto-membership-secret [{st.status.value}] {st.detail}")
 
 
 # ---------------------------------------------------------------------------
@@ -1532,7 +1528,7 @@ def run(cA, cB, cC, sc, cfg, result, panel=None, server_exec=None, log=None) -> 
 
     _verify_memberships(panel, sc, phase, ids, log)
     ready = _adopt_credentials(panel, sc, phase, log)
-    _enable_mtproto_modes(panel, sc, phase, log)
+    _check_mtproto_membership(panel, sc, phase, log)
     log(f":: multi-inbound — {len(ready)} of {len(ORDER)} protocols have a usable "
         f"projected credential: {', '.join(ready)}")
 

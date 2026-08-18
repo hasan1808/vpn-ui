@@ -489,7 +489,9 @@ func processClientTraffic(matches []string, value int64, clientTrafficMap map[st
 
 	traffic, ok := clientTrafficMap[email]
 	if !ok {
-		traffic = &ClientTraffic{Email: email}
+		// CoreCounted, because this stat is "user>>><email>>>>traffic" and carries no
+		// inbound: these are precisely the bytes the panel has to attribute for itself.
+		traffic = &ClientTraffic{Email: email, CoreCounted: true}
 		clientTrafficMap[email] = traffic
 	}
 

@@ -28,7 +28,6 @@ var defaultValueMap = map[string]string{
 	"xrayTemplateConfig":          xrayTemplateConfig,
 	"webListen":                   "",
 	"webDomain":                   "",
-	"publicIp":                    "",
 	"webPort":                     "2083",
 	"webCertFile":                 "",
 	"webKeyFile":                  "",
@@ -81,14 +80,18 @@ var defaultValueMap = map[string]string{
 	"subJsonNoises":               "",
 	"subJsonMux":                  "",
 	"subJsonRules":                "",
-	"subTemplate":                 "base64",
-	"subCustomTemplate":           "",
 	"datepicker":                  "gregorian",
 	"warp":                        "",
 	"nord":                        "",
 	"externalTrafficInformEnable": "false",
 	"externalTrafficInformURI":    "",
 	"xrayOutboundTestUrl":         "https://www.google.com/generate_204",
+	"geofileAutoUpdate":           "true",
+	// Serve the pre-redesign inbound dialog instead of the rail one. Panel-wide,
+	// not per browser: operators asked for it back for their whole team, and a
+	// preference each admin had to find and flip on every device they use is not
+	// the thing that was asked for. Off means the current form.
+	"legacyInboundForm": "false",
 
 	// LDAP defaults
 	"ldapEnable":            "false",
@@ -117,6 +120,9 @@ var defaultValueMap = map[string]string{
 	// restart and cleared by the first super admin to be told about it. See
 	// SettingService.TakePanelUpdatedFrom.
 	"panelUpdatedFrom": "",
+	// Where that update's pre-swap database snapshot was written, so the notice can
+	// point the operator at it. Cleared alongside panelUpdatedFrom.
+	"panelUpdateBackupPath": "",
 	// Marks that the one-time grant of PermAccessOverview to the admins who
 	// predate that bit has run. See AdminService.MigrationOverviewAccess.
 	"overviewAccessBackfilled": "false",
@@ -128,15 +134,13 @@ var defaultValueMap = map[string]string{
 	// row, every read of an undeclared key comes back as a failure, and the reader can
 	// no longer tell "no tunnels configured" from "the settings table is unreadable".
 	"vpnOutbounds": "",
-
-	// Auto SSL / Let's Encrypt defaults
-	"acmeEnable":    "false",
-	"acmeDomain":    "",
-	"acmeEmail":     "",
-	"acmeMethod":    "http",
-	"acmeCfToken":   "",
-	"acmeCertDir":   "/root/.acme.sh/certs/panel",
-	"acmeAutoRenew": "true",
+	// Operator edits to the generated daemon configs, as a JSON object keyed
+	// "<core>:<inboundId>:<file>"; see web/service/coreconfig.go. ONE declared key
+	// holds them ALL for the same reason as the two above, only more sharply: a
+	// per-file key (openvpn:12:server-udp.conf) is not knowable up front, and
+	// getString treats a key missing from this map as an ERROR rather than as unset,
+	// so every read before the first save would come back as a failure.
+	"coreConfigOverrides": "",
 	// Master switch for IPv6 on the VPN tunnel links (L2TP/PPTP/OpenVPN). Off by
 	// default: keeps the leak-safe noipv6/block-ipv6 directives in the generated
 	// configs until the IPv6 data path (routing/TPROXY/DNS) lands in later phases.
@@ -192,7 +196,7 @@ func (s *SettingService) GetAllSetting() (*entity.AllSetting, error) {
 		}
 
 		fieldV := v.FieldByName(field.Name)
-		switch fieldV.Interface().(type) {
+		switch t := fieldV.Interface().(type) {
 		case int:
 			n, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
@@ -204,7 +208,7 @@ func (s *SettingService) GetAllSetting() (*entity.AllSetting, error) {
 		case bool:
 			fieldV.SetBool(value == "true")
 		default:
-			return common.NewErrorf("unknown field %v type %v", key, reflect.TypeOf(fieldV.Interface()))
+			return common.NewErrorf("unknown field %v type %v", key, t)
 		}
 		return
 	}
@@ -237,7 +241,8 @@ func (s *SettingService) ResetSettings() error {
 	if err != nil {
 		return err
 	}
-	return db.Where("1 = 1").Delete(model.User{}).Error
+	return db.Model(model.User{}).
+		Where("1 = 1").Error
 }
 
 func (s *SettingService) getSetting(key string) (*model.Setting, error) {
@@ -318,41 +323,6 @@ func (s *SettingService) GetXrayOutboundTestUrl() (string, error) {
 
 func (s *SettingService) SetXrayOutboundTestUrl(url string) error {
 	return s.setString("xrayOutboundTestUrl", url)
-}
-
-// outboundStatusKey persists the last outbound test results (keyed by tag) so
-// the Xray page and the dashboard can render connectivity after a reload.
-const outboundStatusKey = "outboundStatus"
-
-// GetOutboundStatuses returns the persisted outbound test results keyed by tag.
-// It never errors on a missing or corrupt value; both just yield an empty map.
-func (s *SettingService) GetOutboundStatuses() (map[string]*OutboundStatus, error) {
-	statuses := make(map[string]*OutboundStatus)
-	setting, err := s.getSetting(outboundStatusKey)
-	if database.IsNotFound(err) || err != nil {
-		return statuses, nil
-	}
-	if setting.Value == "" {
-		return statuses, nil
-	}
-	if err := json.Unmarshal([]byte(setting.Value), &statuses); err != nil {
-		return statuses, nil
-	}
-	return statuses, nil
-}
-
-// SaveOutboundStatus records the latest test result for one outbound tag.
-func (s *SettingService) SaveOutboundStatus(tag string, status *OutboundStatus) error {
-	statuses, err := s.GetOutboundStatuses()
-	if err != nil {
-		statuses = make(map[string]*OutboundStatus)
-	}
-	statuses[tag] = status
-	data, err := json.Marshal(statuses)
-	if err != nil {
-		return err
-	}
-	return s.saveSetting(outboundStatusKey, string(data))
 }
 
 func (s *SettingService) GetListen() (string, error) {
@@ -503,6 +473,30 @@ func (s *SettingService) TakePanelUpdatedFrom() string {
 	return from
 }
 
+// SetPanelUpdateBackupPath records where the pre-update database snapshot landed,
+// so the binary that comes up can tell the operator their old data is still there.
+//
+// Empty is a meaningful value and must still be written: the snapshot is
+// best-effort, and skipping the write on failure would leave the PREVIOUS update's
+// path in place to be announced as this one's.
+func (s *SettingService) SetPanelUpdateBackupPath(path string) error {
+	return s.setString("panelUpdateBackupPath", path)
+}
+
+// TakePanelUpdateBackupPath returns the pre-update snapshot's path and clears the
+// record, for the same reason TakePanelUpdatedFrom does: the notice is delivered
+// once, and it is the companion of that flag.
+func (s *SettingService) TakePanelUpdateBackupPath() string {
+	path, err := s.getString("panelUpdateBackupPath")
+	if err != nil || path == "" {
+		return ""
+	}
+	if err := s.setString("panelUpdateBackupPath", ""); err != nil {
+		logger.Warning("panel update: clearing panelUpdateBackupPath failed:", err)
+	}
+	return path
+}
+
 // provisionedNone is the sentinel written when the host is deliberately
 // provisioned for NO cores (every core uninstalled).
 //
@@ -575,18 +569,6 @@ func (s *SettingService) SetServerName(value string) error {
 	return s.setString("serverName", value)
 }
 
-// GetPublicIP returns the operator-pinned public IPv4 for this server. Empty is the
-// default and means the panel falls back to live IP detection in the status probe.
-func (s *SettingService) GetPublicIP() (string, error) {
-	return s.getString("publicIp")
-}
-
-// SetPublicIP persists the operator-pinned public IPv4. Empty clears the override
-// and restores automatic detection.
-func (s *SettingService) SetPublicIP(value string) error {
-	return s.setString("publicIp", value)
-}
-
 func (s *SettingService) GetTwoFactorToken() (string, error) {
 	return s.getString("twoFactorToken")
 }
@@ -637,6 +619,12 @@ func (s *SettingService) GetRemarkModel() (string, error) {
 
 func (s *SettingService) GetSecret() ([]byte, error) {
 	secret, err := s.getString("secret")
+	if secret == defaultValueMap["secret"] {
+		err := s.saveSetting("secret", secret)
+		if err != nil {
+			logger.Warning("save secret failed:", err)
+		}
+	}
 	return []byte(secret), err
 }
 
@@ -803,19 +791,6 @@ func (s *SettingService) GetSubJsonRules() (string, error) {
 	return s.getString("subJsonRules")
 }
 
-// GetSubTemplate returns which output format the raw subscription link serves:
-// base64 (default), plain, clash, json or custom.
-func (s *SettingService) GetSubTemplate() (string, error) {
-	return s.getString("subTemplate")
-}
-
-// GetSubCustomTemplate returns the operator-authored template body used when
-// subTemplate is "custom". Placeholders ($links, $email, ...) are expanded by the
-// sub server per request.
-func (s *SettingService) GetSubCustomTemplate() (string, error) {
-	return s.getString("subCustomTemplate")
-}
-
 func (s *SettingService) GetDatepicker() (string, error) {
 	return s.getString("datepicker")
 }
@@ -866,6 +841,47 @@ func (s *SettingService) SetExternalTrafficInformURI(InformURI string) error {
 // means "no cap" for that client, which is the real off switch.
 func (s *SettingService) GetIpLimitEnable() (bool, error) {
 	return true, nil
+}
+
+// GetGeofileAutoUpdate reports whether the panel refreshes the built-in geo data
+// files on its own. On by default: routing rules that name a geosite/geoip
+// category go stale silently - the file still parses, so nothing errors, the
+// categories are just months out of date.
+//
+// Deliberately NOT part of entity.AllSetting, for the same reason GetServerName
+// is not: AllSetting is bound wholesale from the Settings form, so a key that
+// lives outside that form would be written back as false by the next unrelated
+// Settings save. It is read through GetDefaultSettings and written by its own
+// route on the server controller.
+func (s *SettingService) GetGeofileAutoUpdate() (bool, error) {
+	return s.getBool("geofileAutoUpdate")
+}
+
+// SetGeofileAutoUpdate turns the periodic geo data refresh on or off.
+func (s *SettingService) SetGeofileAutoUpdate(value bool) error {
+	return s.setBool("geofileAutoUpdate", value)
+}
+
+// GetLegacyInboundForm reports whether the inbounds page should serve the old
+// inbound dialog - one scrolling column at 520px - instead of the rail form that
+// replaced it. Off by default; the panel ships the current form.
+//
+// Read where the inbounds PAGE is rendered rather than over XHR, because the
+// answer decides which of the two form templates Go writes into the HTML. Asking
+// afterwards would mean shipping both and letting Vue throw one away.
+//
+// Deliberately NOT part of entity.AllSetting, for the same reason
+// GetGeofileAutoUpdate is not: AllSetting is bound wholesale from the Settings
+// form, so a key outside that form is written back as false by the next unrelated
+// Settings save.
+func (s *SettingService) GetLegacyInboundForm() (bool, error) {
+	return s.getBool("legacyInboundForm")
+}
+
+// SetLegacyInboundForm switches the whole panel between the old inbound dialog
+// and the current one.
+func (s *SettingService) SetLegacyInboundForm(value bool) error {
+	return s.setBool("legacyInboundForm", value)
 }
 
 // GetLdapEnable returns whether LDAP is enabled.
@@ -1026,7 +1042,7 @@ func extractHostname(host string) string {
 // TLS cert/key PATHS, pre-filled when an inbound enables TLS) and an admin who
 // cannot reach Panel Settings cannot create inbounds either, so withholding them
 // costs nothing and keeps filesystem paths out of a reseller's page source.
-var panelSettingsOnlyDefaults = []string{"defaultCert", "defaultKey"}
+var panelSettingsOnlyDefaults = []string{"defaultCert", "defaultKey", "sslCertificates"}
 
 // GetDefaultSettings returns the read-only defaults every client-rendering page
 // needs: the expiry/traffic warning thresholds, the subscription URIs, the date
@@ -1038,22 +1054,30 @@ var panelSettingsOnlyDefaults = []string{"defaultCert", "defaultKey"}
 func (s *SettingService) GetDefaultSettings(host string, full bool) (map[string]any, error) {
 	type settingFunc func() (any, error)
 	settings := map[string]settingFunc{
-		"expireDiff":     func() (any, error) { return s.GetExpireDiff() },
-		"trafficDiff":    func() (any, error) { return s.GetTrafficDiff() },
-		"pageSize":       func() (any, error) { return s.GetPageSize() },
-		"defaultCert":    func() (any, error) { return s.GetCertFile() },
-		"defaultKey":     func() (any, error) { return s.GetKeyFile() },
-		"tgBotEnable":    func() (any, error) { return s.GetTgbotEnabled() },
-		"subEnable":      func() (any, error) { return s.GetSubEnable() },
-		"subJsonEnable":  func() (any, error) { return s.GetSubJsonEnable() },
-		"subClashEnable": func() (any, error) { return s.GetSubClashEnable() },
-		"subTitle":       func() (any, error) { return s.GetSubTitle() },
-		"subURI":         func() (any, error) { return s.GetSubURI() },
-		"subJsonURI":     func() (any, error) { return s.GetSubJsonURI() },
-		"subClashURI":    func() (any, error) { return s.GetSubClashURI() },
-		"remarkModel":    func() (any, error) { return s.GetRemarkModel() },
-		"datepicker":     func() (any, error) { return s.GetDatepicker() },
-		"ipLimitEnable":  func() (any, error) { return s.GetIpLimitEnable() },
+		"expireDiff":  func() (any, error) { return s.GetExpireDiff() },
+		"trafficDiff": func() (any, error) { return s.GetTrafficDiff() },
+		"pageSize":    func() (any, error) { return s.GetPageSize() },
+		"defaultCert": func() (any, error) { return s.GetCertFile() },
+		"defaultKey":  func() (any, error) { return s.GetKeyFile() },
+		// Every certificate the SSL manager holds, so an inbound turning TLS on can
+		// PICK one instead of being told to paste two filesystem paths. Rides the
+		// same gate as defaultCert/defaultKey above, which is exactly right: it is
+		// the same class of thing, a list of cert/key paths for inbound authoring.
+		"sslCertificates": func() (any, error) { return sslCertificateChoices(), nil },
+		"tgBotEnable":     func() (any, error) { return s.GetTgbotEnabled() },
+		"subEnable":       func() (any, error) { return s.GetSubEnable() },
+		"subJsonEnable":   func() (any, error) { return s.GetSubJsonEnable() },
+		"subClashEnable":  func() (any, error) { return s.GetSubClashEnable() },
+		"subTitle":        func() (any, error) { return s.GetSubTitle() },
+		"subURI":          func() (any, error) { return s.GetSubURI() },
+		"subJsonURI":      func() (any, error) { return s.GetSubJsonURI() },
+		"subClashURI":     func() (any, error) { return s.GetSubClashURI() },
+		"remarkModel":     func() (any, error) { return s.GetRemarkModel() },
+		"datepicker":      func() (any, error) { return s.GetDatepicker() },
+		"ipLimitEnable":   func() (any, error) { return s.GetIpLimitEnable() },
+		// Read here rather than through AllSetting: the switch lives in the overview's
+		// Geofiles dialog, and AllSetting is written wholesale by the Settings form.
+		"geofileAutoUpdate": func() (any, error) { return s.GetGeofileAutoUpdate() },
 		// The overview's access-log viewer reads Xray's access FILE, so this is what
 		// decides whether it has anything to show. It used to ride on ipLimitEnable,
 		// which meant the same thing until IP-limit enforcement moved into the core and

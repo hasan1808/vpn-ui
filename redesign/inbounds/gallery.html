@@ -1,0 +1,1024 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inbounds list, five directions</title>
+<style>
+/* ==================================================================
+   Tokens, lifted verbatim from web/assets/css/tokens.css so these
+   mockups are judged as "would this look right in the panel" and not
+   as pretty pictures in a palette the panel cannot ship.
+
+   Three theme signals, in the order they must win: the OS preference,
+   then the viewer's explicit toggle, then nothing else.
+   ================================================================== */
+:root {
+  --bg:#f4f6f8;
+  --surface:#ffffff;
+  --surface-2:#eef2f4;
+  --border:#e4e9ee;
+  --border-strong:#d2dae1;
+
+  --text:#1b2430;
+  --text-2:#5a6675;
+  --text-3:#6b7787;
+
+  --accent:#008771;
+  --accent-strong:#00806b;
+  --accent-weak:#e2f2ee;
+  --on-accent:#ffffff;
+
+  --ok:#1c7a45;
+  --info:#1f6fd0;
+  --warn:#8a6008;
+  --error:#b3261e;
+  --off:#6b7787;
+
+  --ok-weak:rgba(28,122,69,.10);
+  --info-weak:rgba(31,111,208,.10);
+  --warn-weak:rgba(138,96,8,.12);
+  --error-weak:rgba(179,38,30,.10);
+  --off-weak:rgba(107,119,135,.12);
+
+  --shadow-sm:0 1px 2px rgba(16,24,32,.05);
+  --shadow-md:0 6px 16px -6px rgba(16,24,32,.10),0 2px 5px rgba(16,24,32,.05);
+
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+
+  --r:10px;
+  color-scheme:light;
+}
+
+/* One dark palette, applied from either signal. Written once and pointed at
+   by both selectors, so the toggle and the OS preference cannot drift. */
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740;
+    --border:#2c3950; --border-strong:#3c4b68;
+    --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+    --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+    --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+    --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13);
+    --warn-weak:rgba(224,169,74,.14); --error-weak:rgba(242,114,106,.13);
+    --off-weak:rgba(133,147,168,.15);
+    --shadow-sm:none; --shadow-md:none;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#0a1222; --surface:#151f31; --surface-2:#1c2740;
+  --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --info:#6fa8f5; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13); --info-weak:rgba(111,168,245,.13);
+  --warn-weak:rgba(224,169,74,.14); --error-weak:rgba(242,114,106,.13);
+  --off-weak:rgba(133,147,168,.15);
+  --shadow-sm:none; --shadow-md:none;
+  color-scheme:dark;
+}
+
+*, *::before, *::after { box-sizing:border-box; }
+html, body { margin:0; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:var(--ui);
+  font-size:13.5px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums;
+}
+.num, .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+.page { max-width:1320px; margin:0 auto; padding:40px 22px 90px; }
+
+/* ---- masthead ---- */
+.masthead { max-width:820px; margin-bottom:26px; }
+.eyebrow {
+  font-size:11px; font-weight:700; letter-spacing:.10em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 9px;
+}
+.masthead h1 { font-size:27px; font-weight:650; letter-spacing:-.015em; margin:0 0 10px; }
+.masthead p { color:var(--text-2); font-size:14px; margin:0; }
+.masthead em { color:var(--text); font-style:normal; font-weight:600; }
+
+/* ---- switcher ---- */
+.switcher {
+  position:sticky; top:0; z-index:30;
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  flex-wrap:wrap;
+  background:var(--bg); padding:12px 0 13px; margin-bottom:20px;
+  border-bottom:1px solid var(--border);
+}
+.tabs { display:flex; gap:5px; flex-wrap:wrap; }
+.tab {
+  font:inherit; font-size:13px; font-weight:550;
+  display:inline-flex; align-items:center; gap:8px;
+  padding:7px 14px 7px 9px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2);
+  cursor:pointer; transition:background .13s, color .13s, border-color .13s;
+}
+.tab .n {
+  display:inline-grid; place-items:center; width:19px; height:19px; border-radius:50%;
+  background:var(--surface-2); color:var(--text-3);
+  font-size:10.5px; font-weight:700; font-family:var(--mono);
+}
+.tab:hover { border-color:var(--border-strong); color:var(--text); }
+.tab[aria-selected="true"] { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.tab[aria-selected="true"] .n { background:rgba(255,255,255,.22); color:var(--on-accent); }
+.switcher-right { display:flex; gap:7px; }
+.ghost {
+  font:inherit; font-size:12.5px; font-weight:550;
+  padding:7px 13px; border-radius:999px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text-2); cursor:pointer;
+}
+.ghost:hover { border-color:var(--border-strong); color:var(--text); }
+.ghost[aria-pressed="true"] { background:var(--accent-weak); border-color:var(--accent); color:var(--accent); }
+
+/* ---- rationale strip ---- */
+.rationale {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+  gap:0; margin:0 0 18px;
+  background:var(--border); border:1px solid var(--border); border-radius:var(--r);
+  overflow:hidden;
+}
+.rationale > div { background:var(--surface); padding:13px 15px; }
+.rationale dt {
+  font-size:10.5px; font-weight:700; letter-spacing:.085em; text-transform:uppercase;
+  color:var(--text-3); margin-bottom:5px;
+}
+.rationale dd { margin:0; font-size:12.5px; color:var(--text-2); line-height:1.45; }
+.rationale dd b { color:var(--text); font-weight:600; }
+.rationale .cost dd b { color:var(--warn); }
+
+.view { display:none; }
+.view.on { display:block; }
+
+.card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r); box-shadow:var(--shadow-sm);
+}
+
+/* ---- shared page furniture: the toolbar every scheme keeps ---- */
+.toolbar {
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+  padding:11px 14px; border-bottom:1px solid var(--border);
+}
+.btn {
+  font:inherit; font-size:12.5px; font-weight:550;
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 13px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--accent); background:var(--accent-strong); color:var(--on-accent);
+}
+.btn.sec { background:var(--surface); border-color:var(--border-strong); color:var(--text-2); }
+.btn.sec:hover { color:var(--text); }
+.search {
+  font:inherit; font-size:12.5px;
+  padding:6px 11px; border-radius:8px; min-width:190px;
+  border:1px solid var(--border-strong); background:var(--surface); color:var(--text);
+}
+.search::placeholder { color:var(--text-3); }
+.spacer { flex:1; }
+
+/* ---- the stat band, as the page carries it today ---- */
+.statband {
+  display:grid; grid-template-columns:repeat(5,1fr); gap:1px;
+  background:var(--border); border:1px solid var(--border);
+  border-radius:var(--r); overflow:hidden; margin-bottom:14px;
+}
+.statcell { background:var(--surface); padding:12px 15px; display:flex; flex-direction:column; gap:4px; min-width:0; }
+.statcell .l {
+  font-size:10.5px; font-weight:650; letter-spacing:.07em; text-transform:uppercase; color:var(--text-3);
+}
+.statcell .v { font-size:15.5px; font-weight:650; }
+.pills { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+.pill {
+  font-family:var(--mono); font-size:11.5px; font-weight:650;
+  padding:1px 7px; border-radius:999px; background:var(--off-weak); color:var(--off);
+}
+.pill.ok { background:var(--ok-weak); color:var(--ok); }
+.pill.info { background:var(--info-weak); color:var(--info); }
+.pill.warn { background:var(--warn-weak); color:var(--warn); }
+.pill.err { background:var(--error-weak); color:var(--error); }
+
+/* ---- state lamp, one mechanism for all five schemes ---- */
+.lamp { width:8px; height:8px; border-radius:50%; flex:none; background:var(--off); }
+.lamp[data-state="ok"] { background:var(--ok); }
+.lamp[data-state="depleted"] { background:var(--error); }
+.lamp[data-state="expiring"] { background:var(--warn); }
+.lamp[data-state="broken"] { background:var(--error); box-shadow:0 0 0 3px var(--error-weak); }
+.lamp[data-state="off"] { background:var(--off); }
+
+/* ---- protocol mark. Neutral on purpose: 24 protocols cannot each
+       own a hue and stay colourblind-safe at tag sizes, so the family
+       carries the only colour and the tag spells the name. ---- */
+.proto {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11.5px; font-weight:600; padding:1px 8px; border-radius:6px;
+  background:var(--surface-2); color:var(--text-2); border:1px solid transparent;
+}
+.proto::before { content:""; width:5px; height:5px; border-radius:1.5px; background:var(--text-3); }
+.proto.xray::before { background:var(--accent); }
+.proto.vpn::before  { background:#8b5cf6; }
+.proto.relay::before{ background:var(--info); }
+.tagm {
+  font-family:var(--mono); font-size:11px; color:var(--text-3);
+  padding:1px 6px; border-radius:5px; background:var(--surface-2);
+}
+
+/* ---- data meter ---- */
+.meter { height:4px; border-radius:999px; background:var(--surface-2); overflow:hidden; }
+.meter > i { display:block; height:100%; background:var(--accent); border-radius:999px; }
+.meter.warn > i { background:var(--warn); }
+.meter.err  > i { background:var(--error); }
+.meter.none > i { background:var(--border-strong); }
+
+/* ---- account strip: one segmented bar replaces five popover tags ---- */
+.accbar { display:flex; height:4px; border-radius:999px; overflow:hidden; background:var(--surface-2); gap:1px; }
+.accbar > i { display:block; height:100%; }
+.accbar .s-online { background:var(--info); }
+.accbar .s-idle { background:var(--border-strong); }
+.accbar .s-expiring { background:var(--warn); }
+.accbar .s-depleted { background:var(--error); }
+.accbar .s-off { background:var(--off); }
+
+.sub { font-size:11.5px; color:var(--text-3); }
+.dim { color:var(--text-3); }
+.inf { font-size:14px; line-height:1; color:var(--text-3); }
+
+/* ==================================================================
+   1  MANIFEST
+   ================================================================== */
+.manifest table { width:100%; border-collapse:collapse; }
+.manifest thead th {
+  text-align:start; font-size:10.5px; font-weight:700; letter-spacing:.075em;
+  text-transform:uppercase; color:var(--text-3);
+  padding:9px 14px; border-bottom:1px solid var(--border); white-space:nowrap;
+}
+.manifest tbody td { padding:9px 14px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.manifest tbody tr:last-child td { border-bottom:0; }
+.manifest tbody tr:hover { background:var(--surface-2); }
+.manifest tbody tr[data-state="off"] td:not(.act) { opacity:.55; }
+.compact .manifest tbody td { padding:5px 14px; }
+.compact .manifest .ident .b { font-size:12.5px; }
+
+.grip { color:var(--text-3); cursor:grab; font-size:13px; letter-spacing:-2px; user-select:none; }
+.ident { display:flex; align-items:center; gap:9px; min-width:0; }
+.ident .col { min-width:0; }
+.ident .b { font-weight:600; font-size:13.5px; display:block; }
+.ident .m { font-family:var(--mono); font-size:11.5px; color:var(--text-3); white-space:nowrap; }
+.ident .m b { color:var(--text-2); font-weight:600; }
+
+.cell-data .top { display:flex; justify-content:space-between; gap:10px; font-size:12.5px; margin-bottom:4px; }
+.cell-data .top .u { font-family:var(--mono); font-weight:600; }
+.cell-data .top .t { font-family:var(--mono); color:var(--text-3); }
+.cell-acc .top { display:flex; justify-content:space-between; gap:10px; font-size:12.5px; margin-bottom:4px; }
+.cell-acc .n { font-family:var(--mono); font-weight:600; }
+.cell-acc .o { font-family:var(--mono); color:var(--info); font-size:11.5px; }
+td.act { text-align:end; white-space:nowrap; }
+.iconbtn {
+  font:inherit; border:0; background:transparent; color:var(--text-3);
+  cursor:pointer; padding:3px 6px; border-radius:6px; font-size:15px; line-height:1;
+}
+.iconbtn:hover { background:var(--surface-2); color:var(--text); }
+.sw {
+  width:30px; height:17px; border-radius:999px; background:var(--border-strong);
+  position:relative; cursor:pointer; display:inline-block; flex:none;
+}
+.sw::after { content:""; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:#fff; transition:left .14s; }
+.sw[data-on="true"] { background:var(--accent); }
+.sw[data-on="true"]::after { left:15px; }
+.badbadge {
+  display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:650;
+  padding:1px 7px; border-radius:5px; background:var(--error-weak); color:var(--error);
+}
+
+/* ==================================================================
+   2  RACK
+   ================================================================== */
+.rack { display:flex; flex-direction:column; gap:14px; }
+.band { overflow:hidden; }
+.band-head {
+  display:flex; align-items:center; gap:11px; flex-wrap:wrap;
+  padding:10px 15px; background:var(--surface-2); border-bottom:1px solid var(--border);
+}
+.band-head h3 { margin:0; font-size:13px; font-weight:650; }
+.band-head .core {
+  font-family:var(--mono); font-size:11px; color:var(--text-3);
+  padding:1px 7px; border-radius:5px; background:var(--surface);
+  border:1px solid var(--border);
+}
+.band-head .core[data-up="false"] { color:var(--error); border-color:var(--error); }
+.band-head .tot { margin-inline-start:auto; font-family:var(--mono); font-size:12px; color:var(--text-2); }
+.rrow {
+  display:grid; grid-template-columns:16px minmax(190px,1.5fr) 108px 1fr 120px 92px 62px;
+  align-items:center; gap:12px;
+  padding:8px 15px; border-bottom:1px solid var(--border);
+}
+.rrow:last-child { border-bottom:0; }
+.rrow:hover { background:var(--surface-2); }
+.rrow[data-state="off"] > *:not(.act) { opacity:.55; }
+.compact .rrow { padding:4px 15px; }
+.rrow .nm { font-weight:600; display:flex; align-items:center; gap:8px; min-width:0; }
+.rrow .nm span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rrow .pt { font-family:var(--mono); font-size:12px; color:var(--text-2); }
+.rrow .act { text-align:end; }
+@media (max-width:900px) { .rrow { grid-template-columns:16px 1fr 62px; } .rrow .pt,.rrow .dw,.rrow .aw,.rrow .ex { display:none; } }
+
+/* ==================================================================
+   3  CONSOLE
+   ================================================================== */
+.console { font-family:var(--mono); font-size:12px; }
+.console .chead, .console .crow {
+  display:grid;
+  grid-template-columns:14px 34px 58px minmax(150px,1fr) 128px 92px 58px 84px 96px 74px 40px;
+  align-items:center; gap:10px; padding:0 14px;
+}
+.console .chead {
+  height:30px; color:var(--text-3); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+  border-bottom:1px solid var(--border); background:var(--surface-2);
+}
+.console .crow { height:31px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.compact .console .crow { height:25px; }
+.console .crow:last-child { border-bottom:0; }
+.console .crow:hover { background:var(--surface-2); }
+.console .crow[data-state="off"] { color:var(--text-3); }
+.console .rmk { color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; }
+.console .crow[data-state="broken"] .rmk { color:var(--error); }
+.console .g { color:var(--text-3); }
+.console .spark { display:block; }
+.console .num-r { text-align:end; }
+.console .ovf { color:var(--error); }
+@media (max-width:1100px) {
+  .console .chead, .console .crow { grid-template-columns:14px 34px 58px 1fr 110px 84px 40px; }
+  .console .c-all,.console .c-exp,.console .c-spark,.console .c-net { display:none; }
+}
+
+/* ==================================================================
+   4  BOARD
+   ================================================================== */
+.board { display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:13px; }
+.bcard { padding:0; overflow:hidden; display:flex; flex-direction:column; }
+.bcard[data-state="off"] { opacity:.62; }
+.bcard-h { display:flex; align-items:center; gap:9px; padding:12px 14px 10px; }
+.bcard-h .t { font-weight:650; font-size:14px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bcard-b { padding:0 14px 12px; display:flex; flex-direction:column; gap:11px; }
+.bcard .endpoint {
+  font-family:var(--mono); font-size:12px; color:var(--text-2);
+  background:var(--surface-2); border-radius:7px; padding:6px 9px;
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+}
+.bcard .chips { display:flex; gap:5px; flex-wrap:wrap; }
+.bcard .kv { display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px; }
+.bcard .kv .k { color:var(--text-3); }
+.bcard .kv .v { font-family:var(--mono); font-weight:600; }
+.bcard-f {
+  margin-top:auto; display:flex; align-items:center; gap:4px;
+  padding:8px 10px; border-top:1px solid var(--border); background:var(--surface-2);
+}
+.bcard-f .spacer { flex:1; }
+.bcard .alert {
+  font-size:11.5px; color:var(--error); background:var(--error-weak);
+  border-radius:7px; padding:7px 9px; line-height:1.4;
+}
+.compact .board { grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); }
+.compact .bcard-b { gap:8px; }
+
+/* ==================================================================
+   5  WATCH
+   ================================================================== */
+.watch-head {
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding:14px 16px; margin-bottom:14px; border-radius:var(--r);
+  background:var(--error-weak); border:1px solid var(--error);
+}
+.watch-head.clear { background:var(--ok-weak); border-color:var(--ok); }
+.watch-head .big { font-size:16px; font-weight:650; color:var(--error); }
+.watch-head.clear .big { color:var(--ok); }
+.watch-head .why { font-size:12.5px; color:var(--text-2); }
+.wcard { margin-bottom:10px; border-inline-start:3px solid var(--error); }
+.wcard[data-sev="warn"] { border-inline-start-color:var(--warn); }
+.wcard[data-sev="off"]  { border-inline-start-color:var(--off); }
+.wcard-h { display:flex; align-items:center; gap:10px; padding:12px 15px 8px; }
+.wcard-h .t { font-weight:650; font-size:14px; }
+.wcard-h .badge {
+  font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  padding:2px 8px; border-radius:5px; background:var(--error-weak); color:var(--error);
+}
+.wcard[data-sev="warn"] .badge { background:var(--warn-weak); color:var(--warn); }
+.wcard[data-sev="off"] .badge  { background:var(--off-weak); color:var(--off); }
+.wcard-b { padding:0 15px 13px; display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; }
+.wcard-b p { margin:0; font-size:12.5px; color:var(--text-2); max-width:62ch; line-height:1.5; }
+.wcard-b p b { color:var(--text); font-weight:600; }
+.wcard-b .fix { margin-inline-start:auto; display:flex; gap:6px; flex-wrap:wrap; }
+.wsection {
+  font-size:11px; font-weight:700; letter-spacing:.085em; text-transform:uppercase;
+  color:var(--text-3); margin:22px 0 9px;
+}
+.quiet-row {
+  display:grid; grid-template-columns:16px minmax(160px,1fr) 100px 160px 148px 40px;
+  align-items:center; gap:12px; padding:7px 15px; border-bottom:1px solid var(--border);
+}
+.quiet-row:last-child { border-bottom:0; }
+.quiet-row:hover { background:var(--surface-2); }
+.compact .quiet-row { padding:4px 15px; }
+.quiet-row .nm { font-weight:550; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.quiet-row .pt, .quiet-row .dt { font-family:var(--mono); font-size:11.5px; color:var(--text-3); }
+.quiet-row .act { text-align:end; }
+@media (max-width:900px) { .quiet-row { grid-template-columns:16px 1fr 40px; } .quiet-row .pt,.quiet-row .dt,.quiet-row .aw { display:none; } }
+
+.foot { margin-top:44px; padding-top:18px; border-top:1px solid var(--border); color:var(--text-3); font-size:12px; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="masthead">
+    <p class="eyebrow">vpn-ui &middot; inbounds page</p>
+    <h1>Five ways to list inbounds</h1>
+    <p>
+      The same thirteen inbounds, five information architectures. Everything is drawn in the panel's
+      own tokens, so what you are choosing between is the <em>structure</em>, not the paint. The
+      fixture is deliberately awkward: one inbound whose blank certificate makes Xray refuse the
+      whole configuration, one that can never be metered, one that binds no port at all, one over
+      quota and one expiring this week. A scheme that cannot say those things out loud is not
+      ready. Pick one and it gets built; pick two and I will graft the better half of the loser
+      onto the winner.
+    </p>
+  </header>
+
+  <div class="switcher">
+    <div class="tabs" role="tablist" aria-label="Direction">
+      <button class="tab" role="tab" data-view="manifest" aria-selected="true"><span class="n">1</span>Manifest</button>
+      <button class="tab" role="tab" data-view="rack" aria-selected="false"><span class="n">2</span>Rack</button>
+      <button class="tab" role="tab" data-view="console" aria-selected="false"><span class="n">3</span>Console</button>
+      <button class="tab" role="tab" data-view="board" aria-selected="false"><span class="n">4</span>Board</button>
+      <button class="tab" role="tab" data-view="watch" aria-selected="false"><span class="n">5</span>Watch</button>
+    </div>
+    <div class="switcher-right">
+      <button class="ghost" id="density" aria-pressed="false">Compact</button>
+      <button class="ghost" id="theme">Dark</button>
+    </div>
+  </div>
+
+  <!-- =============================== 1 ================================ -->
+  <section class="view on" id="v-manifest" aria-label="Manifest">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Continuity.</b> The table people already know, with the tag soup removed.</dd></div>
+      <div><dt>The change</dt><dd>Ten columns become five. Remark, port, protocol, network and security collapse into one identity cell; the five account popovers become one segmented bar.</dd></div>
+      <div class="cost"><dt>Costs</dt><dd><b>Cheapest by far.</b> A column array and a slot rewrite. Drag reorder, select-all and pagination all survive untouched. But it is still a table, and nothing about it is memorable.</dd></div>
+      <div><dt>On a 1440&times;900 laptop</dt><dd><b>11</b> rows &middot; <b>15</b> compact</dd></div>
+    </dl>
+
+    <div id="mf-stats"></div>
+
+    <div class="card manifest">
+      <div class="toolbar">
+        <button class="btn">+ Add Inbound</button>
+        <button class="btn sec">Actions</button>
+        <input class="search" placeholder="Search inbounds">
+        <div class="spacer"></div>
+        <button class="btn sec">Refresh</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:30px"></th>
+            <th style="width:44px">On</th>
+            <th>Inbound</th>
+            <th style="width:190px">Data</th>
+            <th style="width:170px">Accounts</th>
+            <th style="width:120px">Expires</th>
+            <th style="width:70px"></th>
+          </tr>
+        </thead>
+        <tbody id="mf-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- =============================== 2 ================================ -->
+  <section class="view" id="v-rack" aria-label="Rack">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Knowing what serves what.</b> This box runs five daemons; the flat table hides which one owns which row.</dd></div>
+      <div><dt>The change</dt><dd>Inbounds group into bands by the process that carries them, and each band header states whether that process is up. When charon dies you can see exactly which rows went dark.</dd></div>
+      <div class="cost"><dt>Costs</dt><dd><b>Reordering gets awkward.</b> SortOrder is one global sequence, so drag inside a band has to map back to global positions. Needs the per-core state the Overview already fetches.</dd></div>
+      <div><dt>On a 1440&times;900 laptop</dt><dd><b>13</b> rows &middot; <b>3</b> band headers</dd></div>
+    </dl>
+
+    <div class="toolbar card" style="margin-bottom:14px">
+      <button class="btn">+ Add Inbound</button>
+      <button class="btn sec">Actions</button>
+      <input class="search" placeholder="Search inbounds">
+      <div class="spacer"></div>
+      <button class="btn sec">Refresh</button>
+    </div>
+    <div class="rack" id="rack-body"></div>
+  </section>
+
+  <!-- =============================== 3 ================================ -->
+  <section class="view" id="v-console" aria-label="Console">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Density.</b> A server with forty inbounds, read the way you read <span class="mono">ss -tulpn</span>.</dd></div>
+      <div><dt>The change</dt><dd>Monospace, port first, fixed columns, one line per inbound, and a live throughput trace per row so a dead listener is visible without opening anything.</dd></div>
+      <div class="cost"><dt>Costs</dt><dd><b>The trace does not exist yet.</b> The API returns cumulative counters only; per-inbound rate means either client-side differencing across polls or a new sampling endpoint. Also the least friendly of the five to a first-time operator.</dd></div>
+      <div><dt>On a 1440&times;900 laptop</dt><dd><b>21</b> rows &middot; <b>26</b> compact</dd></div>
+    </dl>
+
+    <div class="card console">
+      <div class="toolbar" style="font-family:var(--ui)">
+        <button class="btn">+ Add Inbound</button>
+        <button class="btn sec">Actions</button>
+        <input class="search" placeholder="Search inbounds">
+        <div class="spacer"></div>
+        <button class="btn sec">Refresh</button>
+      </div>
+      <div class="chead">
+        <span></span><span>id</span><span>proto</span><span>remark</span>
+        <span class="c-net">listen</span><span class="c-spark">rate</span><span>acct</span>
+        <span class="num-r">used</span><span class="num-r c-all">all time</span>
+        <span class="c-exp">expires</span><span></span>
+      </div>
+      <div id="cs-body"></div>
+    </div>
+  </section>
+
+  <!-- =============================== 4 ================================ -->
+  <section class="view" id="v-board" aria-label="Board">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Small fleets and phones.</b> Ten or fifteen inbounds you know by name, each with its actions in reach.</dd></div>
+      <div><dt>The change</dt><dd>No table at all. One card per inbound, actions on the card rather than behind a menu, and the grid reflows to one column on a phone with no separate mobile layout.</dd></div>
+      <div class="cost"><dt>Costs</dt><dd><b>Highest.</b> Drag reorder, select-all, pagination and column sorting all have to be reinvented outside the table. Falls apart past roughly thirty inbounds. In exchange the isMobile column fork disappears.</dd></div>
+      <div><dt>On a 1440&times;900 laptop</dt><dd><b>6</b> cards, 3 across &middot; <b>9</b> compact</dd></div>
+    </dl>
+
+    <div class="toolbar card" style="margin-bottom:14px">
+      <button class="btn">+ Add Inbound</button>
+      <button class="btn sec">Actions</button>
+      <input class="search" placeholder="Search inbounds">
+      <div class="spacer"></div>
+      <button class="btn sec">Refresh</button>
+    </div>
+    <div class="board" id="bd-body"></div>
+  </section>
+
+  <!-- =============================== 5 ================================ -->
+  <section class="view" id="v-watch" aria-label="Watch">
+    <dl class="rationale">
+      <div><dt>Optimised for</dt><dd><b>Walking up to the panel cold.</b> The page opens on what is wrong, in a sentence, with the button that fixes it.</dd></div>
+      <div><dt>The change</dt><dd>Anything broken, depleted, expiring or switched off is promoted to the top with a plain-English diagnosis. Everything healthy collapses to one quiet line each.</dd></div>
+      <div class="cost"><dt>Costs</dt><dd><b>Needs a health model the panel does not have.</b> Today there is only an enable flag; "the core refused this" is not stored anywhere. Backend work to capture the config-test failure per inbound is the price of the whole idea.</dd></div>
+      <div><dt>On a 1440&times;900 laptop</dt><dd><b>4</b> attention cards &middot; <b>9</b> quiet rows</dd></div>
+    </dl>
+
+    <div class="toolbar card" style="margin-bottom:14px">
+      <button class="btn">+ Add Inbound</button>
+      <button class="btn sec">Actions</button>
+      <input class="search" placeholder="Search inbounds">
+      <div class="spacer"></div>
+      <button class="btn sec">Refresh</button>
+    </div>
+    <div id="wt-body"></div>
+  </section>
+
+  <p class="foot">
+    Design mockups for the vpn-ui inbounds page. Sample data only, no server is contacted.
+    Row counts assume the panel's 96px rail and its topbar.
+  </p>
+</div>
+
+<script>
+/* ====================================================================
+   The fixture. Thirteen inbounds spanning every awkward case the real
+   page has to render, so the five schemes are compared on the same
+   inventory rather than on their best-case row.
+
+     state    ok | expiring | depleted | broken | off
+     metered  false where the protocol genuinely cannot be counted
+     noport   GRE is IP protocol 47 and binds nothing
+     dual     OpenVPN can listen on separate TCP and UDP ports
+   ==================================================================== */
+const GB = 1e9, TB = 1e12;
+
+const IN = [
+  { id:3,  remark:'reality-main', proto:'vless', label:'VLESS', fam:'xray', core:'xray',
+    port:443, net:'tcp', sec:'reality',
+    up:412*GB, down:1980*GB, total:0, allTime:8100*GB, expiry:0,
+    acc:{n:84, online:41, off:3, depleted:2, expiring:5}, state:'ok', metered:true },
+
+  { id:5,  remark:'cdn-ws', proto:'vless', label:'VLESS', fam:'xray', core:'xray',
+    port:8443, net:'ws', sec:'tls', host:'cdn.example.net',
+    up:640*GB, down:2460*GB, total:5*TB, allTime:11200*GB, expiry:41,
+    acc:{n:132, online:58, off:6, depleted:4, expiring:11}, state:'ok', metered:true },
+
+  { id:7,  remark:'grpc-eu', proto:'vmess', label:'VMess', fam:'xray', core:'xray',
+    port:2053, net:'grpc', sec:'tls',
+    up:88*GB, down:301*GB, total:1*TB, allTime:1420*GB, expiry:0,
+    acc:{n:26, online:9, off:1, depleted:0, expiring:0}, state:'ok', metered:true },
+
+  { id:9,  remark:'trojan-tcp', proto:'trojan', label:'Trojan', fam:'xray', core:'xray',
+    port:8080, net:'tcp', sec:'tls',
+    up:0, down:0, total:2*TB, allTime:0, expiry:0,
+    acc:{n:17, online:0, off:0, depleted:0, expiring:0}, state:'broken', metered:true,
+    why:'The TLS certificate path is blank. Xray refuses the entire configuration when one inbound is malformed, so this is not the only listener that is down.',
+    proof:'Never carried a byte: all-time traffic is 0.',
+    fix:'Choose a certificate' },
+
+  { id:11, remark:'ss-2022', proto:'shadowsocks', label:'Shadowsocks', fam:'xray', core:'xray',
+    port:8388, net:'tcp', sec:'none', single:true,
+    up:22*GB, down:96*GB, total:0, allTime:410*GB, expiry:0,
+    acc:{n:1, online:1, off:0, depleted:0, expiring:0}, state:'ok', metered:true },
+
+  { id:12, remark:'wg-xray', proto:'wireguard', label:'WireGuard (Xray)', fam:'xray', core:'xray',
+    port:51820, net:'udp', sec:'none',
+    up:0, down:0, total:0, allTime:0, expiry:0,
+    acc:{n:12, online:0, off:0, depleted:0, expiring:0}, state:'ok', metered:false,
+    note:'Xray synthesises the peers from the client list, so per-peer traffic can never be counted here. A zero is not a fault.' },
+
+  { id:14, remark:'wg-c-office', proto:'wg-c', label:'WireGuard (C)', fam:'vpn', core:'wireguard',
+    port:51821, net:'udp',
+    up:180*GB, down:520*GB, total:0, allTime:2100*GB, expiry:0,
+    acc:{n:22, online:14, off:0, depleted:0, expiring:1}, state:'ok', metered:true },
+
+  { id:17, remark:'ovpn-road', proto:'openvpn', label:'OpenVPN', fam:'vpn', core:'openvpn',
+    port:1195, tcpPort:1194, dual:true,
+    up:820*GB, down:1200*GB, total:2*TB, allTime:5600*GB, expiry:0,
+    acc:{n:48, online:12, off:2, depleted:9, expiring:3}, state:'depleted', metered:true,
+    why:'Past its 2 TB allowance. The inbound still listens, but every account on it is being refused.',
+    fix:'Reset traffic' },
+
+  { id:19, remark:'l2tp-dialin', proto:'l2tp', label:'L2TP', fam:'vpn', core:'charon',
+    port:1701,
+    up:96*GB, down:250*GB, total:1*TB, allTime:980*GB, expiry:6,
+    acc:{n:31, online:7, off:1, depleted:0, expiring:2}, state:'expiring', metered:true,
+    why:'Expires in six days. On that date the inbound stops accepting connections for all 31 accounts.',
+    fix:'Extend' },
+
+  { id:21, remark:'ikev2-mobile', proto:'ikev2', label:'IKEv2', fam:'vpn', core:'charon',
+    port:4500,
+    up:340*GB, down:1100*GB, total:0, allTime:4200*GB, expiry:0,
+    acc:{n:63, online:28, off:4, depleted:1, expiring:6}, state:'ok', metered:true },
+
+  { id:23, remark:'branch-gre', proto:'gre', label:'GRE', fam:'vpn', core:'kernel',
+    port:null, noport:true,
+    up:12*GB, down:41*GB, total:0, allTime:190*GB, expiry:0,
+    acc:{n:4, online:0, off:0, depleted:0, expiring:0}, state:'off', metered:true,
+    why:'Switched off by an operator. Four accounts are attached to it and none of them can connect.',
+    fix:'Switch on' },
+
+  { id:26, remark:'mtproto-tg', proto:'mtproto', label:'MTProto Proxy', fam:'relay', core:'telemt',
+    port:2096,
+    up:44*GB, down:130*GB, total:0, allTime:610*GB, expiry:0,
+    acc:{n:9, online:3, off:0, depleted:0, expiring:0}, state:'ok', metered:true },
+
+  { id:28, remark:'ssh-jump', proto:'ssh', label:'SSH', fam:'relay', core:'sshd', port:2222,
+    up:8*GB, down:19*GB, total:0, allTime:73*GB, expiry:0,
+    acc:{n:5, online:2, off:0, depleted:0, expiring:0}, state:'ok', metered:true },
+];
+
+/* ---- formatting ------------------------------------------------- */
+function fmt(b) {
+  if (!b) return '0 B';
+  const u = ['B','KB','MB','GB','TB','PB'];
+  let i = 0, n = b;
+  while (n >= 1000 && i < u.length - 1) { n /= 1000; i++; }
+  return (n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2)) + ' ' + u[i];
+}
+const used = d => d.up + d.down;
+const INF = '<span class="inf" title="no limit">&#8734;</span>';
+
+function pct(d) {
+  if (!d.total) return 0;
+  return Math.min(100, Math.round(used(d) / d.total * 100));
+}
+function meterClass(d) {
+  if (!d.total) return 'none';
+  const p = pct(d);
+  return p >= 100 ? 'err' : p >= 85 ? 'warn' : '';
+}
+function expText(d) {
+  if (!d.expiry) return INF;
+  return '<span class="num">' + d.expiry + 'd</span>';
+}
+/* Endpoint as the panel must actually print it: GRE binds no port,
+   OpenVPN can carry two, everything else carries one. */
+function listen(d) {
+  if (d.noport) return 'proto 47';
+  if (d.dual)   return 'tcp:' + d.tcpPort + ' udp:' + d.port;
+  return ':' + d.port;
+}
+function idle(a) { return Math.max(0, a.n - a.online - a.off - a.depleted - a.expiring); }
+
+/* Only the categories that are non-zero, joined once, so an inbound with
+   nothing wrong reads "all healthy" and never a dangling separator. */
+function accNote(a) {
+  const parts = [];
+  if (a.depleted) parts.push(a.depleted + ' depleted');
+  if (a.expiring) parts.push(a.expiring + ' expiring');
+  if (a.off) parts.push(a.off + ' disabled');
+  return parts.length ? parts.join(' &middot; ') : 'all healthy';
+}
+
+/* Console prints a short protocol code. Slicing the raw key gave
+   "wiregua" and "shadows", which are not words. */
+const SHORT = {
+  vless:'vless', vmess:'vmess', trojan:'trojan', shadowsocks:'ss',
+  wireguard:'wg-x', 'wg-c':'wg-c', openvpn:'ovpn', l2tp:'l2tp', pptp:'pptp',
+  ikev2:'ikev2', gre:'gre', mtproto:'mtproto', ssh:'ssh', openconnect:'ocserv',
+  sstp:'sstp', awg:'awg', tuic:'tuic', anytls:'anytls', naive:'naive',
+};
+
+function accBar(a) {
+  if (!a.n) return '<div class="accbar"></div>';
+  const seg = (cls, v) => v ? '<i class="' + cls + '" style="flex:' + v + '"></i>' : '';
+  return '<div class="accbar">' +
+    seg('s-online', a.online) + seg('s-idle', idle(a)) +
+    seg('s-expiring', a.expiring) + seg('s-depleted', a.depleted) + seg('s-off', a.off) +
+    '</div>';
+}
+function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+/* Deterministic wiggle for the console trace, so two viewers comparing
+   schemes see the same picture. Real data replaces this. */
+function series(seed, n) {
+  let x = seed * 9301 + 49297, out = [];
+  for (let i = 0; i < n; i++) { x = (x * 9301 + 49297) % 233280; out.push(x / 233280); }
+  return out;
+}
+function spark(d, w, h) {
+  if (d.state === 'broken' || d.state === 'off' || !d.metered) {
+    return '<svg class="spark" width="' + w + '" height="' + h + '" aria-hidden="true">' +
+      '<line x1="0" y1="' + (h - 1) + '" x2="' + w + '" y2="' + (h - 1) +
+      '" stroke="var(--border-strong)" stroke-width="1"/></svg>';
+  }
+  const pts = series(d.id, 22);
+  const step = w / (pts.length - 1);
+  const path = pts.map((v, i) => (i ? 'L' : 'M') + (i * step).toFixed(1) + ' ' +
+    (h - 1 - v * (h - 2)).toFixed(1)).join(' ');
+  return '<svg class="spark" width="' + w + '" height="' + h + '" aria-hidden="true">' +
+    '<path d="' + path + '" fill="none" stroke="var(--accent)" stroke-width="1.2"/></svg>';
+}
+
+/* ---- totals for the stat band ----------------------------------- */
+const T = IN.reduce((a, d) => ({
+  up: a.up + d.up, down: a.down + d.down, allTime: a.allTime + d.allTime,
+  n: a.n + d.acc.n, online: a.online + d.acc.online, off: a.off + d.acc.off,
+  depleted: a.depleted + d.acc.depleted, expiring: a.expiring + d.acc.expiring,
+}), { up:0, down:0, allTime:0, n:0, online:0, off:0, depleted:0, expiring:0 });
+
+document.getElementById('mf-stats').innerHTML =
+  '<div class="statband">' +
+    '<div class="statcell"><span class="l">Up / Down</span><span class="v num">' +
+      fmt(T.up) + ' / ' + fmt(T.down) + '</span></div>' +
+    '<div class="statcell"><span class="l">Total usage</span><span class="v num">' +
+      fmt(T.up + T.down) + '</span></div>' +
+    '<div class="statcell"><span class="l">All time</span><span class="v num">' +
+      fmt(T.allTime) + '</span></div>' +
+    '<div class="statcell"><span class="l">Inbounds</span><span class="v num">' + IN.length +
+      ' <span class="pill err" style="font-size:10.5px">1 down</span></span></div>' +
+    '<div class="statcell"><span class="l">Accounts</span><span class="v pills">' +
+      '<span class="pill ok">' + T.n + '</span>' +
+      '<span class="pill info">' + T.online + '</span>' +
+      '<span class="pill warn">' + T.expiring + '</span>' +
+      '<span class="pill err">' + T.depleted + '</span>' +
+      '<span class="pill">' + T.off + '</span></span></div>' +
+  '</div>';
+
+/* ==================================================================
+   1  MANIFEST
+   ================================================================== */
+document.getElementById('mf-body').innerHTML = IN.map(d => {
+  const dataCell = !d.metered
+    ? '<div class="top"><span class="u dim">not metered</span></div>' +
+      '<div class="meter none"><i style="width:100%"></i></div>' +
+      '<div class="sub">protocol cannot count peers</div>'
+    : '<div class="top"><span class="u">' + fmt(used(d)) + '</span><span class="t">' +
+        (d.total ? fmt(d.total) : INF) + '</span></div>' +
+      '<div class="meter ' + meterClass(d) + '"><i style="width:' +
+        (d.total ? pct(d) : 100) + '%"></i></div>' +
+      '<div class="sub">' + fmt(d.allTime) + ' all time</div>';
+
+  return '<tr data-state="' + d.state + '">' +
+    '<td><span class="grip">&#8942;&#8942;</span></td>' +
+    '<td><span class="sw" data-on="' + (d.state !== 'off') + '"></span></td>' +
+    '<td>' +
+      '<div class="ident">' +
+        '<span class="lamp" data-state="' + d.state + '"></span>' +
+        '<span class="col">' +
+          '<span class="b">' + esc(d.remark) +
+            (d.state === 'broken' ? ' <span class="badbadge">core refused</span>' : '') +
+          '</span>' +
+          '<span class="m"><b>' + esc(d.label) + '</b> ' + listen(d) +
+            (d.net ? ' &middot; ' + d.net : '') +
+            (d.sec && d.sec !== 'none' ? ' &middot; ' + d.sec : '') +
+            (d.host ? ' &middot; ' + d.host : '') +
+          '</span>' +
+        '</span>' +
+      '</div>' +
+    '</td>' +
+    '<td class="cell-data">' + dataCell + '</td>' +
+    '<td class="cell-acc">' +
+      '<div class="top"><span class="n">' + d.acc.n + '</span>' +
+        (d.acc.online ? '<span class="o">' + d.acc.online + ' online</span>' : '<span class="o dim">none online</span>') +
+      '</div>' + accBar(d.acc) +
+      '<div class="sub">' + accNote(d.acc) + '</div>' +
+    '</td>' +
+    '<td class="num">' + expText(d) + '</td>' +
+    '<td class="act"><button class="iconbtn">&#8942;</button></td>' +
+  '</tr>';
+}).join('');
+
+/* ==================================================================
+   2  RACK
+   ================================================================== */
+const BANDS = [
+  { key:'xray',  title:'Xray core',   note:'one process, one configuration',
+    cores:[['xray', true]] },
+  { key:'vpn',   title:'VPN dial-in', note:'a daemon per protocol, each a child process',
+    cores:[['openvpn', true], ['charon', true], ['wireguard', true], ['kernel gre', true]] },
+  { key:'relay', title:'Relay',       note:'not tunnels, they forward a single stream',
+    cores:[['telemt', true], ['sshd', true]] },
+];
+
+document.getElementById('rack-body').innerHTML = BANDS.map(b => {
+  const rows = IN.filter(d => d.fam === b.key);
+  const tot = rows.reduce((a, d) => a + used(d), 0);
+  const broken = rows.some(d => d.state === 'broken');
+  return '<div class="card band">' +
+    '<div class="band-head">' +
+      '<h3>' + b.title + '</h3>' +
+      b.cores.map(c => '<span class="core" data-up="' + (broken && b.key === 'xray' ? 'false' : 'true') + '">' +
+        c[0] + (broken && b.key === 'xray' ? ' rejected config' : ' up') + '</span>').join('') +
+      '<span class="sub">' + b.note + '</span>' +
+      '<span class="tot">' + rows.length + ' inbounds &middot; ' + fmt(tot) + '</span>' +
+    '</div>' +
+    rows.map(d =>
+      '<div class="rrow" data-state="' + d.state + '">' +
+        '<span class="lamp" data-state="' + d.state + '"></span>' +
+        '<span class="nm"><span>' + esc(d.remark) + '</span>' +
+          (d.state === 'broken' ? '<span class="badbadge">refused</span>' : '') +
+          (d.state === 'off' ? '<span class="pill">off</span>' : '') + '</span>' +
+        '<span class="pt">' + listen(d) + '</span>' +
+        '<span class="dw">' +
+          (d.metered
+            ? '<div class="top" style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span class="num">' +
+                fmt(used(d)) + '</span><span class="num dim">' + (d.total ? fmt(d.total) : INF) + '</span></div>' +
+              '<div class="meter ' + meterClass(d) + '"><i style="width:' + (d.total ? pct(d) : 100) + '%"></i></div>'
+            : '<span class="sub">not metered</span>') +
+        '</span>' +
+        '<span class="aw">' +
+          '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">' +
+            '<span class="num">' + d.acc.n + '</span>' +
+            '<span class="num" style="color:var(--info)">' + d.acc.online + '</span></div>' +
+          accBar(d.acc) +
+        '</span>' +
+        '<span class="ex num dim">' + expText(d) + '</span>' +
+        '<span class="act"><span class="sw" data-on="' + (d.state !== 'off') + '"></span>' +
+          '<button class="iconbtn">&#8942;</button></span>' +
+      '</div>').join('') +
+  '</div>';
+}).join('');
+
+/* ==================================================================
+   3  CONSOLE
+   ================================================================== */
+document.getElementById('cs-body').innerHTML = IN.map(d =>
+  '<div class="crow" data-state="' + d.state + '">' +
+    '<span class="lamp" data-state="' + d.state + '"></span>' +
+    '<span class="g">' + d.id + '</span>' +
+    '<span class="g">' + (SHORT[d.proto] || d.proto) + '</span>' +
+    '<span class="rmk">' + esc(d.remark) +
+      (d.state === 'broken' ? ' <span class="ovf">!refused</span>' : '') + '</span>' +
+    '<span class="g c-net">' + listen(d) + (d.net ? '/' + d.net : '') + '</span>' +
+    '<span class="c-spark">' + spark(d, 80, 14) + '</span>' +
+    '<span class="g">' + d.acc.online + '/' + d.acc.n + '</span>' +
+    '<span class="num-r' + (d.total && used(d) >= d.total ? ' ovf' : '') + '">' +
+      (d.metered ? fmt(used(d)) : '<span class="g">n/a</span>') + '</span>' +
+    '<span class="num-r c-all g">' + fmt(d.allTime) + '</span>' +
+    '<span class="c-exp g">' + (d.expiry ? d.expiry + 'd' : '&#8734;') + '</span>' +
+    '<span style="text-align:end"><button class="iconbtn">&#8942;</button></span>' +
+  '</div>').join('');
+
+/* ==================================================================
+   4  BOARD
+   ================================================================== */
+document.getElementById('bd-body').innerHTML = IN.map(d =>
+  '<div class="card bcard" data-state="' + d.state + '">' +
+    '<div class="bcard-h">' +
+      '<span class="lamp" data-state="' + d.state + '"></span>' +
+      '<span class="t">' + esc(d.remark) + '</span>' +
+      '<span class="sw" data-on="' + (d.state !== 'off') + '"></span>' +
+    '</div>' +
+    '<div class="bcard-b">' +
+      '<div class="endpoint"><span>' + listen(d) + '</span><span class="dim">' +
+        (d.host || d.net || '') + '</span></div>' +
+      '<div class="chips">' +
+        '<span class="proto ' + d.fam + '">' + esc(d.label) + '</span>' +
+        (d.sec && d.sec !== 'none' ? '<span class="tagm">' + d.sec + '</span>' : '') +
+        (d.core ? '<span class="tagm">' + d.core + '</span>' : '') +
+      '</div>' +
+      (d.state === 'broken'
+        ? '<div class="alert"><b>Xray refused the configuration.</b> ' + esc(d.why) + '</div>' : '') +
+      (!d.metered
+        ? '<div><div class="kv"><span class="k">Data</span><span class="v dim">not metered</span></div>' +
+          '<div class="meter none"><i style="width:100%"></i></div></div>'
+        : '<div><div class="kv"><span class="k">Data</span><span class="v">' + fmt(used(d)) +
+            ' <span class="dim">/ ' + (d.total ? fmt(d.total) : '&#8734;') + '</span></span></div>' +
+          '<div class="meter ' + meterClass(d) + '"><i style="width:' +
+            (d.total ? pct(d) : 100) + '%"></i></div></div>') +
+      '<div><div class="kv"><span class="k">Accounts</span><span class="v">' + d.acc.n +
+        ' <span class="dim">/ ' + d.acc.online + ' online</span></span></div>' + accBar(d.acc) + '</div>' +
+      '<div class="kv"><span class="k">Expires</span><span class="v">' +
+        (d.expiry ? d.expiry + ' days' : '<span class="dim">never</span>') + '</span></div>' +
+    '</div>' +
+    '<div class="bcard-f">' +
+      '<button class="iconbtn" title="Edit">&#9998;</button>' +
+      '<button class="iconbtn" title="QR">&#9635;</button>' +
+      '<button class="iconbtn" title="Export">&#8681;</button>' +
+      '<div class="spacer"></div>' +
+      '<button class="iconbtn">&#8942;</button>' +
+    '</div>' +
+  '</div>').join('');
+
+/* ==================================================================
+   5  WATCH
+   ================================================================== */
+const SEV = { broken:0, depleted:1, expiring:2, off:3 };
+const attention = IN.filter(d => d.state !== 'ok').sort((a, b) => SEV[a.state] - SEV[b.state]);
+const quiet = IN.filter(d => d.state === 'ok');
+const LABEL = { broken:'Down', depleted:'Over quota', expiring:'Expiring', off:'Switched off' };
+const sevClass = s => s === 'expiring' ? 'warn' : s === 'off' ? 'off' : 'err';
+
+document.getElementById('wt-body').innerHTML =
+  '<div class="watch-head">' +
+    '<span class="big">' + attention.length + ' inbounds need attention</span>' +
+    '<span class="why">One is refusing connections outright and is taking the rest of the Xray core down with it.</span>' +
+  '</div>' +
+  attention.map(d =>
+    '<div class="card wcard" data-sev="' + sevClass(d.state) + '">' +
+      '<div class="wcard-h">' +
+        '<span class="lamp" data-state="' + d.state + '"></span>' +
+        '<span class="t">' + esc(d.remark) + '</span>' +
+        '<span class="badge">' + LABEL[d.state] + '</span>' +
+        '<span class="sub mono">' + esc(d.label) + ' ' + listen(d) + '</span>' +
+      '</div>' +
+      '<div class="wcard-b">' +
+        '<p>' + esc(d.why) + (d.proof ? ' <b>' + esc(d.proof) + '</b>' : '') + '</p>' +
+        '<span class="fix">' +
+          '<button class="btn">' + d.fix + '</button>' +
+          '<button class="btn sec">Edit</button>' +
+        '</span>' +
+      '</div>' +
+    '</div>').join('') +
+  '<p class="wsection">Serving normally &middot; ' + quiet.length + '</p>' +
+  '<div class="card">' + quiet.map(d =>
+    '<div class="quiet-row">' +
+      '<span class="lamp" data-state="ok"></span>' +
+      '<span class="nm">' + esc(d.remark) + '</span>' +
+      '<span class="pt">' + listen(d) + '</span>' +
+      '<span class="dt">' + (d.metered ? fmt(used(d)) + ' / ' + (d.total ? fmt(d.total) : '&#8734;')
+        : 'not metered') + '</span>' +
+      '<span class="aw"><span class="dt">' + d.acc.online + ' of ' + d.acc.n + ' online</span>' +
+        accBar(d.acc) + '</span>' +
+      '<span class="act"><button class="iconbtn">&#8942;</button></span>' +
+    '</div>').join('') + '</div>';
+
+/* ---- controls ---------------------------------------------------- */
+/* The scheme lives in the hash so a single direction can be linked and
+   reopened, rather than only ever being reachable by clicking. */
+function show(view, push) {
+  const tabs = [...document.querySelectorAll('.tab')];
+  const t = tabs.find(x => x.dataset.view === view) || tabs[0];
+  tabs.forEach(x => x.setAttribute('aria-selected', String(x === t)));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + t.dataset.view));
+  if (push) location.hash = t.dataset.view;
+}
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => { show(t.dataset.view, true); window.scrollTo({ top: 0 }); });
+});
+window.addEventListener('hashchange', () => show(location.hash.slice(1), false));
+show(location.hash.slice(1), false);
+
+const dens = document.getElementById('density');
+dens.addEventListener('click', () => {
+  const on = dens.getAttribute('aria-pressed') !== 'true';
+  dens.setAttribute('aria-pressed', String(on));
+  document.body.classList.toggle('compact', on);
+  dens.textContent = on ? 'Comfortable' : 'Compact';
+});
+
+/* The toggle starts from whatever the OS asked for, then overrides it,
+   which is the same order the panel's own theme switch uses. */
+const themeBtn = document.getElementById('theme');
+const prefersDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+let dark = prefersDark;
+const paint = () => {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  themeBtn.textContent = dark ? 'Light' : 'Dark';
+};
+paint();
+themeBtn.addEventListener('click', () => { dark = !dark; paint(); });
+</script>
+</body>
+</html>

@@ -252,37 +252,23 @@ def _run_mtproto(cA: Client, cB: Client, cC: Client, sc, result, panel, server_e
                      else "the proxy ACCEPTED a wrong secret: every connect result above is meaningless")
     log(f"-> wrong-secret-{mode} [{ns.status.value}] {ns.detail}")
 
-    # --- multi-user: the second account, held to its OWN mode set ---
-    # A holds every mode; B holds only "secure". Both live on one inbound whose
-    # listener allows all three (the union), so B's result here is decided purely by
-    # per-account enforcement: which is the whole point of the toggles.
-    b_modes = (getattr(ib, "mt_modes", {}) or {}).get("B", [])
+    # --- multi-user: a SECOND account on the same inbound, same modes ---
+    # The modes belong to the inbound (telemt's listener set is process-wide and its
+    # per-user map is written from that same set), so both accounts hold all three.
+    # What this proves is the other half: two accounts served by one telemt relay
+    # independently, each authenticating with its own secret.
     ms = phase.add(SubTest(f"multi-user-{mode}"))
     b_verdict, b_info, _ = mt_mod.probe(cB, ib, "B", mode, server_ip=sc.server_ip)
-    if mode in b_modes:
-        ms.status = _V.get(b_verdict, Status.ERROR)
-        ms.detail = ("account B relayed independently on its own mode"
-                     if b_verdict == "pass" else str(b_info.get("error", ""))[:200])
-    elif st.status is not Status.PASS:
-        # "B was refused" proves NOTHING when the proxy is down: a dead port refuses
-        # everyone. Without this guard a stopped daemon reports the mode-restriction
-        # subtest as PASS, which is how a broken build looks green. Account A's
-        # connect above is the liveness witness; if it failed, this is undecidable.
+    if st.status is not Status.PASS:
+        # A dead port fails everyone, so B's result says nothing about B until the
+        # proxy is known to be serving. Account A's connect above is that witness.
         ms.status = Status.NA
-        ms.detail = (f"undecidable: account A could not connect either, so B being "
-                     f"refused on {mode} says nothing about [access.user_modes]")
+        ms.detail = (f"undecidable: account A could not connect either, so B failing "
+                     f"on {mode} says nothing about the second account")
     else:
-        # The proxy IS up and serving A, and the listener allows this mode for A -
-        # so B being refused can only come from per-account enforcement. If this ever
-        # flips to FAIL, [access.user_modes] has stopped working and every per-client
-        # mode toggle in the UI has silently become decorative.
-        ms.status = Status.PASS if b_verdict != "pass" else Status.FAIL
-        ms.detail = (
-            f"account B correctly refused mode {mode} it does not hold, while the "
-            f"same mode works for account A on this inbound"
-            if b_verdict != "pass"
-            else f"account B used mode {mode} it was NOT granted: [access.user_modes] "
-                 f"is not being enforced; the per-client mode toggles are cosmetic")
+        ms.status = _V.get(b_verdict, Status.ERROR)
+        ms.detail = ("account B relayed independently with its own secret"
+                     if b_verdict == "pass" else str(b_info.get("error", ""))[:200])
     log(f"-> multi-user-{mode} [{ms.status.value}] {ms.detail}")
 
     # --- inapplicable by construction, not skipped ---
@@ -385,35 +371,32 @@ def _run_mtproto(cA: Client, cB: Client, cC: Client, sc, result, panel, server_e
 
 
 def _run_mtproto_toggle(cA: Client, sc, result, panel, server_exec) -> None:
-    """Editing an account's modes must take effect on the RUNNING daemon.
+    """Editing the inbound's modes must take effect on the RUNNING daemon.
 
     The per-mode phases cannot prove this: they read a mode set fixed at inbound
-    creation. Here the modes are edited through the panel's updateClient endpoint,
-    the same call the UI's client modal makes.
+    creation. Here the modes are edited through the panel's inbound update endpoint,
+    the same call the inbound form makes. They are inbound-level because telemt
+    applies them that way: [general.modes] is the process-wide listener set, and
+    [access.user_modes] is written per account from that same set.
 
-    Getting this to be able to FAIL takes care. telemt reads modes from two places:
-    [access.user_modes] (per account) and [general.modes] (process-wide, the UNION
-    over accounts). Both must reload for a toggle to work, but a naive sequence only
-    proves the first. As built, account A holds all three modes, so telemt STARTS
-    with the union wide open; flipping a mode off and back on then passes even when
-    [general.modes] never reloads, because the stale startup value already allows
-    everything. The test would be vacuous.
+    Getting this to be able to FAIL takes care. As built the inbound holds all three
+    modes, so telemt STARTS with the listener wide open; flipping a mode off and back
+    on then passes even if nothing reached the daemon, because the stale startup
+    value already allows everything. The test would be vacuous.
 
-    So the union is first narrowed on BOTH accounts and the core restarted, making
-    telemt start with tls genuinely off. Only then does turning tls back on require
-    [general.modes] to reload, which is the failure this phase exists to catch.
+    So the set is first narrowed and the core restarted, making telemt start with tls
+    genuinely off. Only then does turning tls back on require the change to actually
+    reach the daemon, which is the failure this phase exists to catch.
 
     Sequence:
-      1. A := secure, B := secure  -> union = {secure}
-      2. restart core              -> telemt now STARTS with tls off (the setup step
-                                      that makes step 5 meaningful, not the test)
-      3. probe A tls               -> must be REFUSED (baseline: tls really is off)
-      4. A := secure+tls           -> union regains tls; CLIENT-only edit, so the
-                                      panel hot-reloads instead of restarting
-      5. probe A tls               -> must WORK. Fails if [general.modes] is not
-                                      hot-reloaded: the listener keeps refusing a
-                                      mode the config on disk says is enabled.
-      6. restore A := all three, B := secure
+      1. inbound := secure only
+      2. restart core   -> telemt now STARTS with tls off (the setup step that makes
+                           step 5 meaningful, not the test)
+      3. probe A tls    -> must be REFUSED (baseline: tls really is off)
+      4. inbound := secure+tls
+      5. probe A tls    -> must WORK. Fails if the save never reached the listener:
+                           it keeps refusing a mode the config on disk enables.
+      6. restore inbound := all three
     """
     from .clients import mtproto as mt_mod
     from .model import PHASE_MTPROTO_TOGGLE
@@ -426,8 +409,6 @@ def _run_mtproto_toggle(cA: Client, sc, result, panel, server_exec) -> None:
         phase.add(SubTest("mtproto-toggle", Status.SKIP, "no mtproto inbound was built"))
         return
 
-    email_a = ib.accounts["A"].email
-    email_b = ib.accounts["B"].email
     ok, plog = mt_mod.ensure_probe(cA)
     if not ok:
         phase.add(SubTest("mtproto-toggle", Status.FAIL, f"prober unavailable: {plog[:160]}"))
@@ -440,33 +421,31 @@ def _run_mtproto_toggle(cA: Client, sc, result, panel, server_exec) -> None:
 
     _V = {"pass": Status.PASS, "fail": Status.FAIL, "na": Status.NA}
     try:
-        # --- 1+2: narrow the union to {secure} and RESTART --------------
+        # --- 1+2: narrow the inbound to {secure} and RESTART -------------
         # Setup, not assertion: it makes telemt start with tls genuinely off, which
         # is the only state in which step 5 can detect a stale [general.modes].
-        panel.set_mtproto_modes(ib.inbound_id, email_a, ("secure",))
-        panel.set_mtproto_modes(ib.inbound_id, email_b, ("secure",))
+        panel.set_mtproto_modes(ib.inbound_id, ("secure",))
         panel.restart_core("mtproto")
         time.sleep(MTPROTO_RELOAD_WAIT)
 
-        # --- 3: with tls off everywhere, it must be refused -------------
+        # --- 3: with tls off on the inbound, it must be refused ---------
         # Baseline. Without it, "tls works after toggle-on" could just mean tls was
         # never actually off, and the phase would prove nothing.
         off = phase.add(SubTest("toggle-off-tls"))
         v, info, _ = mt_mod.probe(cA, ib, "A", "tls", server_ip=sc.server_ip,
                                   expect_fail=True)
         off.status = _V.get(v, Status.ERROR)
-        off.detail = ("tls refused while no account holds it"
+        off.detail = ("tls refused while the inbound does not accept it"
                       if v == "pass"
-                      else "tls STILL works with the toggle off on every account: "
+                      else "tls STILL works with the toggle off on the inbound: "
                            "the edit did not reach the running daemon")
         log(f"-> toggle-off-tls [{off.status.value}] {off.detail}")
 
-        # --- 4+5: turn tls ON for A, live. It must start working --------
-        # A CLIENT-only edit, so the panel hot-reloads rather than restarting, and
-        # the union goes {secure} -> {secure,tls}. If [general.modes] does not
-        # hot-reload, the listener keeps refusing FakeTLS while config.toml says it
-        # is enabled: the "backend ignores the toggle" bug, caught right here.
-        panel.set_mtproto_modes(ib.inbound_id, email_a, ("secure", "tls"))
+        # --- 4+5: turn tls back ON. It must start working ---------------
+        # The listener set goes {secure} -> {secure,tls}. If the save does not reach
+        # the daemon, it keeps refusing FakeTLS while config.toml says it is enabled:
+        # the "backend ignores the toggle" bug, caught right here.
+        panel.set_mtproto_modes(ib.inbound_id, ("secure", "tls"))
         time.sleep(MTPROTO_RELOAD_WAIT)
         on = phase.add(SubTest("toggle-on-tls"))
         if off.status is not Status.PASS:
@@ -477,8 +456,8 @@ def _run_mtproto_toggle(cA: Client, sc, result, panel, server_exec) -> None:
             v, info, _ = mt_mod.probe(cA, ib, "A", "tls", server_ip=sc.server_ip)
             on.status = _V.get(v, Status.ERROR)
             if v == "pass":
-                on.detail = ("tls works right after being toggled on, with no restart "
-                             "(both [general.modes] and [access.user_modes] reloaded)")
+                on.detail = ("tls works right after being toggled on "
+                             "(both [general.modes] and [access.user_modes] followed)")
             else:
                 on.detail = (f"tls did NOT work after being toggled on: "
                              f"{str(info.get('error', ''))[:140]}, the toggle is not "
@@ -492,30 +471,30 @@ def _run_mtproto_toggle(cA: Client, sc, result, panel, server_exec) -> None:
                     pass
         log(f"-> toggle-on-tls [{on.status.value}] {on.detail}")
 
-        # --- the point of hot-reload: no restart on the client edit -----
-        # A restart would ALSO make the toggle appear to work, but by dropping every
-        # live connection. Hot-add exists to avoid exactly that, so assert the core
-        # survived the edit rather than accepting a restart as success.
-        hot = phase.add(SubTest("toggle-no-restart"))
+        # --- the core has to come BACK from the edit --------------------
+        # The modes live in a section telemt reads at startup, so an inbound save
+        # restarts it. That is the moment a bad config shows up: telemt refuses to
+        # start and every account on the inbound goes dark while the panel reports
+        # the save as successful.
+        hot = phase.add(SubTest("toggle-core-healthy"))
         try:
             cs = panel.core("mtproto")
             hot.status = Status.PASS if cs.get("state") == "running" else Status.FAIL
-            hot.detail = (f"core still running after the client edit (state={cs.get('state')})"
+            hot.detail = (f"core is running again after the mode edit (state={cs.get('state')})"
                           if hot.status is Status.PASS
-                          else f"core state={cs.get('state')} after the client edit")
+                          else f"core state={cs.get('state')} after the mode edit")
         except Exception as e:  # noqa: BLE001
             hot.status = Status.ERROR
             hot.detail = f"core status unavailable: {e}"
-        log(f"-> toggle-no-restart [{hot.status.value}] {hot.detail}")
+        log(f"-> toggle-core-healthy [{hot.status.value}] {hot.detail}")
     finally:
-        # Leave both accounts exactly as the other phases expect to find them.
+        # Leave the inbound exactly as the other phases expect to find it.
         try:
-            panel.set_mtproto_modes(ib.inbound_id, email_a, ("classic", "secure", "tls"))
-            panel.set_mtproto_modes(ib.inbound_id, email_b, ("secure",))
+            panel.set_mtproto_modes(ib.inbound_id, ("classic", "secure", "tls"))
             time.sleep(MTPROTO_RELOAD_WAIT)
         except Exception as e:  # noqa: BLE001
             phase.add(SubTest("toggle-restore", Status.ERROR,
-                              f"could not restore account modes: {e}"))
+                              f"could not restore the inbound modes: {e}"))
 
 
 def _run_mtproto_termination(cA: Client, sc, result, panel, server_exec) -> None:

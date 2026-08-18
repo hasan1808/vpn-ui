@@ -37,6 +37,34 @@ func GetName() string {
 	return strings.TrimSpace(name)
 }
 
+// assetVersion is the cache-busting token stamped on every asset URL. It lives
+// here, set once at web-server start, because the two places that need it (the
+// panel's template context and the subscription page's) both import config and
+// neither can import web, which is where the embedded asset tree actually is.
+//
+// It is deliberately NOT GetVersion(). Assets are served with a one-year
+// max-age, so the query string is the only thing that can make a browser fetch a
+// new copy, and the release version does not move between builds of the same
+// version. That combination silently pairs a rebuilt panel's NEW html with a
+// browser's OLD javascript, which is not a degraded page but a blank one: the
+// html calls a method the cached model file has not got, Vue throws mid-render
+// and v-cloak leaves the area empty with nothing on screen to say why.
+var assetVersion = strings.TrimSpace(version)
+
+// SetAssetVersion records the token, which must be derived from the served asset
+// bytes so that it changes exactly when they do.
+func SetAssetVersion(v string) {
+	if v != "" {
+		assetVersion = v
+	}
+}
+
+// GetAssetVersion returns the asset cache-busting token, falling back to the
+// release version until the web server has computed one.
+func GetAssetVersion() string {
+	return assetVersion
+}
+
 // GetLogLevel returns the current logging level based on environment variables or defaults to Info.
 func GetLogLevel() LogLevel {
 	if IsDebug() {

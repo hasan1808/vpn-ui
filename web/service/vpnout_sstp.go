@@ -94,7 +94,26 @@ type sstpOutSettings struct {
 	// and it gives up the only thing authenticating the server.
 	AllowInsecureCert bool `json:"allowInsecureCert"`
 
-	// Proxy is an optional HTTP proxy URL for the TLS connection.
+	// Proxy dials the SSTP server THROUGH a proxy rather than straight out of the
+	// host's WAN, wrapping the OUTER TLS connection. It is the only mechanism that
+	// exists for it: sockopt.dialerProxy is on the wrong side of the tunnel and the
+	// synthesis deletes it (see vpnOutStreamSettings).
+	//
+	// HTTP CONNECT ONLY, and this is the trap. The field takes a URL, so the obvious
+	// thing to do with it is point it at a SOCKS listener, and sstp-client does not
+	// refuse that - it does not look at the scheme AT ALL. Measured against the
+	// bundled sstp-client 1.0.20 with `socks5://127.0.0.1:<port>`: it opened a plain
+	// TCP connection and sent `CONNECT vpn.invalid:443 HTTP/1.1` to it. A SOCKS server
+	// receiving that answers with a protocol error or nothing, and the operator is
+	// left with "Could not connect to proxy server" against a proxy that is up and
+	// working. The binary confirms the same thing: it carries `CONNECT %s:443
+	// HTTP/1.1` and `Proxy-Authorization: %s` and not one SOCKS string. So Validate
+	// refuses a non-HTTP scheme rather than letting the dial discover it.
+	//
+	// Credentials go in the URL's userinfo (http://user:pass@host:port), which is the
+	// only way sstpc takes them: with none, a proxy that challenges gets "Proxy asked
+	// for credentials, none provided". They are passed on the pty command line, which
+	// is a difference from the OpenConnect driver worth knowing about - see ptyCommand.
 	Proxy string `json:"proxy"`
 
 	Mtu int `json:"mtu"`
@@ -126,6 +145,20 @@ func (d *sstpOutDriver) parse(cfg VpnOutboundConfig) (*sstpOutSettings, error) {
 	s.AuthProto = strings.ToLower(strings.TrimSpace(s.AuthProto))
 	s.Proxy = strings.TrimSpace(s.Proxy)
 	return s, nil
+}
+
+// ServerHost names what the outer TLS goes to, so this tunnel can be carried inside
+// another. The proxy wins when there is one: with `--proxy` set, sstpc connects to the
+// proxy and never to the gateway, so a rule naming the gateway would match nothing.
+func (d *sstpOutDriver) ServerHost(cfg VpnOutboundConfig) (string, error) {
+	s, err := d.parse(cfg)
+	if err != nil {
+		return "", err
+	}
+	if s.Proxy != "" {
+		return s.Proxy, nil
+	}
+	return s.Server, nil
 }
 
 // Available reports whether an SSTP outbound can run here at all.
@@ -181,6 +214,9 @@ func (d *sstpOutDriver) Validate(cfg VpnOutboundConfig) error {
 	// change the shape of that command line.
 	if strings.ContainsAny(s.Server, "\r\n'") || strings.ContainsAny(s.Proxy, "\r\n'") {
 		return errors.New("the server address and proxy URL cannot contain quotes or line breaks")
+	}
+	if err := sstpOutValidateProxy(s.Proxy); err != nil {
+		return err
 	}
 	switch s.AuthProto {
 	case "", "auto", "mschapv2", "mschap", "chap", "pap":
@@ -473,6 +509,44 @@ func (d *sstpOutDriver) ptyCommand(sstpc, name, caFile string, s *sstpOutSetting
 	return strings.Join(parts, " ")
 }
 
+// sstpOutValidateProxy refuses a proxy URL this client cannot actually use.
+//
+// It exists for exactly one mistake, and it is the one an operator makes first: the box
+// takes a URL, so they point it at the SOCKS listener they already run. sstp-client does
+// not refuse that, because it never looks at the scheme. Measured against the bundled
+// 1.0.20 with `socks5://127.0.0.1:<port>`: it opened a plain TCP connection to that
+// address and wrote `CONNECT vpn.invalid:443 HTTP/1.1` into it. What comes back from a
+// SOCKS server handed an HTTP request is a protocol error or silence, and sstpc reports
+// "Could not connect to proxy server" about a proxy that is running perfectly. Nothing
+// downstream can tell that apart from a dead proxy, so it is refused here instead.
+//
+// https is accepted alongside http and means only "the proxy is on 443": measured the
+// same way, sstpc sends the identical CLEARTEXT CONNECT to it. Refusing it would break
+// a tunnel that works today for a scheme that changes nothing.
+//
+// A URL with no scheme at all is also accepted. sstpc's parser leaves the scheme unset
+// and falls back to port 80, which is a working HTTP proxy configuration and may
+// already be stored on a live tunnel.
+func sstpOutValidateProxy(raw string) error {
+	p := strings.TrimSpace(raw)
+	i := strings.Index(p, "://")
+	if p == "" || i < 0 {
+		return nil
+	}
+	switch scheme := strings.ToLower(p[:i]); scheme {
+	case "http", "https":
+		return nil
+	case "socks", "socks4", "socks4a", "socks5", "socks5h":
+		return fmt.Errorf("the SSTP client speaks HTTP CONNECT proxies only, so a %s:// proxy "+
+			"cannot work here: it would send an HTTP request to the SOCKS port and then report "+
+			"the proxy as unreachable. Give an HTTP proxy, or use an OpenConnect or OpenVPN "+
+			"outbound, whose clients do speak SOCKS5", scheme)
+	default:
+		return fmt.Errorf("proxy scheme %q is not one the SSTP client understands; it speaks "+
+			"HTTP CONNECT proxies only", scheme)
+	}
+}
+
 // sstpOutHostOf strips a scheme, a port and a path off the configured server so the
 // remainder can be tested for being an IP literal.
 func sstpOutHostOf(server string) string {
@@ -546,7 +620,7 @@ func (d *sstpOutDriver) writeOptions(name, iface, plugin string, s *sstpOutSetti
 	}
 
 	var b strings.Builder
-	b.WriteString("# Auto-generated by pro-ui (SSTP client outbound) - do not edit\n")
+	b.WriteString("# Auto-generated by vpn-ui (SSTP client outbound) - do not edit\n")
 	b.WriteString(pppOutFingerprintMark + pppOutFingerprintOf(s) + "\n")
 	b.WriteString(fmt.Sprintf("plugin %s\n", plugin))
 	b.WriteString(fmt.Sprintf("sstp-sock %s\n", sstpOutSockPath(name)))
@@ -656,6 +730,19 @@ func sstpOutLogTell(log string) string {
 	}
 	tail := pppOutLastLines(log, 80)
 	switch {
+	// The proxy cases come before everything else because the lines below are broad
+	// enough to swallow them: a proxy failure reaches the generic "Connection refused"
+	// and "certificate" arms and would be reported as the SERVER's fault, sending the
+	// operator to the wrong machine. Each string is one the bundled 1.0.20 prints.
+	case strings.Contains(tail, "Could not connect to proxy server"):
+		return "the proxy did not accept the connection. It must be an HTTP CONNECT proxy: " +
+			"a SOCKS listener is answered with an HTTP request and fails exactly like this, " +
+			"even when the proxy itself is healthy"
+	case strings.Contains(tail, "Proxy asked for credentials, none provided"):
+		return "the proxy demanded authentication and none was configured; put them in the " +
+			"proxy URL as http://user:password@host:port"
+	case strings.Contains(tail, "Could not parse the proxy URL"):
+		return "the proxy URL could not be read; it wants the form http://host:port"
 	case strings.Contains(tail, "Could not load legacy crypto provider"):
 		// The statically linked sstpc asks OpenSSL for the legacy provider, and a
 		// static musl binary cannot dlopen anything at all, so this fails on EVERY host

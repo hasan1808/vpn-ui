@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The inbound rail: five variants</title>
+
+<style>
+/* ==========================================================================
+   Drawing set 07. The Rail direction was chosen off sheet set 06; this set
+   asks what the rail itself should carry.
+
+   Everything inside .frame is measured off the sibling it has to match,
+   web/html/modals/client_membership_modal.html and its .bo-cf-* rules in
+   web/assets/css/components.css:
+     modal 820px, rail 200px, pane fills the rest
+     summary block on top of the rail, then icon + label tabs
+     fields are STACKED (label above control), not ant's 8/14 side by side
+     selected tab: surface background, accent text, 600, 1px shadow
+   Two palettes: :root is the paper, .frame is the panel.
+   ========================================================================== */
+
+:root{
+  --paper:#eceef1; --sheet:#ffffff; --sheet-2:#f5f7f9;
+  --ink:#131a23; --ink-2:#4e5b6a; --ink-3:#7b8796;
+  --rule:#d5dce3; --rule-strong:#b9c3cd;
+  --accent:#00705e; --accent-weak:rgba(0,112,94,.10);
+  --cut:#9e3b32; --cut-weak:rgba(158,59,50,.09);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --paper:#0d1117; --sheet:#141a22; --sheet-2:#1a212b;
+  --ink:rgba(255,255,255,.90); --ink-2:rgba(255,255,255,.62); --ink-3:rgba(255,255,255,.45);
+  --rule:#28313d; --rule-strong:#3a4553;
+  --accent:#3fd2b0; --accent-weak:rgba(63,210,176,.13);
+  --cut:#e08b82; --cut-weak:rgba(224,139,130,.12); color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#0d1117; --sheet:#141a22; --sheet-2:#1a212b;
+  --ink:rgba(255,255,255,.90); --ink-2:rgba(255,255,255,.62); --ink-3:rgba(255,255,255,.45);
+  --rule:#28313d; --rule-strong:#3a4553;
+  --accent:#3fd2b0; --accent-weak:rgba(63,210,176,.13);
+  --cut:#e08b82; --cut-weak:rgba(224,139,130,.12); color-scheme:dark;
+}
+
+*{box-sizing:border-box;}
+body{ margin:0; background:var(--paper); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+.mono{ font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; }
+.wrap{ max-width:1000px; margin:0 auto; padding:0 20px 110px; }
+
+.masthead{ padding:56px 0 28px; border-bottom:2px solid var(--rule-strong); }
+.masthead h1{ font-size:30px; line-height:1.15; margin:0 0 10px; letter-spacing:-.015em; font-weight:650; }
+.masthead p{ margin:0 0 10px; color:var(--ink-2); max-width:68ch; }
+.mast-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:24px; flex-wrap:wrap; }
+.themebtn{ flex:none; display:inline-flex; align-items:center; gap:7px; font:inherit; font-size:12.5px;
+  font-weight:600; padding:7px 13px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--rule-strong); background:var(--sheet); color:var(--ink-2); }
+.themebtn:hover{ border-color:var(--accent); color:var(--accent); }
+.stamp{ display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--ink-3); margin-bottom:14px; }
+
+.sheet{ margin-top:52px; }
+.sheet-title{ display:flex; align-items:baseline; gap:14px; border-bottom:1px solid var(--rule-strong);
+  padding-bottom:9px; margin-bottom:20px; }
+.sheet-no{ font-family:ui-monospace,Menlo,monospace; font-size:12px; font-weight:700;
+  letter-spacing:.1em; color:var(--ink-3); padding-top:3px; flex:none; }
+.sheet-title h2{ font-size:21px; margin:0; font-weight:640; letter-spacing:-.01em; }
+.sheet-title .thesis{ color:var(--ink-2); font-size:13.5px; margin-left:auto; text-align:right; max-width:40ch; }
+.lede{ color:var(--ink-2); max-width:74ch; margin:0 0 20px; }
+.note{ color:var(--ink-2); font-size:13.5px; max-width:74ch; margin:18px 0 0;
+  border-left:2px solid var(--rule-strong); padding-left:14px; }
+.note b{ color:var(--ink); font-weight:600; }
+.note.cut{ border-left-color:var(--cut); }
+
+.spec{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-bottom:20px; }
+.spec div{ background:var(--sheet); border:1px solid var(--rule); border-radius:10px; padding:11px 13px; }
+.spec .k{ font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); }
+.spec .v{ font-size:14px; color:var(--ink); margin-top:3px; }
+.spec .v small{ color:var(--ink-2); font-size:12px; display:block; font-weight:400; }
+.gaps{ margin:0; padding:0; list-style:none; }
+.gaps li{ padding:7px 0 7px 24px; border-bottom:1px solid var(--rule); position:relative;
+  color:var(--ink-2); font-size:13.5px; }
+.gaps li:before{ content:"x"; position:absolute; left:4px; color:var(--cut); font-weight:700; }
+.gaps li.has:before{ content:"ok"; color:var(--accent); font-size:11px; left:0; }
+.gaps b{ color:var(--ink); font-weight:600; }
+
+.fixbar{ position:sticky; top:0; z-index:20; background:var(--paper); border-bottom:1px solid var(--rule-strong);
+  padding:12px 0 11px; margin-top:44px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+.fixbar .lbl{ font-size:10.5px; font-weight:700; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3); }
+.chips{ display:flex; gap:6px; flex-wrap:wrap; }
+.chip{ font:inherit; font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--rule-strong); background:var(--sheet); color:var(--ink-2); }
+.chip:hover{ border-color:var(--accent); color:var(--accent); }
+.chip[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:var(--paper); }
+.chip .ct{ opacity:.65; font-weight:500; margin-left:5px; font-size:11px; }
+.fixnote{ color:var(--ink-2); font-size:13px; margin:14px 0 0; max-width:80ch; }
+.fixnote b{ color:var(--ink); }
+
+/* ==========================================================================
+   Panel layer. Tokens from web/assets/css/tokens.css.
+   ========================================================================== */
+.frame{
+  --surface:#ffffff; --surface-2:#eef2f4; --border:#e4e9ee; --border-strong:#d2dae1;
+  --text:#1b2430; --text-2:#5a6675; --text-3:#6b7787;
+  --accent-p:#008771; --accent-strong:#00806b; --accent-weak:#e2f2ee; --on-accent:#ffffff;
+  --ok:#1c7a45; --info:#1f6fd0; --warn:#8a6008; --error:#b3261e; --off:#6b7787;
+  --ok-weak:rgba(28,122,69,.10); --warn-weak:rgba(138,96,8,.12);
+  --error-weak:rgba(179,38,30,.10); --off-weak:rgba(107,119,135,.12);
+  width:820px; max-width:100%;
+  background:var(--surface); color:var(--text); border:1px solid var(--border);
+  border-radius:12px; overflow:hidden; font-size:13px; line-height:1.5;
+  box-shadow:0 6px 16px -6px rgba(16,24,32,.10),0 2px 5px rgba(16,24,32,.05);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) .frame{
+  --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent-p:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13); --warn-weak:rgba(224,169,74,.14);
+  --error-weak:rgba(242,114,106,.13); --off-weak:rgba(133,147,168,.15); box-shadow:none;
+}}
+:root[data-theme="dark"] .frame{
+  --surface:#151f31; --surface-2:#1c2740; --border:#2c3950; --border-strong:#3c4b68;
+  --text:rgba(255,255,255,.88); --text-2:rgba(255,255,255,.60); --text-3:rgba(255,255,255,.48);
+  --accent-p:#1bbf9f; --accent-strong:#1bbf9f; --accent-weak:rgba(27,191,159,.14); --on-accent:#071a16;
+  --ok:#4fd08d; --warn:#e0a94a; --error:#f2726a; --off:#8593a8;
+  --ok-weak:rgba(79,208,141,.13); --warn-weak:rgba(224,169,74,.14);
+  --error-weak:rgba(242,114,106,.13); --off-weak:rgba(133,147,168,.15); box-shadow:none;
+}
+.sizetag{ font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--ink-3); margin-bottom:7px;
+  display:flex; gap:10px; align-items:center; }
+.sizetag .rule{ flex:1; height:1px; background:var(--rule); }
+
+/* ---- modal chrome ---- */
+.mhead{ padding:13px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+.mhead h3{ margin:0; font-size:15px; font-weight:640; }
+.mhead .sub{ color:var(--text-3); font-size:12px; }
+.mhead .spacer{ margin-left:auto; }
+.mfoot{ padding:11px 18px; border-top:1px solid var(--border); display:flex; align-items:center; gap:10px;
+  background:var(--surface-2); }
+.mfoot .why{ font-size:12px; color:var(--error); }
+.mfoot .why.ok{ color:var(--ok); }
+.mfoot .btns{ margin-left:auto; display:flex; gap:8px; }
+.b{ font-size:12.5px; font-weight:600; padding:6px 15px; border-radius:7px;
+  border:1px solid var(--border-strong); background:var(--surface); color:var(--text-2); }
+.b.pri{ background:var(--accent-strong); border-color:var(--accent-strong); color:var(--on-accent); }
+.b.pri[disabled]{ background:var(--off-weak); border-color:transparent; color:var(--text-3); }
+
+/* ---- .bo-cf, copied from components.css ---- */
+.cf{ display:flex; align-items:stretch; min-height:396px; }
+.cf-rail{ flex:0 0 200px; border-right:1px solid var(--border); background:var(--surface-2);
+  display:flex; flex-direction:column; min-width:0; }
+.cf-pane{ flex:1 1 auto; min-width:0; padding:18px 20px; overflow-y:auto; max-height:460px; }
+
+.cf-summary{ padding:16px; border-bottom:1px solid var(--border); }
+.cf-who{ font-size:15px; font-weight:600; line-height:1.3; margin-bottom:2px; word-break:break-all; color:var(--text); }
+.cf-sub{ font-size:11.5px; color:var(--text-3); margin-bottom:12px; line-height:1.4; }
+.cf-kv{ display:flex; justify-content:space-between; align-items:baseline; gap:8px;
+  font-size:12px; padding:3px 0; color:var(--text-2); }
+.cf-kv b{ color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+.cf-kv b.ell{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.prog{ height:6px; border-radius:999px; background:var(--off-weak); overflow:hidden; margin:2px 0 10px; }
+.prog i{ display:block; height:100%; background:var(--accent-strong); }
+
+.cf-tabs{ padding:10px; display:flex; flex-direction:column; gap:2px; }
+.cf-tab{ display:flex; align-items:center; gap:9px; width:100%; font:inherit; font-size:13.5px;
+  text-align:start; cursor:pointer; padding:8px 11px; border:0; border-radius:7px;
+  background:transparent; color:var(--text-2); }
+.cf-tab:hover{ color:var(--text); background:var(--surface); }
+.cf-tab[aria-selected="true"]{ background:var(--surface); color:var(--accent-p); font-weight:600;
+  box-shadow:0 1px 2px rgba(16,24,40,.07); }
+/* Sized on the class, not on .cf-tab: the filter and the disclosure use the same
+   helper, and an unsized inline svg defaults to 300x150. */
+.ico{ flex:none; width:15px; height:15px; opacity:.85; }
+.cf-tab .lb{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cf-tab .n{ margin-left:auto; padding-left:6px; font-family:ui-monospace,Menlo,monospace; font-size:11px;
+  color:var(--text-3); font-weight:400; }
+.cf-tab .dot{ width:7px; height:7px; border-radius:50%; flex:none; }
+.cf-tab .dot + .n{ margin-left:0; }
+.cf-tab .dot:last-child{ margin-left:auto; }
+.cf-tab .dot.err{ background:var(--error); }
+.cf-tab .dot.warnd{ background:var(--warn); }
+.cf-tab.dim{ opacity:.62; }
+.cf-grp{ font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); margin:12px 0 4px 11px; }
+.cf-grp:first-child{ margin-top:2px; }
+
+/* ---- fields, stacked like .bo-cf-field ---- */
+.cf-field{ margin-bottom:14px; }
+.cf-field > label{ display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  font-size:12px; font-weight:600; color:var(--text-2); margin-bottom:5px; }
+.cf-field > label .tag{ font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  padding:1px 6px; border-radius:4px; background:var(--warn-weak); color:var(--warn); }
+.cf-field > label .tag.mut{ background:var(--off-weak); color:var(--text-3); }
+.cf-hint{ font-size:11.5px; color:var(--text-3); margin-top:4px; }
+.cf-err{ font-size:11.5px; color:var(--error); margin-top:4px; }
+.cf-switch{ display:flex; align-items:center; justify-content:space-between; gap:14px;
+  padding:11px 0; border-bottom:1px solid var(--border); }
+.cf-switch:last-child{ border-bottom:0; }
+.cf-t{ font-size:13.5px; color:var(--text); }
+.cf-d{ font-size:11.5px; color:var(--text-3); margin-top:2px; }
+.cf-warnnote{ display:flex; gap:6px; margin:0 0 12px; padding:7px 9px; border-radius:6px;
+  background:var(--warn-weak); color:var(--warn); font-size:11.5px; line-height:1.5; }
+.cf-unused{ opacity:.5; }
+
+.in{ display:flex; align-items:center; min-height:30px; padding:4px 9px; border-radius:6px;
+  border:1px solid var(--border-strong); background:var(--surface); color:var(--text); width:100%; }
+.in.num{ width:110px; }
+.in.ro{ background:var(--surface-2); color:var(--text-3); border-style:dashed; }
+.in.sel{ justify-content:space-between; }
+.in.sel i{ font-style:normal; color:var(--text-3); }
+.in.area{ display:block; min-height:44px; font-family:ui-monospace,Menlo,monospace; font-size:11px;
+  color:var(--text-2); white-space:nowrap; overflow:hidden; }
+.in.area.empty{ color:var(--text-3); font-style:italic; font-family:inherit; }
+.in.rep{ border-style:dashed; color:var(--text-2); justify-content:space-between; }
+.in.bad{ border-color:var(--error); }
+.sw{ display:inline-block; width:34px; height:19px; border-radius:999px; background:var(--off-weak);
+  position:relative; flex:none; }
+.sw:after{ content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%;
+  background:var(--surface); box-shadow:0 1px 2px rgba(0,0,0,.25); }
+.sw.on{ background:var(--accent-strong); }
+.sw.on:after{ left:17px; }
+.seg{ display:inline-flex; border:1px solid var(--border-strong); border-radius:7px; overflow:hidden; }
+.seg span{ padding:4px 11px; font-size:12px; color:var(--text-2); border-right:1px solid var(--border-strong); }
+.seg span:last-child{ border-right:0; }
+.seg span.on{ background:var(--accent-strong); color:var(--on-accent); font-weight:600; }
+.seedrow{ display:flex; gap:5px; }
+.seedrow span{ width:52px; text-align:center; padding:4px 0; border:1px solid var(--border-strong);
+  border-radius:6px; font-family:ui-monospace,Menlo,monospace; font-size:11.5px; }
+.chipsrow{ display:flex; gap:5px; flex-wrap:wrap; }
+.chipsrow span{ font-size:11.5px; padding:2px 8px; border-radius:999px; background:var(--surface-2); color:var(--text-2); }
+.mbtn{ display:inline-block; padding:5px 11px; border-radius:6px; border:1px solid var(--accent-p);
+  color:var(--accent-p); font-weight:600; font-size:12px; }
+.more{ color:var(--text-3); font-style:italic; font-size:12px; }
+.ph{ margin:0 0 2px; font-size:15px; font-weight:640; }
+.pn{ color:var(--text-3); font-size:12px; margin:0 0 14px; }
+.folded{ border:1px dashed var(--border-strong); border-radius:8px; padding:9px 12px; color:var(--text-3);
+  font-size:12px; display:flex; justify-content:space-between; align-items:center; }
+.folded b{ color:var(--text-2); font-weight:600; }
+
+/* ---- variant extras ---- */
+.railfoot{ margin-top:auto; padding:10px; border-top:1px solid var(--border); }
+.gate{ border-radius:7px; padding:8px 10px; font-size:11.5px; background:var(--error-weak); }
+.gate .gh{ font-weight:700; color:var(--error); margin-bottom:4px; }
+.gate ol{ margin:0; padding-left:15px; color:var(--text-2); }
+.gate li{ margin-bottom:3px; }
+.gate.good{ background:var(--ok-weak); color:var(--ok); font-weight:600; }
+.runline{ font-family:ui-monospace,Menlo,monospace; font-size:10.5px; background:var(--surface);
+  border:1px solid var(--border); border-radius:7px; padding:7px 8px; color:var(--text-2);
+  word-break:break-all; margin-bottom:8px; }
+.artline{ display:flex; gap:8px; align-items:center; font-size:11.5px; color:var(--text-2); margin-bottom:4px; }
+.qr{ width:34px; height:34px; flex:none; border-radius:4px;
+  background:repeating-linear-gradient(0deg,var(--text) 0 3px,transparent 3px 6px),
+             repeating-linear-gradient(90deg,var(--text) 0 3px,transparent 3px 6px); opacity:.5; }
+.railhead{ font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-3); margin:0 0 5px; }
+.filter{ margin:10px 10px 0; display:flex; align-items:center; gap:7px; padding:5px 9px;
+  border:1px solid var(--border-strong); border-radius:7px; background:var(--surface); font-size:12.5px;
+  color:var(--text-3); }
+.filter input{ border:0; outline:0; background:none; font:inherit; color:var(--text); width:100%; min-width:0; }
+.hits{ padding:6px 10px 0; }
+.hit{ display:flex; justify-content:space-between; gap:8px; font-size:11.5px; padding:4px 8px;
+  border-radius:6px; color:var(--text-2); cursor:pointer; }
+.hit:hover{ background:var(--surface); }
+.hit b{ color:var(--text); font-weight:600; }
+.hit span{ color:var(--text-3); flex:none; }
+.disclose{ display:flex; align-items:center; gap:7px; width:100%; font:inherit; font-size:12.5px;
+  padding:7px 11px; border:0; border-radius:7px; background:transparent; color:var(--text-3); cursor:pointer; }
+.disclose:hover{ color:var(--text); background:var(--surface); }
+.disclose .n{ margin-left:auto; font-family:ui-monospace,Menlo,monospace; font-size:11px; }
+
+table.cmp{ border-collapse:collapse; width:100%; font-size:13px; }
+table.cmp th{ text-align:left; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  font-weight:700; padding:0 10px 8px 0; border-bottom:1px solid var(--rule-strong); vertical-align:bottom; }
+table.cmp td{ padding:9px 10px 9px 0; border-bottom:1px solid var(--rule); vertical-align:top; color:var(--ink-2); }
+table.cmp td.s{ color:var(--ink); font-weight:600; white-space:nowrap; }
+table.cmp .good{ color:var(--accent); font-weight:600; }
+table.cmp .poor{ color:var(--cut); font-weight:600; }
+.iconlist{ display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:8px; margin-top:14px; }
+.iconlist div{ display:flex; align-items:center; gap:9px; font-size:13px; color:var(--ink-2);
+  background:var(--sheet); border:1px solid var(--rule); border-radius:8px; padding:8px 11px; }
+.iconlist svg{ width:16px; height:16px; flex:none; fill:var(--accent); }
+.iconlist code{ margin-left:auto; font-size:11px; color:var(--ink-3); }
+.foot{ margin-top:56px; padding-top:20px; border-top:1px solid var(--rule); color:var(--ink-3); font-size:12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="mast-row">
+      <div>
+        <p class="stamp">vpn-ui redesign / sheet set 07</p>
+        <h1>The inbound rail</h1>
+        <p>Rail was chosen off sheet set 06. This set asks what the rail carries. Five variants, drawn at the
+           exact dimensions of the sibling they have to match: the client add/edit modal, 820px wide with a
+           200px rail, its summary block, and its icon tabs.</p>
+        <p>The same five fixtures as before, so a variant can be judged on VLESS at 195 fields and on SSH at 25
+           without changing pages.</p>
+      </div>
+      <button class="themebtn" id="themebtn" type="button">Theme: auto</button>
+    </div>
+  </header>
+
+  <!-- ================= sheet 00 ================= -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">00</span><h2>What "in sync" actually means</h2>
+      <span class="thesis">Measured off client_membership_modal.html and components.css, not approximated.</span></div>
+    <p class="lede">The client modal already solved this shape. Its rail is not a list of links: it is a summary
+       block that reports the account at a glance, then four icon tabs. On Add it has nothing stored to report,
+       so it previews what is being typed rather than sitting empty. Every variant below inherits that.</p>
+
+    <div class="spec">
+      <div><div class="k">Dialog</div><div class="v">820px<small>a-modal :width="820"</small></div></div>
+      <div><div class="k">Rail</div><div class="v">200px<small>flex 0 0 200px, surface-2, right border</small></div></div>
+      <div><div class="k">Tab</div><div class="v">icon + label<small>13.5px, 8/11 padding, radius 7</small></div></div>
+      <div><div class="k">Selected</div><div class="v">surface + accent<small>600 weight, 1px shadow</small></div></div>
+      <div><div class="k">Fields</div><div class="v">stacked<small>label above control, not ant's 8/14</small></div></div>
+      <div><div class="k">Narrow</div><div class="v">rail goes horizontal<small>flex-direction row, scrolls</small></div></div>
+      <div><div class="k">Label budget</div><div class="v">~15 characters<small>200px less icon, gaps, padding and count</small></div></div>
+    </div>
+    <p class="lede" style="margin-top:-4px">That last one is not a detail. "Security (REALITY)" and "Quota and
+       billing" both overflow a 200px rail once an icon and a count sit beside them, and an ellipsis in a
+       nine-item list reads as a defect rather than as truncation. Section names for the rail are therefore short
+       names, and the full title lives on the pane heading where it is actually useful.</p>
+
+    <p class="lede">Held against that spec, the Rail on sheet 06 was close but not in sync. What it got wrong,
+       and what these five fix:</p>
+    <ul class="gaps">
+      <li><b>No icons.</b> The client rail gives every tab one (<span class="mono">user</span>,
+        <span class="mono">cluster</span>, <span class="mono">key</span>, <span class="mono">dashboard</span>).</li>
+      <li><b>No summary block.</b> The rail's top third is the account at a glance, and it previews on Add.
+        The inbound has an equivalent worth reporting: what it listens on, how many accounts ride it, what it has moved.</li>
+      <li><b>Wrong widths.</b> 960px dialog and a 232px rail, against the sibling's 820 and 200.</li>
+      <li><b>Wrong field layout.</b> Side by side labels, where the client modal stacks them.</li>
+      <li class="has"><b>Counts and state.</b> Not in the sibling, but the inbound needs them: it is the form
+        with 9 sections and a save gate, where the client has 4 and no gate. This is the one place worth diverging,
+        and three of the five below test different amounts of it.</li>
+    </ul>
+
+    <p class="lede" style="margin-top:22px">Icons are only proposed here after being rendered against the bundled
+       <span class="mono">antd.min.js</span> and confirmed to produce a glyph. Two obvious candidates,
+       <span class="mono">node-index</span> and <span class="mono">partition</span>, do not exist in this build and
+       are not used.</p>
+    <div class="iconlist" id="iconlist"></div>
+  </section>
+
+  <!-- ================= fixture bar ================= -->
+  <div class="fixbar">
+    <span class="lbl">Fixture</span>
+    <div class="chips" id="protochips"></div>
+    <span class="lbl">Mode</span>
+    <div class="chips" id="modechips">
+      <button class="chip" type="button" data-mode="add" aria-pressed="true">Add</button>
+      <button class="chip" type="button" data-mode="edit" aria-pressed="false">Edit</button>
+    </div>
+  </div>
+  <p class="fixnote" id="fixnote"></p>
+
+  <!-- ================= variants ================= -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">01</span><h2>Twin</h2>
+      <span class="thesis">The client rail, unchanged. Summary block, icons, flat list.</span></div>
+    <p class="lede">The baseline the other four are measured against: no counts, no state, no groups. If an
+       operator can work the inbound form with exactly the affordances the client form gives them, nothing else
+       here is worth its cost.</p>
+    <div class="sizetag"><span>820px / rail 200px</span><span class="rule"></span><span>click a tab</span></div>
+    <div class="frame" id="v-twin"></div>
+    <p class="note"><b>What it shows:</b> the summary carries the inbound at a glance, and on Add it previews the
+       remark being typed exactly as the client rail does. <b>Where it breaks:</b> VLESS has nine tabs against the
+       client's four, and with no counts they all look equally weighty. Final mask reads the same as Identity, but
+       one holds 64 fields and the other 5.</p>
+  </section>
+
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">02</span><h2>Twin with state</h2>
+      <span class="thesis">Same rail, plus the two things the inbound has and the client does not.</span></div>
+    <p class="lede">A field count on every tab, and a dot on any section holding a reason Save is disabled. The
+       count is what tells an operator that Final mask is not a two-minute detour; the dot is what stops the
+       silent gate from sheet 06, fact 03. Sections that are advanced and untouched sit dimmed.</p>
+    <div class="sizetag"><span>820px / rail 200px</span><span class="rule"></span><span>counts and blocker dots</span></div>
+    <div class="frame" id="v-state"></div>
+    <p class="note"><b>Cost:</b> two spans in the tab template and a per-section validity map. It is the smallest
+       possible divergence from the sibling and it buys the most. The risk is visual noise: nine rows each carrying
+       an icon, a label, a number and sometimes a dot is a busy 200px.</p>
+  </section>
+
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">03</span><h2>Grouped</h2>
+      <span class="thesis">Listener, Security, Policy. Structure instead of a longer list.</span></div>
+    <p class="lede">Nine flat items is a list; nine items under three headings is a shape. The groups are stable
+       across protocols even as their contents change, so an operator who learns that certificates live under
+       Security keeps that knowledge when they move from OpenVPN to VLESS.</p>
+    <div class="sizetag"><span>820px / rail 200px</span><span class="rule"></span><span>three fixed groups</span></div>
+    <div class="frame" id="v-group"></div>
+    <p class="note"><b>Cost:</b> it is the one variant that visibly departs from the client rail, so the two modals
+       stop looking like the same control. It also pays for structure with height: on SSH the three headings
+       introduce more chrome than the four tabs under them are worth. Judge this one on SSH, not on VLESS.</p>
+  </section>
+
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">04</span><h2>Spec rail</h2>
+      <span class="thesis">The summary block reports the outcome, not the inputs.</span></div>
+    <p class="lede">The client rail summarises the account because that is what an account is: a name, a quota, a
+       deadline. An inbound is not a noun in the same way. What an operator actually wants confirmed is what the
+       server will run and what the customer will receive, which is Split's idea from sheet 06 folded into the rail
+       so no second pane is needed.</p>
+    <div class="sizetag"><span>820px / rail 200px</span><span class="rule"></span><span>live outcome in the summary</span></div>
+    <div class="frame" id="v-spec"></div>
+    <p class="note"><b>Cost:</b> the listener line and the artifact have to be derived live, and the share link is
+       already generated twice in this codebase (the JS model and Go). A preview that drifts from what saving
+       produces is worse than no preview, so this variant carries a correctness obligation the other four do not.</p>
+  </section>
+
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">05</span><h2>Adaptive</h2>
+      <span class="thesis">Show what this protocol needs. Find the rest by name.</span></div>
+    <p class="lede">The rail shows the sections that are on the default path and folds the rest behind one
+       disclosure, so SSH shows four rows and VLESS shows six rather than nine. Above them is the control that the
+       195-field case really wants: a filter that searches field names, not section names, and answers the question
+       an operator actually has, which is where Padding Placement lives.</p>
+    <div class="sizetag"><span>820px / rail 200px</span><span class="rule"></span><span>type in the filter, it is live</span></div>
+    <div class="frame" id="v-adapt"></div>
+    <p class="note"><b>Cost:</b> the most build of the five. It needs a per-protocol notion of which sections are
+       on the default path, and a searchable index of every field label, which today exists only as markup inside
+       24 partials. It is also the only variant that helps at 195 fields as much as it does at 25.</p>
+  </section>
+
+  <!-- ================= comparison ================= -->
+  <section class="sheet">
+    <div class="sheet-title"><span class="sheet-no">06</span><h2>Side by side</h2>
+      <span class="thesis">Judged on matching the sibling, and on the two protocols that break layouts.</span></div>
+    <table class="cmp">
+      <thead><tr><th>Variant</th><th>Matches the client modal</th><th>VLESS, 9 sections</th>
+        <th>SSH, 4 sections</th><th>Says why Save is off</th><th>Build</th></tr></thead>
+      <tbody>
+        <tr><td class="s">01 Twin</td><td class="good">Exactly</td><td class="poor">All tabs look equal</td>
+            <td class="good">Ideal</td><td class="poor">No</td><td class="good">Smallest</td></tr>
+        <tr><td class="s">02 Twin with state</td><td class="good">Two spans added</td><td class="good">Weight is visible</td>
+            <td class="good">Ideal</td><td class="good">Dot on the section</td><td class="good">Small</td></tr>
+        <tr><td class="s">03 Grouped</td><td class="poor">Visibly different</td><td class="good">Best structure</td>
+            <td class="poor">Chrome over content</td><td>With 02's dots</td><td>Small</td></tr>
+        <tr><td class="s">04 Spec rail</td><td>Same shape, new content</td><td class="good">Good</td>
+            <td class="good">Good</td><td class="good">Chip in the rail</td><td class="poor">Needs a live preview</td></tr>
+        <tr><td class="s">05 Adaptive</td><td>Same shape, plus a filter</td><td class="good">Only one that scales</td>
+            <td class="good">Four rows</td><td>With 02's dots</td><td class="poor">Largest</td></tr>
+      </tbody>
+    </table>
+    <p class="note"><b>If you want a recommendation:</b> ship 02, then add 05's filter when the field index
+       exists. 02 is the client rail plus a count and a dot, which keeps the two modals recognisably the same
+       control while admitting the one real difference between an account and an inbound: an inbound can be
+       unsaveable, and it should say so in the rail rather than in a greyed button. 04's summary is the better
+       content for that block and can replace 01's at any point without touching the tabs; treat it as a second
+       step, not a fork in the road.</p>
+    <p class="note cut"><b>Against grouping:</b> 03 reads best on VLESS and worst on SSH, and SSH is not the rare
+       case. Sixteen of the 24 protocols have four or five sections. Grouping optimises the tail.</p>
+  </section>
+
+  <p class="foot">Mockups only. Rail dimensions, tab styling and field layout copied from
+     web/html/modals/client_membership_modal.html and web/assets/css/components.css; icons verified against the
+     bundled antd build; field names and counts from web/html/form/.</p>
+</div>
+
+<script src="fixture.js"></script>
+<script>
+/* ==========================================================================
+   The five rail variants. All share one pane renderer, so the only thing that
+   differs between them is the rail itself, which is the question this set asks.
+   ========================================================================== */
+
+const state = { proto: 'vless', mode: 'add', tab: {}, filter: '' };
+
+const esc = s => String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+/* Icons: antd names, each rendered against the bundled antd.min.js first. The
+   paths are the same 1024-viewBox outlines antd ships, inlined so this sheet has
+   no dependency on the panel's assets. */
+const ICONS = {
+  api:'M917.7 148.8l-42.4-42.4c-1.6-1.6-3.6-2.3-5.7-2.3s-4.1.8-5.7 2.3l-76.1 76.1a199.27 199.27 0 00-112.1-34.3c-51.2 0-102.4 19.5-141.5 58.6L432.3 308.7a8.03 8.03 0 000 11.3L704 591.7c1.6 1.6 3.6 2.3 5.7 2.3 2 0 4.1-.8 5.7-2.3l101.9-101.9c68.9-69 77-175.7 24.3-253.5l76.1-76.1c3.1-3.2 3.1-8.3 0-11.4zM769.1 441.7l-59.4 59.4-186.8-186.8 59.4-59.4c24.9-24.9 58.1-38.7 93.4-38.7 35.3 0 68.4 13.7 93.4 38.7 24.9 24.9 38.7 58.1 38.7 93.4 0 35.3-13.8 68.4-38.7 93.4zm-190.2 105a8.03 8.03 0 00-11.3 0L501 613.3 410.7 523l66.7-66.7c3.1-3.1 3.1-8.2 0-11.3L441 408.6a8.03 8.03 0 00-11.3 0L363 475.3l-43-43a7.85 7.85 0 00-5.7-2.3c-2 0-4.1.8-5.7 2.3L206.8 534.2c-68.9 69-77 175.7-24.3 253.5l-76.1 76.1a8.03 8.03 0 000 11.3l42.4 42.4c1.6 1.6 3.6 2.3 5.7 2.3s4.1-.8 5.7-2.3l76.1-76.1c33.7 22.9 72.9 34.3 112.1 34.3 51.2 0 102.4-19.5 141.5-58.6l101.9-101.9c3.1-3.1 3.1-8.2 0-11.3l-43-43 66.7-66.7c3.1-3.1 3.1-8.2 0-11.3l-36.6-36.2zM441.7 769.1a131.32 131.32 0 01-93.4 38.7c-35.3 0-68.4-13.7-93.4-38.7a131.32 131.32 0 01-38.7-93.4c0-35.3 13.7-68.4 38.7-93.4l59.4-59.4 186.8 186.8-59.4 59.4z',
+  swap:'M847.9 592H152.1c-4.5 0-8.1 3.6-8.1 8v60c0 4.4 3.6 8 8.1 8h605.7v135.9c0 5.2 6 8.1 10.1 4.9L924 611.7c3.1-2.4 3.1-7 0-9.5L768 480.2c-4.1-3.2-10.1-.3-10.1 4.9V592zM176.1 432h605.7v135.9c0 5.2 6 8.1 10.1 4.9l156-121.9c3.1-2.4 3.1-7 0-9.5L792 319.2c-4.1-3.2-10.1-.3-10.1 4.9V432H176.1c-4.5 0-8.1 3.6-8.1 8v-60c0-4.4 3.6-8 8.1-8z',
+  control:'M880 112H144c-17.7 0-32 14.3-32 32v736c0 17.7 14.3 32 32 32h736c17.7 0 32-14.3 32-32V144c0-17.7-14.3-32-32-32zm-40 728H184V184h656v656zM610 634c-15.5 0-28 12.5-28 28v50H402V462h48c4.4 0 8-3.6 8-8v-32c0-4.4-3.6-8-8-8H302c-4.4 0-8 3.6-8 8v32c0 4.4 3.6 8 8 8h48v250h-48c-4.4 0-8 3.6-8 8v32c0 4.4 3.6 8 8 8h308c15.5 0 28-12.5 28-28v-78c0-15.5-12.5-28-28-28z',
+  'radar-chart':'M926.8 397.1l-396-288a31.81 31.81 0 00-37.6 0l-396 288a31.99 31.99 0 00-11.6 35.8l151.3 466a32 32 0 0030.4 22.1h489.5c13.9 0 26.1-8.9 30.4-22.1l151.3-466c4.2-13.2-.5-27.6-11.7-35.8zM838.6 417L708.5 649.8 664.9 439c-.3-1.4-.7-2.7-1.1-4l174.8 (-18)z M512 179.3l161.5 117.4L512 358.5V179.3zM484.4 179.3v179.2l-161.5-61.8L484.4 179.3zM185.4 417l174.8 18c-.4 1.3-.8 2.6-1.1 4l-43.6 210.8L185.4 417zM466.9 863H327.6l-97.6-300.6 236.9 300.6zm45.1-.1L297 585.4l215-38.1 215 38.1L512 862.9zM696.4 863H557.1l236.9-300.6L696.4 863z',
+  'safety-certificate':'M866.9 169.9L527.1 54.1C523 52.7 517.5 52 512 52s-11 .7-15.1 2.1L157.1 169.9c-8.3 2.8-15.1 12.4-15.1 21.2v482.4c0 8.8 5.7 20.4 12.6 25.9L499.3 968c3.5 2.7 8 4.1 12.6 4.1s9.2-1.4 12.6-4.1l344.7-268.6c6.9-5.4 12.6-17 12.6-25.9V191.1c.2-8.8-6.6-18.3-14.9-21.2zM810 654.3L512 886.5 214 654.3V226.7l298-101.6 298 101.6v427.6zm-405.8-201c-3-4.1-7.8-6.6-13-6.6H336c-6.5 0-10.3 7.4-6.5 12.7l126.1 174a16.1 16.1 0 0026 0l212.6-292.7c3.8-5.3 0-12.7-6.5-12.7h-55.2c-5.1 0-10 2.5-13 6.6L468.9 542.4l-64.7-89.1z',
+  lock:'M832 464h-68V240c0-70.7-57.3-128-128-128H388c-70.7 0-128 57.3-128 128v224h-68c-17.7 0-32 14.3-32 32v384c0 17.7 14.3 32 32 32h640c17.7 0 32-14.3 32-32V496c0-17.7-14.3-32-32-32zM332 240c0-30.9 25.1-56 56-56h248c30.9 0 56 25.1 56 56v224H332V240zm460 600H232V536h560v304zM484 701v53c0 4.4 3.6 8 8 8h40c4.4 0 8-3.6 8-8v-53a48.01 48.01 0 10-56 0z',
+  safety:'M866.9 169.9L527.1 54.1C523 52.7 517.5 52 512 52s-11 .7-15 2.1L157.1 169.9c-8.3 2.8-15.1 12.4-15.1 21.2v482.4c0 8.8 5.7 20.4 12.6 25.9L499.3 968c3.5 2.7 8 4.1 12.6 4.1s9.2-1.4 12.6-4.1l344.7-268.6c6.9-5.4 12.6-17 12.6-25.9V191.1c.2-8.8-6.6-18.3-14.9-21.2zM810 654.3L512 886.5 214 654.3V226.7l298-101.6 298 101.6v427.6z',
+  global:'M854.4 800.9c.2-.3.5-.6.7-.9C920.6 722.1 960 621.7 960 512s-39.4-210.1-104.8-288c-.2-.3-.4-.5-.7-.8-1.1-1.3-2.1-2.5-3.2-3.7-.4-.5-.8-.9-1.2-1.4l-4.1-4.7-.1-.1c-1.5-1.7-3.1-3.4-4.6-5.1l-.1-.1c-3.2-3.4-6.4-6.8-9.7-10.1l-.1-.1-4.8-4.8-.3-.3c-1.5-1.5-3-2.9-4.5-4.3-.5-.5-1-1-1.6-1.5-1-1-2-1.9-3-2.8-.3-.3-.7-.6-1-1C736.4 109.2 629.5 64 512 64s-224.4 45.2-304.3 119.2c-.3.3-.7.6-1 1-1 .9-2 1.9-3 2.9-.5.5-1 1-1.6 1.5-1.5 1.4-3 2.9-4.5 4.3l-.3.3-4.8 4.8-.1.1c-3.3 3.3-6.5 6.7-9.7 10.1l-.1.1c-1.6 1.7-3.1 3.4-4.6 5.1l-.1.1c-1.4 1.5-2.8 3.1-4.1 4.7-.4.5-.8.9-1.2 1.4-1.1 1.2-2.1 2.5-3.2 3.7-.2.3-.4.5-.7.8C103.4 301.9 64 402.3 64 512s39.4 210.1 104.8 288c.2.3.5.6.7.9l3.1 3.7c.4.5.8.9 1.2 1.4l4.1 4.7c0 .1.1.1.1.2 1.5 1.7 3 3.4 4.6 5l.1.1c3.2 3.4 6.4 6.8 9.6 10.1l.1.1c1.6 1.6 3.1 3.2 4.7 4.7l.3.3c3.3 3.3 6.7 6.5 10.1 9.6 80.1 74 187 119.2 304.5 119.2s224.4-45.2 304.3-119.2a300 300 0 0010-9.6l.3-.3c1.6-1.6 3.2-3.1 4.7-4.7l.1-.1c3.3-3.3 6.5-6.7 9.6-10.1l.1-.1c1.5-1.7 3.1-3.3 4.6-5 0-.1.1-.1.1-.2 1.4-1.5 2.8-3.1 4.1-4.7.4-.5.8-.9 1.2-1.4a99 99 0 003.3-3.7zm4.1-142.6c-13.8 32.6-31.7 63.2-53.4 91.3a445.75 445.75 0 00-86.8-65.3c11.6-54.9 18.1-113.5 19.3-174H872c-draw 0zM602 373c1.9-.7 3.7-1.4 5.6-2.2a442.6 442.6 0 0071.6-42.5c17.9 20.5 33.9 42.8 47.6 66.6-16.5 12-33.9 22.6-52.1 31.7-13.5-19.3-28.6-37.5-45.2-54.2z',
+  dashboard:'M924.8 385.6a446.7 446.7 0 00-96-142.4 446.7 446.7 0 00-142.4-96C631.1 123.8 572.5 112 512 112s-119.1 11.8-174.4 35.2a446.7 446.7 0 00-142.4 96 446.7 446.7 0 00-96 142.4C75.8 440.9 64 499.5 64 560c0 132.7 58.3 257.7 159.9 343.1l1.7 1.4c5.8 4.8 13.1 7.5 20.6 7.5h531.7c7.5 0 14.8-2.7 20.6-7.5l1.7-1.4C901.7 817.7 960 692.7 960 560c0-60.5-11.9-119.1-35.2-174.4zM788.3 825.1H235.7v-.1c-39.4-33.2-70.4-72.7-92.3-117.6C120.6 660.6 109 610.8 109 560c0-54.4 10.6-107.2 31.6-156.9 20.3-48 49.4-91.2 86.4-128.3 37-37 80.2-66.1 128.3-86.4C405 167.4 457.8 156.8 512 156.8s107 10.6 156.7 31.6c48 20.3 91.2 49.4 128.3 86.4 37 37 66.1 80.2 86.4 128.3 21 49.7 31.6 102.5 31.6 156.9 0 50.8-11.6 100.6-34.4 147.4-21.9 44.9-52.9 84.4-92.3 117.7zM512 232c-17.7 0-32 14.3-32 32v8c0 17.7 14.3 32 32 32s32-14.3 32-32v-8c0-17.7-14.3-32-32-32zm189.3 74.7c-12.5-12.5-32.8-12.5-45.3 0l-5.7 5.7c-12.5 12.5-12.5 32.8 0 45.3 12.5 12.5 32.8 12.5 45.3 0l5.7-5.7c12.5-12.5 12.5-32.8 0-45.3zM792 520h-8c-17.7 0-32 14.3-32 32s14.3 32 32 32h8c17.7 0 32-14.3 32-32s-14.3-32-32-32zm-552 0h-8c-17.7 0-32 14.3-32 32s14.3 32 32 32h8c17.7 0 32-14.3 32-32s-14.3-32-32-32zm128.7-213.3c-12.5-12.5-32.8-12.5-45.3 0-12.5 12.5-12.5 32.8 0 45.3l5.7 5.7c12.5 12.5 32.8 12.5 45.3 0 12.5-12.5 12.5-32.8 0-45.3l-5.7-5.7zM512 396c-88.4 0-160 71.6-160 160s71.6 160 160 160 160-71.6 160-160-71.6-160-160-160zm0 256c-53 0-96-43-96-96s43-96 96-96 96 43 96 96-43 96-96 96z',
+  'pay-circle':'M512 64C264.6 64 64 264.6 64 512s200.6 448 448 448 448-200.6 448-448S759.4 64 512 64zm0 820c-205.4 0-372-166.6-372-372s166.6-372 372-372 372 166.6 372 372-166.6 372-372 372zm159.6-585h-51.2c-5.1 0-9.9 2.4-12.9 6.5L512 437.1l-95.5-131.6c-3-4.1-7.8-6.5-12.9-6.5h-51.2c-6.5 0-10.3 7.4-6.5 12.7L471.5 542H407c-4.4 0-8 3.6-8 8v27.3c0 4.4 3.6 8 8 8h78.5v39.7H407c-4.4 0-8 3.6-8 8v27.3c0 4.4 3.6 8 8 8h78.5V732c0 4.4 3.6 8 8 8h37c4.4 0 8-3.6 8-8v-63.7H617c4.4 0 8-3.6 8-8V641c0-4.4-3.6-8-8-8h-78.5v-39.7H617c4.4 0 8-3.6 8-8V558c0-4.4-3.6-8-8-8h-64.3l125.4-169.3c3.9-5.3.1-12.7-6.5-12.7z',
+  'share-alt':'M752 664c-28.5 0-54.8 10-75.4 26.7L469.4 540.8a160.68 160.68 0 000-57.6l207.2-149.9C697.2 350 723.5 360 752 360c66.2 0 120-53.8 120-120s-53.8-120-120-120-120 53.8-120 120c0 11.6 1.6 22.7 4.7 33.3L439.9 415.8C410.7 377.1 364.3 352 312 352c-88.4 0-160 71.6-160 160s71.6 160 160 160c52.3 0 98.7-25.1 127.9-63.8l196.8 142.5c-3.1 10.6-4.7 21.8-4.7 33.3 0 66.2 53.8 120 120 120s120-53.8 120-120-53.8-120-120-120zm0-476c28.7 0 52 23.3 52 52s-23.3 52-52 52-52-23.3-52-52 23.3-52 52-52zM312 600c-48.5 0-88-39.5-88-88s39.5-88 88-88 88 39.5 88 88-39.5 88-88 88zm440 236c-28.7 0-52-23.3-52-52s23.3-52 52-52 52 23.3 52 52-23.3 52-52 52z',
+  filter:'M349 838c0 17.7 14.2 32 31.8 32h262.4c17.6 0 31.8-14.3 31.8-32V642H349v196zm531.1-684H143.9c-24.5 0-39.8 26.7-27.5 48l221.3 376h348.8l221.3-376c12.1-21.3-3.2-48-27.7-48z',
+  download:'M505.7 661a8 8 0 0012.6 0l112-141.7c4.1-5.2.4-12.9-6.3-12.9h-74.1V168c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v338.3H400c-6.7 0-10.4 7.7-6.3 12.9l112 141.8zM878 626h-60c-4.4 0-8 3.6-8 8v154H214V634c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v198c0 17.7 14.3 32 32 32h684c17.7 0 32-14.3 32-32V634c0-4.4-3.6-8-8-8z',
+  'deployment-unit':'M888.3 693.2c-42.5-24.6-94.3-18-129.2 12.8l-53-30.7V523.6c0-15.7-8.4-30.3-22-38.1l-136-78.3v-67.1c44.2-15 76-56.8 76-106.1 0-61.9-50.1-112-112-112s-112 50.1-112 112c0 49.3 31.8 91.1 76 106.1v67.1l-136 78.3c-13.6 7.8-22 22.4-22 38.1v151.6l-53 30.7c-34.9-30.8-86.8-37.4-129.2-12.8-53.5 31-71.7 99.4-40.6 152.9 31 53.5 99.4 71.7 152.9 40.6 42.4-24.6 62.1-73.1 51.7-118.4l48.8-28.3 128.1 73.9c6.8 3.9 14.4 5.9 22 5.9s15.2-2 22-5.9L688 758.3l48.8 28.3c-10.3 45.3 9.4 93.8 51.7 118.4 53.5 31 121.9 12.8 152.9-40.6 31.1-53.5 12.9-121.9-40.6-152.9zm-673 138.4a47.6 47.6 0 01-65.2-17.4c-13.2-22.8-5.4-52 17.4-65.2a47.6 47.6 0 0165.2 17.4c13.2 22.8 5.4 52-17.4 65.2zM512 240c26.5 0 48 21.5 48 48s-21.5 48-48 48-48-21.5-48-48 21.5-48 48-48zm32 500.9l-32 18.5-32-18.5V541.3l32-18.4 32 18.4v199.6zm322.9 73.4c-13.2 22.8-42.4 30.6-65.2 17.4-22.8-13.2-30.6-42.4-17.4-65.2s42.4-30.6 65.2-17.4c22.8 13.2 30.6 42.4 17.4 65.2z',
+  key:'M608 112c-167.9 0-304 136.1-304 304 0 70.3 23.9 135 63.9 186.5L114.3 856.1a8.03 8.03 0 000 11.3l42.3 42.3c3.1 3.1 8.2 3.1 11.3 0l253.6-253.6C473 696.1 537.7 720 608 720c167.9 0 304-136.1 304-304S775.9 112 608 112zm161.2 465.2C726.2 620.3 668.9 644 608 644c-60.9 0-118.2-23.7-161.2-66.8C403.7 534.2 380 476.9 380 416c0-60.9 23.7-118.2 66.8-161.2C489.8 211.7 547.1 188 608 188c60.9 0 118.2 23.7 161.2 66.8C812.3 297.8 836 355.1 836 416c0 60.9-23.7 118.2-66.8 161.2z',
+  search:'M909.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-31.3-155.4-88-212-56.6-56.7-132-88-212-88s-155.4 31.3-212 88c-56.7 56.6-88 131.8-88 212s31.3 155.4 88 212c56.6 56.7 131.8 88 212 88 67 0 130.6-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z',
+  ellipsis:'M176 511a56 56 0 10112 0 56 56 0 10-112 0zm280 0a56 56 0 10112 0 56 56 0 10-112 0zm280 0a56 56 0 10112 0 56 56 0 10-112 0z',
+};
+const svg = (name, cls) => {
+  const d = ICONS[name] || ICONS.api;
+  return '<svg class="' + (cls || 'ico') + '" viewBox="0 0 1024 1024" aria-hidden="true">'
+    + '<path fill="currentColor" d="' + d + '"></path></svg>';
+};
+
+/* Section id -> icon + the group it belongs to. Names verified to render. */
+const SEC = {
+  identity:  { icon:'api',                grp:'Listener' },
+  proto:     { icon:'deployment-unit',    grp:'Listener' },
+  transport: { icon:'swap',               grp:'Listener' },
+  sockopt:   { icon:'control',            grp:'Listener' },
+  mask:      { icon:'radar-chart',        grp:'Listener' },
+  security:  { icon:'safety-certificate', grp:'Security' },
+  auth:      { icon:'lock',               grp:'Security' },
+  ciphers:   { icon:'safety',             grp:'Security' },
+  network:   { icon:'global',             grp:'Policy'   },
+  access:    { icon:'dashboard',          grp:'Policy'   },
+  quota:     { icon:'pay-circle',         grp:'Policy'   },
+  reach:     { icon:'share-alt',          grp:'Policy'   },
+  sniff:     { icon:'filter',             grp:'Policy'   },
+  export:    { icon:'download',           grp:'Policy'   },
+};
+const icon = id => (SEC[id] || SEC.identity).icon;
+const group = id => (SEC[id] || SEC.identity).grp;
+
+/* The inbound at a glance, for the summary block. */
+const GLANCE = {
+  vless:   { port:'443',          accounts:12, used:'412 GB', pct:41, expires:'2027-02-01',
+             run:'0.0.0.0:443 vless / xhttp / reality', art:'Share link and QR' },
+  openvpn: { port:'1195 + 1194',  accounts:34, used:'1.2 TB', pct:62, expires:'never',
+             run:'udp/1195 and tcp/1194, ccd per account', art:'client.ovpn profile' },
+  ikev2:   { port:'500 + 4500',   accounts:8,  used:'88 GB',  pct:12, expires:'2026-12-01',
+             run:'charon: udp/500, NAT-T udp/4500, PSK', art:'Username and password' },
+  ssh:     { port:'2222',         accounts:3,  used:'4 GB',   pct:3,  expires:'never',
+             run:'in-binary ssh gateway on 0.0.0.0:2222', art:'Username and password' },
+  gre:     { port:'none (ip 47)', accounts:2,  used:'9 GB',   pct:6,  expires:'never',
+             run:'gre1, ip protocol 47, ipsec required', art:'Peer router snippet' },
+};
+
+/* Sections that are off the default path, folded by variant 05. */
+const ADVANCED = ['sockopt','mask','sniff','ciphers'];
+
+/* ---- shared helpers ---- */
+function P(){ return PROTOCOLS[state.proto]; }
+function sections(){ return P().sections.filter(s => !(s.editOnly && state.mode === 'add')); }
+function secBad(s){ return s.fields.some(f => f.bad); }
+function problems(){
+  const out = [];
+  sections().forEach(s => s.fields.forEach(f => { if (f.bad) out.push({ sec:s.title, field:f.l, why:f.bad }); }));
+  return out;
+}
+function current(v){
+  const secs = sections();
+  return secs.find(s => s.id === state.tab[v]) || secs[0];
+}
+
+/* ---- pane: stacked fields, exactly like .bo-cf-field ---- */
+const SEGS = {
+  'Reject':['Accept','Reject'], 'Accept':['Accept','Reject'],
+  'REALITY':['None','TLS','REALITY'], 'Content':['Content','File','Managed'],
+  'AEAD only':['AEAD only','CBC only','Both'],
+  'PSK (shared secret)':['EAP-MSCHAPv2','PSK','Certificate'],
+};
+function control(f){
+  switch(f.t){
+    case 'switch': return null;
+    case 'num':    return '<span class="in num">' + esc(f.v) + '</span>';
+    case 'select': return '<span class="in sel' + (f.bad ? ' bad' : '') + '">' + esc(f.v) + '<i>v</i></span>';
+    case 'radio':  {
+      const opts = SEGS[f.v] || [f.v];
+      const on = SEGS[f.v] ? (f.v === 'PSK (shared secret)' ? 'PSK' : f.v) : f.v;
+      return '<span class="seg">' + opts.map(o =>
+        '<span class="' + (o === on ? 'on' : '') + '">' + esc(o) + '</span>').join('') + '</span>';
+    }
+    case 'area':   return '<span class="in area' + (f.v ? '' : ' empty') + (f.bad ? ' bad' : '') + '">'
+                          + esc(f.v || 'empty') + '</span>';
+    case 'ro':     return '<span class="in ro">' + esc(f.v) + '</span>';
+    case 'btn':    return '<span class="mbtn">' + esc(f.l) + '</span>';
+    case 'check':  return '<span class="chipsrow">' + String(f.v).split(', ')
+                          .map(c => '<span>' + esc(c) + '</span>').join('') + '</span>';
+    case 'seed':   return '<span class="seedrow">' + String(f.v).split(', ')
+                          .map(c => '<span>' + esc(c) + '</span>').join('') + '</span>';
+    case 'repeat': return '<span class="in rep">' + esc(f.v) + ' <b>+</b></span>';
+    case 'more':   return '<span class="more">' + esc(f.v) + '</span>';
+    default:       return '<span class="in' + (f.bad ? ' bad' : '') + '">' + esc(f.v) + '</span>';
+  }
+}
+function field(f){
+  /* A switch is a row with its explanation beside it, not a labelled box:
+     .bo-cf-switch, which is how the client modal draws every boolean. */
+  if (f.t === 'switch') {
+    return '<div class="cf-switch' + (f.off ? ' cf-unused' : '') + '"><div><div class="cf-t">' + esc(f.l) + '</div>'
+      + (f.h ? '<div class="cf-d">' + esc(f.h) + '</div>' : '') + '</div>'
+      + '<span class="sw' + (f.v ? ' on' : '') + '"></span></div>';
+  }
+  if (f.t === 'btn') return '<div class="cf-field">' + control(f) + '</div>';
+  return '<div class="cf-field' + (f.off ? ' cf-unused' : '') + '"><label>' + esc(f.l)
+    + (f.req ? '<span class="tag">required</span>' : '')
+    + (f.lock ? '<span class="tag mut">locked on edit</span>' : '') + '</label>'
+    + control(f)
+    + (f.h ? '<div class="cf-hint">' + esc(f.h) + '</div>' : '')
+    + (f.bad ? '<div class="cf-err">' + esc(f.bad) + '</div>' : '') + '</div>';
+}
+function pane(s){
+  return '<h4 class="ph">' + esc(s.title) + '</h4>'
+    + '<p class="pn">' + esc(s.note || (s.n + (s.n === 1 ? ' field' : ' fields') + ' on this protocol')) + '</p>'
+    + (s.warn ? '<div class="cf-warnnote">' + esc(s.warn) + '</div>' : '')
+    + s.fields.map(field).join('');
+}
+
+/* ---- chrome ---- */
+function head(){
+  const p = P();
+  return '<div class="mhead"><h3>' + (state.mode === 'add' ? 'Add inbound' : 'Edit inbound') + '</h3>'
+    + '<span class="sub">' + esc(p.label) + ' / ' + esc(p.tagline) + (state.mode === 'add' ? '' : ' / id 14')
+    + '</span><span class="spacer"></span><span class="sub">' + p.total + ' fields reachable</span></div>';
+}
+function footer(probs){
+  const bad = probs.length > 0;
+  return '<div class="mfoot">'
+    + (bad ? '<span class="why">' + probs.length + ' field' + (probs.length > 1 ? 's' : '')
+             + ' blocking. ' + esc(probs[0].sec) + ' / ' + esc(probs[0].field) + '</span>'
+           : '<span class="why ok">Ready to save.</span>')
+    + '<span class="btns"><button class="b">Close</button>'
+    + '<button class="b pri" ' + (bad ? 'disabled' : '') + '>'
+    + (state.mode === 'add' ? 'Create' : 'Save') + '</button></span></div>';
+}
+/* The summary block. On Add there is nothing stored, so it previews what is being
+   typed, which is what .bo-cf-summary does for a new account. */
+function summary(){
+  const g = GLANCE[state.proto], p = P();
+  const isAdd = state.mode === 'add';
+  const remark = p.sections[0].fields.find(f => f.l === 'Remark');
+  if (isAdd) {
+    return '<div class="cf-summary"><div class="cf-who">' + esc(remark ? remark.v : 'New inbound') + '</div>'
+      + '<div class="cf-sub">Not created yet. This is what you are typing.</div>'
+      + '<div class="cf-kv"><span>Protocol</span><b>' + esc(p.label) + '</b></div>'
+      + '<div class="cf-kv"><span>Listens on</span><b>' + esc(g.port) + '</b></div>'
+      + '<div class="cf-kv"><span>Accounts</span><b>0</b></div></div>';
+  }
+  return '<div class="cf-summary"><div class="cf-who">' + esc(remark ? remark.v : 'inbound') + '</div>'
+    + '<div class="cf-sub">' + esc(p.label) + ' / ' + esc(p.tagline) + '</div>'
+    + '<div class="prog"><i style="width:' + g.pct + '%"></i></div>'
+    + '<div class="cf-kv"><span>Listens on</span><b class="ell">' + esc(g.port) + '</b></div>'
+    + '<div class="cf-kv"><span>Accounts</span><b>' + g.accounts + '</b></div>'
+    + '<div class="cf-kv"><span>Moved</span><b>' + esc(g.used) + '</b></div>'
+    + '<div class="cf-kv"><span>Expires</span><b>' + esc(g.expires) + '</b></div></div>';
+}
+
+/* ---- tab rendering, the one thing that differs between variants ---- */
+/* 200px does not fit "Security (REALITY)" beside an icon and a count, and an
+   ellipsis in a nine-item rail reads as a defect. The rail takes the short name
+   and the pane heading carries the full one, which is where it is useful anyway. */
+/* The budget is about 15 characters: 200px, less 22px of padding, 15px of icon,
+   18px of gaps and ~20px of count, leaves ~125px, which is 15 to 16 characters at
+   13.5px. Anything longer needs a short name here, not an ellipsis in the rail. */
+const RAIL_SHORT = { 'Quota and billing':'Quota', 'Network handout':'Network' };
+const railLabel = t => RAIL_SHORT[t] || t.replace(/\s*\(.*\)\s*$/, '');
+
+function tab(v, s, opts){
+  opts = opts || {};
+  const on = s.id === current(v).id;
+  const bad = opts.state && secBad(s);
+  /* The dot sits next to the label and the count stays pinned right: a blocking
+     section is the one whose size you most want to know before opening it. */
+  const trail = (bad ? '<span class="dot err"></span>' : '')
+    + (opts.count ? '<span class="n">' + s.n + '</span>' : '');
+  const dim = opts.dim && ADVANCED.includes(s.id) && !bad ? ' dim' : '';
+  return '<button class="cf-tab' + dim + '" type="button" role="tab" data-v="' + v + '" data-sec="' + s.id + '"'
+    + ' aria-selected="' + on + '">' + svg(icon(s.id)) + '<span class="lb">' + esc(railLabel(s.title)) + '</span>'
+    + trail + '</button>';
+}
+
+/* ---- 01 twin ---- */
+function vTwin(){
+  const secs = sections(), probs = problems();
+  return head() + '<div class="cf"><div class="cf-rail">' + summary()
+    + '<div class="cf-tabs" role="tablist">' + secs.map(s => tab('twin', s)).join('') + '</div></div>'
+    + '<div class="cf-pane">' + pane(current('twin')) + '</div></div>' + footer(probs);
+}
+
+/* ---- 02 twin with state ---- */
+function vState(){
+  const secs = sections(), probs = problems();
+  return head() + '<div class="cf"><div class="cf-rail">' + summary()
+    + '<div class="cf-tabs" role="tablist">'
+    + secs.map(s => tab('state', s, { count:true, state:true, dim:true })).join('') + '</div></div>'
+    + '<div class="cf-pane">' + pane(current('state')) + '</div></div>' + footer(probs);
+}
+
+/* ---- 03 grouped ---- */
+function vGroup(){
+  const secs = sections(), probs = problems();
+  let rail = '';
+  ['Listener','Security','Policy'].forEach(g => {
+    const inG = secs.filter(s => group(s.id) === g);
+    if (!inG.length) return;
+    rail += '<div class="cf-grp">' + g + '</div>'
+      + inG.map(s => tab('group', s, { count:true, state:true })).join('');
+  });
+  return head() + '<div class="cf"><div class="cf-rail">' + summary()
+    + '<div class="cf-tabs" role="tablist">' + rail + '</div></div>'
+    + '<div class="cf-pane">' + pane(current('group')) + '</div></div>' + footer(probs);
+}
+
+/* ---- 04 spec rail ---- */
+function vSpec(){
+  const secs = sections(), probs = problems(), g = GLANCE[state.proto];
+  const chip = probs.length
+    ? '<div class="gate"><div class="gh">' + probs.length + ' blocking</div><ol>'
+      + probs.map(p => '<li>' + esc(p.sec) + ' / ' + esc(p.field) + '</li>').join('') + '</ol></div>'
+    : '<div class="gate good">Ready to save</div>';
+  const sum = '<div class="cf-summary">'
+    + '<p class="railhead">Will run</p><div class="runline">' + esc(g.run) + '</div>'
+    + '<p class="railhead">Customer gets</p>'
+    + '<div class="artline"><span class="qr"></span><span>' + esc(g.art) + '</span></div>'
+    + '</div><div style="padding:10px 16px 0">' + chip + '</div>';
+  return head() + '<div class="cf"><div class="cf-rail">' + sum
+    + '<div class="cf-tabs" role="tablist">' + secs.map(s => tab('spec', s, { count:true })).join('') + '</div></div>'
+    + '<div class="cf-pane">' + pane(current('spec')) + '</div></div>' + footer(probs);
+}
+
+/* ---- 05 adaptive ---- */
+function vAdapt(){
+  const secs = sections(), probs = problems();
+  const q = state.filter.trim().toLowerCase();
+  const main = secs.filter(s => !ADVANCED.includes(s.id) || secBad(s));
+  const folded = secs.filter(s => ADVANCED.includes(s.id) && !secBad(s));
+
+  /* The filter searches FIELD names, which is the question an operator has.
+     Section names are matched too, so a search never comes back emptier than a
+     section list would. */
+  let body;
+  if (q) {
+    const hits = [];
+    secs.forEach(s => {
+      if (s.title.toLowerCase().includes(q)) hits.push({ f:s.title + ' (section)', s });
+      s.fields.forEach(f => {
+        if (f.l.toLowerCase().includes(q)) hits.push({ f:f.l, s });
+        else if (f.t === 'more' && String(f.v).toLowerCase().includes(q)) hits.push({ f:f.l + ': ' + f.v.slice(0,28), s });
+      });
+    });
+    body = '<div class="hits">' + (hits.length
+      ? hits.slice(0, 9).map(h => '<div class="hit" data-v="adapt" data-sec="' + h.s.id + '">'
+          + '<b>' + esc(h.f.length > 22 ? h.f.slice(0,22) + '...' : h.f) + '</b>'
+          + '<span>' + esc(h.s.title) + '</span></div>').join('')
+      : '<div class="hit"><b>no field matches</b></div>') + '</div>';
+  } else {
+    body = '<div class="cf-tabs" role="tablist">'
+      + main.map(s => tab('adapt', s, { count:true, state:true })).join('')
+      + (folded.length ? '<button class="disclose" type="button">' + svg('ellipsis')
+          + '<span>Advanced</span><span class="n">' + folded.length + '</span></button>' : '')
+      + '</div>';
+  }
+  const filter = '<div class="filter">' + svg('search')
+    + '<input placeholder="Find a field" data-filter value="' + esc(state.filter) + '"></div>';
+  return head() + '<div class="cf"><div class="cf-rail">' + summary() + filter + body + '</div>'
+    + '<div class="cf-pane">' + pane(current('adapt')) + '</div></div>' + footer(probs);
+}
+
+/* ---- wiring ---- */
+const VIEWS = { twin:vTwin, state:vState, group:vGroup, spec:vSpec, adapt:vAdapt };
+const NODES = { twin:'v-twin', state:'v-state', group:'v-group', spec:'v-spec', adapt:'v-adapt' };
+function draw(v){ document.getElementById(NODES[v]).innerHTML = VIEWS[v](); }
+function drawAll(){ Object.keys(VIEWS).forEach(draw); }
+
+function renderChips(){
+  document.getElementById('protochips').innerHTML = Object.keys(PROTOCOLS).map(k =>
+    '<button class="chip" type="button" data-proto="' + k + '" aria-pressed="' + (k === state.proto) + '">'
+    + esc(PROTOCOLS[k].label) + '<span class="ct">' + PROTOCOLS[k].total + '</span></button>').join('');
+  document.querySelectorAll('#modechips .chip').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode)));
+  const p = P(), n = sections().length;
+  document.getElementById('fixnote').innerHTML = '<b>' + esc(p.label) + '</b>, ' + n + ' sections, '
+    + p.total + ' reachable fields. ' + esc(p.why);
+}
+function renderIconList(){
+  const seen = [];
+  document.getElementById('iconlist').innerHTML = Object.keys(SEC).map(id => {
+    if (seen.includes(SEC[id].icon)) return '';
+    seen.push(SEC[id].icon);
+    return '<div>' + svg(SEC[id].icon) + '<span>' + id + '</span><code>' + SEC[id].icon + '</code></div>';
+  }).join('');
+}
+
+document.addEventListener('click', e => {
+  const proto = e.target.closest('[data-proto]');
+  if (proto) { state.proto = proto.dataset.proto; state.tab = {}; state.filter = ''; renderChips(); return drawAll(); }
+  const mode = e.target.closest('[data-mode]');
+  if (mode) { state.mode = mode.dataset.mode; state.tab = {}; renderChips(); return drawAll(); }
+  const sec = e.target.closest('[data-sec]');
+  if (sec) { state.tab[sec.dataset.v] = sec.dataset.sec; return draw(sec.dataset.v); }
+});
+document.addEventListener('input', e => {
+  if (e.target.matches('[data-filter]')) {
+    state.filter = e.target.value;
+    draw('adapt');
+    const box = document.querySelector('#v-adapt [data-filter]');
+    if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+  }
+});
+
+const themebtn = document.getElementById('themebtn');
+const modes = ['auto','light','dark'];
+let ti = 0;
+themebtn.addEventListener('click', () => {
+  ti = (ti + 1) % modes.length;
+  const m = modes[ti];
+  if (m === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', m);
+  themebtn.textContent = 'Theme: ' + m;
+});
+
+renderIconList();
+renderChips();
+drawAll();
+</script>
+</body>
+</html>
