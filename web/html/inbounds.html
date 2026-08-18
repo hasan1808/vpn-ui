@@ -755,6 +755,13 @@
     el: '#app',
     mixins: [MediaQueryMixin, ClientActionsMixin],
     data: {
+      langOpen: false,
+      currentLang: window.__langData.currentLang,
+      supportedLangs: window.__langData.supportedLangs,
+      currentLangName: window.__langData.currentLangName,
+      setLang: window.__langData.setLang,
+      mobileMenuOpen: false,
+      sidebarHidden: window.__sidebarHidden || false,
       themeSwitcher,
       pageTitle: '{{ i18n "menu.inbounds"}}',
       pageClass: 'inbounds-page',
@@ -823,6 +830,14 @@
       missingProtocols: [],
     },
     methods: {
+      toggleSidebar() {
+        if (this.isMobile) {
+          this.mobileMenuOpen = !this.mobileMenuOpen;
+          return;
+        }
+        this.sidebarHidden = !this.sidebarHidden;
+        localStorage.setItem('isSidebarHidden', this.sidebarHidden);
+      },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;
       },
