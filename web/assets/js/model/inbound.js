@@ -3160,6 +3160,7 @@ Inbound.Settings = class extends XrayCommonClass {
             case Protocols.VLESS: return new Inbound.VLESSSettings(protocol);
             case Protocols.TROJAN: return new Inbound.TrojanSettings(protocol);
             case Protocols.SHADOWSOCKS: return new Inbound.ShadowsocksSettings(protocol);
+            case Protocols.SOCKS: return new Inbound.SocksSettings(protocol);
             case Protocols.TUNNEL: return new Inbound.TunnelSettings(protocol);
             case Protocols.MIXED: return new Inbound.MixedSettings(protocol);
             case Protocols.HTTP: return new Inbound.HttpSettings(protocol);
@@ -3190,6 +3191,7 @@ Inbound.Settings = class extends XrayCommonClass {
             case Protocols.VLESS: return Inbound.VLESSSettings.fromJson(json);
             case Protocols.TROJAN: return Inbound.TrojanSettings.fromJson(json);
             case Protocols.SHADOWSOCKS: return Inbound.ShadowsocksSettings.fromJson(json);
+            case Protocols.SOCKS: return Inbound.SocksSettings.fromJson(json);
             case Protocols.TUNNEL: return Inbound.TunnelSettings.fromJson(json);
             case Protocols.MIXED: return Inbound.MixedSettings.fromJson(json);
             case Protocols.HTTP: return Inbound.HttpSettings.fromJson(json);
@@ -6557,6 +6559,60 @@ Inbound.MixedSettings.SocksAccount = class extends XrayCommonClass {
 
     static fromJson(json = {}) {
         return new Inbound.MixedSettings.SocksAccount(json.user, json.pass);
+    }
+};
+
+Inbound.SocksSettings = class extends Inbound.Settings {
+    constructor(protocol, auth = 'noauth', accounts = [], udp = false, ip = '127.0.0.1') {
+        super(protocol);
+        this.auth = auth;
+        this.accounts = accounts;
+        this.udp = udp;
+        this.ip = ip;
+    }
+
+    addAccount(account) {
+        this.accounts.push(account);
+    }
+
+    delAccount(index) {
+        this.accounts.splice(index, 1);
+    }
+
+    static fromJson(json = {}) {
+        let accounts = [];
+        if (json.auth === 'password' && Array.isArray(json.accounts)) {
+            accounts = json.accounts.map(
+                account => Inbound.SocksSettings.SocksAccount.fromJson(account)
+            )
+        }
+        return new Inbound.SocksSettings(
+            Protocols.SOCKS,
+            json.auth,
+            accounts,
+            json.udp,
+            json.ip,
+        );
+    }
+
+    toJson() {
+        return {
+            auth: this.auth,
+            accounts: this.auth === 'password' ? this.accounts.map(account => account.toJson()) : undefined,
+            udp: this.udp,
+            ip: this.ip,
+        };
+    }
+};
+Inbound.SocksSettings.SocksAccount = class extends XrayCommonClass {
+    constructor(user = RandomUtil.randomSeq(10), pass = RandomUtil.randomSeq(10)) {
+        super();
+        this.user = user;
+        this.pass = pass;
+    }
+
+    static fromJson(json = {}) {
+        return new Inbound.SocksSettings.SocksAccount(json.user, json.pass);
     }
 };
 

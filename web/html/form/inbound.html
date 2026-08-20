@@ -570,6 +570,11 @@
     {{template "form/http"}}
 </template>
 
+<!-- socks -->
+<template v-if="inbound.protocol === Protocols.SOCKS">
+    {{template "form/socks"}}
+</template>
+
 <!-- wireguard -->
 <template v-if="inbound.protocol === Protocols.WIREGUARD">
     {{template "form/wireguard"}}
