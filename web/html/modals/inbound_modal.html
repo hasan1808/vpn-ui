@@ -1,51 +1,10 @@
 {{define "modals/inboundModal"}}
-{{if .legacyInboundForm}}
-<!-- THE OLD DIALOG, served whole when the panel-wide Old inbound modify UI setting is on.
-     Byte-identical to the pre-redesign modal: antd's default 520px, its default footer,
-     and form/inbound/legacy inside it. The choice is made HERE, server-side, rather than
-     with a v-if, so only one of the two forms is ever parsed by Vue and neither dialog
-     pays for the other. Flipping the setting reloads the page for that reason.
-
-     Everything below the markup - inModal, the computed properties, modalFormValid -
-     is shared by both dialogs. Only the shape differs. -->
 <a-modal id="inbound-modal" v-model="inModal.visible" :title="inModal.title" :dialog-style="{ top: '20px' }"
     @ok="inModal.ok" :confirm-loading="inModal.confirmLoading" :closable="true" :mask-closable="false"
     :ok-button-props="{ props: { disabled: !modalFormValid } }"
     :class="themeSwitcher.currentTheme" :ok-text="inModal.okText" cancel-text='{{ i18n "close" }}'>
-    {{template "form/inbound/legacy"}}
-</a-modal>
-{{else}}
-<!-- 820px and a custom footer, both to match the client form (modals/client_membership_modal.html).
-     The footer is custom because the default one can only disable the OK button, and a
-     disabled button with no reason attached is the defect this dialog exists to fix: a
-     missing certificate or an xhttp combination the core refuses would grey out Create
-     and say nothing. blockingReason names the field, and the rail dots point at it. -->
-<a-modal id="inbound-modal" v-model="inModal.visible" :title="inModal.title" :dialog-style="{ top: '20px' }"
-    :closable="true" :mask-closable="false" :width="820" wrap-class-name="bo-inbound-modal"
-    :class="themeSwitcher.currentTheme">
     {{template "form/inbound"}}
-    <template slot="footer">
-        <div class="bo-if-foot">
-            <span class="bo-if-why" v-if="blockingReason">
-                <b>[[ blockingReason.where ]]</b>: [[ blockingReason.why ]]
-            </span>
-            <!-- Hardcoded English, like the section names and the per-protocol forms:
-                 an en_US-only i18n key blanks the label in the other 12 locales
-                 (web/i18n_toml_test.go enforces that with a parity ratchet). -->
-            <span class="bo-if-why ok" v-else-if="isEdit">Nothing is blocking this.</span>
-            <span class="bo-if-btns">
-                <a-button @click="inModal.close()">{{ i18n "close" }}</a-button>
-                <a-button
-                    type="primary"
-                    :disabled="!modalFormValid"
-                    :loading="inModal.confirmLoading"
-                    @click="inModal.ok()"
-                >[[ inModal.okText ]]</a-button>
-            </span>
-        </div>
-    </template>
 </a-modal>
-{{end}}
 <script>
     // Make inModal globally available to ensure it works with any base path
     // The lowest port at or above `from` that no existing inbound already claims, so
@@ -68,39 +27,6 @@
         return from;
     }
 
-    // The rail's section ids, in rail order, with the group each sits under and the
-    // icon it carries. Kept here rather than in the template because the pane, the
-    // rail and the validity map all have to agree on the same set of ids.
-    //
-    // The groups are FIXED. Their contents change with the protocol (an OpenVPN
-    // inbound has certificates under Security, a VLESS inbound has REALITY there),
-    // but the three headings do not, so what an operator learns on one protocol
-    // still holds on the next.
-    //
-    // Rail labels are short on purpose: 200px minus an icon, the gaps, the padding
-    // and a count leaves room for about 15 characters, and an ellipsis in a
-    // nine-item list reads as a defect. The pane heading carries the full name.
-    const INBOUND_SECTIONS = [
-        { id: "identity",  group: "listener", icon: "api",                rail: "Identity" },
-        // "Settings", not the protocol's name. The rail is read as a list of places
-        // inside one dialog, and a row that says VLESS in a dialog already titled
-        // VLESS names the thing you are in rather than the part of it you would be
-        // going to. It also keeps the rail steady when the protocol changes.
-        { id: "proto",     group: "listener", icon: "deployment-unit",    rail: "Settings" },
-        { id: "transport", group: "listener", icon: "swap",               rail: "Transport" },
-        { id: "security",  group: "security", icon: "safety-certificate", rail: "Security" },
-        { id: "network",   group: "policy",   icon: "global",             rail: "Network" },
-        { id: "access",    group: "policy",   icon: "dashboard",          rail: "Access limits" },
-        { id: "quota",     group: "policy",   icon: "pay-circle",         rail: "Quota" },
-        { id: "reach",     group: "policy",   icon: "share-alt",          rail: "External Proxy" },
-        { id: "sniff",     group: "policy",   icon: "filter",             rail: "Sniffing" },
-    ];
-    const INBOUND_GROUPS = [
-        { key: "listener", title: "Listener" },
-        { key: "security", title: "Security" },
-        { key: "policy",   title: "Policy" },
-    ];
-
     const inModal = (window.inModal = {
         title: "",
         visible: false,
@@ -108,15 +34,6 @@
         okText: '{{ i18n "sure" }}',
         isEdit: false,
         confirm: null,
-        // Which section the pane is showing. Lives here, not in the Vue data, so
-        // show() can reset it: reopening the dialog on whichever section the last
-        // edit happened to end on is disorienting.
-        section: "identity",
-        // Measured field counts per section id, filled in from the DOM after each
-        // render (see measureSections). Empty until the first measure, and the rail
-        // treats "not measured yet" as "show it", so nothing flickers out of view
-        // on open.
-        counts: {},
         inbound: new Inbound(),
         dbInbound: new DBInbound(),
         ok() {
@@ -129,6 +46,7 @@
             dbInbound = null,
             confirm = (inbound, dbInbound) => { },
             isEdit = false,
+            protocol = null,
         }) {
             this.title = title;
             this.okText = okText;
@@ -143,6 +61,16 @@
                 // where one can be put on several inbounds at once.
                 this.inbound.startEmpty = true;
                 this.inbound.clearClients();
+                // A protocol-scoped Inbounds page (/panel/inbounds/:proto) opens Add
+                // already set to that protocol. The assignment runs the same setter a
+                // manual pick triggers (fresh settings + stream, no seeded client
+                // while startEmpty is set). The port defaults are applied by the
+                // modal's visible watcher — the same code path a manual select's
+                // @change runs — because that change event never fires here.
+                this.preSelectProtocol = protocol;
+                if (protocol && Object.values(Protocols).includes(protocol)) {
+                    this.inbound.protocol = protocol;
+                }
             }
             // Always ensure testseed is initialized for VLESS protocol (even if vision flow is not set yet)
             // This ensures Vue reactivity works properly
@@ -184,11 +112,6 @@
             this.confirm = confirm;
             this.visible = true;
             this.isEdit = isEdit;
-            // Always open on Identity, and drop the previous protocol's measurements
-            // so a stale count cannot survive into a form that no longer has that
-            // section.
-            this.section = "identity";
-            this.counts = {};
         },
         close() {
             inModal.visible = false;
@@ -360,29 +283,6 @@
                     inModal.inbound.settings.externalProxy = [];
                 }
             },
-            // MTProto's inbound-level list, which is the DEFAULT for its accounts: an
-            // account carrying its own External Proxy (set in the client form) replaces
-            // this one for that account. Same storage shape as the others, so the same
-            // getter/setter pair, kept separate for the comment.
-            get mtprotoExternalProxy() {
-                return (
-                    Array.isArray(inModal.inbound.settings.externalProxy) &&
-                    inModal.inbound.settings.externalProxy.length > 0
-                );
-            },
-            set mtprotoExternalProxy(value) {
-                if (value) {
-                    inModal.inbound.settings.externalProxy = [
-                        {
-                            dest: window.location.hostname,
-                            port: inModal.inbound.port,
-                            remark: "",
-                        },
-                    ];
-                } else {
-                    inModal.inbound.settings.externalProxy = [];
-                }
-            },
         },
         computed: {
             // form/client is shared with the client modal, and it reads these two
@@ -439,74 +339,10 @@
             tcpPortHelp() {
                 return this.tcpPortValidateStatus === "error" ? "Port must be a whole number between 1 and 65535" : "";
             },
-            // Which sections the rail offers for this protocol, grouped. A section is
-            // dropped when its pane rendered no fields (measureSections found 0), so
-            // the list is derived from what actually exists rather than from a
-            // per-protocol map that would drift the first time a partial changed.
-            //
-            // A count of undefined means "not measured yet", which shows the section:
-            // hiding on first paint and reappearing a tick later is worse than a
-            // section that turns out to be empty for one frame.
-            sectionGroups() {
-                const counts = inModal.counts || {};
-                const bad = this.sectionProblemMap;
-                const items = INBOUND_SECTIONS
-                    .filter(s => counts[s.id] === undefined || counts[s.id].has || !!bad[s.id])
-                    .map(s => ({
-                        id: s.id,
-                        icon: s.icon,
-                        group: s.group,
-                        rail: s.rail,
-                        count: counts[s.id] ? counts[s.id].n : 0,
-                        bad: bad[s.id] || "",
-                    }));
-                return INBOUND_GROUPS
-                    .map(g => ({ key: g.key, title: g.title, items: items.filter(i => i.group === g.key) }))
-                    .filter(g => g.items.length > 0);
-            },
-            // What the summary reports for "Listens on". Three protocols do not have
-            // one plain port: openvpn can split TCP from UDP, ikev2 adds NAT-T, and
-            // gre has no port at all.
-            listensOn() {
+            // Gate the modal's OK button live: no valid port / no OpenVPN cert -> can't submit.
+            modalFormValid() {
                 const ib = inModal.inbound;
-                if (!ib) return "";
-                const s = ib.settings || {};
-                if (ib.protocol === "gre") return "none (ip 47)";
-                if (ib.protocol === "ikev2") return (ib.port || "?") + " + " + (s.nattPort || "?");
-                if (ib.protocol === "openvpn") {
-                    if (!s.separatePorts) return (ib.port || "?") + " tcp+udp";
-                    const parts = [];
-                    if (s.udpEnable) parts.push((ib.port || "?") + " udp");
-                    if (s.tcpEnable) parts.push((s.tcpPort || "?") + " tcp");
-                    return parts.length ? parts.join(" + ") : "nothing enabled";
-                }
-                return String(ib.port || "");
-            },
-            // The IP Limit pair is offered only for the Xray-native protocols that have
-            // accounts. Same set the old single form gated on, kept here so the Access
-            // pane and the rail agree on whether that section has anything in it.
-            hasNativeIpLimit() {
-                const p = inModal.inbound ? inModal.inbound.protocol : "";
-                return [Protocols.VMESS, Protocols.VLESS, Protocols.TROJAN, Protocols.SHADOWSOCKS,
-                    Protocols.ANYTLS, Protocols.TUIC, Protocols.NAIVE].includes(p);
-            },
-            // Every reason the form cannot be submitted, each tagged with the section
-            // holding it. This is the ONE place that decides: modalFormValid, the rail
-            // dots and the footer line all read it, so the button can never be disabled
-            // for a reason the rail does not point at.
-            //
-            // The conditions are the ones the old modalFormValid used, unchanged, and
-            // they still mirror validateInboundConfig in web/service/inbound.go. Where
-            // that function returned early, this pushes one problem and returns, so the
-            // operator is told about the first blocker in a section rather than all of
-            // them at once.
-            inboundProblems() {
-                const out = [];
-                const ib = inModal.inbound;
-                if (!ib) return out;
-                const okPort = p => Number.isInteger(p) && p >= 1 && p <= 65535;
-                const at = (section, where, why) => out.push({ section, where, why });
-
+                if (!ib) return true;
                 // xhttp is the one transport whose settings can be individually
                 // valid and still combine into something the core throws out
                 // wholesale (a host header, a half-disabled padding range, an
@@ -520,52 +356,24 @@
                 const stream = ib.stream;
                 if (stream && stream.network === "xhttp" && stream.xhttp
                     && stream.xhttp.hasCoreConfigProblem()) {
-                    at("transport", "Transport", "this XHTTP combination is one the core refuses outright");
+                    return false;
                 }
-
+                const okPort = p => Number.isInteger(p) && p >= 1 && p <= 65535;
                 if (ib.protocol === "openvpn") {
                     const s = ib.settings || {};
-                    if (!s.udpEnable && !s.tcpEnable) at("identity", "Identity", "enable TCP, UDP or both");
-                    if (s.udpEnable && !okPort(ib.port)) at("identity", "Identity", "the UDP port must be 1 to 65535");
-                    // tcpPort is only a listener in the separate mode. Shared mode puts
-                    // TCP on inbound.Port and leaves tcpPort untouched and out of sight,
-                    // so a stale value in there must not block a save the server accepts.
-                    if (s.separatePorts && s.tcpEnable && !okPort(s.tcpPort)) at("identity", "Identity", "the TCP port must be 1 to 65535");
-                    // Which boxes must be filled depends on the cert source, and this
-                    // has to agree with validateInboundConfig in web/service/inbound.go
-                    // or the button is enabled for a body the server then refuses (or,
-                    // as it did, disabled for one the server would accept: File Paths
-                    // mode never fills the inline PEM fields, so demanding them here
-                    // left the OK button dead with all four paths correctly typed in).
-                    const tlsCryptOn = s.tlsCryptEnable !== false;
-                    if (s.tlsUseFile) {
-                        if (!s.caCertFile || !s.serverCertFile || !s.serverKeyFile) {
-                            at("security", "Security", "the CA, server certificate and server key paths are all required");
-                        } else if (tlsCryptOn && !s.tlsCryptFile) {
-                            at("security", "Security", "TLS-Crypt is on, so its key path is required");
-                        }
-                    } else {
-                        if (!s.caCert || !s.serverCert) {
-                            at("security", "Security", "a CA certificate and a server certificate are required");
-                        } else if (tlsCryptOn && !s.tlsCrypt) {
-                            at("security", "Security", "TLS-Crypt is on, so its key is required");
-                        }
-                    }
-                    return out;
+                    if (!s.udpEnable && !s.tcpEnable) return false;
+                    if (s.udpEnable && !okPort(ib.port)) return false;
+                    if (s.tcpEnable && !okPort(s.tcpPort)) return false;
+                    if (!s.caCert || !s.serverCert) return false;
+                    return true;
                 }
-
                 if (ib.protocol === "openconnect" || ib.protocol === "sstp" || ib.protocol === "ikev2") {
                     const s = ib.settings || {};
-                    if (!okPort(ib.port)) at("identity", "Identity", "the port must be 1 to 65535");
+                    if (!okPort(ib.port)) return false;
                     // IKEv2 in PSK mode authenticates with a shared secret, not a
-                    // TLS server cert - skip the cert requirement in that mode.
-                    if (ib.protocol === "ikev2" && s.authMode === "psk") {
-                        if (!(typeof s.psk === "string" && s.psk.trim().length > 0)) {
-                            at("security", "Security", "PSK mode needs a pre-shared key");
-                        }
-                        return out;
-                    }
-                    // ocserv/accel-ppp won't start without a TLS server cert+key -
+                    // TLS server cert — skip the cert requirement in that mode.
+                    if (ib.protocol === "ikev2" && s.authMode === "psk") return typeof s.psk === "string" && s.psk.trim().length > 0;
+                    // ocserv/accel-ppp won't start without a TLS server cert+key —
                     // require one just like OpenVPN. Either file paths (path mode) or
                     // pasted PEM (content mode; the "Generate Self-Signed Cert" button
                     // fills these).
@@ -573,28 +381,10 @@
                     const hasCert = s.tlsUseFile
                         ? (trim(s.certificateFile) !== "" && trim(s.keyFile) !== "")
                         : (trim(s.certificate) !== "" && trim(s.key) !== "");
-                    if (!hasCert) at("security", "Security", "this protocol will not start without a server certificate and key");
-                    return out;
+                    if (!hasCert) return false;
+                    return true;
                 }
-
-                if (!okPort(ib.port)) at("identity", "Identity", "the port must be 1 to 65535");
-                return out;
-            },
-            // section id -> the first reason in it, for the rail dots.
-            sectionProblemMap() {
-                const m = {};
-                this.inboundProblems.forEach(p => { if (!m[p.section]) m[p.section] = p.why; });
-                return m;
-            },
-            // The footer line. First problem only: the rail already shows how many
-            // sections are affected, and a footer that lists everything pushes the
-            // buttons off a short screen.
-            blockingReason() {
-                return this.inboundProblems.length ? this.inboundProblems[0] : null;
-            },
-            // Gate the modal's OK button live: no valid port / no OpenVPN cert -> can't submit.
-            modalFormValid() {
-                return this.inboundProblems.length === 0;
+                return okPort(ib.port);
             },
             // Coarse signal that changes when the ikev2 server cert or auth mode
             // changes (or the modal reopens) — drives the RSA/device-compat check.
@@ -607,49 +397,54 @@
                     (s.certificate || "").trim().length > 0].join("|");
             },
         },
-        // Counts are taken from the rendered DOM rather than declared per protocol,
-        // so they cannot drift when a partial gains or loses a field. Sections are
-        // hidden with v-show, so every one of them is in the DOM and measurable even
-        // while another is on screen.
-        updated() {
-            this.measureSections();
-        },
         watch: {
-            "inModal.visible"(v) {
-                if (v) this.$nextTick(() => this.measureSections());
-            },
-            // A protocol change replaces the whole settings object, so last protocol's
-            // measurements are meaningless. Clearing them shows every section for one
-            // frame, which is the safe direction: a section that exists and is hidden
-            // is a bug, one that is shown and turns out empty is a flicker.
-            "inModal.inbound.protocol"() {
-                inModal.counts = {};
-                this.$nextTick(() => this.measureSections());
+            // A protocol pre-selected by the Inbounds page (/panel/inbounds/:proto)
+            // is set on inbound before the modal opens, so the select's @change never
+            // fires for it. Run the same port defaults onProtocolChange would have,
+            // once, and only on a fresh add — editing keeps the protocol select
+            // disabled and must not re-seed a saved port.
+            "inModal.visible"(visible) {
+                if (visible && !inModal.isEdit && inModal.preSelectProtocol) {
+                    const p = inModal.preSelectProtocol;
+                    inModal.preSelectProtocol = '';
+                    this.onProtocolChange(p);
+                }
             },
             "inModal.inbound.stream.security"(newVal, oldVal) {
-                // Clear flow when security changes from reality/tls to none.
-                // One assignment now that flow lives on the inbound: the old loop
-                // over the clients could not reach the accounts the Clients page
-                // owns, so a leftover vision flow survived on them.
+                // Clear flow when security changes from reality/tls to none
                 if (
                     inModal.inbound.protocol == Protocols.VLESS &&
                     !inModal.inbound.canEnableTlsFlow()
                 ) {
-                    inModal.inbound.settings.flow = "";
+                    inModal.inbound.settings.vlesses.forEach((client) => {
+                        client.flow = "";
+                    });
                 }
             },
             // Ensure testseed is always initialized when vision flow is enabled
-            "inModal.inbound.settings.flow"() {
-                if (
-                    inModal.inbound.protocol === Protocols.VLESS &&
-                    inModal.inbound.settings &&
-                    inModal.inbound.settings.flow &&
-                    (!inModal.inbound.settings.testseed ||
-                        !Array.isArray(inModal.inbound.settings.testseed) ||
-                        inModal.inbound.settings.testseed.length < 4)
-                ) {
-                    inModal.inbound.settings.testseed = [900, 500, 900, 256];
-                }
+            "inModal.inbound.settings.vlesses": {
+                handler() {
+                    if (
+                        inModal.inbound.protocol === Protocols.VLESS &&
+                        inModal.inbound.settings &&
+                        inModal.inbound.settings.vlesses
+                    ) {
+                        const hasVisionFlow = inModal.inbound.settings.vlesses.some(
+                            (c) =>
+                                c.flow === "xtls-rprx-vision" ||
+                                c.flow === "xtls-rprx-vision-udp443",
+                        );
+                        if (
+                            hasVisionFlow &&
+                            (!inModal.inbound.settings.testseed ||
+                                !Array.isArray(inModal.inbound.settings.testseed) ||
+                                inModal.inbound.settings.testseed.length < 4)
+                        ) {
+                            inModal.inbound.settings.testseed = [900, 500, 900, 256];
+                        }
+                    }
+                },
+                deep: true,
             },
             // Re-check the ikev2 server cert's key type when it or the auth mode
             // changes (or the modal reopens); a non-RSA cert warns about iOS.
@@ -666,49 +461,6 @@
             },
         },
         methods: {
-            // Count the form items inside each section and, if that changed, publish it.
-            //
-            // The equality check is load-bearing, not an optimisation: this runs from
-            // updated(), and assigning inModal.counts triggers a re-render, which fires
-            // updated() again. Writing only on a real change makes that settle in one
-            // extra pass instead of spinning forever.
-            //
-            // $refs.pane rather than a document query: a-modal portals its content out
-            // to <body>, so the pane is not inside #inbound-modal in the DOM, but the
-            // ref still resolves because it is a Vue reference, not a positional one.
-            measureSections() {
-                const pane = this.$refs.pane;
-                if (!pane) return;
-                const next = {};
-                pane.querySelectorAll("[data-sec]").forEach(el => {
-                    const sec = el.getAttribute("data-sec");
-                    // The number in the rail is form items, because that is what an
-                    // operator is counting when they ask how big a section is.
-                    const n = el.querySelectorAll(".ant-form-item").length;
-                    // Whether the section is EMPTY is a different question, and asking
-                    // it with the same number gets it wrong: VMess on edit is a client
-                    // list inside a collapse and carries no form items at all, so
-                    // counting only those would hide a section that has content in it.
-                    // An <a-form> whose every item is behind a false v-if still renders
-                    // an empty <form> element, which is why this counts what is inside
-                    // rather than looking for child elements.
-                    const has = n > 0 || el.querySelectorAll(
-                        ".ant-collapse, .ant-alert, .ant-table, table, .ant-divider").length > 0;
-                    next[sec] = { n: n, has: has };
-                });
-                const cur = inModal.counts || {};
-                const same = Object.keys(next).length === Object.keys(cur).length
-                    && Object.keys(next).every(k => cur[k] && cur[k].n === next[k].n
-                        && cur[k].has === next[k].has);
-                if (!same) inModal.counts = next;
-                // Switching protocol can take the open section away with it (Network
-                // exists on OpenVPN and not on SSH). Landing on a blank pane with a
-                // rail that no longer lists where you were is worse than going home.
-                const offered = this.sectionGroups.reduce((a, g) => a.concat(g.items.map(i => i.id)), []);
-                if (offered.length && !offered.includes(inModal.section)) {
-                    inModal.section = offered[0];
-                }
-            },
             // Port inputs: hard digit-only + live cap at the max TCP/UDP port.
             // blockNonDigit stops any non-digit keystroke from ever entering the
             // box; sanitizePort strips/caps on change & paste (returns undefined
@@ -847,6 +599,8 @@
                     // Non-privileged default so the in-binary SSH server binds without
                     // colliding with the host's own sshd on 22.
                     inModal.inbound.port = 2222;
+                } else if (protocol === 'socks') {
+                    inModal.inbound.port = freeInboundPortFrom(10808);
                 } else if (protocol === 'anytls' || protocol === 'tuic' || protocol === 'naive') {
                     // All three impersonate HTTPS and are only plausible on 443: anytls
                     // and naive are TLS/HTTP over TCP, tuic is QUIC/h3 over UDP, and a
@@ -865,7 +619,9 @@
                     this.inModal.inbound.protocol == Protocols.VLESS &&
                     !inModal.inbound.canEnableTlsFlow()
                 ) {
-                    this.inModal.inbound.settings.flow = "";
+                    this.inModal.inbound.settings.vlesses.forEach((client) => {
+                        client.flow = "";
+                    });
                 }
                 if (inModal.inbound.stream.network != "kcp") {
                     inModal.inbound.stream.finalmask.udp = [];
@@ -906,99 +662,6 @@
             setDefaultCertData(index) {
                 inModal.inbound.stream.tls.certs[index].certFile = app.defaultCert;
                 inModal.inbound.stream.tls.certs[index].keyFile = app.defaultKey;
-            },
-            // --- The managed certificate picker ---------------------------------
-            // app.sslCertificates comes from getDefaultSettings and is WITHHELD from
-            // callers without PermPanelSettings, so an empty list is the normal
-            // state for a reseller rather than an error. Everything below has to
-            // tolerate it being undefined for that reason.
-            sslCertChoices() {
-                return app.sslCertificates || [];
-            },
-            // Which option is currently selected, derived from the PATHS the inbound
-            // stores rather than from a remembered profile name: an inbound records
-            // paths, and they may have been typed by hand or set before this picker
-            // existed. Matching the path back is the only honest answer, and it
-            // means an inbound pointed somewhere else correctly shows nothing
-            // selected instead of a stale name.
-            sslCertSelected(index) {
-                const certs = (this.inModal.inbound.stream.tls || {}).certs || [];
-                const cert = certs[index || 0];
-                if (!cert || !cert.useFile) return '';
-                const path = (cert.certFile || '').trim();
-                if (!path) return '';
-                const hit = this.sslCertChoices().find(c => c.certPath === path);
-                return hit ? hit.profile : '';
-            },
-            // Writes the stable active paths into the FIRST certificate entry, and
-            // switches it to path mode: a managed certificate is a pair of files on
-            // disk, so pasting its contents would freeze a copy that never renews.
-            //
-            // Clearing the select puts the fields back to empty rather than leaving
-            // the last selection behind, so "none" is a state the operator can
-            // actually reach.
-            applyManagedCert(index, profile) {
-                const tls = this.inModal.inbound.stream.tls;
-                if (!tls || !Array.isArray(tls.certs)) return;
-                // SEEDS AN EMPTY ARRAY rather than bailing on it, and that is the
-                // one case where this matters most. TlsStreamSettings.fromJson
-                // guards with ObjectUtil.isEmpty, which treats [] as non-empty, so
-                // a stored inbound carrying "certificates": [] loads with certs = []
-                // and the default single entry never applies. The repeater then
-                // renders no rows, and the "+" button lives INSIDE the repeater
-                // (form/tls_settings.html), so there is no control left to add one.
-                // The picker is the only way out of that state.
-                if (!tls.certs.length) {
-                    tls.certs.push(new TlsStreamSettings.Cert());
-                }
-                const cert = tls.certs[index || 0];
-                if (!cert) return;
-                // None. Empties the pair rather than leaving the last choice
-                // behind, so "no managed certificate" is a state the operator can
-                // actually reach from here.
-                if (!profile) {
-                    cert.certFile = '';
-                    cert.keyFile = '';
-                    return;
-                }
-                const hit = this.sslCertChoices().find(c => c.profile === profile);
-                if (!hit) return;
-                cert.useFile = true;
-                cert.certFile = hit.certPath;
-                cert.keyFile = hit.keyPath;
-            },
-            // The same picker for the native protocols that carry their own cert
-            // path pair on inbound.settings (openconnect, sstp, ikev2) rather than
-            // in the Xray stream.
-            sslCertSelectedSettings() {
-                const s = this.inModal.inbound.settings || {};
-                // In Content mode the path pair is inert, so reporting a selection
-                // would claim a certificate is in use that the daemon never reads.
-                if (!s.tlsUseFile) return '';
-                const path = (s.certificateFile || '').trim();
-                if (!path) return '';
-                const hit = this.sslCertChoices().find(c => c.certPath === path);
-                return hit ? hit.profile : '';
-            },
-            applyManagedCertSettings(profile) {
-                const s = this.inModal.inbound.settings;
-                if (!s) return;
-                if (!profile) {
-                    s.certificateFile = '';
-                    s.keyFile = '';
-                    return;
-                }
-                const hit = this.sslCertChoices().find(c => c.profile === profile);
-                if (!hit) return;
-                // tlsUseFile FIRST, and it is not optional. ocserv, sstp and ikev2
-                // all read the path pair only when this is true (openconnect.go:248,
-                // sstp.go:217, ikev2.go:479) and fall back to the inline PEM fields
-                // otherwise. Writing the paths while the form sits in Content mode
-                // would leave a picker that appears to work and a daemon that
-                // ignores it.
-                s.tlsUseFile = true;
-                s.certificateFile = hit.certPath;
-                s.keyFile = hit.keyPath;
             },
             async getNewX25519Cert() {
                 inModal.loading(true);
@@ -1113,33 +776,21 @@
                 // Reset testseed to default values using Vue.set for reactivity
                 this.$set(this.inbound.settings, "testseed", [900, 500, 900, 256]);
             },
-            // Shared-port mode has no per-transport switches, so it must not be able
-            // to INHERIT a transport that was switched off in split mode: the operator
-            // would land on one port box, both switches out of sight, and an inbound
-            // quietly serving only half of what the row claims. Collapsing to shared
-            // therefore turns both back on, which is the only state that row can mean.
-            ovpnToggleSeparatePorts(checked) {
-                const settings = inModal.inbound.settings;
-                settings.separatePorts = checked;
-                if (!checked) {
-                    settings.tcpEnable = true;
-                    settings.udpEnable = true;
-                }
-            },
-            // An OpenVPN inbound with neither transport up is a server nobody can
-            // reach, so one of the two always stays on. The switch the operator
-            // touched WINS: turning off the last one enabled hands the tunnel to the
-            // other rather than refusing the click and snapping back. That used to
-            // be a warning toast, which read as a bug - the operator asked to move
-            // from UDP to TCP and the UI told them no instead of doing it.
             ovpnToggleTransport(proto, checked) {
                 const settings = inModal.inbound.settings;
-                const self = proto === "tcp" ? "tcpEnable" : "udpEnable";
-                const other = proto === "tcp" ? "udpEnable" : "tcpEnable";
-                if (!checked && !settings[other]) {
-                    settings[other] = true;
+                const otherEnabled =
+                    proto === "tcp" ? settings.udpEnable : settings.tcpEnable;
+                if (!checked && !otherEnabled) {
+                    this.$message.warning(
+                        "At least one of TCP/UDP must be enabled",
+                    );
+                    return;
                 }
-                settings[self] = checked;
+                if (proto === "tcp") {
+                    settings.tcpEnable = checked;
+                } else {
+                    settings.udpEnable = checked;
+                }
             },
             ovpnSetCipherMode(mode) {
                 const settings = inModal.inbound.settings;

@@ -67,26 +67,6 @@
                     </a-popover>
                   </a-button-group>
 
-                  <!-- The order. The only sort control on the page: none of these
-                       five is a column, so there are no header arrows to compete
-                       with. The button keeps a fixed label and the menu carries the
-                       tick, because the chosen ordering is a state of the LIST and
-                       reads better beside the other items than as a button that
-                       renames itself.
-                       :trigger="['click']" for the same reason as the row menu: an
-                       a-dropdown opens on HOVER by default. -->
-                  <a-dropdown :trigger="['click']">
-                    <a-button icon="sort-ascending">
-                      {{ i18n "pages.clients.sortBy" }}
-                    </a-button>
-                    <a-menu slot="overlay" :class="themeSwitcher.currentTheme"
-                      :selected-keys="[sortKey]" @click="e => pickSort(e.key)">
-                      <a-menu-item v-for="o in sortOptions" :key="o.key">
-                        [[ o.label ]]
-                      </a-menu-item>
-                    </a-menu>
-                  </a-dropdown>
-
                   <a-dropdown>
                     <a-button icon="ellipsis"></a-button>
                     <a-menu slot="overlay" :class="themeSwitcher.currentTheme"
@@ -109,10 +89,35 @@
                   <a-input-search
                     v-model="search"
                     placeholder='{{ i18n "pages.clients.searchPlaceholder" }}'
-                    :style="{ maxWidth: '280px' }"
+                    :style="{ maxWidth: '280px', marginInlineStart: 'auto' }"
                     allow-clear
                     @search="onSearch"
                     @change="onSearchChange"></a-input-search>
+                </div>
+
+                <!-- Status filter buttons -->
+                <div :style="{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '10px' }">
+                  <a-button size="small" :type="statusFilter === '' ? 'primary' : 'default'"
+                    @click="filterByStatus('')">{{ i18n "pages.clients.all" }}</a-button>
+                  <a-button size="small" :type="statusFilter === 'active' ? 'primary' : 'default'"
+                    @click="filterByStatus('active')">&#10003; {{ i18n "pages.clients.active" }}</a-button>
+                  <a-button size="small" :type="statusFilter === 'online' ? 'primary' : 'default'"
+                    @click="filterByStatus('online')">&#128246; {{ i18n "pages.clients.online" }}</a-button>
+                  <a-button size="small" :type="statusFilter === 'expiring' ? 'primary' : 'default'"
+                    @click="filterByStatus('expiring')">&#9200; {{ i18n "pages.clients.expiring" }}</a-button>
+                  <a-button size="small" :type="statusFilter === 'expired' ? 'primary' : 'default'"
+                    @click="filterByStatus('expired')">&#10007; {{ i18n "pages.clients.expired" }}</a-button>
+                  <a-button size="small" :type="statusFilter === 'disabled' ? 'primary' : 'default'"
+                    @click="filterByStatus('disabled')">&#9208; {{ i18n "pages.clients.disabled" }}</a-button>
+
+                  <a-select v-model="sortBy" size="small" :style="{ minWidth: '150px', marginInlineStart: '8px' }"
+                    @change="onSortChange" :dropdown-class-name="themeSwitcher.currentTheme">
+                    <a-select-option value="email">&#128269; {{ i18n "pages.clients.email" }}</a-select-option>
+                    <a-select-option value="newest">&#128315; {{ i18n "pages.clients.newest" }}</a-select-option>
+                    <a-select-option value="oldest">&#128314; {{ i18n "pages.clients.oldest" }}</a-select-option>
+                    <a-select-option value="expiring">&#9200; {{ i18n "pages.clients.expiring" }}</a-select-option>
+                    <a-select-option value="traffic">&#128200; {{ i18n "pages.clients.traffic" }}</a-select-option>
+                  </a-select>
                 </div>
 
                 <!-- Appears only with a selection, so the toolbar is not a row of
@@ -196,18 +201,9 @@
                        below it down. -->
                   <template slot="servingCol" slot-scope="text, row">
                     <div class="bo-lg-serving">
-                      <!-- A tag rather than the dim text this used to be. The cell is
-                           otherwise a row of protocol tags, so grey words in the gap
-                           where they should be read as a rendering failure; an account
-                           on no inbound is a state someone chose, and it is the one
-                           row on the page that is serving nobody. The tooltip carries
-                           the consequence, since the tag only has room for the fact. -->
-                      <a-tooltip v-if="!row.memberships || !row.memberships.length">
-                        <template slot="title">{{ i18n "pages.clients.noInboundsHint" }}</template>
-                        <a-tag class="bo-proto bo-proto--none">
-                          {{ i18n "pages.clients.noInbounds" }}
-                        </a-tag>
-                      </a-tooltip>
+                      <span v-if="!row.memberships || !row.memberships.length" class="bo-dim">
+                        {{ i18n "pages.clients.noInbounds" }}
+                      </span>
                       <a-tooltip v-for="m in shownMemberships(row)" :key="m.inboundId">
                         <template slot="title">
                           [[ m.remark || ('#' + m.inboundId) ]]
@@ -234,6 +230,10 @@
                     </span>
                   </template>
 
+                  <template slot="creatorCol" slot-scope="text, row">
+                    <span class="bo-dim">[[ row.adminRemark || row.adminId || '—' ]]</span>
+                  </template>
+
                   <!-- Account-level only, and two controls rather than five. Enable
                        stays out because it is the one an operator reaches for
                        without reading, and because its state has to be VISIBLE from
@@ -249,16 +249,6 @@
                         <a-switch size="small" :checked="!!row.enable"
                           @change="v => toggleEnable(row, v)"></a-switch>
                       </a-tooltip>
-                      <!-- The whole account in one panel: its subscription, its
-                           health, and every inbound serving it with whatever that
-                           protocol actually gives the customer. Distinct from the
-                           info-circle inside the expander, which speaks for ONE
-                           membership. Left of the menu because it only reads. -->
-                      <a-tooltip>
-                        <template slot="title">{{ i18n "pages.clients.accountInfo" }}</template>
-                        <a-button size="small" icon="info-circle"
-                          @click="showAccountInfo(row)"></a-button>
-                      </a-tooltip>
                       <a-dropdown :trigger="['click']">
                         <a-button size="small" icon="more" @click="e => e.preventDefault()"></a-button>
                         <a-menu slot="overlay" :theme="themeSwitcher.currentTheme"
@@ -272,33 +262,19 @@
                           <a-menu-item key="sub" v-if="subSettings.enable && row.subId">
                             <a-icon type="link"></a-icon>{{ i18n "pages.settings.subSettings" }}
                           </a-menu-item>
-                          <!-- The whole account, one card per inbound serving it.
-                               The icons inside the expander export ONE membership;
-                               these two are the row's, so they carry every protocol
-                               the customer was sold.
-                               Absent on an account no inbound serves, along with the
-                               two below it: all four are addressed to a membership
-                               (the exports render one card per inbound, reset and
-                               freeze post to /:id/... routes), so with none they are
-                               menu items that quietly do nothing. Edit and Delete
-                               stay, and they are the two that still mean something -
-                               ticking an inbound is how this state is left. -->
-                          <a-menu-item key="exportTxt" v-if="isServed(row)">
-                            <a-icon type="file-text"></a-icon>{{ i18n "pages.inbounds.exportTxt" }}
-                          </a-menu-item>
-                          <a-menu-item key="exportPdf" v-if="isServed(row)">
-                            <a-icon type="file-pdf"></a-icon>{{ i18n "pages.inbounds.exportPdf" }}
-                          </a-menu-item>
-                          <a-menu-item key="reset" v-if="isServed(row)">
+                          <a-menu-item key="reset">
                             <a-icon type="retweet"></a-icon>{{ i18n "pages.inbounds.resetTraffic" }}
                           </a-menu-item>
                           <!-- Freeze locks the remaining days instead of letting them
                                tick away while the account is off, so a customer who
                                pauses for a month keeps the month. -->
-                          <a-menu-item key="freeze" v-if="isServed(row)">
+                          <a-menu-item key="freeze">
                             <a-icon type="pause-circle"></a-icon>
                             [[ isAccountFrozen(row) ? '{{ i18n "pages.client.unfreeze" }}'
                                                     : '{{ i18n "pages.client.freeze" }}' ]]
+                          </a-menu-item>
+                          <a-menu-item key="downloadQr">
+                            <a-icon type="qrcode"></a-icon>{{ i18n "pages.clients.downloadQr" }}
                           </a-menu-item>
                           <a-menu-divider></a-menu-divider>
                           <a-menu-item key="delete">
@@ -326,19 +302,6 @@
                           :class="{ off: !membershipEnabled(row, record) }"
                           v-for="client in accountClientIn(row, record)">
                           <div class="bo-mb-id">
-                            <!-- Live ON THIS INBOUND, not "this account is live
-                                 somewhere". The lamp above the expander answers the
-                                 account-wide question; repeating that answer here lit
-                                 every membership of a customer connected over one of
-                                 them. A hollow lamp means this inbound saw no traffic
-                                 last tick; a ringed one means it did. -->
-                            <a-tooltip>
-                              <template slot="title">
-                                [[ membershipOnlineText(record, client.email) ]]
-                              </template>
-                              <span class="bo-mb-lamp"
-                                :class="membershipLampClass(record, client.email)"></span>
-                            </a-tooltip>
                             <a-tag :style="{ margin: '0' }" class="bo-proto"
                               :class="'bo-proto--' + protocolFamily(record.protocol)">
                               [[ ProtocolLabels[record.protocol] || record.protocol ]]
@@ -347,56 +310,37 @@
                             <span class="bo-mb-port">:[[ record.port ]]</span>
                           </div>
 
-                          <!-- What the operator hands the customer FOR THIS INBOUND,
-                               which is a different artifact per protocol family: the
-                               share link a client imports, or the login pair a
-                               dial-in protocol authenticates with. Both are
-                               per-inbound, which is why neither can be shown once on
-                               the account row above. -->
-                          <div class="bo-mb-cred" v-if="membershipCredentials(record, client).length">
-                            <a-tooltip v-for="cred in membershipCredentials(record, client)" :key="cred.key">
-                              <template slot="title">
-                                [[ cred.label ]] &middot; {{ i18n "copy" }}
-                                <div class="bo-mb-cred-full">[[ cred.value ]]</div>
-                              </template>
-                              <span class="bo-mb-cred-one" @click="copyText(cred.value)">
-                                <span class="bo-mb-cred-k">[[ cred.short ]]</span>
-                                <span class="bo-mb-cred-v">[[ cred.value ]]</span>
-                                <a-icon type="copy"></a-icon>
-                              </span>
-                            </a-tooltip>
-                          </div>
+                          <!-- What the customer types into their client for THIS
+                               inbound: the field the protocol authenticates on. It
+                               is a uuid on vmess, a password on trojan and a login
+                               name on the dial-in protocols, which is exactly why
+                               it cannot be shown once on the account row. -->
+                          <a-tooltip v-if="membershipCredential(record, client)">
+                            <template slot="title">
+                              {{ i18n "pages.clients.credential" }} &middot; {{ i18n "copy" }}
+                            </template>
+                            <div class="bo-mb-cred" @click="copyText(membershipCredential(record, client))">
+                              <span class="bo-mb-cred-v">[[ membershipCredential(record, client) ]]</span>
+                              <a-icon type="copy"></a-icon>
+                            </div>
+                          </a-tooltip>
                           <span v-else class="bo-mb-cred"></span>
 
-                          <!-- This inbound's own bytes, except where the core cannot
-                               say. Xray counts per ACCOUNT with no inbound in the
-                               stat name, so for a vmess/vless/trojan/... membership
-                               the figure is the account's unattributed remainder,
-                               shared with every other Xray inbound serving it. That
-                               is marked rather than hidden: the alternative was a
-                               zero, which reads as "never used" and is false. -->
                           <a-popover :overlay-class-name="themeSwitcher.currentTheme">
                             <template slot="content">
                               <table cellpadding="2">
                                 <tr>
-                                  <td>&uarr; [[ sizeFormat(getInboundUpStats(record, client.email)) ]]</td>
-                                  <td>&darr; [[ sizeFormat(getInboundDownStats(record, client.email)) ]]</td>
+                                  <td>&uarr; [[ sizeFormat(getUpStats(record, client.email)) ]]</td>
+                                  <td>&darr; [[ sizeFormat(getDownStats(record, client.email)) ]]</td>
                                 </tr>
                                 <tr>
                                   <td>{{ i18n "pages.inbounds.allTimeTraffic" }}</td>
-                                  <td>[[ sizeFormat(getInboundAllTime(record, client.email)) ]]</td>
-                                </tr>
-                                <tr v-if="isSharedStats(record, client.email)">
-                                  <td colspan="2" class="bo-mb-shared-note">
-                                    {{ i18n "pages.clients.sharedUsageHint" }}
-                                  </td>
+                                  <td>[[ sizeFormat(getAllTimeClient(record, client.email)) ]]</td>
                                 </tr>
                               </table>
                             </template>
                             <div class="bo-mb-use">
-                              <b>[[ sizeFormat(getInboundSumStats(record, client.email)) ]]</b>
-                              <span v-if="isSharedStats(record, client.email)"
-                                class="bo-mb-shared">{{ i18n "pages.clients.sharedUsage" }}</span>
+                              <b>[[ sizeFormat(getSumStats(record, client.email)) ]]</b>
                             </div>
                           </a-popover>
 
@@ -427,13 +371,13 @@
 {{template "page/shell_end" . }}
 
 {{template "page/body_scripts" .}}
-<script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .asset_ver }}"></script>
-<script src="{{ .base_path }}assets/uri/URI.min.js?{{ .asset_ver }}"></script>
-<script src="{{ .base_path }}assets/js/model/reality_targets.js?{{ .asset_ver }}"></script>
-<script src="{{ .base_path }}assets/js/model/inbound.js?{{ .asset_ver }}"></script>
-<script src="{{ .base_path }}assets/js/model/dbinbound.js?{{ .asset_ver }}"></script>
-<script src="{{ .base_path }}assets/jspdf/jspdf.umd.min.js?{{ .asset_ver }}"></script>
-<script src="{{ .base_path }}assets/js/util/export.js?{{ .asset_ver }}"></script>
+<script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/uri/URI.min.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/js/model/reality_targets.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/js/model/inbound.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/js/model/dbinbound.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/jspdf/jspdf.umd.min.js?{{ .cur_ver }}"></script>
+<script src="{{ .base_path }}assets/js/util/export.js?{{ .cur_ver }}"></script>
 {{template "component/aSidebar" .}}
 {{template "component/aThemeSwitch" .}}
 {{template "component/aPersianDatepicker" .}}
@@ -442,8 +386,6 @@
 {{template "modals/textModal"}}
 {{template "modals/qrcodeModal"}}
 {{template "modals/inboundInfoModal"}}
-{{template "modals/accountInfoModal"}}
-{{template "modals/membershipInfoModal"}}
 {{template "modals/clientsBulkModal"}}
 {{template "modals/wgcConfigModal"}}
 {{template "modals/awgConfigModal"}}
@@ -457,23 +399,26 @@
     el: '#app',
     // ClientActionsMixin brings every client action, the selection state and the
     // bulk-operation run; this page only has to supply the four hooks and the
-    // state it names. MediaQueryMixin went with the per-inbound tables that used
-    // to need a separate mobile column set: the expander is a flex list now and
-    // reflows on its own.
-    mixins: [ClientActionsMixin],
+    // state it names. MediaQueryMixin is kept for isMobile even though the
+    // per-inbound tables no longer need a separate mobile column set (the
+    // expander is a flex list now and reflows on its own): the shell's hamburger
+    // and toggleSidebar key the mobile drawer off isMobile, and without it the
+    // menu can never open on a phone.
+    mixins: [MediaQueryMixin, ClientActionsMixin],
     data: {
-      langOpen: false,
-      currentLang: window.__langData.currentLang,
-      supportedLangs: window.__langData.supportedLangs,
-      currentLangName: window.__langData.currentLangName,
-      setLang: window.__langData.setLang,
-      mobileMenuOpen: false,
-      sidebarHidden: window.__sidebarHidden || false,
       // themeSwitcher, pageTitle and pageClass are read by the shell in
       // page/shell_start. Omitting any of them makes the WHOLE #app render throw,
       // which leaves the page blank behind v-cloak with a valid 200 on the wire.
       themeSwitcher,
       pageTitle: '{{ i18n "pages.clients.title" }}',
+      pageClass: 'clients-page',
+      mobileMenuOpen: false,
+      sidebarHidden: window.__sidebarHidden || false,
+      langOpen: false,
+      currentLang: window.__langData.currentLang,
+      supportedLangs: window.__langData.supportedLangs,
+      currentLangName: window.__langData.currentLangName,
+      setLang: window.__langData.setLang,
       // Not cosmetic: custom.css keys the table ring and several ant overrides off
       // the page class, and the portalled modals are reached through sibling
       // selectors on it. Without one this page rendered a table nobody had styled.
@@ -489,6 +434,8 @@
       assignable: [],
       search: '',
       searchTimer: null,
+      statusFilter: '',
+      sortBy: localStorage.getItem('clientsSortBy') || 'email',
       selectedEmails: [],
       expandedRowKeys: [],
       refreshing: false,
@@ -498,11 +445,6 @@
       isRefreshEnabled: localStorage.getItem("isRefreshEnabled") === "true",
       refreshInterval: Number(localStorage.getItem("refreshInterval")) || 5000,
       onlineClients: [],
-      // The same liveness, per (inbound, account): "<inboundId>:<email>", with
-      // inbound 0 for a session whose source inbound the collector could not name.
-      // A plain array because that is what the endpoint returns; membershipOnline
-      // indexes it once per refresh rather than scanning it per rendered block.
-      onlineMemberships: [],
       lastOnlineMap: {},
       expireDiff: 0,
       trafficDiff: 0,
@@ -527,56 +469,21 @@
         availableBytes: Number(RESELLER.availableBytes) || 0,
       },
       pagination: { current: 1, pageSize: 50, total: 0, showSizeChanger: true, pageSizeOptions: ['20', '50', '100', '200'] },
-      // The order, resolved SERVER-SIDE. It has to be: this table is paged by the
-      // server, so a browser-side sort would order the fifty rows it happens to be
-      // holding and present that as the order of two hundred.
-      //
-      // Remembered PER ADMIN, not per browser. The key carries the logged-in user's
-      // id, which every page already receives from the server, because a bare
-      // "clientsSort" key is shared by everyone who signs in from the same machine:
-      // one admin sorting by disabled accounts would silently reorder the list for
-      // the next person to log in on that browser.
-      sortKey: localStorage.getItem('clientsSort:{{ .me }}') || 'newest',
-      // Five complete orderings, not a field plus a direction. "Newest" already says
-      // which way it runs, so there is nothing for an ascending/descending toggle to
-      // do and the menu is one click rather than two.
-      sortOptions: [
-        { key: 'newest',  label: '{{ i18n "pages.clients.sortNewest" }}' },
-        { key: 'oldest',  label: '{{ i18n "pages.clients.sortOldest" }}' },
-        { key: 'online',  label: '{{ i18n "online" }}' },
-        { key: 'enable',  label: '{{ i18n "enabled" }}' },
-        { key: 'disable', label: '{{ i18n "disabled" }}' },
-      ],
-    },
-    computed: {
       // Fixed widths on everything except Serving, which is the one column whose
       // content genuinely varies and so is the one that should absorb the slack.
       // The four fixed ones are deliberately tight: three protocol chips need
       // about 330px, and at the widths this started with Serving fell just under
       // that, so a three-inbound account wrapped onto two lines and stood a head
       // taller than every row around it.
-      //
-      // No column carries a sorter. The orderings this page offers are not columns:
-      // three of the five are about state, and "newest" has no column at all. Header
-      // arrows alongside them would be a second sort control that could put the list
-      // in an order the menu has no item for, leaving the menu ticking nothing.
-      columns() {
-        const col = (key, title, slot, extra) => Object.assign({
-          title, key, scopedSlots: { customRender: slot },
-        }, extra || {});
-        return [
-          col('email', '{{ i18n "pages.clients.email" }}', 'accountCol', { width: 230 }),
-          col('used', '{{ i18n "pages.clients.quota" }}', 'dataCol', { width: 170 }),
-          col('expiry', '{{ i18n "pages.clients.expiry" }}', 'expiresCol', { width: 150 }),
-          col('inbounds', '{{ i18n "pages.clients.inbounds" }}', 'servingCol'),
-          col('lastOnline', '{{ i18n "lastOnline" }}', 'seenCol', { width: 100 }),
-          // 104 fitted a switch and a menu button. The Account Info button made three
-          // controls, which overflowed the cell and gave the whole table a horizontal
-          // scrollbar. Measured, not guessed: switch 28 + gap 6 + button 24 + gap 6 +
-          // button 24 = 88, plus the cell's own padding.
-          { title: '', key: 'actions', scopedSlots: { customRender: 'rowCol' }, width: 132, align: 'right' },
-        ];
-      },
+      columns: [
+        { title: '{{ i18n "pages.clients.email" }}', scopedSlots: { customRender: 'accountCol' }, width: 230 },
+        { title: '{{ i18n "pages.clients.quota" }}', scopedSlots: { customRender: 'dataCol' }, width: 170 },
+        { title: '{{ i18n "pages.clients.expiry" }}', scopedSlots: { customRender: 'expiresCol' }, width: 150 },
+        { title: '{{ i18n "pages.clients.inbounds" }}', scopedSlots: { customRender: 'servingCol' } },
+        { title: '{{ i18n "lastOnline" }}', scopedSlots: { customRender: 'seenCol' }, width: 100 },
+        { title: '{{ i18n "pages.clients.creator" }}', scopedSlots: { customRender: 'creatorCol' }, width: 100 },
+        { title: '', scopedSlots: { customRender: 'rowCol' }, width: 104, align: 'right' },
+      ],
     },
     methods: {
       toggleSidebar() {
@@ -601,64 +508,28 @@
 
       // --- the ledger row --------------------------------------------------
       depleted(row) { return row.totalGB > 0 && row.up + row.down >= row.totalGB; },
-      // Sold but never connected. A delayed-start account stores its deadline as a
-      // NEGATIVE number of milliseconds, meaning "this many days from first use",
-      // and the server rewrites it to an absolute deadline on the first traffic
-      // tick that names the account (adjustTraffics in web/service/inbound.go). So
-      // a negative expiry on an ENABLED account is not a stale value to work
-      // around, it is a positive statement that the clock has never started.
-      //
-      // Only reachable below after the disabled test, which matters: frozen is
-      // ALSO stored as a negative expiry and is told apart from a delayed start by
-      // `enable` alone. Testing this first would paint every frozen account as one
-      // that had never been used.
-      notStarted(row) { return Number(row.expiryTime) < 0; },
       // The account's health as ONE value, in the reserved status scale.
       //
-      // Order matters, and "disabled" is deliberately not last. The panel
-      // auto-disables an account the moment it expires or runs out, so an operator
-      // scanning this column is looking for the same thing in all three cases:
-      // an account that has stopped working and needs chasing. They are one red.
-      // That is a change from the old scale, which spent grey on "switched off by
-      // hand" and red on "ran out" - a distinction the tooltip still makes, and
-      // one nobody could act on differently anyway.
-      //
-      // The colourless lamp then has exactly one meaning left, which is what makes
-      // it worth a slot at all: nothing has happened on this account yet.
+      // Order matters, and "disabled" is deliberately NOT first. The panel
+      // auto-disables an account the moment it expires or runs out, so testing
+      // enable first painted every depleted account the same neutral grey as one
+      // an operator had switched off by hand - hiding the only two states that
+      // need chasing. Frozen still outranks both, because a frozen account is off
+      // on purpose and its clock is stopped.
       lampClass(row) {
-        if (!row.enable || this.expired(row) || this.depleted(row)) return 'bo-lamp--error';
-        // Nothing serves it, so it cannot be online, healthy or about to run out:
-        // no clock is running. Same hue as a delayed start, which is the other
-        // "real account, not yet carrying traffic" state, and ahead of the online
-        // test because a stale session must not light a row nothing serves.
-        if (!this.isServed(row)) return 'bo-lamp--idle';
-        if (this.notStarted(row)) return 'bo-lamp--idle';
-        if (this.isClientOnline(row.email)) return 'bo-lamp--live';
-        // Amber survives as a variant of "working, not connected": an account
-        // inside a week of its deadline or past 85% of its quota is still healthy,
-        // but it is the one an operator wants to renew before the customer calls.
+        if (this.isAccountFrozen(row)) return 'bo-lamp--off';
+        if (this.expired(row) || this.depleted(row)) return 'bo-lamp--error';
+        if (!row.enable) return 'bo-lamp--off';
         if (this.expiringSoon(row) || this.usedPercent(row) >= 85) return 'bo-lamp--warn';
-        return 'bo-lamp--ok';
+        return 'bo-lamp--ok' + (this.isClientOnline(row.email) ? ' bo-lamp--live' : '');
       },
       // Same order, so the tooltip never disagrees with the colour it explains.
-      // It is finer-grained than the colour on purpose: four hues is what a glance
-      // can carry, and the tooltip is where the operator has already stopped to
-      // ask which of the three red cases this one is.
       stateLabel(row) {
         if (this.isAccountFrozen(row)) return '{{ i18n "pages.client.frozen" }}';
         if (this.expired(row)) return '{{ i18n "pages.clients.summaryExpired" }}';
         if (this.depleted(row)) return '{{ i18n "depleted" }}';
         if (!row.enable) return '{{ i18n "disabled" }}';
-        if (!this.isServed(row)) return '{{ i18n "pages.clients.noInbounds" }}';
-        if (this.notStarted(row)) return '{{ i18n "pages.client.delayedStart" }}';
         return this.isClientOnline(row.email) ? '{{ i18n "online" }}' : '{{ i18n "offline" }}';
-      },
-      // Is any inbound serving this account. An account may deliberately be on none:
-      // it keeps its credentials, quota and usage history and simply carries no
-      // traffic, so it is not disabled, not expired and not broken - and every row
-      // action that is addressed to an inbound has nothing to address.
-      isServed(row) {
-        return !!(row && row.memberships && row.memberships.length);
       },
       // A positive deadline inside a week. Deliberately NOT true for a delayed
       // start or a frozen account: neither clock is running, so neither is
@@ -742,8 +613,7 @@
           case 'edit': return this.openEdit(row);
           case 'sub': return this.showAccountSub(row);
           case 'freeze': return this.toggleAccountFreeze(row);
-          case 'exportTxt': return this.exportTxt(this.accountTargets(row), row.email);
-          case 'exportPdf': return this.exportPdf(this.accountTargets(row), row.email);
+          case 'downloadQr': return this.downloadAllQr(row);
           case 'delete': return this.confirmDelete(row);
           case 'reset':
             return this.$confirm({
@@ -780,13 +650,11 @@
       // shadowing it made every rendered row fire two requests and then format a
       // Promise as a date.
       async loadOnlineState() {
-        const [onlines, memberships, last] = await Promise.all([
+        const [onlines, last] = await Promise.all([
           HttpUtil.post('/panel/api/inbounds/onlines'),
-          HttpUtil.post('/panel/api/inbounds/onlineMemberships'),
           HttpUtil.post('/panel/api/inbounds/lastOnline'),
         ]);
         if (onlines && onlines.success) this.onlineClients = onlines.obj || [];
-        if (memberships && memberships.success) this.onlineMemberships = memberships.obj || [];
         if (last && last.success) this.lastOnlineMap = last.obj || {};
       },
       async refreshResellerBalance() {
@@ -831,25 +699,23 @@
       },
 
       async loadClients() {
-        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}`
-          + `&search=${encodeURIComponent(this.search || '')}`
-          + `&sort=${encodeURIComponent(this.sortKey)}`;
+        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}&sort=${encodeURIComponent(this.sortBy || 'email')}`;
         const msg = await HttpUtil.get('/panel/api/clients/list' + q);
         if (!msg || !msg.success) return;
         this.clients = (msg.obj && msg.obj.rows) || [];
         this.pagination.total = (msg.obj && msg.obj.total) || 0;
-        // Taken from the ANSWER, not from what was asked. The server falls back to
-        // newest for an ordering it does not know, and a stale key left in this
-        // user's localStorage by an older build would otherwise leave the menu
-        // ticking an item the list is not actually ordered by.
-        if (msg.obj && msg.obj.sort && msg.obj.sort !== this.sortKey) {
-          this.sortKey = msg.obj.sort;
-          localStorage.setItem('clientsSort:{{ .me }}', this.sortKey);
-        }
-        // Drop selections that are no longer on the page, or a bulk action would
-        // silently act on rows the operator can no longer see.
         const visible = new Set(this.clients.map(c => c.email));
         this.onSelectChange(this.selectedEmails.filter(e => visible.has(e)));
+      },
+      filterByStatus(status) {
+        this.statusFilter = status;
+        this.pagination.current = 1;
+        this.loadClients();
+      },
+      onSortChange(val) {
+        localStorage.setItem('clientsSortBy', val);
+        this.pagination.current = 1;
+        this.loadClients();
       },
       async loadAssignable() {
         const msg = await HttpUtil.get('/panel/api/clients/assignable');
@@ -909,68 +775,16 @@
         const client = (this.getInboundClients(dbInbound) || []).find(c => c.email === row.email);
         return client ? client.enable !== false : false;
       },
-      // What the operator hands the customer for THIS inbound.
-      //
-      // This used to be getClientIdentity's answer, always: a uuid on vmess, a
-      // password on trojan, a login name on ssh. That is the field the protocol
-      // AUTHENTICATES on, which is not the same question. A vless uuid on its own
-      // configures nothing, since the address, port, transport, reality key and flow
-      // are all missing from it, and copying it gave an operator something they then
-      // could not send to anybody. An l2tp account needs BOTH of its fields, so
-      // showing one of them was showing half a credential.
-      //
-      // So: whatever the customer actually installs. A share link where the protocol
-      // produces one, the login pair where it does not.
-      membershipCredentials(dbInbound, client) {
-        if (!dbInbound || !client) return [];
-        // Anything a client imports by URL, which is hasLink()'s own question. Going
-        // through it rather than listing protocols here means anytls, tuic, naive and
-        // mtproto are covered with no second list to keep in step, and a protocol
-        // that gains a link generator later is covered by that alone.
-        if (dbInbound.hasLink()) {
-          const inbound = dbInbound.toInbound();
-          let links = [];
-          try {
-            links = inbound.genAllLinks('', this.remarkModel || '-ieo', client) || [];
-          } catch (e) {
-            // A half-configured inbound (no certificate yet, a reality key not
-            // generated) can throw in a generator. One block failing to offer a link
-            // must not take the whole expander down with it.
-            console.warn('link generation failed for inbound ' + dbInbound.id, e);
-            return [];
-          }
-          // mtproto yields one link per enabled mode, so the label carries the mode
-          // and there can legitimately be several.
-          return links.filter(l => l && l.link).map((l, i) => ({
-            label: '{{ i18n "pages.clients.shareLink" }}' + (links.length > 1 && l.remark ? ' (' + l.remark + ')' : ''),
-            short: '{{ i18n "pages.clients.shareLinkShort" }}',
-            value: String(l.link),
-            key: 'link' + i,
-          }));
-        }
-        // The seven dial-in protocols: the customer types two fields into their
-        // client, and neither is derivable from the other. `id` is the login name on
-        // these (applyAccountCredential writes account.VpnUsername there), which is
-        // exactly why it must not be labelled the way a uuid would be.
-        if (CLIENT_USERPASS_PROTOCOLS.includes(dbInbound.protocol)) {
-          const out = [];
-          if (client.id) {
-            out.push({ label: '{{ i18n "pages.clients.vpnUsername" }}',
-                       short: '{{ i18n "pages.clients.vpnUsernameShort" }}',
-                       value: String(client.id), key: 'user' });
-          }
-          if (client.password) {
-            out.push({ label: '{{ i18n "password" }}',
-                       short: '{{ i18n "pages.clients.passwordShort" }}',
-                       value: String(client.password), key: 'pass' });
-          }
-          return out;
-        }
-        // wg-c, awg, gre and the Xray-native wireguard are addressed by the email,
-        // which the row above already spells out. What their customer installs is a
-        // generated config, and that is behind this block's own config icon rather
-        // than something that fits on one line here.
-        return [];
+      // The field this inbound's protocol authenticates on: a uuid for vmess and
+      // vless, the password for trojan and the credential VPNs, the login name for
+      // ssh. Single definition in model/inbound.js, mirrored server-side by
+      // clientIdentityKey; do not re-derive it here.
+      membershipCredential(dbInbound, client) {
+        if (!dbInbound || !client) return '';
+        const id = getClientIdentity(dbInbound.protocol, client);
+        // wg-c, awg, gre and mtproto are addressed by the email, which the row
+        // above already spells out; showing it again says nothing.
+        return id && id !== client.email ? String(id) : '';
       },
       // Two hues, neither of them a reserved status colour: the tag says which
       // data plane serves the inbound, not how healthy it is. Same split as the
@@ -1010,20 +824,6 @@
       onTableChange(pag) {
         this.pagination.current = pag.current;
         this.pagination.pageSize = pag.pageSize;
-        this.loadClients();
-      },
-      // Picking an ordering. Re-picking the one already applied does nothing rather
-      // than toggling a direction: each item IS a direction, so there is no second
-      // state for a second click to reach.
-      //
-      // Back to page 1, always. Page 3 of a list ordered by newest has nothing to do
-      // with page 3 of the same list ordered by disabled, so keeping the page number
-      // across a change lands the operator somewhere arbitrary.
-      pickSort(key) {
-        if (key === this.sortKey) return;
-        this.sortKey = key;
-        localStorage.setItem('clientsSort:{{ .me }}', key);
-        this.pagination.current = 1;
         this.loadClients();
       },
       onSearch() { this.pagination.current = 1; this.loadClients(); },
@@ -1071,13 +871,6 @@
       // case the icon is hidden for.
       showAccountSub(row) {
         qrModal.showSub(row.email, { subId: row.subId });
-      },
-      // The account panel. It reads everything through this page (inbounds, stats,
-      // exports), so it is handed the page rather than a copy of its state: a
-      // snapshot would go stale the moment a traffic tick landed behind it.
-      showAccountInfo(row) {
-        accountInfoModalApp.app = this;
-        accountInfoModal.show(row);
       },
       clickPageAction(action) {
         switch (action.key) {
@@ -1129,18 +922,10 @@
           this.loading(false);
         }
       },
-      // The account, as the (inbound, email) pairs every membership-wide operation
-      // is addressed by. A row here is an ACCOUNT and the mixin speaks memberships,
-      // so anything that acts on "the customer" has to fan out over this list:
-      // handed a single membership instead, freeze would thaw one protocol and the
-      // export would ship one card for a customer who bought four.
-      accountTargets(row) {
-        return (row.memberships || []).map(m => ({ inboundId: m.inboundId, email: row.email }));
-      },
       // One bulk call carrying every membership as a target, so the time-lock maths
       // stays server-side and the whole account freezes or thaws in one write.
       async toggleAccountFreeze(row) {
-        const targets = this.accountTargets(row);
+        const targets = (row.memberships || []).map(m => ({ inboundId: m.inboundId, email: row.email }));
         if (!targets.length) return;
         const op = this.isAccountFrozen(row) ? 'unfreeze' : 'freeze';
         this.loading();
@@ -1196,11 +981,7 @@
       // page does not need a write path of its own.
       async applyToAccount(row, patch) {
         const ids = (row.memberships || []).map(m => m.inboundId);
-        // No inbound serves it, so no stored entry can address it and updateClient
-        // has nothing to match. The account route writes the same fields with no
-        // inbound in the request; without this the enable switch on such a row
-        // sprang back on the next refresh with nothing reporting a failure.
-        if (!ids.length) return await this.applyToUnservedAccount(row, patch);
+        if (!ids.length) return null;
         const stored = this.storedClient(row, ids[0]);
         if (!stored) return null;
         const client = Object.assign(stored, {
@@ -1215,21 +996,6 @@
         // protocol except shadowsocks. The list API reports it per membership.
         const clientId = (row.memberships[0] && row.memberships[0].clientId) || row.email;
         return await HttpUtil.post('/panel/api/inbounds/updateClient/' + encodeURIComponent(clientId), body);
-      },
-      // The same patch for an account nothing serves. Built from the ROW rather than
-      // from a stored entry, because there is no stored entry: the account row is
-      // the whole truth for one of these. noInbounds is what keeps it that way - the
-      // route sets the membership set to exactly what is posted, and posting nothing
-      // without the flag would read as "the caller did not mention memberships".
-      async applyToUnservedAccount(row, patch) {
-        const client = Object.assign({
-          email: row.email, enable: row.enable, totalGB: row.totalGB,
-          expiryTime: row.expiryTime, limitIp: row.limitIp, subId: row.subId,
-          comment: row.comment, reset: row.reset, tgId: row.tgId || 0,
-        }, patch);
-        return await HttpUtil.post('/panel/api/inbounds/saveAccount', {
-          noInbounds: true, settings: JSON.stringify({ clients: [client] }),
-        });
       },
 
       confirmDelete(row) {
@@ -1251,21 +1017,12 @@
       // rest is a working account nobody is billed for, so a partial result has to
       // be reported rather than left looking like success.
       //
-      // The panel no longer refuses to empty an inbound, so the common cause of a
-      // partial result (an account that was the only client of one of its inbounds)
-      // is gone. This still reports what stuck, because a membership can fail for
-      // reasons of its own and a half-deleted account must not look like success.
+      // The panel refuses to remove the LAST client of an inbound ("no client
+      // remained in Inbound"), which is pre-existing behaviour and is exactly when
+      // this bites: an account that is the only client of one of its inbounds is
+      // removed from the others and stays on that one.
       async deleteAccount(row) {
         const stuck = [];
-        // Nothing serves it, so there is no inbound to address the delete to and
-        // nothing in any settings blob to remove. What is left is the account row and
-        // its counter row, which is what this route takes.
-        if (!this.isServed(row)) {
-          const msg = await HttpUtil.post(
-            `/panel/api/inbounds/delAccount/${encodeURIComponent(row.email)}`);
-          if (!msg || !msg.success) stuck.push(row.email);
-          return stuck;
-        }
         for (const m of (row.memberships || [])) {
           const msg = await HttpUtil.post(
             `/panel/api/inbounds/${m.inboundId}/delClientByEmail/${encodeURIComponent(row.email)}`);
@@ -1279,6 +1036,59 @@
           title: '{{ i18n "pages.clients.partialDeleteTitle" }}',
           content: email + ': ' + stuck.join(', '),
         });
+      },
+
+      // --- QR code download ------------------------------------------------
+      // Generates a QR code on a hidden canvas and triggers a PNG download.
+      // One QR per inbound membership, zipped if more than one.
+      generateQrDataUrl(link, size) {
+        size = size || 400;
+        const canvas = document.createElement('canvas');
+        new QRious({ element: canvas, size, value: link, background: 'white', foreground: 'black', padding: 2, level: 'L' });
+        return canvas.toDataURL('image/png');
+      },
+      downloadDataUrl(dataUrl, filename) {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      },
+      async downloadAllQr(row) {
+        const entries = [];
+        for (const m of (row.memberships || [])) {
+          const dbInbound = this.dbInbounds.find(r => r.id === m.inboundId);
+          if (!dbInbound) continue;
+          const inbound = dbInbound.toInbound ? dbInbound.toInbound() : dbInbound;
+          const client = (this.getInboundClients(dbInbound) || []).find(c => c.email === row.email);
+          if (!client) continue;
+          if (typeof inbound.hasLink === 'function' && !inbound.hasLink()) continue;
+          let links = [];
+          if (typeof inbound.genAllLinks === 'function') {
+            links = inbound.genAllLinks(dbInbound.remark, '', client);
+          }
+          for (const l of links) {
+            if (!l.link) continue;
+            entries.push({ remark: l.remark || m.remark || (m.protocol + ':' + m.port), link: l.link });
+          }
+        }
+        if (!entries.length) {
+          this.$message.warning('{{ i18n "pages.clients.noLinks" }}');
+          return;
+        }
+        if (entries.length === 1) {
+          const dataUrl = this.generateQrDataUrl(entries[0].link);
+          this.downloadDataUrl(dataUrl, (row.email.replace(/[^a-zA-Z0-9@._-]/g, '_')) + '.png');
+          return;
+        }
+        // Multiple QR codes: download each sequentially
+        for (let i = 0; i < entries.length; i++) {
+          const dataUrl = this.generateQrDataUrl(entries[i].link);
+          const name = row.email.replace(/[^a-zA-Z0-9@._-]/g, '_') + '_' + (i + 1) + '.png';
+          this.downloadDataUrl(dataUrl, name);
+          await new Promise(r => setTimeout(r, 200));
+        }
       },
     },
     async mounted() {

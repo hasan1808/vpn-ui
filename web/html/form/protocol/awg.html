@@ -4,6 +4,193 @@
     :label-col="{ md: {span:8} }"
     :wrapper-col="{ md: {span:14} }"
 >
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Auto-managed contiguous block. Grows automatically as
+                    clients are added.
+                </template>
+                IP Range
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <template v-if="inbound.settings.ipRanges && inbound.settings.ipRanges.length">
+            <a-input
+                v-for="(r, i) in inbound.settings.ipRanges"
+                :key="i"
+                :value="r"
+                read-only
+                :style="{ marginBottom: '4px' }"
+            ></a-input>
+        </template>
+        <span v-else :style="{ color: '#888' }">
+            Assigned automatically on save
+        </span>
+    </a-form-item>
+    <a-form-item label="DNS 1">
+        <a-input v-model.trim="inbound.settings.dns1" placeholder="1.1.1.1"></a-input>
+    </a-form-item>
+    <a-form-item label="DNS 2">
+        <a-input v-model.trim="inbound.settings.dns2" placeholder="1.0.0.1"></a-input>
+    </a-form-item>
+    <a-form-item label="MTU">
+        <a-input-number
+            v-model.number="inbound.settings.mtu"
+            :min="1200"
+            :max="1500"
+        ></a-input-number>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    How many DEVICES each account may run at once. The panel issues one
+                    config per device, each with its own key and its own tunnel IP, so
+                    import Device 1 on one machine and Device 2 on another: two devices
+                    cannot share a single config (they would share a key, and only one
+                    could stay connected). Lowering it revokes the surplus devices' keys.
+                    1 = one device (default, best capacity). 0 = the maximum, 64 devices,
+                    which issues 64 configs and fits only ~3 accounts per /24.
+                </template>
+                User Limit
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input-number
+            :value="inbound.settings.userLimit"
+            @change="inbound.settings.userLimit = Math.max(0, Math.min(64, Math.floor($event || 0)))"
+            :min="0" :max="64" :step="1" :precision="0" style="width: 90px"
+        ></a-input-number>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    When an account is already at its device limit and another
+                    device connects: reject the new one, or accept it and
+                    disconnect that account's oldest device.
+                </template>
+                User Limit Strategy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-radio-group v-model="inbound.settings.userLimitStrategy" button-style="solid">
+            <a-radio-button value="accept">Accept</a-radio-button>
+            <a-radio-button value="reject">Reject</a-radio-button>
+        </a-radio-group>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Allow connected clients to reach each other
+                </template>
+                Client to Client
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.clientToClient"
+            @change="val => { if (!val) inbound.settings.crossInbound = false }"
+        ></a-switch>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Also reach clients of other inbounds (both inbounds must enable this)
+                </template>
+                Cross Inbound
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch
+            v-model="inbound.settings.crossInbound"
+            :disabled="!inbound.settings.clientToClient"
+        ></a-switch>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Add a preshared key (an extra symmetric layer on top of the
+                    keypair). The server generates one PSK per account automatically;
+                    nothing to enter here.
+                </template>
+                Preshared Key
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="inbound.settings.pskEnable"></a-switch>
+    </a-form-item>
+    <a-form-item v-if="inbound.settings.serverPubKey">
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    The server's public key. Generated automatically on save; keys
+                    are never created in the browser.
+                </template>
+                Server Public Key
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-input :value="inbound.settings.serverPubKey" read-only></a-input>
+    </a-form-item>
+    <a-form-item>
+        <template slot="label">
+            <a-tooltip>
+                <template slot="title">
+                    Alternate Endpoint(s) (a relay/CDN host:port) written into the
+                    generated client config and QR instead of this server's address.
+                    Clients dial the first that works. Leave off to use the panel host.
+                </template>
+                External Proxy
+                <a-icon type="question-circle"></a-icon>
+            </a-tooltip>
+        </template>
+        <a-switch v-model="vpnExternalProxy"></a-switch>
+        <a-button
+            icon="plus"
+            v-if="vpnExternalProxy"
+            type="primary"
+            :style="{ marginLeft: '10px' }"
+            size="small"
+            @click="inbound.settings.externalProxy.push({dest: '', port: inbound.port, remark: ''})"
+        ></a-button>
+    </a-form-item>
+    <a-input-group
+        :style="{ margin: '8px 0' }"
+        compact
+        v-for="(row, index) in inbound.settings.externalProxy"
+    >
+        <a-input
+            :style="{ width: '45%' }"
+            v-model.trim="row.dest"
+            placeholder='{{ i18n "host" }}'
+        ></a-input>
+        <a-tooltip title='{{ i18n "pages.inbounds.port" }}'>
+            <a-input-number
+                :style="{ width: '20%' }"
+                v-model.number="row.port"
+                min="1"
+                max="65535"
+            ></a-input-number>
+        </a-tooltip>
+        <a-input
+            :style="{ width: '30%', top: '0' }"
+            v-model.trim="row.remark"
+            placeholder='{{ i18n "remark" }}'
+        >
+            <template slot="addonAfter">
+                <a-button
+                    icon="minus"
+                    size="small"
+                    @click="inbound.settings.externalProxy.splice(index, 1)"
+                ></a-button>
+            </template>
+        </a-input>
+    </a-input-group>
     <!-- AmneziaWG DPI-obfuscation parameters (AWG 1.0). Jc/Jmin/Jmax/S1/S2 are the junk
          and header-size knobs (numbers); H1-H4 are the magic-header values, minted by
          the backend and shown read-only. These must match the client, which the
@@ -95,225 +282,5 @@
             </a-row>
         </a-collapse-panel>
     </a-collapse>
-</a-form>
-{{end}}
-{{define "form/awg/network"}}
-<a-form
-    :colon="false"
-    :label-col="{ md: {span:8} }"
-    :wrapper-col="{ md: {span:14} }"
->
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    Auto-managed contiguous block. Grows automatically as
-                    clients are added.
-                </template>
-                IP Range
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <template v-if="inbound.settings.ipRanges && inbound.settings.ipRanges.length">
-            <a-input
-                v-for="(r, i) in inbound.settings.ipRanges"
-                :key="i"
-                :value="r"
-                read-only
-                :style="{ marginBottom: '4px' }"
-            ></a-input>
-        </template>
-        <span v-else :style="{ color: '#888' }">
-            Assigned automatically on save
-        </span>
-    </a-form-item>
-    <a-form-item label="DNS 1">
-        <a-input v-model.trim="inbound.settings.dns1" placeholder="1.1.1.1"></a-input>
-    </a-form-item>
-    <a-form-item label="DNS 2">
-        <a-input v-model.trim="inbound.settings.dns2" placeholder="1.0.0.1"></a-input>
-    </a-form-item>
-    <a-form-item label="MTU">
-        <a-input-number
-            v-model.number="inbound.settings.mtu"
-            :min="1200"
-            :max="1500"
-        ></a-input-number>
-    </a-form-item>
-</a-form>
-{{end}}
-{{define "form/awg/security"}}
-<a-form
-    :colon="false"
-    :label-col="{ md: {span:8} }"
-    :wrapper-col="{ md: {span:14} }"
->
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    Add a preshared key (an extra symmetric layer on top of the
-                    keypair). The server generates one PSK per account automatically;
-                    nothing to enter here.
-                </template>
-                Preshared Key
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-switch v-model="inbound.settings.pskEnable"></a-switch>
-    </a-form-item>
-    <a-form-item v-if="inbound.settings.serverPubKey">
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    The server's public key. Generated automatically on save; keys
-                    are never created in the browser.
-                </template>
-                Server Public Key
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-input :value="inbound.settings.serverPubKey" read-only></a-input>
-    </a-form-item>
-</a-form>
-{{end}}
-{{define "form/awg/access"}}
-<a-form
-    :colon="false"
-    :label-col="{ md: {span:8} }"
-    :wrapper-col="{ md: {span:14} }"
->
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    How many DEVICES each account may run at once. The panel issues one
-                    config per device, each with its own key and its own tunnel IP, so
-                    import Device 1 on one machine and Device 2 on another: two devices
-                    cannot share a single config (they would share a key, and only one
-                    could stay connected). Lowering it revokes the surplus devices' keys.
-                    10 = ten devices (default), so ten configs per account; lower it for
-                    better pool capacity. 0 = the maximum, 64 devices, which issues 64
-                    configs and fits only ~3 accounts per /24.
-                </template>
-                User Limit
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-input-number
-            :value="inbound.settings.userLimit"
-            @change="inbound.settings.userLimit = Math.max(0, Math.min(64, Math.floor($event || 0)))"
-            :min="0" :max="64" :step="1" :precision="0" style="width: 90px"
-        ></a-input-number>
-    </a-form-item>
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    When an account is already at its device limit and another
-                    device connects: reject the new one, or accept it and
-                    disconnect that account's oldest device.
-                </template>
-                User Limit Strategy
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-radio-group v-model="inbound.settings.userLimitStrategy" button-style="solid">
-            <a-radio-button value="accept">Accept</a-radio-button>
-            <a-radio-button value="reject">Reject</a-radio-button>
-        </a-radio-group>
-    </a-form-item>
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    Allow connected clients to reach each other
-                </template>
-                Client to Client
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-switch
-            v-model="inbound.settings.clientToClient"
-            @change="val => { if (!val) inbound.settings.crossInbound = false }"
-        ></a-switch>
-    </a-form-item>
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    Also reach clients of other inbounds (both inbounds must enable this)
-                </template>
-                Cross Inbound
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-switch
-            v-model="inbound.settings.crossInbound"
-            :disabled="!inbound.settings.clientToClient"
-        ></a-switch>
-    </a-form-item>
-</a-form>
-{{end}}
-{{define "form/awg/reach"}}
-<a-form
-    :colon="false"
-    :label-col="{ md: {span:8} }"
-    :wrapper-col="{ md: {span:14} }"
->
-    <a-form-item>
-        <template slot="label">
-            <a-tooltip>
-                <template slot="title">
-                    Alternate Endpoint(s) (a relay/CDN host:port) written into the
-                    generated client config and QR instead of this server's address.
-                    Clients dial the first that works. Leave off to use the panel host.
-                </template>
-                External Proxy
-                <a-icon type="question-circle"></a-icon>
-            </a-tooltip>
-        </template>
-        <a-switch v-model="vpnExternalProxy"></a-switch>
-        <a-button
-            icon="plus"
-            v-if="vpnExternalProxy"
-            type="primary"
-            :style="{ marginLeft: '10px' }"
-            size="small"
-            @click="inbound.settings.externalProxy.push({dest: '', port: inbound.port, remark: ''})"
-        ></a-button>
-    </a-form-item>
-    <a-input-group
-        :style="{ margin: '8px 0' }"
-        compact
-        v-for="(row, index) in inbound.settings.externalProxy"
-    >
-        <a-input
-            :style="{ width: '45%' }"
-            v-model.trim="row.dest"
-            placeholder='{{ i18n "host" }}'
-        ></a-input>
-        <a-tooltip title='{{ i18n "pages.inbounds.port" }}'>
-            <a-input-number
-                :style="{ width: '20%' }"
-                v-model.number="row.port"
-                min="1"
-                max="65535"
-            ></a-input-number>
-        </a-tooltip>
-        <a-input
-            :style="{ width: '30%', top: '0' }"
-            v-model.trim="row.remark"
-            placeholder='{{ i18n "remark" }}'
-        >
-            <template slot="addonAfter">
-                <a-button
-                    icon="minus"
-                    size="small"
-                    @click="inbound.settings.externalProxy.splice(index, 1)"
-                ></a-button>
-            </template>
-        </a-input>
-    </a-input-group>
 </a-form>
 {{end}}

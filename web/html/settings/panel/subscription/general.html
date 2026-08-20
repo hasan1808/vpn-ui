@@ -175,49 +175,5 @@
             </template>
         </a-setting-list-item>
     </a-collapse-panel>
-    <a-collapse-panel key="5" header='{{ i18n "pages.settings.subTemplate" }}'>
-        <a-setting-list-item paddings="small">
-            <template #title>{{ i18n "pages.settings.subTemplate" }}</template>
-            <template #description>{{ i18n
-                "pages.settings.subTemplateDesc" }}</template>
-            <template #control>
-                <a-radio-group v-model="allSetting.subTemplate"
-                    :style="{ display: 'flex', flexDirection: 'column', gap: '6px' }"
-                    @change="onSubTemplateChange">
-                    <a-radio value="base64">Base64</a-radio>
-                    <a-radio value="plain">Plain</a-radio>
-                    <a-radio value="clash">Clash / Mihomo</a-radio>
-                    <a-radio value="json">JSON</a-radio>
-                    <a-radio value="custom">{{ i18n
-                        "pages.settings.subTemplateCustom" }}</a-radio>
-                </a-radio-group>
-            </template>
-        </a-setting-list-item>
-        <a-setting-list-item v-if="allSetting.subTemplate === 'custom'" paddings="small">
-            <template #title>{{ i18n "pages.settings.subCustomTemplate" }}</template>
-            <template #description>{{ i18n
-                "pages.settings.subCustomTemplateDesc" }}</template>
-            <template #control>
-                <a-textarea v-model="allSetting.subCustomTemplate"
-                    :rows="8"></a-textarea>
-            </template>
-        </a-setting-list-item>
-        <a-setting-list-item v-if="allSetting.subTemplate === 'custom'" paddings="small">
-            <template #title>{{ i18n "pages.settings.subTemplateVars" }}</template>
-            <template #description>$links, $subtitle, $email, $up, $down, $total,
-                $expire, $date</template>
-            <template #control></template>
-        </a-setting-list-item>
-        <a-setting-list-item paddings="small">
-            <template #title>{{ i18n "pages.settings.subTemplatePreview" }}</template>
-            <template #description>{{ i18n
-                "pages.settings.subTemplatePreviewDesc" }}</template>
-            <template #control>
-                <a-button type="primary" size="small" :loading="subPreviewLoading"
-                    @click="loadSubPreview">{{ i18n
-                    "pages.settings.subTemplatePreview" }}</a-button>
-            </template>
-        </a-setting-list-item>
-    </a-collapse-panel>
 </a-collapse>
 {{end}}

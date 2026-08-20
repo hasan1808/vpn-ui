@@ -310,7 +310,9 @@
       placeholder="0"
     ></a-input-number>
   </a-form-item>
-  <div class="bo-if-sub">{{ i18n "pages.inbounds.stream.xhttp.xmux" }}</div>
+  <a-divider :style="{ margin: '5px 0 0' }"
+    >{{ i18n "pages.inbounds.stream.xhttp.xmux" }}</a-divider
+  >
   <!--
     maxConcurrency and maxConnections are two different multiplexing strategies
     and the core rejects a config that sets both
@@ -369,7 +371,9 @@
       placeholder="0"
     ></a-input-number>
   </a-form-item>
-  <div class="bo-if-sub">{{ i18n "pages.inbounds.stream.xhttp.downloadSettings" }}</div>
+  <a-divider :style="{ margin: '5px 0 0' }"
+    >{{ i18n "pages.inbounds.stream.xhttp.downloadSettings" }}</a-divider
+  >
   <!--
     downloadSettings is a whole nested stream-settings object: it is how the
     client is told to pull the downlink over a different transport or endpoint.

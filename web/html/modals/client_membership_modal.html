@@ -237,13 +237,6 @@
         <a-alert v-if="clientMembershipModal.protocolClash" type="error" show-icon
           :style="{ marginTop: '12px' }"
           message='{{ i18n "pages.clients.sameProtocolRefused" }}'></a-alert>
-        <!-- Ticking nothing is allowed and saves. It is stated here because an empty
-             checklist otherwise reads as a form that is not finished yet, and this
-             one is a decision: the account keeps everything and serves nobody. -->
-        <a-alert v-if="!clientMembershipModal.selected.length" type="warning" show-icon
-          :style="{ marginTop: '12px' }"
-          message='{{ i18n "pages.clients.noInbounds" }}'
-          description='{{ i18n "pages.clients.noInboundsHint" }}'></a-alert>
       </template>
       <!-- Credentials: field-first, because the account stores ONE of each and
            several protocols share them. -->
@@ -266,114 +259,13 @@
               <a-icon type="reload" @click="clientMembershipModal.regenerate(f.key)"></a-icon>
             </a-tooltip>
           </a-input>
-          <!-- Ad Tag, drawn from inside this loop on the one iteration that is the
-               secret. After the loop it sat below every OTHER protocol's row too, so on
-               an account that also holds a uuid or a password it read as a setting of
-               the form rather than as part of the one credential it rides on.
-
-               Gate unchanged: adtagUsed is fieldUsed(adtagField), the same predicate
-               each row above is dimmed by, so it still comes and goes with mtproto. No
-               chip in here - the Secret label a line up already carries the same one. -->
-          <div class="bo-cf-nest" v-if="f.key === 'secret' && clientMembershipModal.adtagUsed">
-            <div class="bo-cf-switch">
-              <div>
-                <div class="bo-cf-t">{{ i18n "pages.xray.mtproto.adtag" }}</div>
-                <div class="bo-cf-d">{{ i18n "pages.xray.mtproto.adtagDesc" }}</div>
-              </div>
-              <a-switch v-model="clientMembershipModal.client.adtagEnable"></a-switch>
-            </div>
-            <!-- Disabled rather than hidden: an operator who toggles off to check
-                 something should find their tag still typed when they toggle back. The
-                 backend ignores a tag whose switch is off (anyAdtag wants both). -->
-            <a-input v-model.trim="clientMembershipModal.client.adtag"
-              :disabled="!clientMembershipModal.client.adtagEnable"
-              placeholder='{{ i18n "pages.xray.mtproto.adtagPlaceholder" }}'
-              class="bo-cf-mono"></a-input>
-            <!-- The one field on this form whose effect escapes the account it is set
-                 on, so it is stated inside the group. A banner out at the pane's edge
-                 would read as being about the form, which is the opposite of the point. -->
-            <div class="bo-cf-warnnote" v-if="clientMembershipModal.client.adtagEnable">
-              <a-icon type="warning"></a-icon>
-              <span>{{ i18n "pages.xray.mtproto.adtagClientWarn" }}</span>
-            </div>
-          </div>
         </div>
         <a-alert v-if="clientMembershipModal.strictSsBytes" type="info" show-icon
           :style="{ marginTop: '4px' }"
           message='{{ i18n "pages.clients.ssStrictPassword" }}'></a-alert>
-        <!-- Said outright, because the green chip on the Password row lists
-             shadowsocks among the protocols that use it and for this cipher family
-             that is not true: the membership holds a key minted for itself alone.
-             Without this an operator reads the box as the customer's shadowsocks
-             password, hands it over, and it does not work. -->
-        <a-alert v-if="clientMembershipModal.strictSsBytes" type="warning" show-icon
-          :style="{ marginTop: '8px' }"
-          message='{{ i18n "pages.clients.ssOwnKey" }}'></a-alert>
         <a-alert v-if="clientMembershipModal.isEdit" type="warning" show-icon
           :style="{ marginTop: '8px' }"
           message='{{ i18n "pages.clients.credentialWarn" }}'></a-alert>
-      </template>
-
-      <!-- Limits: the three caps an inbound sets for everyone on it, overridden for
-           THIS account.
-           Empty means inherit, and that is why every box here is an a-input with a
-           placeholder rather than an a-input-number with a min of 0. a-input-number
-           cannot hold "nothing": it coerces an emptied box to 0, and 0 is a real
-           value in two of these three fields (unlimited), so the control itself would
-           make "inherit" unreachable the moment an operator cleared a box. -->
-      <template v-if="clientMembershipModal.tab === 'limits'">
-        <a-alert type="info" show-icon :style="{ marginBottom: '14px' }"
-          message='{{ i18n "pages.clients.limitsHint" }}'></a-alert>
-
-        <a-row :gutter="12">
-          <a-col :span="12">
-            <div class="bo-cf-field">
-              <label>{{ i18n "pages.clients.limitDown" }}</label>
-              <a-input v-model.trim="clientMembershipModal.limitDown"
-                placeholder='{{ i18n "pages.clients.limitInherit" }}'
-                addon-after="KB/s"></a-input>
-            </div>
-          </a-col>
-          <a-col :span="12">
-            <div class="bo-cf-field">
-              <label>{{ i18n "pages.clients.limitUp" }}</label>
-              <a-input v-model.trim="clientMembershipModal.limitUp"
-                placeholder='{{ i18n "pages.clients.limitInherit" }}'
-                addon-after="KB/s"></a-input>
-            </div>
-          </a-col>
-        </a-row>
-        <div class="bo-cf-hint">{{ i18n "pages.clients.limitSpeedDesc" }}</div>
-
-        <a-row :gutter="12" :style="{ marginTop: '14px' }">
-          <a-col :span="12">
-            <div class="bo-cf-field">
-              <label>{{ i18n "pages.clients.limitIp" }}</label>
-              <!-- The one field of the three that is NOT nullable. limitIp is a plain
-                   int column that predates the others, so 0 there already means
-                   inherit and there is no third state to express. -->
-              <a-input-number v-model="clientMembershipModal.client.limitIp" :min="0"
-                :style="{ width: '100%' }"></a-input-number>
-              <div class="bo-cf-hint">{{ i18n "pages.clients.limitIpDesc" }}</div>
-            </div>
-          </a-col>
-          <a-col :span="12">
-            <div class="bo-cf-field">
-              <label>{{ i18n "pages.clients.limitDevices" }}</label>
-              <a-input v-model.trim="clientMembershipModal.limitDevices"
-                placeholder='{{ i18n "pages.clients.limitInherit" }}'></a-input>
-              <div class="bo-cf-hint">{{ i18n "pages.clients.limitDevicesDesc" }}</div>
-            </div>
-          </a-col>
-        </a-row>
-
-        <!-- Said here rather than left for the operator to discover, because the
-             field accepts a number bigger than the inbound's and then quietly does
-             not honour it. It cannot: an account's tunnel addresses are laid out on
-             a uniform stride of the inbound's K, so a bigger block for one account
-             would run into the next account's addresses. -->
-        <a-alert type="warning" show-icon :style="{ marginTop: '10px' }"
-          message='{{ i18n "pages.clients.limitDevicesClamp" }}'></a-alert>
       </template>
     </div>
   </div>
@@ -393,16 +285,6 @@
     client: {},
     row: null,
     tab: 'identity',
-    // The three nullable overrides, held as STRINGS while the form is open.
-    //
-    // A string is what lets an empty box mean "inherit" and a typed 0 mean
-    // "unlimited". Held here rather than on `client` because `client` is serialised
-    // straight onto the posted entry, where these have to be a number or a null and
-    // never the empty string. postedLimit() below is the one place that conversion
-    // happens.
-    limitDown: '',
-    limitUp: '',
-    limitDevices: '',
     // A negative expiryTime means "N days from first use" and the clock has not
     // started, which is what this switch writes.
     delayedStart: false,
@@ -413,11 +295,6 @@
       { key: 'identity',    icon: 'user',    label: '{{ i18n "pages.clients.tabIdentity" }}' },
       { key: 'inbounds',    icon: 'cluster', label: '{{ i18n "pages.clients.inbounds" }}' },
       { key: 'credentials', icon: 'key',     label: '{{ i18n "pages.clients.credentials" }}' },
-      // Last because it is the one an operator opens deliberately. Every field in it
-      // is empty by default and empty means "whatever the inbound says", so an
-      // account created without ever visiting this tab behaves exactly as it did
-      // before the tab existed.
-      { key: 'limits',      icon: 'dashboard', label: '{{ i18n "pages.clients.tabLimits" }}' },
     ],
     // Entering the deadline as a date rather than a day count.
     pickDate: false,
@@ -470,38 +347,6 @@
       this.selected = e.target.checked ? this.assignable.map(i => i.inboundId) : [];
     },
 
-    // Every key this form ever binds, present from the moment `client` is assigned.
-    //
-    // This is not tidiness, it is the only way the Credentials tab works at all.
-    // Vue 2 walks an object ONCE, when it is assigned, and makes exactly the keys it
-    // finds reactive; a key added afterwards is an ordinary property that no render
-    // depends on. `client` used to be assigned with the nine identity keys and have
-    // its six credential keys bolted on a moment later by loadCredentialsFrom /
-    // seedCredentials, so every box on that tab was bound to a dead property:
-    //
-    //   - the regenerate button wrote a fresh value into the model and nothing
-    //     re-rendered, so the box kept showing the old one and the button read as
-    //     doing nothing at all;
-    //   - typing was worse. a-input is controlled here (v-model gives it a :value),
-    //     so on every keystroke it defers to the parent's value instead of its own
-    //     draft, and the parent's value is stale for exactly as long as the key is
-    //     non-reactive.
-    //
-    // v-model's own writes could not save it either: `client[f.key]` compiles to
-    // $set, and $set on a key the object ALREADY HAS is a plain assignment, so the
-    // key those two seeded stayed dead however hard it was typed into.
-    //
-    // Anything the form binds belongs here, including `security` (lifted off a vmess
-    // entry) and the ad tag pair, which had to be hand-seeded for this same reason.
-    blankClient() {
-      return {
-        email: '', enable: true, limitIp: 0, comment: '', subId: '', reset: 0,
-        tgId: 0, adtagEnable: false, adtag: '',
-        id: '', password: '', vpnUsername: '', auth: '', secret: '',
-        naiveUsername: '', security: '',
-      };
-    },
-
     show({ row = null, storedBy = {}, assignable = [], onDone = null }) {
       this.assignable = assignable;
       this.onDone = onDone;
@@ -515,11 +360,14 @@
       this.daysTouched = false;
       this.storedExpiry = row ? (Number(row.expiryTime) || 0) : 0;
       if (row) {
-        this.client = Object.assign(this.blankClient(), {
+        this.client = {
           email: row.email, enable: row.enable, limitIp: row.limitIp,
           comment: row.comment, subId: row.subId, reset: row.reset,
           tgId: row.tgId || 0,
-        });
+          // Initialize credential fields so Vue 2 makes them reactive
+          id: '', password: '', vpnUsername: '',
+          auth: '', secret: '', naiveUsername: '', security: '',
+        };
         this.delayedStart = row.expiryTime < 0;
         // The account's credentials as they are stored TODAY, read off its
         // memberships: whichever entry carries a field, carries the account's
@@ -534,46 +382,19 @@
           ? Math.max(0, Math.ceil((row.expiryTime - Date.now()) / 86400000))
           : (row.expiryTime < 0 ? Math.round(Math.abs(row.expiryTime) / 86400000) : 0);
         this.selected = (row.memberships || []).map(m => m.inboundId);
-        // null on the wire is what "inherits the inbound" looks like, and it has to
-        // come back as an EMPTY box rather than as a 0: 0 is a real value in two of
-        // these three fields and means unlimited. Number(null) is 0, so the null
-        // check cannot be skipped by leaning on the string conversion.
-        this.limitDown = this.storedLimit(row.speedLimitDown);
-        this.limitUp = this.storedLimit(row.speedLimitUp);
-        this.limitDevices = this.storedLimit(row.userLimitOverride);
       } else {
-        this.client = Object.assign(this.blankClient(), {
-          email: this.mint('email'), enable: true,
-        });
+        this.client = { email: this.mint('email'), enable: true, limitIp: 0,
+                        comment: '', subId: '', reset: 0, tgId: 0,
+                        // Initialize credential fields so Vue 2 makes them reactive
+                        id: '', password: '', vpnUsername: '',
+                        auth: '', secret: '', naiveUsername: '', security: '' };
         this.totalGb = 0;
         this.days = 0;
         this.delayedStart = false;
         this.selected = [];
         this.seedCredentials();
-        // A new account inherits everything, so the whole tab starts empty.
-        this.limitDown = '';
-        this.limitUp = '';
-        this.limitDevices = '';
       }
       this.visible = true;
-    },
-
-    // A stored override as the box shows it. Absent stays absent; anything else,
-    // including 0, is shown as a number the operator can see and clear.
-    storedLimit(v) {
-      return (v === null || v === undefined) ? '' : String(v);
-    },
-    // ...and the reverse, on the way to the server. An empty or blank box is null,
-    // which the Go side reads as "inherit"; anything that is not a number is also
-    // null rather than a NaN, because a NaN marshals to null anyway and doing it
-    // here keeps the posted entry legible. Negative values are refused server-side
-    // (validateClientLimits) rather than silently clamped, so they are passed
-    // through as typed and come back as a message the operator can act on.
-    postedLimit(v) {
-      const s = String(v === null || v === undefined ? '' : v).trim();
-      if (s === '') return null;
-      const n = Number(s);
-      return Number.isFinite(n) ? Math.trunc(n) : null;
     },
 
     // --- the summary rail -------------------------------------------------
@@ -687,14 +508,6 @@
     // web/service/inbound.go): the write is refused outright if that one is blank.
     // wg-c, awg, gre and mtproto are addressed by "id", which for them IS the
     // email, so they need nothing here and appear on no row.
-    //
-    // `mintIfBlank` is the other half of that: a field no protocol is ADDRESSED by,
-    // but which is still the only credential a ticked protocol has. mtproto's secret
-    // is the case. It cannot be listed as an identity without lying (a blank secret
-    // saves fine, the account is simply left out of the proxy config until the
-    // backend's reconcile sweep mints one), yet an operator who clears the box should
-    // get a fresh one on submit like every identity field does, rather than an
-    // account that is silently dark until the next sweep.
     credentialFields: [
       { key: 'id', label: '{{ i18n "pages.clients.uuid" }}',
         protocols: ['vmess', 'vless', 'tuic'], identity: ['vmess', 'vless', 'tuic'] },
@@ -709,25 +522,10 @@
       { key: 'auth', label: '{{ i18n "pages.clients.auth" }}',
         protocols: ['hysteria', 'hysteria2'], identity: ['hysteria', 'hysteria2'] },
       { key: 'secret', label: '{{ i18n "pages.clients.secret" }}',
-        protocols: ['mtproto'], identity: [], mintIfBlank: true },
+        protocols: ['mtproto'], identity: [] },
       { key: 'naiveUsername', label: '{{ i18n "pages.clients.naiveUsername" }}',
         protocols: ['naive'], identity: [] },
     ],
-
-    // The ad tag is credential-shaped and gated the same way, but it is not an entry
-    // in the list above: that loop draws one text box per entry and this is a switch
-    // plus an input, and seedCredentials and the mint-on-submit sweep both walk that
-    // list, neither of which is right here (a tag is issued by @MTProxybot, so there
-    // is nothing to generate, and blank is its correct resting state).
-    //
-    // So it is described here in the same shape and drawn by hand, and the GATE stays
-    // shared - fieldUsed reads this descriptor exactly like a row's, which is what
-    // keeps the block appearing and disappearing with mtproto the way Secret does.
-    // The template renders it INSIDE that loop all the same, on the secret's
-    // iteration, so it stays attached to the credential it rides on.
-    adtagField: { key: 'adtag', label: '{{ i18n "pages.xray.mtproto.adtag" }}',
-      protocols: ['mtproto'], identity: [] },
-    get adtagUsed() { return this.fieldUsed(this.adtagField); },
 
     // The protocols currently ticked, deduplicated.
     get selectedProtocols() {
@@ -748,11 +546,6 @@
     fieldRequired(field) {
       return this.selectedProtocols.some(p => field.identity.includes(p));
     },
-    // Whether submitting with this field blank should re-mint it: every identity
-    // field, plus the ones flagged mintIfBlank that a ticked protocol actually uses.
-    fieldMintedOnSubmit(field) {
-      return this.fieldRequired(field) || (field.mintIfBlank === true && this.fieldUsed(field));
-    },
     // The key length a ticked shadowsocks-2022 inbound demands, or 0.
     //
     // Only this family constrains the shared password: it must be base64 of
@@ -770,22 +563,6 @@
       return 0;
     },
 
-    // Whether a password is a legal user PSK for a 2022-blake3 cipher: base64 of
-    // exactly the key length. Mirrors validShadowsocksKey (web/service/account.go),
-    // which now REFUSES a write that fails it, so the form has to answer the same
-    // question before it posts one.
-    validSsKey(password, bytes) {
-      if (!bytes) return true;
-      const s = String(password || '');
-      // Base64 of n bytes is exactly ceil(n/3)*4 characters, so a length check
-      // catches the ordinary case before decoding, and atob throws on anything that
-      // is not base64 at all.
-      try {
-        return atob(s).length === bytes;
-      } catch (e) {
-        return false;
-      }
-    },
     mint(key) {
       switch (key) {
         case 'id': return RandomUtil.randomUUID();
@@ -799,12 +576,7 @@
         case 'vpnUsername': return RandomUtil.randomLowerAndNum(8);
         case 'auth': return RandomUtil.randomSeq(10);
         case 'secret': return RandomUtil.randomSeq(32, { type: 'hex' });
-        // A real generator, because the row carries a Regenerate button and a
-        // generator that returns "" makes that button CLEAR the box instead. Blank
-        // is still its correct resting state (naive falls back to the email), which
-        // is why seedCredentials skips this field: nothing fills it unless the
-        // operator asks for a value.
-        case 'naiveUsername': return RandomUtil.randomLowerAndNum(8);
+        case 'naiveUsername': return '';
         case 'subId': return RandomUtil.randomLowerAndNum(16);
         // The same generator the client form's own dice button has always used
         // (form/client.html), so a name made here is indistinguishable from one
@@ -813,13 +585,7 @@
         default: return '';
       }
     },
-    // Vue.set, not this.$set: this object is a plain literal handed to a Vue
-    // instance as data, so it has no $set of its own and the ternary that used to
-    // guard this call ALWAYS took its fallback branch. blankClient makes every key
-    // reactive up front, which is what actually fixes the button; the global setter
-    // is kept so a credential added to credentialFields later and forgotten there is
-    // merely a stale placeholder rather than a control that silently does nothing.
-    regenerate(key) { Vue.set(this.client, key, this.mint(key)); },
+    regenerate(key) { this.$set ? this.$set(this.client, key, this.mint(key)) : (this.client[key] = this.mint(key)); },
 
     // Lift the account's current credentials out of its stored entries. Each
     // protocol's entry carries only its own fields, so the whole set is assembled
@@ -827,95 +593,19 @@
     // the login name, and both name the same shared password.
     loadCredentialsFrom(row) {
       const c = this.client;
-      const stored = (m) => (this.storedBy && this.storedBy[m.inboundId]) || {};
-
-      // Pass one: the PROTOCOL-SHAPED field, which is what the daemon or the core
-      // actually authenticates on, so it wins wherever the two disagree.
       for (const m of (row.memberships || [])) {
-        const e = stored(m);
+        const e = (this.storedBy && this.storedBy[m.inboundId]) || {};
         const vpnLike = ['l2tp', 'pptp', 'openvpn', 'openconnect', 'sstp', 'ikev2', 'ssh']
           .includes(m.protocol);
-        const emailId = ['wg-c', 'awg', 'gre', 'mtproto', 'wireguard'].includes(m.protocol);
+        const emailId = ['wg-c', 'awg', 'gre', 'mtproto'].includes(m.protocol);
         if (e.id && vpnLike) c.vpnUsername = c.vpnUsername || e.id;
         else if (e.id && !emailId) c.id = c.id || e.id;
-        // A 2022-blake3 membership's password is NOT the account's. It is a PSK
-        // minted for that one membership, because the cipher demands base64 of an
-        // exact length and the account's single password is shared with trojan,
-        // anytls, naive, tuic and all seven credential VPNs.
-        //
-        // Adopting it here was destructive rather than merely wrong: the form
-        // carries the password it loaded onto EVERY entry it posts, and the server
-        // lifts it onto the account for any anchor that is not itself shadowsocks.
-        // Opening such an account and pressing Save with no edit at all logged out
-        // every other protocol on it, RADIUS included.
-        if (e.password && !this.strictBytesFor(m.inboundId)) {
-          c.password = c.password || e.password;
-        }
+        if (e.password) c.password = c.password || e.password;
         if (e.auth) c.auth = c.auth || e.auth;
         if (e.secret) c.secret = c.secret || e.secret;
         if (e.username) c.naiveUsername = c.naiveUsername || e.username;
         if (e.security) c.security = c.security || e.security;
-        // Only an mtproto entry carries a tag. First-wins like everything above, so
-        // an account on two mtproto inbounds shows the first tag it holds; the pair
-        // is read together because an enabled switch over a blank box means nothing.
-        if (m.protocol === 'mtproto' && !c.adtag) {
-          c.adtagEnable = !!e.adtagEnable;
-          c.adtag = e.adtag || '';
-        }
       }
-
-      // Pass two: the CARRIED keys, which this same form writes onto every entry it
-      // posts (entryFor) and which are the account's own columns verbatim.
-      //
-      // It refused to read back three of the keys it writes, and that lost customer
-      // credentials. An account holding a uuid with no CURRENT vmess/vless/tuic
-      // membership showed a blank uuid box; ticking a vless inbound then minted a
-      // fresh one on submit and the server lifted it onto the account, so every
-      // vless config already installed stopped authenticating. The server would have
-      // kept the stored one: it only ever fills blanks. Same shape for the VPN login
-      // name and the naive username.
-      for (const m of (row.memberships || [])) {
-        const e = stored(m);
-        if (e.uuid) c.id = c.id || e.uuid;
-        if (e.vpnUsername) c.vpnUsername = c.vpnUsername || e.vpnUsername;
-        if (e.naiveUsername) c.naiveUsername = c.naiveUsername || e.naiveUsername;
-        // Excluded here as well as in pass one, and there is no carried key that
-        // escapes it: entryFor posts the shared password under `password`, and the
-        // server then OVERWRITES that key on a 2022-blake3 membership with the PSK it
-        // minted for it (applyAccountCredential). So the stored entry's `password` on
-        // such an inbound is never the account's, whichever pass reads it.
-        if (e.password && !this.strictBytesFor(m.inboundId)) {
-          c.password = c.password || e.password;
-        }
-      }
-
-      // Pass three: the account's OWN columns, which the list reports for an account
-      // no inbound serves. Both passes above walk memberships, so for one of those
-      // they read nothing at all and every box would open blank - and a blank box is
-      // not harmless here: ticking an inbound mints a fresh credential on submit for
-      // any field that looks empty, and the server lifts it onto the account, so the
-      // configs the customer already has installed stop working the moment they are
-      // put back on an inbound. Last, and never overwriting, like the others.
-      const own = row.credentials || {};
-      c.id = c.id || own.uuid || '';
-      c.password = c.password || own.password || '';
-      c.vpnUsername = c.vpnUsername || own.vpnUsername || '';
-      c.auth = c.auth || own.auth || '';
-      c.secret = c.secret || own.secret || '';
-      c.naiveUsername = c.naiveUsername || own.naiveUsername || '';
-      c.security = c.security || own.security || '';
-    },
-
-    // The 2022-blake3 key length one ticked inbound demands, or 0. Keyed by inbound
-    // rather than over the whole set like strictSsBytes, which answers "does the
-    // password this form holds have to be in the strict shape".
-    strictBytesFor(inboundId) {
-      const ib = this.assignable.find(x => x.inboundId === inboundId);
-      if (!ib || ib.protocol !== 'shadowsocks') return 0;
-      const method = (ib.method || '').toLowerCase().trim();
-      if (method === '2022-blake3-aes-128-gcm') return 16;
-      if (method === '2022-blake3-aes-256-gcm' || method === '2022-blake3-chacha20-poly1305') return 32;
-      return 0;
     },
 
     // Fill every credential a new account could need, so the common case is one
@@ -924,18 +614,15 @@
     seedCredentials() {
       for (const f of this.credentialFields) {
         if (f.key === 'naiveUsername') continue;
-        if (!this.client[f.key]) Vue.set(this.client, f.key, this.mint(f.key));
+        if (!this.client[f.key]) this.client[f.key] = this.mint(f.key);
       }
-      if (!this.client.subId) Vue.set(this.client, 'subId', this.mint('subId'));
+      if (!this.client.subId) this.client.subId = this.mint('subId');
     },
 
     async ok() {
       const email = (this.client.email || '').trim();
       if (!email) return;
-      // NOT a check on the inbound count. An account is allowed to be on none: it
-      // keeps its credentials, its quota and its usage row and simply serves no
-      // traffic until an inbound is ticked, which is what the Inbounds tab says in
-      // place of this refusal. The server enforces who may leave one that way.
+      if (!this.selected.length) return;
       if (this.protocolClash) return;
 
       const ids = this.selected.slice().sort((a, b) => a - b);
@@ -943,38 +630,16 @@
       // vmess inbound on an account that has only ever been trojan - leaves that
       // field blank. Fill it rather than refuse: the server would mint one anyway
       // (ensureCredentialsFor), and a value minted here is at least visible in the
-      // form the next time the account is opened. The same applies to a credential
-      // the operator cleared by hand, which is what mintIfBlank covers.
+      // form the next time the account is opened.
       //
       // Deliberately NOT a dialog. This object is not a Vue instance, so it has no
       // $message, and the fallback that reached for window.alert() blocked the
       // whole renderer: in a headless browser nothing ever dismisses it and the
       // page stops responding entirely.
       for (const f of this.credentialFields) {
-        if (this.fieldMintedOnSubmit(f) && !(this.client[f.key] || '').trim()) {
-          Vue.set(this.client, f.key, this.mint(f.key));
+        if (this.fieldRequired(f) && !(this.client[f.key] || '').trim()) {
+          this.client[f.key] = this.mint(f.key);
         }
-      }
-      // And one field that has to be re-minted even when it is NOT blank.
-      //
-      // The password is seeded on open, before a single inbound has been ticked, so
-      // strictSsBytes is 0 at that moment and mint() produces ten alphanumeric
-      // characters. Tick a 2022-blake3 inbound afterwards and that password is not a
-      // key it can use: the cipher wants base64 of exactly 16 or 32 bytes. The sweep
-      // above cannot fix it, because the field is not blank.
-      //
-      // The result was an account created, listed and unable to connect, with the
-      // Credentials tab showing a password that never worked. Re-minting here rather
-      // than seeding lazily keeps the common case (open the form, everything is
-      // already filled in) exactly as it was.
-      //
-      // Only ever widens what the password can serve: every other protocol takes any
-      // string, so a key in the strict shape satisfies all of them at once. The bulk
-      // form does not need this - it builds its accounts after the picker, which is
-      // the ordering to copy if this form is ever rewritten.
-      const strict = this.strictSsBytes;
-      if (strict && !this.validSsKey(this.client.password, strict)) {
-        Vue.set(this.client, 'password', this.mint('password'));
       }
 
       this.confirmLoading = true;
@@ -1011,22 +676,10 @@
       const base = Object.assign({}, (this.storedBy && this.storedBy[inboundId]) || {}, {
         email,
         enable: c.enable !== false,
-        // The IP cap, edited on the Limits tab. Still a plain int rather than one of
-        // the three nullable overrides below: 0 already means "inherit the inbound"
-        // for this one (resolveIPLimit), so it has no third state to express and
-        // needs no null.
+        // Carried through, never edited here: the device cap belongs to the
+        // inbound (userLimit), and this form must not silently zero a value some
+        // other page set.
         limitIp: Number(c.limitIp) || 0,
-        // The three nullable overrides. ALWAYS posted, including as null.
-        //
-        // Posting them unconditionally is what makes clearing a box work. The
-        // accounts layer only overwrites a column when the key is MENTIONED on the
-        // posted entry (the presence guard in upsertAccountFromEntry, added after a
-        // partial POST silently wiped subId panel-wide), so omitting a cleared field
-        // would leave the old override in place and the box would spring back full
-        // on the next open.
-        speedLimitDown: this.postedLimit(this.limitDown),
-        speedLimitUp: this.postedLimit(this.limitUp),
-        userLimitOverride: this.postedLimit(this.limitDevices),
         comment: c.comment || '',
         subId: c.subId || '',
         reset: Number(c.reset) || 0,
@@ -1070,103 +723,23 @@
         case 'sstp': case 'ikev2': case 'ssh':
           return Object.assign(base, { id: c.vpnUsername, password: c.password });
         // Identity IS the email for these, so "id" carries it rather than a uuid.
-        // Xray-native wireguard joins them: a peer is authorised by its public key,
-        // so there is no credential to post and the server mints the key material
-        // per membership (web/service/wgxray.go).
-        case 'wg-c': case 'awg': case 'gre': case 'wireguard':
+        case 'wg-c': case 'awg': case 'gre':
           return Object.assign(base, { id: email });
-        // The ad tag rides the mtproto entry ONLY. It is not carried on every entry
-        // the way the credential columns above are, because nothing lifts it onto the
-        // account: no other protocol has the field, so a copy on a vless or trojan
-        // entry would be dead weight in that inbound's settings blob.
         case 'mtproto':
-          return Object.assign(base, { id: email, secret: c.secret,
-            adtagEnable: !!c.adtagEnable, adtag: (c.adtag || '').trim() });
+          return Object.assign(base, { id: email, secret: c.secret });
         default:
           return Object.assign(base, { id: c.id });
       }
-    },
-
-    // Write the ad tag onto the mtproto inbound when the main save could not reach it.
-    // Returns null when there was nothing to do, and the server's message otherwise.
-    //
-    // Every OTHER field this form edits is an account column: the server lifts it off
-    // whichever entry was posted and re-projects it onto every membership, so one
-    // write serves them all. The ad tag has no column. It is a per-client key inside
-    // the mtproto inbound's own settings blob, and the projection passes a key it does
-    // not own straight through, so the tag only ever changes on the inbound the write
-    // was ADDRESSED to.
-    //
-    // Which is not this one, most of the time. The addressed inbound is picked for
-    // unrelated reasons and must not be re-pointed at mtproto to suit this field: on
-    // ADD it is where the per-protocol admission guards run (the IP-pool capacity
-    // check, IKEv2's one-account PSK rule), and moving the address moves those guards
-    // off the inbound they exist to protect. So the tag gets its own call instead,
-    // after the first one has created the membership it is being written onto.
-    //
-    // Skipped entirely for an account whose mtproto inbound IS the addressed one,
-    // which is every single-inbound mtproto account: no extra request, and no second
-    // save of the same entry (each one restarts telemt and drops live connections).
-    async writeAdtag(email, ids, addressedInboundId) {
-      const ib = ids.map(id => this.assignable.find(x => x.inboundId === id))
-                    .find(x => x && x.protocol === 'mtproto');
-      if (!ib || ib.inboundId === addressedInboundId) return null;
-      // The stored entry's own identity where there is one: mtproto is addressed by
-      // "id", and nothing has ever forced that to equal the email (the server only
-      // defaults it to the email for a membership it is creating).
-      const m = ((this.row && this.row.memberships) || []).find(x => x.inboundId === ib.inboundId);
-      const client = this.entryFor('mtproto', email, ib.inboundId);
-      return await HttpUtil.post(
-        '/panel/api/inbounds/updateClient/' + encodeURIComponent((m && m.clientId) || email),
-        { id: ib.inboundId, inboundIds: ids, settings: JSON.stringify({ clients: [client] }) });
     },
 
     // A NEW account, addressed to the first inbound it will land on. The other
     // memberships are the server's to fill, and the credential columns it fills
     // them from are the ones this entry just carried.
     async saveNew(email, ids) {
-      if (!ids.length) return await this.saveAccount(email, ids);
       const first = this.assignable.find(x => x.inboundId === ids[0]);
       const client = this.entryFor(first ? first.protocol : '', email, ids[0]);
-      const msg = await HttpUtil.post('/panel/api/inbounds/addClient',
+      return await HttpUtil.post('/panel/api/inbounds/addClient',
         { id: ids[0], inboundIds: ids, settings: JSON.stringify({ clients: [client] }) });
-      if (!msg || !msg.success) return msg;
-      return (await this.writeAdtag(email, ids, ids[0])) || msg;
-    },
-
-    // The account written on its own, with no inbound addressing it.
-    //
-    // Every other write here is posted TO an inbound: addClient splices the entry
-    // into that inbound's settings and updateClient finds it there by the identity
-    // its protocol keys on. Neither can express an account that is on nothing -
-    // there is no blob to splice into and no protocol to have an identity in - so
-    // the two cases that have no anchor at all come here instead:
-    //
-    //   - a new account with nothing ticked;
-    //   - any edit of an account that is ALREADY on nothing, ticking inbounds
-    //     included. Re-attaching cannot go through addClient because the email is
-    //     taken, by the very account being re-attached.
-    //
-    // The entry is built with no protocol, so it carries the account's own columns
-    // and nothing protocol-shaped: the server keys the credentials to a protocol
-    // when a membership that needs one is created.
-    async saveAccount(email, ids) {
-      const client = this.entryFor('', email, ids[0] || 0);
-      const body = { settings: JSON.stringify({ clients: [client] }) };
-      if (ids.length) {
-        body.inboundIds = ids;
-      } else {
-        // Qs.stringify drops an empty array entirely, so "none" cannot be said with
-        // the list; the flag is what tells it apart from a request that simply did
-        // not mention memberships.
-        body.noInbounds = true;
-      }
-      const msg = await HttpUtil.post('/panel/api/inbounds/saveAccount', body);
-      if (!msg || !msg.success) return msg;
-      // The tag rides the mtproto entry itself and no account column holds it, so it
-      // still needs its own write once the membership exists. 0 is "no addressed
-      // inbound", which no membership can equal.
-      return (await this.writeAdtag(email, ids, 0)) || msg;
     },
 
     // The anchor also decides which stored entry the posted client is built from:
@@ -1175,35 +748,18 @@
     async saveEdit(email, ids) {
       const memberships = (this.row && this.row.memberships) || [];
       const anchor = memberships.find(m => ids.includes(m.inboundId)) || memberships[0];
-      // Nothing serves this account, so there is no entry anywhere for updateClient
-      // to match and no protocol to address it by. saveAccount is that case, and it
-      // is also how the inbounds now being ticked get attached.
-      if (!anchor) return await this.saveAccount(email, ids);
+      if (!anchor) return { success: false };
       const anchorIb = this.assignable.find(x => x.inboundId === anchor.inboundId);
       const client = this.entryFor(anchorIb ? anchorIb.protocol : anchor.protocol,
                                    email, anchor.inboundId);
 
-      const body = { id: anchor.inboundId, inboundIds: ids,
-                     settings: JSON.stringify({ clients: [client] }) };
-      // Unticking everything. The server force-includes the addressed inbound in the
-      // membership set otherwise (it is the one the modal was opened from), so the
-      // empty set has to be stated outright - and stating it is also what stops the
-      // fallback below running, which used to take the account off the anchor with a
-      // DELETE and destroy the client_traffics row carrying its whole usage history.
-      if (!ids.length) {
-        delete body.inboundIds;
-        body.noInbounds = true;
-      }
       const msg = await HttpUtil.post(
-        '/panel/api/inbounds/updateClient/' + encodeURIComponent(anchor.clientId || email), body);
+        '/panel/api/inbounds/updateClient/' + encodeURIComponent(anchor.clientId || email),
+        { id: anchor.inboundId, inboundIds: ids, settings: JSON.stringify({ clients: [client] }) });
       if (!msg || !msg.success) return msg;
 
-      const tagMsg = await this.writeAdtag(email, ids, anchor.inboundId);
-      if (tagMsg && !tagMsg.success) return tagMsg;
-
-      // Every current membership was kept, so nothing is left to drop. The empty set
-      // is in the same position: the write above already removed every one of them.
-      if (!ids.length || ids.includes(anchor.inboundId)) return msg;
+      // Every current membership was kept, so nothing is left to drop.
+      if (ids.includes(anchor.inboundId)) return msg;
       // Otherwise the anchor is the one inbound the update could not remove, and
       // it comes off on its own.
       return await HttpUtil.post(

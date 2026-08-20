@@ -66,40 +66,6 @@
         <div :style="{ marginBottom: '4px', color: '#888' }">IPsec pre-shared key</div>
         <a-input :value="peer.ipsecPsk" read-only @click="copy(peer.ipsecPsk)"></a-input>
       </a-form-item>
-
-      <!-- Another pro-ui panel dialling this inbound as a GRE OUTBOUND.
-
-           This is a different question from the two recipes below, which set up a
-           router. The far side here is a panel with thirteen labelled boxes, and
-           five of the values they need were computed by the server, returned in
-           this very payload, and rendered nowhere: the tunnel address needed its
-           mask, and the MTU, the FOU switch, the FOU port and the IKE identity
-           appeared only as digits buried inside the shell recipe, if at all.
-
-           Three more were shown under names the other form does not use, so even
-           the visible ones had to be guessed at: one value is called the gateway
-           here, the Remote Tunnel Address in the recipe and the Peer Tunnel Address
-           over there.
-
-           So this lists the far side's boxes, by ITS labels, in ITS order, each
-           with the value to paste or an explicit "leave blank". A box that must
-           stay empty is worth a row: blank is a decision here, not an omission. -->
-      <div class="gre-out">
-        <div class="gre-out-h">
-          <b>Point another pro-ui panel at this inbound</b>
-          <span>its Outbound form, box by box</span>
-        </div>
-        <div class="gre-out-row" v-for="f in greConfigModal.outboundFields(peer)" :key="f.label"
-          :class="{ 'gre-out-row--blank': !f.value }">
-          <div class="gre-out-k">[[ f.label ]]</div>
-          <div class="gre-out-v" v-if="f.value" @click="copy(f.value)">
-            <span>[[ f.value ]]</span>
-            <a-icon type="copy"></a-icon>
-          </div>
-          <div class="gre-out-v gre-out-v--none" v-else>[[ f.blank || 'leave blank' ]]</div>
-          <div class="gre-out-n" v-if="f.note">[[ f.note ]]</div>
-        </div>
-      </div>
       <!-- One section per platform rather than a single blob: the customer runs exactly one
            of them, and RouterOS syntax pasted into a shell (or the reverse) fails in ways
            that look like the tunnel is broken. -->
@@ -159,66 +125,6 @@
     },
     close() {
       greConfigModal.visible = false;
-    },
-
-    // The far side's Outbound form, box by box, in its order and under its labels
-    // (web/assets/js/model/outbound.js, the `gre` block, resolved through
-    // vpnLabel()). Every value here is already in the payload this modal fetched;
-    // what was missing was the translation between the two vocabularies.
-    outboundFields(peer) {
-      if (!peer) return [];
-      // The inbound stores IPsec and raw as two independent booleans and collapses
-      // them into a three-state string at render time; the outbound has one switch.
-      // "ipsec-or-raw" accepts either, so the honest instruction is "either works".
-      const ipsec = peer.mode === 'ipsec' || peer.mode === 'ipsec-or-raw';
-      const fou = (peer.fouPort || 0) > 0;
-      const rows = [
-        { label: 'Server Address', value: peer.serverIp,
-          note: 'this panel, as the far side reaches it' },
-        { label: 'Local Address', value: '',
-          blank: 'leave blank on a single-homed host',
-          note: 'the far side’s OWN outer address. It cannot be read off this '
-              + 'panel: paste the far side’s public address into the Peer IP box '
-              + 'of this account instead, or leave both blank and let this inbound '
-              + 'learn the peer from arriving traffic (raw GRE only, never under FOU).' },
-        // The mask is the fix, not decoration. The outbound's own placeholder
-        // teaches 10.11.0.2/30, the classic point-to-point pair, and this panel
-        // assigns a /32 out of the account's block: a /30 pasted there claims three
-        // addresses that belong to other accounts.
-        { label: 'Tunnel Address', value: peer.innerIp ? peer.innerIp + '/32' : '',
-          note: 'a /32 out of this account’s block, not a /30 pair' },
-        { label: 'Peer Tunnel Address', value: peer.gatewayIp,
-          note: 'shown as the gateway above; this inbound’s end of the tunnel' },
-        { label: 'TTL', value: '', blank: 'leave blank',
-          note: 'outer TTL is per-side and does not have to match' },
-        { label: 'MTU', value: peer.mtu ? String(peer.mtu) : '',
-          blank: 'leave blank, both sides derive the same value',
-          note: peer.mtu ? 'this inbound’s effective MTU' : '' },
-        { label: 'FOU Encapsulation', value: fou ? 'on' : '',
-          blank: 'off',
-          note: fou ? 'this peer slot is pinned and wrapped in UDP'
-                    : 'this inbound is not using FOU for this peer' },
-        { label: 'FOU Port', value: fou && peer.fouPort ? String(peer.fouPort) : '',
-          blank: fou ? '' : 'not applicable while FOU is off' },
-        { label: 'IPsec', value: ipsec ? 'on' : '',
-          blank: 'off',
-          note: peer.mode === 'ipsec-or-raw'
-            ? 'this inbound accepts either, so on or off both work'
-            : (ipsec ? 'required: bare GRE from this peer is dropped' : 'this inbound expects bare GRE') },
-        { label: 'IPsec Pre-Shared Key', value: ipsec ? (peer.ipsecPsk || '') : '',
-          blank: ipsec ? '' : 'not applicable while IPsec is off' },
-        // Load-bearing on a shared charon holding several PSKs: without it the far
-        // side cannot say which key this tunnel is meant to use.
-        { label: 'IPsec Remote ID', value: ipsec ? (peer.ipsecId || '') : '',
-          blank: ipsec ? '' : 'not applicable while IPsec is off',
-          note: ipsec ? 'the identity THIS panel presents' : '' },
-        { label: 'IPsec Local ID', value: '', blank: 'leave blank',
-          note: 'this inbound accepts any identity from the peer' },
-        { label: 'IKE Version', value: '', blank: 'Automatic',
-          note: 'this inbound answers IKEv1 or IKEv2' },
-      ];
-      // A row whose value AND explanation are both empty says nothing.
-      return rows.filter(r => r.value || r.blank);
     },
   };
 

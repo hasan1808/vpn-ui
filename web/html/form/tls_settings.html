@@ -96,28 +96,6 @@
     </a-form-item>
     <a-divider :style="{ margin: '3px 0' }"></a-divider>
     <template v-for="cert,index in inbound.stream.tls.certs">
-      <!--
-        THE CERTIFICATE PICKER, one per entry and directly above the entry it
-        fills. Inside the repeater rather than above it because an inbound can
-        carry several certificates, and a single picker at the top could only ever
-        drive the first one while appearing to speak for all of them.
-
-        It writes the STABLE managed paths (.../active/fullchain.pem), never a
-        version directory, so the choice survives every renewal without the inbound
-        being edited again. The list is gated to callers holding PermPanelSettings
-        (setting.go), so for anyone else it does not render and the plain path
-        inputs below are unchanged.
-      -->
-      <a-form-item v-if="sslCertChoices().length" label='{{ i18n "pages.inbounds.useManagedCert" }}'>
-        <a-select :value="sslCertSelected(index)" @change="v => applyManagedCert(index, v)"
-          :dropdown-class-name="themeSwitcher.currentTheme">
-          <a-select-option :value="''">{{ i18n "none" }}</a-select-option>
-          <a-select-option v-for="c in sslCertChoices()" :key="c.profile" :value="c.profile">
-            [[ c.label ]]<span v-if="c.expired"> &middot; {{ i18n "pages.settings.ssl.expired" }}</span><span
-              v-else-if="c.selfSigned"> &middot; {{ i18n "pages.settings.ssl.selfSigned" }}</span>
-          </a-select-option>
-        </a-select>
-      </a-form-item>
       <a-form-item label='{{ i18n "certificate" }}'>
         <a-radio-group v-model="cert.useFile" button-style="solid"
           :style="{ display: 'inline-flex', whiteSpace: 'nowrap', maxWidth: '100%' }">

@@ -53,10 +53,8 @@ class AllSetting {
         this.subClashURI = "";
         this.subJsonFragment = "";
         this.subJsonNoises = "";
-    this.subJsonMux = "";
-    this.subJsonRules = "";
-    this.subTemplate = "base64";
-    this.subCustomTemplate = "";
+        this.subJsonMux = "";
+        this.subJsonRules = "";
 
         this.timeLocation = "Local";
 
@@ -81,9 +79,6 @@ class AllSetting {
         this.ldapDefaultTotalGB = 0;
         this.ldapDefaultExpiryDays = 0;
         this.ldapDefaultLimitIP = 0;
-
-        // VPN tunnels: master switch for IPv6 on the tunnel links (L2TP/PPTP/OpenVPN).
-        this.enableVpnIpv6 = false;
 
         if (data == null) {
             return

@@ -7,15 +7,6 @@
                     <span v-if="!isMobile">{{ i18n
                         "pages.xray.outbound.addOutbound" }}</span>
                 </a-button>
-                <!-- Runs a reachability test for every testable outbound in
-                     sequence, updating each row's result as it completes. The
-                     same pass also runs automatically on page load and every
-                     60s. -->
-                <a-button icon="thunderbolt" @click="autoTestOutbounds()"
-                    :loading="autoTesting">
-                    <span v-if="!isMobile">{{ i18n
-                        "pages.xray.outbound.testAll" }}</span>
-                </a-button>
                 <a-button type="primary" icon="cloud"
                     @click="showWarp()">WARP</a-button>
                 <a-button type="primary" icon="api"
@@ -184,12 +175,6 @@
                         Failed
                     </a-tag>
                 </a-tooltip>
-                <!-- When was this result last obtained. Set on every fresh run
-                     and restored from the persisted status on page load, so a
-                     reload does not turn an old outcome into a current one. -->
-                <div class="ob-last" v-if="lastTestedAt(index)">
-                    <span class="ob-last-time">[[ lastTestedAt(index) ]]</span>
-                </div>
             </div>
             <span
                 v-else-if="outboundTestStates[index] && outboundTestStates[index].testing">

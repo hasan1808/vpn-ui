@@ -173,6 +173,7 @@
                 </template>
             </a-setting-list-item>
         </template>
+        <a-divider v-if="allSetting.acmeEnable" />
         <a-setting-list-item paddings="small">
             <template #title>{{ i18n "pages.settings.publicKeyPath"}}</template>
             <template #description>{{ i18n "pages.settings.publicKeyPathDesc"}}</template>
@@ -353,15 +354,6 @@
             <template #title>Default Limit IP</template>
             <template #control>
                 <a-input-number :min="0" v-model="allSetting.ldapDefaultLimitIP" :style="{ width: '100%' }"></a-input-number>
-            </template>
-        </a-setting-list-item>
-    </a-collapse-panel>
-    <a-collapse-panel key="7" header='{{ i18n "pages.settings.vpnIpv6" }}'>
-        <a-setting-list-item paddings="small">
-            <template #title>{{ i18n "pages.settings.vpnIpv6" }}</template>
-            <template #description>{{ i18n "pages.settings.vpnIpv6Desc" }}</template>
-            <template #control>
-                <a-switch v-model="allSetting.enableVpnIpv6"></a-switch>
             </template>
         </a-setting-list-item>
     </a-collapse-panel>

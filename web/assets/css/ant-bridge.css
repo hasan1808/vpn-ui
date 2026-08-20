@@ -426,27 +426,6 @@
   color:var(--text);
 }
 .ant-modal-content { border-radius:var(--radius-xl); box-shadow:var(--shadow-md); }
-/* A width prop is a wish, not a promise.
- *
- * :width="820" writes an inline width onto .ant-modal, and antd only rescues it
- * below 767px (its own max-width rule). Between there and ~880px the dialog is
- * simply wider than the window: the inbound form's rail hangs off the left edge,
- * where .ant-modal-wrap's horizontal scroll is the only way back to it. That is
- * the "on a smaller browser window some parts cannot be reached" report, and it
- * hits every panel modal wide enough to matter, not just that one.
- *
- * Capping it here rather than per dialog: a fixed pixel width can never be right
- * for a window narrower than itself, whichever modal set it. Wide screens are
- * untouched, since 820px is well inside 100vw - 16px there. */
-.ant-modal { max-width:calc(100vw - 16px); }
-/* And on a phone it starts at the top of the screen. antd's default 100px offset
-   is a desktop nicety: on a 640px-tall handset it spends a sixth of the window on
-   empty space above the dialog and pushes the footer - which is where Save is -
-   off the bottom. Dialogs that set their own `top` through :dialog-style are
-   untouched, since an inline style outranks this. */
-@media (max-width:640px) {
-  .ant-modal { top:8px; }
-}
 .ant-modal-header {
   border-bottom:1px solid var(--border);
   border-radius:var(--radius-xl) var(--radius-xl) 0 0;
@@ -511,14 +490,4 @@
 }
 :is(.bo-shell,.login-app,.ant-modal,.ant-drawer,.ant-select-dropdown,.ant-dropdown,.ant-popover) .bo-proto--vpn {
   background:var(--ok-weak); border-color:var(--ok); color:var(--ok);
-}
-/* An account served by NO inbound, in the column that otherwise holds one tag per
- * inbound serving it. Drawn as an empty outline rather than in a status hue,
- * because it belongs to the same family as the tags it stands in for and the rule
- * above holds: identity never wears warn or error. The dash is what separates
- * "nothing here, on purpose" from a protocol tag whose colour failed to load. The
- * account's own lamp, two columns left, is where the status reading lives. */
-:is(.bo-shell,.login-app,.ant-modal,.ant-drawer,.ant-select-dropdown,.ant-dropdown,.ant-popover) .bo-proto--none {
-  background:transparent; border-style:dashed; border-color:var(--border-strong);
-  color:var(--text-3);
 }

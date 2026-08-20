@@ -3,6 +3,7 @@ const Protocols = {
     VLESS: 'vless',
     TROJAN: 'trojan',
     SHADOWSOCKS: 'shadowsocks',
+    SOCKS: 'socks',
     WIREGUARD: 'wireguard',
     HYSTERIA: 'hysteria',
     ANYTLS: 'anytls',
@@ -33,18 +34,6 @@ const Protocols = {
 // how it drifted last time: openconnect/sstp/ikev2 were added to the browser's list
 // and not to the backend's, so an edit was keyed on the password while the server
 // looked the account up by id, and every edit came back "empty client ID".
-// The protocols whose customer types a username AND a password into their client,
-// rather than importing a link. On all seven the entry's `id` holds the LOGIN NAME
-// (applyAccountCredential writes account.VpnUsername there) and `password` holds the
-// password, so neither field means what it means on an Xray-native protocol.
-//
-// Kept beside getClientIdentity because it answers the neighbouring question: that
-// one says what a protocol is ADDRESSED by, this one says what its customer is given.
-const CLIENT_USERPASS_PROTOCOLS = [
-    Protocols.L2TP, Protocols.PPTP, Protocols.OPENVPN, Protocols.OPENCONNECT,
-    Protocols.SSTP, Protocols.IKEV2, Protocols.SSH,
-];
-
 function getClientIdentity(protocol, client) {
     switch (protocol) {
         // Username+password VPN protocols: the password is the key, because the
@@ -94,6 +83,7 @@ const ProtocolLabels = {
     vless: 'VLESS',
     trojan: 'Trojan',
     shadowsocks: 'Shadowsocks',
+    socks: 'SOCKS',
     wireguard: 'WireGuard (Xray)',
     hysteria: 'Hysteria',
     anytls: 'AnyTLS',
@@ -2218,7 +2208,6 @@ class Inbound extends XrayCommonClass {
             case Protocols.GRE: return this.settings.greUsers;
             case Protocols.MTPROTO: return this.settings.mtprotoUsers;
             case Protocols.SSH: return this.settings.sshUsers;
-            case Protocols.WIREGUARD: return this.settings.wgClients;
             default: return null;
         }
     }
@@ -2399,17 +2388,12 @@ class Inbound extends XrayCommonClass {
         return false;
     }
 
-    // Vision seed applies only when vision flow is selected.
-    //
-    // Asks the INBOUND, not the clients. flow used to be a per-client field and this
-    // read "does some client have one", which stopped being answerable once the
-    // clients moved to the Clients page: an inbound whose accounts were all added
-    // there carried no flow anywhere, so the seed silently stopped being emitted for
-    // an inbound that was plainly using vision.
+    // Vision seed applies only when vision flow is selected
     canEnableVisionSeed() {
         if (!this.canEnableTlsFlow()) return false;
-        const flow = this.settings?.flow;
-        return flow === TLS_FLOW_CONTROL.VISION || flow === TLS_FLOW_CONTROL.VISION_UDP443;
+        const clients = this.settings?.vlesses;
+        if (!Array.isArray(clients)) return false;
+        return clients.some(c => c?.flow === TLS_FLOW_CONTROL.VISION || c?.flow === TLS_FLOW_CONTROL.VISION_UDP443);
     }
 
     // AnyTLS belongs here and naive/tuic do not: REALITY is transport-layer, so it
@@ -3061,16 +3045,15 @@ class Inbound extends XrayCommonClass {
         let email = client ? client.email : '';
         let addr = !ObjectUtil.isEmpty(this.listen) && this.listen !== "0.0.0.0" ? this.listen : location.hostname;
         let port = this.port;
-        // MTProto: one link per mode the INBOUND accepts, so an account yields several.
-        // The same 16-byte secret is reused across modes (only the prefix differs), so a
-        // disabled mode must not be offered here, the proxy would refuse it
+        // MTProto: one link per mode the ACCOUNT has enabled, not one per inbound.
+        // The same 16-byte secret is reused across modes (only the prefix differs),
+        // so a disabled mode must not be offered here, the proxy would refuse it
         // ([access.user_modes]) and the user would be handed a link that cannot work.
-        // The settings have to be passed in because that is where the modes and the
-        // FakeTLS domain live; External Proxy endpoints are per-ACCOUNT, so they are
-        // applied inside links() rather than from this.stream.externalProxy.
+        // External Proxy endpoints are per-account too, so they are applied inside
+        // links() rather than from this.stream.externalProxy.
         if (this.protocol === Protocols.MTPROTO) {
             if (!client || typeof client.links !== 'function') return result;
-            return client.links(addr, port, this.settings).map(l => ({
+            return client.links(addr, port).map(l => ({
                 remark: [remark, email, l.label].filter(x => x && x.length > 0).join(remarkModel.charAt(0)),
                 link: l.link,
             }));
@@ -3135,7 +3118,7 @@ class Inbound extends XrayCommonClass {
         if (Inbound.protocolRequiresTls(json.protocol) && stream.security !== 'tls') {
             stream.security = 'tls';
         }
-        const inbound = new Inbound(
+        return new Inbound(
             json.port,
             json.listen,
             json.protocol,
@@ -3144,32 +3127,7 @@ class Inbound extends XrayCommonClass {
             json.tag,
             Sniffing.fromJson(json.sniffing),
             json.clientStats
-        );
-        // The second case where rewriting on load is right, and for the same reason:
-        // the form has no control that could describe or undo this state.
-        //
-        // VLESSSettings.fromJson LIFTS a legacy per-client flow up to the inbound when
-        // settings.flow is absent, which is what carries an existing vision inbound
-        // through this change. But it sees only the settings blob, so it cannot ask
-        // whether the TRANSPORT supports flow, and canEnableTlsFlow needs the stream -
-        // which does not exist until here.
-        //
-        // Left ungated, a legacy VLESS inbound on ws or grpc whose clients carried a
-        // stray flow has it promoted to the inbound and then MIRRORED ONTO EVERY
-        // CLIENT on the next save. That turns one broken client into all of them, and
-        // it is unfixable from the form: the picker is hidden while canEnableTlsFlow
-        // is false, and the wipe handlers only fire on a security or network CHANGE,
-        // so opening the inbound and saving it without touching either preserves the
-        // value. The core validates the flow STRING and not the transport it rides on,
-        // so nothing downstream refuses it either - the accounts simply connect and
-        // then stall, with nothing in any log naming the reason.
-        //
-        // Clearing is the whole fix, and it is not lossy: flow on a transport that
-        // cannot carry it was never doing anything.
-        if (json.protocol === Protocols.VLESS && inbound.settings && !inbound.canEnableTlsFlow()) {
-            inbound.settings.flow = '';
-        }
-        return inbound;
+        )
     }
 
     toJson() {
@@ -3425,7 +3383,6 @@ Inbound.VLESSSettings = class extends Inbound.Settings {
         fallbacks = [],
         selectedAuth = undefined,
         testseed = [900, 500, 900, 256],
-        flow = '',
     ) {
         super(protocol);
         this.vlesses = vlesses;
@@ -3434,15 +3391,6 @@ Inbound.VLESSSettings = class extends Inbound.Settings {
         this.fallbacks = fallbacks;
         this.selectedAuth = selectedAuth;
         this.testseed = testseed;
-        // flow belongs to the INBOUND and applies to every account served on it.
-        // xray-core reads settings.flow as the default for a client that carries
-        // none, so this alone would steer the data plane, but toJson() mirrors it
-        // onto every client anyway: all four share-link generators (this file's
-        // genLink, sub/subService.go, sub/subJsonService.go, sub/subClashService.go)
-        // read the per-client field, and an inbound-only value would drop "flow="
-        // from every link while the tunnel itself kept working, which presents as
-        // vision clients that connect and then stall.
-        this.flow = flow;
     }
 
     addFallback() {
@@ -3460,39 +3408,14 @@ Inbound.VLESSSettings = class extends Inbound.Settings {
             testseed = json.testseed;
         }
 
-        const clients = (json.clients || []).map(client => Inbound.VLESSSettings.VLESS.fromJson(client));
-
-        // An inbound saved by an earlier build has no settings.flow and carries the
-        // value on its clients instead, so the first client that has one is lifted
-        // into the inbound field. Without the lift, opening such an inbound would
-        // show flow as None and the very next save would mirror that None over every
-        // client, quietly turning vision off on a working REALITY inbound.
-        //
-        // The udp443 spelling folds down to plain vision on the way up. xray-core
-        // accepts only "" and "xtls-rprx-vision" for settings.flow, and a value it
-        // refuses THERE refuses the whole config rather than one client, which is a
-        // panel-wide outage; web/service/xray.go already folds the same spelling for
-        // client entries, so this only moves that rule one level up.
-        let flow = typeof json.flow === 'string' ? json.flow : '';
-        if (flow === '') {
-            const carried = clients.find(client => client.flow);
-            if (carried) {
-                flow = carried.flow;
-            }
-        }
-        if (flow === TLS_FLOW_CONTROL.VISION_UDP443) {
-            flow = TLS_FLOW_CONTROL.VISION;
-        }
-
         const obj = new Inbound.VLESSSettings(
             Protocols.VLESS,
-            clients,
+            (json.clients || []).map(client => Inbound.VLESSSettings.VLESS.fromJson(client)),
             json.decryption,
             json.encryption,
             Inbound.VLESSSettings.Fallback.fromJson(json.fallbacks || []),
             json.selectedAuth,
-            testseed,
-            flow
+            testseed
         );
         return obj;
     }
@@ -3518,26 +3441,9 @@ Inbound.VLESSSettings = class extends Inbound.Settings {
             json.selectedAuth = this.selectedAuth;
         }
 
-        // The inbound-level default, plus a copy on every client. The copy is what
-        // keeps the share links right (they all read the per-client field) and what
-        // lets a rollback to a build that never knew about settings.flow still find
-        // the value where it expects it. It also means the panel and the core agree
-        // instead of relying on the core's own empty-client fallback.
-        //
-        // The mirror is unconditional, including the empty string, because clearing
-        // flow on the inbound has to actually clear it: writing only non-empty values
-        // would leave every client holding the vision they were last saved with and
-        // make the picker look ignored.
-        if (this.flow) {
-            json.flow = this.flow;
-        }
-        json.clients.forEach(client => {
-            client.flow = this.flow || '';
-        });
-
-        // Only include testseed when the inbound is actually using a flow. Asking the
-        // inbound rather than the clients for the same reason canEnableVisionSeed does.
-        if (this.flow && this.testseed && this.testseed.length >= 4) {
+        // Only include testseed if at least one client has a flow set
+        const hasFlow = this.vlesses && this.vlesses.some(vless => vless.flow && vless.flow !== '');
+        if (hasFlow && this.testseed && this.testseed.length >= 4) {
             json.testseed = this.testseed;
         }
 
@@ -4081,46 +3987,11 @@ Inbound.NaiveSettings.Naive = class extends Inbound.ClientBase {
     }
 };
 
-// sharedL2tpIpsecPsk is the IPsec key a NEW l2tp inbound starts with: the one an enabled
-// l2tp inbound already has, and only a fresh random key when there is none. The Go twin
-// is sharedL2tpIpsecPsk() in web/service/sharedconfig.go, which fills the same default
-// for an API caller who omits the field.
-//
-// Minting a random key here was a guaranteed dead end, not a risk of one. The server
-// refuses two different keys on one IKE listen address (IKEv1 Main Mode picks the key
-// from the IP addresses before the client has said who it is, so nothing else can tell
-// two inbounds apart), and a new inbound listens on every address, so creating or
-// cloning a second l2tp inbound always failed to save until the operator went and
-// hand-copied the first one's key.
-//
-// It inherits regardless of what the Listen field says, matching the server's own
-// default. An operator who wants a genuinely separate key gives the inbound its own
-// listen address and then changes the key, which the server now accepts.
-//
-// Reads the inbound list off the page (`app` on the Inbounds page). No fetch: this runs
-// inside a constructor, so it has to answer synchronously, and every value it needs is
-// already loaded. Anywhere the list is absent it simply mints, as before.
-Inbound.sharedL2tpIpsecPsk = function () {
-  const rows =
-    typeof app !== "undefined" && app && Array.isArray(app.dbInbounds) ? app.dbInbounds : [];
-  for (const row of rows) {
-    if (row.protocol !== Protocols.L2TP || !row.enable) continue;
-    let settings;
-    try {
-      settings = JSON.parse(row.settings);
-    } catch (e) {
-      continue;
-    }
-    if (settings && settings.ipsecEnable && settings.ipsecPsk) return settings.ipsecPsk;
-  }
-  return RandomUtil.randomSeq(16);
-};
-
 Inbound.L2tpSettings = class extends Inbound.Settings {
   constructor(
     protocol,
     ipsecEnable = true,
-    ipsecPsk = Inbound.sharedL2tpIpsecPsk(),
+    ipsecPsk = RandomUtil.randomSeq(16),
     allowRaw = false,
     clientToClient = false,
     crossInbound = false,
@@ -4128,7 +3999,7 @@ Inbound.L2tpSettings = class extends Inbound.Settings {
     dns1 = "8.8.8.8",
     dns2 = "8.8.4.4",
     mtu = 1400,
-    userLimit = 10,
+    userLimit = 1,
     userLimitStrategy = "accept",
     l2tpUsers = [new Inbound.L2tpSettings.L2tpUser()],
     externalProxy = [],
@@ -4317,7 +4188,7 @@ Inbound.PptpSettings = class extends Inbound.Settings {
     dns1 = "8.8.8.8",
     dns2 = "8.8.4.4",
     mtu = 1400,
-    userLimit = 10,
+    userLimit = 1,
     userLimitStrategy = "accept",
     pptpUsers = [new Inbound.PptpSettings.PptpUser()],
     externalProxy = [],
@@ -4509,7 +4380,7 @@ Inbound.OpenvpnSettings = class extends Inbound.Settings {
     clientToClient = false,
     crossInbound = false,
     ipRanges = [],
-    userLimit = 10,
+    userLimit = 1,
     userLimitStrategy = "accept",
     separatePorts = false,
     tlsUseFile = false,
@@ -4517,16 +4388,13 @@ Inbound.OpenvpnSettings = class extends Inbound.Settings {
     serverCertFile = "",
     serverKeyFile = "",
     tlsCryptFile = "",
-    tlsCryptEnable = true,
-    friendlyName = "",
   ) {
     super(protocol);
     this.udpEnable = udpEnable;
     this.tcpEnable = tcpEnable;
     this.tcpPort = tcpPort;
     // TCP + UDP share one port by default (both can bind the same number); flip
-    // this to give TCP its own tcpPort. Only in the separate mode does either
-    // transport carry an enable switch - see the port block in form/inbound.html.
+    // this to give TCP its own tcpPort.
     this.separatePorts = separatePorts;
     // TLS cert source, mirroring the Xray model: inline content (default) or file
     // paths. Path mode points OpenVPN at existing cert files instead of the
@@ -4536,13 +4404,6 @@ Inbound.OpenvpnSettings = class extends Inbound.Settings {
     this.serverCertFile = serverCertFile;
     this.serverKeyFile = serverKeyFile;
     this.tlsCryptFile = tlsCryptFile;
-    // tls-crypt wraps the control channel in a pre-shared key. OpenVPN runs fine
-    // without it, so it is optional; on by default because that is what every
-    // inbound created before the toggle does.
-    this.tlsCryptEnable = tlsCryptEnable;
-    // Profile name written into the exported .ovpn as `setenv FRIENDLY_NAME`,
-    // which is what OpenVPN Connect lists the imported profile under.
-    this.friendlyName = friendlyName;
     this.dns1 = dns1;
     this.dns2 = dns2;
     this.mtu = mtu;
@@ -4599,8 +4460,6 @@ Inbound.OpenvpnSettings = class extends Inbound.Settings {
       json.serverCertFile ?? "",
       json.serverKeyFile ?? "",
       json.tlsCryptFile ?? "",
-      json.tlsCryptEnable ?? true,
-      json.friendlyName ?? "",
     );
   }
 
@@ -4615,8 +4474,6 @@ Inbound.OpenvpnSettings = class extends Inbound.Settings {
       serverCertFile: this.serverCertFile,
       serverKeyFile: this.serverKeyFile,
       tlsCryptFile: this.tlsCryptFile,
-      tlsCryptEnable: this.tlsCryptEnable,
-      friendlyName: this.friendlyName,
       dns1: this.dns1,
       dns2: this.dns2,
       mtu: this.mtu,
@@ -4837,7 +4694,7 @@ Inbound.OcservSettings = class extends Inbound.Settings {
     clientToClient = false,
     crossInbound = false,
     ipRanges = [],
-    userLimit = 10,
+    userLimit = 1,
     userLimitStrategy = "accept",
   ) {
     super(protocol);
@@ -5030,12 +4887,7 @@ Inbound.SstpSettings = class extends Inbound.Settings {
     protocol,
     dns1 = "8.8.8.8",
     dns2 = "8.8.4.4",
-    // 1400, not OpenConnect's 1420: SSTP is PPP inside a 4-byte SSTP header
-    // inside TLS inside TCP, so a 1500 byte path pays 20 (IP) + 20 (TCP) + 5
-    // (TLS record) + 16 (IV) + 32 (MAC) + 4 (SSTP) + 4 (PPP) and lands just
-    // under 1400. It is also the number sstp.go already falls back to when no
-    // MTU is set, which the old 1420 made unreachable by always posting one.
-    mtu = 1400,
+    mtu = 1420,
     tlsUseFile = false,
     certificateFile = "",
     keyFile = "",
@@ -5047,7 +4899,7 @@ Inbound.SstpSettings = class extends Inbound.Settings {
     clientToClient = false,
     crossInbound = false,
     ipRanges = [],
-    userLimit = 10,
+    userLimit = 1,
     userLimitStrategy = "accept",
   ) {
     super(protocol);
@@ -5077,7 +4929,7 @@ Inbound.SstpSettings = class extends Inbound.Settings {
       Protocols.SSTP,
       json.dns1 ?? "8.8.8.8",
       json.dns2 ?? "8.8.4.4",
-      json.mtu ?? 1400,
+      json.mtu ?? 1420,
       json.tlsUseFile ?? false,
       json.certificateFile ?? "",
       json.keyFile ?? "",
@@ -5241,12 +5093,7 @@ Inbound.Ikev2Settings = class extends Inbound.Settings {
     protocol,
     dns1 = "8.8.8.8",
     dns2 = "8.8.4.4",
-    // 1400, not the WireGuard 1420 this used to carry. An IKEv2 client in the
-    // field is behind a NAT, so its ESP rides inside UDP and costs 73-100 bytes
-    // on a 1500 byte path. The panel's own IKEv2 OUTBOUND driver has always used
-    // 1400 for the same reason. It is enforced as a TCP MSS clamp in nftables:
-    // IKEv2 cannot push an MTU to a client, so nothing else could apply it.
-    mtu = 1400,
+    mtu = 1420,
     authMode = "eap-mschapv2",
     psk = "",
     serverAddr = "",
@@ -5262,7 +5109,7 @@ Inbound.Ikev2Settings = class extends Inbound.Settings {
     clientToClient = false,
     crossInbound = false,
     ipRanges = [],
-    userLimit = 10,
+    userLimit = 1,
     userLimitStrategy = "accept",
   ) {
     super(protocol);
@@ -5298,7 +5145,7 @@ Inbound.Ikev2Settings = class extends Inbound.Settings {
       Protocols.IKEV2,
       json.dns1 ?? "8.8.8.8",
       json.dns2 ?? "8.8.4.4",
-      json.mtu ?? 1400,
+      json.mtu ?? 1420,
       json.authMode ?? "eap-mschapv2",
       json.psk ?? "",
       json.serverAddr ?? "",
@@ -5479,7 +5326,7 @@ Inbound.WgcSettings = class extends Inbound.Settings {
     clientToClient = false,
     crossInbound = false,
     ipRanges = [],
-    userLimit = 10,
+    userLimit = 1,
     userLimitStrategy = "accept",
     externalProxy = [],
   ) {
@@ -5712,11 +5559,11 @@ Inbound.AwgSettings = class extends Inbound.Settings {
     crossInbound = false,
     ipRanges = [],
     // User Limit K = how many DEVICES an account gets, and the panel provisions one
-    // keypair + one config + one /32 per device. 10 is the default because 0 means the
+    // keypair + one config + one /32 per device. 1 is the default because 0 means the
     // maximum (64), which under that rule would mint 64 keypairs and render 64 configs
     // for every account, and would fit only ~3 accounts per /24. Raise it to the number
     // of devices the account should actually run.
-    userLimit = 10,
+    userLimit = 1,
     userLimitStrategy = "accept",
     externalProxy = [],
   ) {
@@ -5981,7 +5828,7 @@ Inbound.GreSettings = class extends Inbound.Settings {
     // K consecutive inner addresses (one per peer). The cap is structural: only K
     // addresses exist, so there is nothing to enforce at connect time. GRE has no session
     // and no auth event, so a runtime limit could not be enforced anyway.
-    userLimit = 10,
+    userLimit = 1,
     // Kept for parity with the shared form; GRE enforces K structurally, so there is no
     // "evict the oldest" admission decision to make.
     userLimitStrategy = "accept",
@@ -6202,165 +6049,45 @@ function greSetPeerField(client, i, field, value) {
   Vue.set(client.peers, i, next);
 }
 
-// Shown when the inbound form refuses to turn off the LAST connection mode.
-// Not merely advisory: with every mode off, no secret can dial the proxy, and the
-// backend refuses to start telemt on such an inbound rather than write per-account
-// mode entries that are EMPTY, which its patched reader takes for "unrestricted":
-// the exact opposite of what was asked.
-const MTPROTO_LAST_MODE_WARNING =
-  "At least one connection mode must stay enabled: an inbound with none has no usable link.";
-
 // MTProto Proxy (Telegram) inbound settings.
 //
 // Unlike every other VPN protocol here there is NO addressing block: MTProto is a
 // userspace relay, so clients keep their own IP and the backend assigns nothing.
 // Hence no ipRanges/dns/mtu/localIp, just which connection modes this inbound
-// honours, the FakeTLS domain and the per-account device cap.
-//
-// All three are the INBOUND's, not the account's, because the proxy applies them
-// that way: the FakeTLS domain is process-wide and the listener's mode set bounds
-// every account regardless. The secret, the link endpoints (externalProxy) and the
-// ad tag are per-account and live on MtprotoUser below.
+// honours, the FakeTLS domain, the device cap, and the optional ad tag.
 //
 // userLimitStrategy is deliberately absent: the proxy enforces the device cap
 // itself by refusing the excess connection, so there is no "evict the oldest"
 // choice to make (the panel never sees the admission).
+// Shown when the client form refuses to turn off an account's LAST connection mode.
+// Not merely advisory: with every mode off, no secret can dial the account, so the
+// backend drops it from the proxy config (activeClients) rather than render an entry
+// telemt would read as "unrestricted": the exact opposite of what was asked.
+const MTPROTO_LAST_MODE_WARNING =
+  "At least one connection mode must stay enabled: an account with none has no usable link.";
+
 Inbound.MtprotoSettings = class extends Inbound.Settings {
   constructor(
     protocol,
-    modeClassic = true,
-    modeSecure = true,
-    modeTls = true,
-    tlsDomain = "www.google.com",
-    userLimit = 10,
     mtprotoUsers = [new Inbound.MtprotoSettings.MtprotoUser()],
-    externalProxy = [],
   ) {
     super(protocol);
-    this.modeClassic = modeClassic;
-    this.modeSecure = modeSecure;
-    this.modeTls = modeTls;
-    this.tlsDomain = tlsDomain;
-    this.userLimit = userLimit;
+    // The inbound owns nothing but its port: modes, FakeTLS domain, User Limit,
+    // ad tag and external proxy are all per-account, because the proxy keys them
+    // off the authenticated secret rather than the socket.
     this.mtprotoUsers = mtprotoUsers;
-    // The inbound-wide link endpoints, used by every account that names none of its
-    // own. An account's own list replaces this one rather than extending it.
-    this.externalProxy = externalProxy;
-  }
-
-  // Whether ANY account on this inbound carries an ad tag, which is the condition
-  // the routing warning is drawn on. Any, not each: the middle-proxy path a tag
-  // needs is a process switch, so one tagged account takes Xray routing away from
-  // every account here (the backend's MtprotoService.anyAdtag asks the same question).
-  anyAdtag() {
-    return (this.mtprotoUsers || []).some(
-      (c) => c && c.adtagEnable && (c.adtag || "").trim() !== "",
-    );
-  }
-
-  // Which modes this inbound actually accepts, in the order the links are offered.
-  // The same set the backend writes into [general.modes] and, per account, into
-  // [access.user_modes], so a disabled mode is never handed out as a working link.
-  enabledModes() {
-    const out = [];
-    if (this.modeClassic) out.push("classic");
-    if (this.modeSecure) out.push("secure");
-    if (this.modeTls) out.push("tls");
-    return out;
-  }
-
-  // The pre-move shape resolved into this one: an inbound stored before these moved off
-  // the clients carries none of them at the root and its policy is on its accounts.
-  //
-  // Mirrors deriveMtprotoPolicy in web/service/mtproto.go and must keep agreeing with it
-  // (union of the accounts' modes, the first FakeTLS account's domain, the LARGEST
-  // device cap, and the fresh-inbound defaults when there is nothing to preserve). The
-  // shape test is key PRESENCE, and joint absence of all three modes, exactly as over
-  // there: an explicit false is an operator's choice, not an absence.
-  static legacyPolicy(json = {}) {
-    if (
-      json.modeClassic !== undefined ||
-      json.modeSecure !== undefined ||
-      json.modeTls !== undefined
-    ) {
-      // Current shape. A key still missing from it is a hand-written body, not a legacy
-      // inbound, so it keeps the fresh-inbound value it has always been given.
-      return {
-        modeClassic: true,
-        modeSecure: true,
-        modeTls: true,
-        tlsDomain: "www.google.com",
-        userLimit: 10,
-      };
-    }
-    const clients = Array.isArray(json.clients) ? json.clients : [];
-    // The device cap as the backend resolves it: absent means one device, an explicit 0
-    // means no limit (16 there, noLimitDevices), anything else is clamped to 1..64. The
-    // comparison runs on that effective number because the raw ones are not on one
-    // scale; the WINNER's raw value is what gets stored.
-    const effective = (v) => {
-      if (v === undefined || v === null) return 1;
-      if (v === 0) return 16;
-      return Math.min(Math.max(v, 1), 64);
-    };
-    const out = { modeClassic: false, modeSecure: false, modeTls: false, tlsDomain: "", userLimit: null };
-    let capEff = -1;
-    for (const c of clients) {
-      if (!c) continue;
-      out.modeClassic = out.modeClassic || !!c.modeClassic;
-      out.modeSecure = out.modeSecure || !!c.modeSecure;
-      out.modeTls = out.modeTls || !!c.modeTls;
-      if (!out.tlsDomain && c.modeTls && (c.tlsDomain || "").trim() !== "") {
-        out.tlsDomain = c.tlsDomain.trim();
-      }
-      const eff = effective(c.userLimit);
-      if (eff > capEff) {
-        capEff = eff;
-        out.userLimit = c.userLimit ?? null;
-      }
-    }
-    if (!out.modeClassic && !out.modeSecure && !out.modeTls) {
-      out.modeClassic = out.modeSecure = out.modeTls = true;
-    }
-    if (out.userLimit === null) {
-      // No accounts at all is a fresh inbound (ten devices); accounts that all predate
-      // the field each meant one device, so an explicit 1 keeps the cap where it was.
-      out.userLimit = clients.length === 0 ? 10 : 1;
-    }
-    if (!out.tlsDomain) out.tlsDomain = "www.google.com";
-    return out;
   }
 
   static fromJson(json = {}) {
-    // Resolved from the accounts rather than defaulted, because this form POSTS BACK
-    // what it read: falling back to the fresh-inbound values here would widen an
-    // operator's narrower set to all three modes and the ten-device default the first
-    // time anyone opened an un-migrated inbound and pressed Save, with nothing left to
-    // recover it from. The backend's startup pass (LiftClientSettingsToInbound) resolves
-    // it the same way, so this only covers the window before that lands.
-    const legacy = Inbound.MtprotoSettings.legacyPolicy(json);
     return new Inbound.MtprotoSettings(
       Protocols.MTPROTO,
-      // ?? and not ||, so an operator's explicit false survives the round-trip.
-      json.modeClassic ?? legacy.modeClassic,
-      json.modeSecure ?? legacy.modeSecure,
-      json.modeTls ?? legacy.modeTls,
-      json.tlsDomain ?? legacy.tlsDomain,
-      json.userLimit ?? legacy.userLimit,
       Inbound.MtprotoSettings.MtprotoUser.fromJson(json.clients),
-      Array.isArray(json.externalProxy) ? json.externalProxy : [],
     );
   }
 
   toJson() {
     return {
-      modeClassic: this.modeClassic,
-      modeSecure: this.modeSecure,
-      modeTls: this.modeTls,
-      tlsDomain: this.tlsDomain,
-      userLimit: this.userLimit,
       clients: Inbound.MtprotoSettings.MtprotoUser.toJsonArray(this.mtprotoUsers),
-      externalProxy: this.externalProxy,
     };
   }
 };
@@ -6371,22 +6098,21 @@ Inbound.MtprotoSettings = class extends Inbound.Settings {
 // having it immediately lets the tg:// links render on add; the backend re-mints
 // any account whose secret is blank.
 //
-// Modes, FakeTLS domain and User Limit are NOT here: they belong to the inbound (see
-// Inbound.MtprotoSettings), because the proxy applies them process-wide however they
-// are stored. The external proxy list stays per-account: it only picks which relay
-// endpoint this account's links advertise, and the proxy never sees it.
-//
-// The ad tag is per-account too, because telemt keys tags per user, but it is the one
-// field here whose effect is NOT confined to this account: any tag at all switches the
-// proxy process onto Telegram's middle-proxy path, so every account on the inbound
-// loses Xray routing. The client form says so at the switch.
+// Modes / FakeTLS domain / User Limit / ad tag / external proxy live HERE rather
+// than on the inbound: the proxy keys them off the authenticated secret, so one
+// inbound can serve accounts with entirely different modes and links.
 Inbound.MtprotoSettings.MtprotoUser = class extends XrayCommonClass {
   constructor(
     email = RandomUtil.randomLowerAndNum(9),
     secret = RandomUtil.randomSeq(32, { type: "hex" }),
     enable = true,
+    modeClassic = true,
+    modeSecure = true,
+    modeTls = true,
+    tlsDomain = "www.google.com",
     adtagEnable = false,
     adtag = "",
+    userLimit = 0,
     externalProxy = [],
     expiryTime = 0,
     tgId = "",
@@ -6402,8 +6128,13 @@ Inbound.MtprotoSettings.MtprotoUser = class extends XrayCommonClass {
     this.email = email;
     this.secret = secret;
     this.enable = enable;
+    this.modeClassic = modeClassic;
+    this.modeSecure = modeSecure;
+    this.modeTls = modeTls;
+    this.tlsDomain = tlsDomain;
     this.adtagEnable = adtagEnable;
     this.adtag = adtag;
+    this.userLimit = userLimit;
     this.externalProxy = externalProxy;
     this.expiryTime = expiryTime;
     this.tgId = tgId;
@@ -6435,8 +6166,13 @@ Inbound.MtprotoSettings.MtprotoUser = class extends XrayCommonClass {
         client.email ?? "",
         client.secret ?? RandomUtil.randomSeq(32, { type: "hex" }),
         client.enable ?? true,
+        client.modeClassic ?? true,
+        client.modeSecure ?? true,
+        client.modeTls ?? true,
+        client.tlsDomain ?? "www.google.com",
         client.adtagEnable ?? false,
         client.adtag ?? "",
+        client.userLimit ?? 0,
         Array.isArray(client.externalProxy) ? client.externalProxy : [],
         client.expiryTime ?? 0,
         client.tgId ?? "",
@@ -6453,12 +6189,11 @@ Inbound.MtprotoSettings.MtprotoUser = class extends XrayCommonClass {
 
   // The client-facing secret for one mode. The 16-byte secret is the same in all
   // three; the prefix is what tells the Telegram client (and the proxy) which
-  // transport to speak. FakeTLS additionally carries the hex-encoded domain, which
-  // is the INBOUND's: telemt emulates one domain's certificate for the whole process.
-  secretFor(mode, tlsDomain) {
+  // transport to speak. FakeTLS additionally carries the hex-encoded domain.
+  secretFor(mode) {
     if (mode === "secure") return "dd" + this.secret;
     if (mode === "tls") {
-      const domain = (tlsDomain || "www.google.com").trim();
+      const domain = (this.tlsDomain || "www.google.com").trim();
       const hex = Array.from(new TextEncoder().encode(domain))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
@@ -6467,28 +6202,24 @@ Inbound.MtprotoSettings.MtprotoUser = class extends XrayCommonClass {
     return this.secret;
   }
 
-  // One tg:// link per mode the INBOUND accepts, per endpoint. External Proxy
-  // endpoints replace this server's address (a relay/CDN in front); with none set,
-  // the panel's own host:port is used.
-  //
-  // `settings` is the owning Inbound.MtprotoSettings and is required: the modes and
-  // the FakeTLS domain live there, so a caller that omits it would silently produce
-  // no links at all rather than the wrong ones.
-  links(host, port, settings) {
-    if (!settings || typeof settings.enabledModes !== "function") return [];
-    // Most specific wins, and wins OUTRIGHT: this account's own endpoints, else the
-    // inbound's, else this server. The two lists are alternative answers to the same
-    // question, so merging them would keep advertising the endpoint the account was
-    // configured to replace. genMtprotoLink in sub/subService.go mirrors this exactly.
-    const own = Array.isArray(this.externalProxy) ? this.externalProxy : [];
-    const shared =
-      settings && Array.isArray(settings.externalProxy)
-        ? settings.externalProxy
-        : [];
-    const chosen = own.length > 0 ? own : shared;
+  // Which modes this account may actually use, the same set the backend enforces
+  // via [access.user_modes]. Drives which links/QRs are offered, so a disabled mode
+  // is never handed out as a working link.
+  enabledModes() {
+    const out = [];
+    if (this.modeClassic) out.push("classic");
+    if (this.modeSecure) out.push("secure");
+    if (this.modeTls) out.push("tls");
+    return out;
+  }
+
+  // One tg:// link per enabled mode, per endpoint. External Proxy endpoints replace
+  // this server's address (a relay/CDN in front); with none set, the panel's own
+  // host:port is used.
+  links(host, port) {
     const endpoints =
-      chosen.length > 0
-        ? chosen.map((p) => ({
+      Array.isArray(this.externalProxy) && this.externalProxy.length > 0
+        ? this.externalProxy.map((p) => ({
             host: p.dest,
             port: p.port,
             remark: p.remark || "",
@@ -6497,7 +6228,7 @@ Inbound.MtprotoSettings.MtprotoUser = class extends XrayCommonClass {
     const labels = { classic: "Classic", secure: "Secure (dd)", tls: "FakeTLS (ee)" };
     const out = [];
     for (const ep of endpoints) {
-      for (const mode of settings.enabledModes()) {
+      for (const mode of this.enabledModes()) {
         out.push({
           mode: mode,
           label: labels[mode] + (ep.remark ? `, ${ep.remark}` : ""),
@@ -6507,7 +6238,7 @@ Inbound.MtprotoSettings.MtprotoUser = class extends XrayCommonClass {
             "&port=" +
             ep.port +
             "&secret=" +
-            this.secretFor(mode, settings.tlsDomain),
+            this.secretFor(mode),
         });
       }
     }
@@ -6524,8 +6255,13 @@ Inbound.MtprotoSettings.MtprotoUser = class extends XrayCommonClass {
       email: this.email,
       secret: this.secret,
       enable: this.enable,
+      modeClassic: this.modeClassic,
+      modeSecure: this.modeSecure,
+      modeTls: this.modeTls,
+      tlsDomain: this.tlsDomain,
       adtagEnable: this.adtagEnable,
       adtag: this.adtag,
+      userLimit: this.userLimit,
       externalProxy: this.externalProxy || [],
       expiryTime: this.expiryTime,
       tgId: this.tgId,
@@ -6577,7 +6313,7 @@ Inbound.MtprotoSettings.MtprotoUser = class extends XrayCommonClass {
 Inbound.SshSettings = class extends Inbound.Settings {
   constructor(
     protocol,
-    userLimit = 10,
+    userLimit = 0,
     userLimitStrategy = "accept",
     externalProxy = [],
     sshUsers = [new Inbound.SshSettings.SshUser()],
@@ -6871,21 +6607,13 @@ Inbound.HttpSettings.HttpAccount = class extends XrayCommonClass {
     }
 };
 
-// The Xray-native wireguard inbound. Its core config is a DEVICE with a peer list,
-// not a user list, so the panel keeps its accounts in `clients` alongside and the
-// server translates them into `peers` on the way to Xray (web/service/wgxray.go).
-// `peers` stays for anything an operator pinned by hand; the managed accounts are
-// appended to it and never replace it.
 Inbound.WireguardSettings = class extends XrayCommonClass {
     constructor(
         protocol,
         mtu = 1420,
         secretKey = Wireguard.generateKeypair().privateKey,
-        peers = [],
-        noKernelTun = false,
-        wgClients = [],
-        clientNetwork = '10.10.0.0/24',
-        userLimit = 10,
+        peers = [new Inbound.WireguardSettings.Peer()],
+        noKernelTun = false
     ) {
         super(protocol);
         this.mtu = mtu;
@@ -6893,18 +6621,6 @@ Inbound.WireguardSettings = class extends XrayCommonClass {
         this.pubKey = secretKey.length > 0 ? Wireguard.generateKeypair(secretKey).publicKey : '';
         this.peers = peers;
         this.noKernelTun = noKernelTun;
-        // MUST round-trip, exactly like WgcSettings.wgcUsers: the backend stores the
-        // accounts and their server-minted key material here, and every inbound save
-        // posts the whole settings blob back. A model that forgets the field deletes
-        // every account on the inbound.
-        this.wgClients = wgClients;
-        // The pool peer addresses are handed out from. One /32 per device slot, and
-        // the first host of it is the inbound's own address.
-        this.clientNetwork = clientNetwork;
-        // How many keypairs one account gets, since two WireGuard devices cannot
-        // share one. Provisioning only: this protocol reports nothing per peer, so
-        // there is no way to notice a third device and nothing to enforce with.
-        this.userLimit = userLimit;
     }
 
     addPeer() {
@@ -6920,16 +6636,8 @@ Inbound.WireguardSettings = class extends XrayCommonClass {
             Protocols.WIREGUARD,
             json.mtu,
             json.secretKey,
-            // Guarded rather than json.peers.map: an inbound whose peers are all
-            // managed accounts legitimately has no `peers` key at all, and the bare
-            // .map threw, which in a Vue render blanks the whole page.
-            Array.isArray(json.peers)
-                ? json.peers.map(peer => Inbound.WireguardSettings.Peer.fromJson(peer))
-                : [],
+            json.peers.map(peer => Inbound.WireguardSettings.Peer.fromJson(peer)),
             json.noKernelTun,
-            Inbound.WireguardSettings.WgClient.fromJson(json.clients),
-            json.clientNetwork ?? '10.10.0.0/24',
-            json.userLimit ?? 1,
         );
     }
 
@@ -6937,114 +6645,8 @@ Inbound.WireguardSettings = class extends XrayCommonClass {
         return {
             mtu: this.mtu ?? undefined,
             secretKey: this.secretKey,
-            pubKey: this.pubKey,
             peers: Inbound.WireguardSettings.Peer.toJsonArray(this.peers),
             noKernelTun: this.noKernelTun,
-            clients: Inbound.WireguardSettings.WgClient.toJsonArray(this.wgClients),
-            clientNetwork: this.clientNetwork,
-            userLimit: this.userLimit,
-        };
-    }
-};
-
-// One account on an Xray wireguard inbound. Identity is the email: a peer is
-// authorised by its public key, so there is no username and no password to key on,
-// which is the same model wg-c, awg, gre and mtproto already use.
-//
-// `devices` and `addresses` are index-aligned and BOTH minted server-side. They must
-// round-trip for the reason spelled out on WgcSettings.WgUser.devices: an inbound
-// save posts every account back, and a model that drops the field revokes key
-// material the customer has already installed.
-Inbound.WireguardSettings.WgClient = class extends XrayCommonClass {
-    constructor(
-        email = RandomUtil.randomLowerAndNum(9),
-        enable = true,
-        devices = [],
-        addresses = [],
-        privKey = '',
-        pubKey = '',
-        psk = '',
-        expiryTime = 0,
-        tgId = '',
-        subId = RandomUtil.randomLowerAndNum(16),
-        comment = '',
-        totalGB = 0,
-        limitIp = 0,
-        reset = 0,
-        created_at = undefined,
-        updated_at = undefined,
-    ) {
-        super();
-        this.email = email;
-        this.enable = enable;
-        this.devices = Array.isArray(devices) ? devices : [];
-        this.addresses = Array.isArray(addresses) ? addresses : [];
-        this.privKey = privKey;
-        this.pubKey = pubKey;
-        this.psk = psk;
-        this.expiryTime = expiryTime;
-        this.tgId = tgId;
-        this.subId = subId;
-        this.comment = comment;
-        this.totalGB = totalGB;
-        this.limitIp = limitIp;
-        this.reset = reset;
-        this.created_at = created_at;
-        this.updated_at = updated_at;
-    }
-
-    // See WgcSettings.WgUser.id: toJson writes id=email but fromJson cannot restore
-    // it through the constructor, so without this every id-keyed path (edit, row key,
-    // /updateClient/:clientId) sees undefined.
-    get id() {
-        return this.email;
-    }
-
-    static fromJson(json = []) {
-        if (!Array.isArray(json)) return [];
-        return json.map(j => new Inbound.WireguardSettings.WgClient(
-            j.email,
-            j.enable ?? true,
-            Array.isArray(j.devices) ? j.devices : [],
-            Array.isArray(j.addresses) ? j.addresses : [],
-            j.privKey ?? '',
-            j.pubKey ?? '',
-            j.psk ?? '',
-            j.expiryTime ?? 0,
-            j.tgId ?? '',
-            j.subId ?? '',
-            j.comment ?? '',
-            j.totalGB ?? 0,
-            j.limitIp ?? j.ipLimit ?? 0,
-            j.reset ?? 0,
-            j.created_at,
-            j.updated_at,
-        ));
-    }
-
-    static toJsonArray(clients) {
-        return (clients || []).map(c => c.toJson());
-    }
-
-    toJson() {
-        return {
-            id: this.email, // identity = email, keeping the shared id-based client logic working
-            email: this.email,
-            enable: this.enable,
-            devices: this.devices,
-            addresses: this.addresses,
-            privKey: this.privKey,
-            pubKey: this.pubKey,
-            psk: this.psk,
-            expiryTime: this.expiryTime,
-            tgId: this.tgId,
-            subId: this.subId,
-            comment: this.comment,
-            totalGB: this.totalGB,
-            limitIp: this.limitIp,
-            reset: this.reset,
-            created_at: this.created_at,
-            updated_at: this.updated_at,
         };
     }
 };

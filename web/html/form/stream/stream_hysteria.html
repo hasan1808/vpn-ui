@@ -14,7 +14,7 @@
     <a-switch v-model="inbound.stream.hysteria.masqueradeSwitch"></a-switch>
   </a-form-item>
   <template v-if="inbound.stream.hysteria.masqueradeSwitch">
-    <div class="bo-if-sub">Masquerade</div>
+    <a-divider :style="{ margin: '5px 0 0' }">Masquerade</a-divider>
     <a-form-item label="Type">
       <a-select
         v-model="inbound.stream.hysteria.masquerade.type"

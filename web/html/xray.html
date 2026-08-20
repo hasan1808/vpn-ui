@@ -1,10 +1,10 @@
 {{ template "page/head_start" .}}
 <link rel="stylesheet"
-  href="{{ .base_path }}assets/codemirror/codemirror.min.css?{{ .asset_ver }}">
+  href="{{ .base_path }}assets/codemirror/codemirror.min.css?{{ .cur_ver }}">
 <link rel="stylesheet"
   href="{{ .base_path }}assets/codemirror/fold/foldgutter.css">
 <link rel="stylesheet"
-  href="{{ .base_path }}assets/codemirror/xq.min.css?{{ .asset_ver }}">
+  href="{{ .base_path }}assets/codemirror/xq.min.css?{{ .cur_ver }}">
 <link rel="stylesheet" href="{{ .base_path }}assets/codemirror/lint/lint.css">
 {{ template "page/head_end" .}}
 
@@ -72,114 +72,62 @@
               </a-card>
             </a-col>
             <a-col>
-              {{/*
-                The section tree. Each entry below is one of the a-tab-panes this
-                replaced, with its key, its icon and its label unchanged. The
-                panes that carried force-render="true" are listed to
-                initSections() instead, because that is what the attribute meant:
-                be in the document from first paint. Two of them are read by id
-                (changeCode reaches for #xraySetting, changeObsCode for
-                #obsSetting), so they cannot wait to be opened.
-
-                The second level is not written here: SectionNavMixin reads it
-                back out of each section's rendered a-collapse headers. Only
-                Basics and DNS have any; the rest are tables and an editor.
-              */}}
-              <div class="bo-secnav-layout">
-                <nav class="bo-secnav" aria-label='{{ i18n "menu.xray"}}'>
-                  <div>
-                    <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === 'tpl-basic' }"
-                      :aria-current="sectionKey === 'tpl-basic'"
-                      @click="selectSection('tpl-basic')">
-                      <a-icon type="setting"></a-icon>
-                      <span class="bo-secnav-label">{{ i18n "pages.xray.basicTemplate"}}</span>
-                      <a-icon type="right" class="bo-secnav-chev"></a-icon>
-                    </button>
-                    <div class="bo-secnav-subs" v-if="sectionKey === 'tpl-basic'">
-                      <button type="button" class="bo-secnav-sub" v-for="s in sectionSubList" :key="s.i"
-                        :class="{ 'is-active': sectionSub === String(s.i) }"
-                        @click="gotoSectionSub(s.i)" v-text="s.label"></button>
-                    </div>
-                  </div>
-                  <div>
-                    <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === 'tpl-routing' }"
-                      :aria-current="sectionKey === 'tpl-routing'"
-                      @click="selectSection('tpl-routing')">
-                      <a-icon type="swap"></a-icon>
-                      <span class="bo-secnav-label">{{ i18n "pages.xray.Routings"}}</span>
-                    </button>
-                  </div>
-                  <div>
-                    <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === 'tpl-outbound' }"
-                      :aria-current="sectionKey === 'tpl-outbound'"
-                      @click="selectSection('tpl-outbound')">
-                      <a-icon type="upload"></a-icon>
-                      <span class="bo-secnav-label">{{ i18n "pages.xray.Outbounds"}}</span>
-                    </button>
-                  </div>
-                  <div>
-                    <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === 'tpl-reverse' }"
-                      :aria-current="sectionKey === 'tpl-reverse'"
-                      @click="selectSection('tpl-reverse')">
-                      <a-icon type="import"></a-icon>
-                      <span class="bo-secnav-label">{{ i18n "pages.xray.outbound.reverse"}}</span>
-                    </button>
-                  </div>
-                  <div>
-                    <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === 'tpl-balancer' }"
-                      :aria-current="sectionKey === 'tpl-balancer'"
-                      @click="selectSection('tpl-balancer')">
-                      <a-icon type="cluster"></a-icon>
-                      <span class="bo-secnav-label">{{ i18n "pages.xray.Balancers"}}</span>
-                    </button>
-                  </div>
-                  <div>
-                    <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === 'tpl-dns' }"
-                      :aria-current="sectionKey === 'tpl-dns'"
-                      @click="selectSection('tpl-dns')">
-                      <a-icon type="database"></a-icon>
-                      <span class="bo-secnav-label">DNS</span>
-                      <a-icon type="right" class="bo-secnav-chev"></a-icon>
-                    </button>
-                    <div class="bo-secnav-subs" v-if="sectionKey === 'tpl-dns'">
-                      <button type="button" class="bo-secnav-sub" v-for="s in sectionSubList" :key="s.i"
-                        :class="{ 'is-active': sectionSub === String(s.i) }"
-                        @click="gotoSectionSub(s.i)" v-text="s.label"></button>
-                    </div>
-                  </div>
-                  <div>
-                    <button type="button" class="bo-secnav-sec" :class="{ 'is-open': sectionKey === 'tpl-advanced' }"
-                      :aria-current="sectionKey === 'tpl-advanced'"
-                      @click="selectSection('tpl-advanced')">
-                      <a-icon type="code"></a-icon>
-                      <span class="bo-secnav-label">{{ i18n "pages.xray.advancedTemplate"}}</span>
-                    </button>
-                  </div>
-                </nav>
-                <div class="bo-secpanes">
-                  <div v-if="sectionMounted['tpl-basic']" v-show="sectionKey === 'tpl-basic'" data-section="tpl-basic" :style="{ paddingTop: '20px' }">
-                    {{ template "settings/xray/basics" . }}
-                  </div>
-                  <div v-if="sectionMounted['tpl-routing']" v-show="sectionKey === 'tpl-routing'" data-section="tpl-routing" :style="{ paddingTop: '20px' }">
-                    {{ template "settings/xray/routing" . }}
-                  </div>
-                  <div v-if="sectionMounted['tpl-outbound']" v-show="sectionKey === 'tpl-outbound'" data-section="tpl-outbound">
-                    {{ template "settings/xray/outbounds" . }}
-                  </div>
-                  <div v-if="sectionMounted['tpl-reverse']" v-show="sectionKey === 'tpl-reverse'" data-section="tpl-reverse" :style="{ paddingTop: '20px' }">
-                    {{ template "settings/xray/reverse" . }}
-                  </div>
-                  <div v-if="sectionMounted['tpl-balancer']" v-show="sectionKey === 'tpl-balancer'" data-section="tpl-balancer" :style="{ paddingTop: '20px' }">
-                    {{ template "settings/xray/balancers" . }}
-                  </div>
-                  <div v-if="sectionMounted['tpl-dns']" v-show="sectionKey === 'tpl-dns'" data-section="tpl-dns" :style="{ paddingTop: '20px' }">
-                    {{ template "settings/xray/dns" . }}
-                  </div>
-                  <div v-if="sectionMounted['tpl-advanced']" v-show="sectionKey === 'tpl-advanced'" data-section="tpl-advanced">
-                    {{ template "settings/xray/advanced" . }}
-                  </div>
-                </div>
-              </div>
+              <a-tabs default-active-key="tpl-basic"
+                @change="(activeKey) => { this.changePage(activeKey); }"
+                :class="themeSwitcher.currentTheme">
+                <a-tab-pane key="tpl-basic" :style="{ paddingTop: '20px' }">
+                  <template #tab>
+                    <a-icon type="setting"></a-icon>
+                    <span>{{ i18n "pages.xray.basicTemplate"}}</span>
+                  </template>
+                  {{ template "settings/xray/basics" . }}
+                </a-tab-pane>
+                <a-tab-pane key="tpl-routing" :style="{ paddingTop: '20px' }">
+                  <template #tab>
+                    <a-icon type="swap"></a-icon>
+                    <span>{{ i18n "pages.xray.Routings"}}</span>
+                  </template>
+                  {{ template "settings/xray/routing" . }}
+                </a-tab-pane>
+                <a-tab-pane key="tpl-outbound" force-render="true">
+                  <template #tab>
+                    <a-icon type="upload"></a-icon>
+                    <span>{{ i18n "pages.xray.Outbounds"}}</span>
+                  </template>
+                  {{ template "settings/xray/outbounds" . }}
+                </a-tab-pane>
+                <a-tab-pane key="tpl-reverse" :style="{ paddingTop: '20px' }"
+                  force-render="true">
+                  <template #tab>
+                    <a-icon type="import"></a-icon>
+                    <span>{{ i18n "pages.xray.outbound.reverse"}}</span>
+                  </template>
+                  {{ template "settings/xray/reverse" . }}
+                </a-tab-pane>
+                <a-tab-pane key="tpl-balancer" :style="{ paddingTop: '20px' }"
+                  force-render="true">
+                  <template #tab>
+                    <a-icon type="cluster"></a-icon>
+                    <span>{{ i18n "pages.xray.Balancers"}}</span>
+                  </template>
+                  {{ template "settings/xray/balancers" . }}
+                </a-tab-pane>
+                <a-tab-pane key="tpl-dns" :style="{ paddingTop: '20px' }"
+                  force-render="true">
+                  <template #tab>
+                    <a-icon type="database"></a-icon>
+                    <span>DNS</span>
+                  </template>
+                  {{ template "settings/xray/dns" . }}
+                </a-tab-pane>
+                <a-tab-pane key="tpl-advanced" force-render="true">
+                  <template #tab>
+                    <a-icon type="code"></a-icon>
+                    <span>{{ i18n "pages.xray.advancedTemplate"}}</span>
+                  </template>
+                  {{ template "settings/xray/advanced" . }}
+                </a-tab-pane>
+              </a-tabs>
             </a-col>
           </a-row>
         </transition>
@@ -187,11 +135,9 @@
 {{template "page/shell_end" . }}
 {{template "page/body_scripts" .}}
 <script
-  src="{{ .base_path }}assets/js/model/outbound.js?{{ .asset_ver }}"></script>
+  src="{{ .base_path }}assets/js/model/outbound.js?{{ .cur_ver }}"></script>
 <script
-  src="{{ .base_path }}assets/js/util/section-nav.js?{{ .asset_ver }}"></script>
-<script
-  src="{{ .base_path }}assets/codemirror/codemirror.min.js?{{ .asset_ver }}"></script>
+  src="{{ .base_path }}assets/codemirror/codemirror.min.js?{{ .cur_ver }}"></script>
 <script src="{{ .base_path }}assets/codemirror/javascript.js"></script>
 <script src="{{ .base_path }}assets/codemirror/jshint.js"></script>
 <script src="{{ .base_path }}assets/codemirror/jsonlint.js"></script>
@@ -293,19 +239,19 @@
 
   const app = new Vue({
     delimiters: ['[[', ']]'],
-    mixins: [MediaQueryMixin, SectionNavMixin],
+    mixins: [MediaQueryMixin],
     el: '#app',
     data: {
+      themeSwitcher,
+      pageTitle: '{{ i18n "menu.xray"}}',
+      pageClass: 'xray-page',
+      mobileMenuOpen: false,
+      sidebarHidden: window.__sidebarHidden || false,
       langOpen: false,
       currentLang: window.__langData.currentLang,
       supportedLangs: window.__langData.supportedLangs,
       currentLangName: window.__langData.currentLangName,
       setLang: window.__langData.setLang,
-      mobileMenuOpen: false,
-      sidebarHidden: window.__sidebarHidden || false,
-      themeSwitcher,
-      pageTitle: '{{ i18n "menu.xray"}}',
-      pageClass: 'xray-page',
       isDarkTheme: themeSwitcher.isDarkTheme,
       loadingStates: {
         fetched: false,
@@ -557,27 +503,14 @@
       // What to call an outbound in the UI. An SSH tunnel is a socks outbound in
       // the config and must stay one, and a VPN tunnel is a freedom one, but
       // calling them "socks" and "freedom" on screen hides what the operator
-      // actually created.
-      //
-      // The tunnels are named the way the Add Outbound picker names them (GRE,
-      // L2TP/IPsec, PPTP), NOT by their stored protocol. That value carries a
-      // "vpn:" prefix which is a discriminator in the data model and not a name:
-      // it is what isVpnProtocol tests and what decides which driver raises the
-      // tunnel, so it has to stay in the config, but on screen it only made every
-      // row read "vpn:gre" instead of "GRE".
-      //
-      // Through protocolLabel, which is what the Add Outbound picker already
-      // calls, rather than by trimming the prefix here. Two reasons: the bare kind
-      // is ambiguous for exactly one of them (Xray ships its own userspace
-      // wireguard outbound, so "wireguard" would name two different rows, which is
-      // why VPN_OUT_KINDS calls the tunnel "WireGuard (C)"), and a second lookup
-      // would be a second place to keep in step with that list.
+      // actually created. The VPN label carries the kind, because "vpn" alone
+      // would not say whether the row dials WireGuard or PPTP.
       outboundProtocolLabel(outbound) {
         if (outbound && outbound.tag && this.sshOutboundTags.includes(outbound.tag)) {
           return Protocols.SSH;
         }
         const vpn = this.vpnOutboundOf(outbound);
-        if (vpn) return protocolLabel(vpnProtocolFor(vpn.kind), vpn.kind);
+        if (vpn) return vpnProtocolFor(vpn.kind);
         return outbound ? outbound.protocol : '';
       },
       async getOutboundsTraffic() {
@@ -897,19 +830,13 @@
           tags: this.outboundAndTunnelTags()
         });
       },
-      // Every tag a TUNNEL holds, SSH and VPN alike. The one place that answers
-      // "is this tag a tunnel", so outboundAndTunnelTags below can decide which
-      // tags are taken. Two answers to that question would drift the first time a
-      // tunnel kind is added.
-      tunnelTags() {
-        return [...this.sshOutboundTags, ...Object.keys(this.vpnOutbounds)];
-      },
       // Every tag an outbound may not reuse: the ones in the template plus the
       // ones the SSH and VPN tunnels hold. `except` drops the row being edited so
       // it does not collide with itself.
       outboundAndTunnelTags(except) {
         const tags = this.templateSettings.outbounds.map(obj => obj.tag);
-        this.tunnelTags().forEach(t => { if (!tags.includes(t)) tags.push(t); });
+        this.sshOutboundTags.forEach(t => { if (!tags.includes(t)) tags.push(t); });
+        Object.keys(this.vpnOutbounds).forEach(t => { if (!tags.includes(t)) tags.push(t); });
         return except === undefined ? tags : tags.filter(t => t !== except);
       },
       // Creates (or replaces) the SSH tunnel behind an ssh-shaped outbound and
@@ -933,22 +860,6 @@
           passphrase: s.passphrase,
           knownHost: s.knownHost,
           socksPort: s.socksPort,
-          // The outbound that carries this tunnel's own TCP connection to the SSH
-          // server, '' for none, and it comes from the row's own Dialer Proxy box:
-          // that is the panel's single chaining control, and on a tunnel row it
-          // means "carry this tunnel's own transport through that tag". The server
-          // turns it into routing rules and strips the key from the Xray config,
-          // where it would instead redirect the facade's CONNECT to the loopback
-          // SOCKS port and break the tunnel.
-          //
-          // Read off the model rather than the serialised row so the sockopt switch
-          // is respected: turning sockopts off drops the whole block, and a carrier
-          // the config no longer carries must not keep steering traffic.
-          //
-          // Sent on every save including the blank one: the server treats it as the
-          // whole answer, so leaving it out of a save that cleared the box would
-          // keep the old carrier and the routing rules with it.
-          via: model.stream?.sockopt?.dialerProxy || '',
         });
         if (!msg || !msg.success || !msg.obj) return 0;
         return Number(msg.obj.socksPort) || 0;
@@ -974,21 +885,6 @@
           // has no interface, and this page has no way to show an outbound that
           // exists but cannot carry traffic.
           enable: true,
-          // The tunnel that carries this one's outer transport, '' for none, and it
-          // comes from the row's own Dialer Proxy box: that is the panel's single
-          // chaining control, and on a tunnel row it means "carry this tunnel's own
-          // transport through that tag". The server turns it into routing rules and
-          // strips the key from the Xray config, where it would mean the opposite
-          // and cancel the interface pin (vpnOutStreamSettings).
-          //
-          // Read off the model rather than the serialised row so the sockopt switch
-          // is respected: turning sockopts off drops the whole block, and a carrier
-          // the config no longer carries must not keep steering traffic.
-          //
-          // Sent on every save including the blank one: the server treats it as the
-          // whole answer, so leaving it out of a save that cleared the box would
-          // keep the old carrier and the routing rules with it.
-          via: model.stream?.sockopt?.dialerProxy || '',
           settings: JSON.stringify(s.settingsPayload()),
         });
         if (!msg || !msg.success || !msg.obj) return '';
@@ -1064,26 +960,12 @@
       // the panel API does not echo them back, and a blank field is what tells
       // the server to keep the stored one.
       vpnOutboundModel(row, vpn) {
-        const settings = new Outbound.VpnSettings(vpn.kind, vpn.settings || {}, vpn.iface || '',
-          vpn.remark || '');
+        const settings = new Outbound.VpnSettings(vpn.kind, vpn.settings || {}, vpn.iface || '', vpn.remark || '');
         // The row's own stream settings come from the config and not from the
         // tunnel list, which knows nothing about them: rebuilding from the tunnel
         // alone would drop the operator's sockopts on the next save.
-        const stream = StreamSettings.fromJson(row.streamSettings);
-        // The carrier is written in two places at two different moments: into the
-        // tunnel (`via`) the instant the modal is confirmed, and into this row's
-        // Dialer Proxy only when the Xray page itself is saved. In between, the row
-        // is silent about a carrier the panel is already steering, and a form opened
-        // then would show none and clear it on the next save. Seeded from the tunnel
-        // for that window, and for a tunnel stored by a panel that kept the carrier
-        // in a field of its own. The row wins when it has one: that is what the
-        // operator last typed.
-        if (vpn.via && !(stream.sockopt && stream.sockopt.dialerProxy)) {
-          if (!stream.sockopt) stream.sockoptSwitch = true;
-          stream.sockopt.dialerProxy = vpn.via;
-        }
         return new Outbound(row.tag, vpnProtocolFor(vpn.kind), settings,
-          stream, row.sendThrough);
+          StreamSettings.fromJson(row.streamSettings), row.sendThrough);
       },
       // The Outbound the SSH form edits, built the same way and for the same
       // reason: the row is a socks outbound aimed at a loopback port. Secrets are
@@ -1092,22 +974,8 @@
       sshOutboundModel(row, ssh) {
         const settings = new Outbound.SshSettings(ssh.address, ssh.port, ssh.username,
           ssh.authType || 'password', '', '', '', ssh.knownHost || '', ssh.socksPort || 0);
-        // The row's own stream settings come from the config and not from the
-        // tunnel list, which knows nothing about them: rebuilding from the tunnel
-        // alone would drop the operator's sockopts on the next save.
-        const stream = StreamSettings.fromJson(row.streamSettings);
-        // The carrier is written in two places at two different moments: into the
-        // tunnel (`via`) the instant the modal is confirmed, and into this row's
-        // Dialer Proxy only when the Xray page itself is saved. In between, the row
-        // is silent about a carrier the panel is already steering, and a form opened
-        // then would show none and clear it on the next save. Seeded from the tunnel
-        // for that window. The row wins when it has one: that is what the operator
-        // last typed. Mirrors vpnOutboundModel above.
-        if (ssh.via && !(stream.sockopt && stream.sockopt.dialerProxy)) {
-          if (!stream.sockopt) stream.sockoptSwitch = true;
-          stream.sockopt.dialerProxy = ssh.via;
-        }
-        return new Outbound(row.tag, Protocols.SSH, settings, stream, row.sendThrough);
+        return new Outbound(row.tag, Protocols.SSH, settings,
+          StreamSettings.fromJson(row.streamSettings), row.sendThrough);
       },
       // Removing the row has to remove the tunnel behind it. Splicing alone left
       // the tunnel in the `sshOutbounds`/`vpnOutbounds` setting still dialling
@@ -1625,10 +1493,6 @@
       }
     },
     async mounted() {
-      // 'tpl-basic' was the strip's default-active-key. The five keys after it
-      // are the panes that carried force-render="true" and must exist from the
-      // start; changeCode and changeObsCode reach into two of them by id.
-      this.initSections('tpl-basic', ['tpl-outbound', 'tpl-reverse', 'tpl-balancer', 'tpl-dns', 'tpl-advanced']);
       if (window.location.protocol !== "https:" && !SecAlertDismissal.isDismissed()) {
         this.showAlert = true;
       }

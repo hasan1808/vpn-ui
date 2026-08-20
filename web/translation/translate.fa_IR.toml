@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "بارگیری ناموفق بود"
 "customGeoErrUpdateAllIncomplete" = "به‌روزرسانی یک یا چند منبع geo سفارشی ناموفق بود"
 
+"createBackup" = "ایجاد پشتیبان"
+"createBackupError" = "خطا در ایجاد پشتیبان"
+"createBackupSuccess" = "یک پشتیبان از دیتابیس ساخته شد."
+"internet" = "اینترنت"
+"internetOffline" = "آفلاین"
+"internetOnline" = "آنلاین"
+"internetPartial" = "ناقص"
+"localBackups" = "پشتیبان‌های ذخیره‌شده روی پنل"
+"noLocalBackups" = "هیچ پشتیبانی روی پنل ذخیره نشده است"
+"noLocalBackupsDesc" = "یک پشتیبان بسازید تا بعداً بتوانید از همینجا پنل را بازیابی کنید."
+"ping" = "پینگ"
+"pingChecking" = "در حال بررسی…"
+"pingUnreachable" = "قطع است"
+"rebootConfirmContent" = "سرور اکنون ریبوت خواهد شد. این کار همه کاربران را قطع کرده و تمام سرویس‌ها را موقتاً متوقف می‌کند."
+"rebootConfirmTitle" = "ریبوت سرور؟"
+"rebootServer" = "ریبوت سرور"
+"rebooting" = "در حال ریبوت..."
+"rebootingDesc" = "سرور در حال ریبوت است. این صفحه به محصر آنلاین شدن سرور به صورت خودکار بارگذاری مجدد می‌شود."
+"reinstall" = "نصب مجدد"
+"restoreBackupConfirmTitle" = "این پشتیبان بازیابی شود؟"
+"restoreFromVpnUi" = "بازیابی از vpn-ui اصلی"
+"restoreFromVpnUiDesc" = "یک فایل .db ساخته‌شده توسط این پنل انتخاب کنید تا اینباندها، کاربران و تنظیمات بازیابی شوند. دیتابیس هنگام ورود به نسخه فعلی مهاجرت می‌شود."
+
 [pages.inbounds]
 "inboundMembership" = "ورودی‌ها"
 "inboundMembershipDesc" = "ورودی‌هایی که این حساب روی آن‌ها سرویس می‌گیرد. روی همه آن‌ها همان ایمیل، همان حجم و همان تاریخ انقضا را دارد. برداشتن تیک یک ورودی، حساب را از آن ورودی حذف می‌کند. ورودی‌ای که این فرم از آن باز شده همیشه تیک‌خورده می‌ماند."
@@ -404,6 +427,8 @@
 "lastReset" = "آخرین بازنشانی"
 
 "useManagedCert" = "گواهی"
+"outboundTraffic" = "ترافیک خروجی"
+
 [pages.client]
 "add" = "کاربر جدید"
 "edit" = "ویرایش کاربر"
@@ -540,6 +565,19 @@
 "sharedUsage" = "مشترک"
 "sharedUsageHint" = "Xray ترافیک را به ازای هر حساب می‌شمارد نه به ازای هر ورودی، بنابراین این عدد مصرف باقی‌مانده حساب است که میان همه ورودی‌های Xray سرویس‌دهنده آن مشترک است."
 "onlineShared" = "آنلاین، روی یکی از ورودی‌های Xray این حساب. Xray مشخص نمی‌کند کدام یک."
+
+"active" = "فعال"
+"all" = "همه"
+"creator" = "سازنده"
+"disabled" = "غیرفعال"
+"downloadQr" = "دانلود کد QR"
+"expired" = "منقضی"
+"expiring" = "در حال انقضا"
+"newest" = "جدیدترین"
+"noLinks" = "لینکی برای نمایش وجود ندارد"
+"oldest" = "قدیمی‌ترین"
+"online" = "آنلاین"
+"traffic" = "بیشترین ترافیک"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "هرگز"
@@ -727,6 +765,27 @@
 "information" = "اطلاعات"
 "language" = "زبان"
 "telegramBotLanguage" = "زبان ربات تلگرام"
+
+"acmeAutoRenew" = "تمدید خودکار"
+"acmeAutoRenewDesc" = "تمدید خودکار گواهی‌ها قبل از انقضا"
+"acmeCertDir" = "پوشه گواهی"
+"acmeCertDirDesc" = "پوشه‌ای که گواهی‌ها در آن ذخیره می‌شوند"
+"acmeCfToken" = "توکن API Cloudflare"
+"acmeCfTokenDesc" = "توکن API با دسترسی Zone:DNS:Edit (برای روش DNS-01)"
+"acmeDomain" = "نام دامنه"
+"acmeDomainDesc" = "نام دامنه برای دریافت گواهی (مثال: example.com)"
+"acmeEmail" = "آدرس ایمیل"
+"acmeEmailDesc" = "ایمیل برای ثبت‌نام Let's Encrypt و اطلاع‌رسانی انقضا"
+"acmeIssue" = "صدور گواهی"
+"acmeIssueBtn" = "صدور گواهی"
+"acmeIssuing" = "در حال صدور..."
+"acmeMethod" = "روش چالش"
+"acmeMethodDesc" = "HTTP-01 نیاز به پورت 80 دارد؛ DNS-01 از Cloudflare API برای گواهی‌های wildcard استفاده می‌کند"
+"acmeResult" = "نتیجه"
+"autoSSL" = "SSL خودکار (Let's Encrypt)"
+"autoSSLDesc" = "دریافت و تمدید خودکار گواهی SSL از طریق Let's Encrypt"
+"publicIpOverride" = "نوشتن‌دست آی‌پی عمومی"
+"publicIpOverrideDesc" = "به‌صورت دستی آی‌پی عمومی سرور را تعیین کنید وقتی تشخیص خودکار آدرس اشتباه/نمونه برمی‌گرداند. برای استفاده از تشخیص خودکار خالی‌گذارید."
 
 [pages.xray]
 "title" = "پیکربندی ایکس‌ری"
@@ -1014,6 +1073,7 @@
 "nicknameDesc" = "برچسب خودتان برای این گواهی. کنار نام‌هایی که گواهی می‌پوشاند نشان داده می‌شود و هرگز جای آن‌ها را نمی‌گیرد."
 "nicknameAdd" = "افزودن نام دلخواه"
 "nicknameEdit" = "تغییر نام دلخواه"
+
 [pages.settings.ssl.toasts]
 "status" = "وضعیت گواهی خوانده نشد."
 "consumers" = "فهرست سرویس‌های استفاده‌کننده از این گواهی به دست نیامد."
@@ -1027,6 +1087,7 @@
 "autoAssigned" = "گواهی تازه اکنون ارائه می‌شود."
 "autoRenew" = "تمدید خودکار به‌روز شد."
 "nickname" = "نام دلخواه ذخیره شد."
+
 [pages.settings.security]
 "admin" = "اعتبارنامه‌های ادمین"
 "twoFactor" = "احراز هویت دو مرحله‌ای"

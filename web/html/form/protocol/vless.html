@@ -80,46 +80,6 @@
       </a-form>
       <a-divider :style="{ margin: '5px 0' }"></a-divider>
     </template>
-{{end}}
-
-{{define "form/vless/security"}}
-    <!-- Flow is a property of the INBOUND, not of one client. It used to be set on
-         the seed client while the inbound was being created and was unreachable
-         afterwards, because the clients moved to their own page and this form only
-         lists them read-only once the inbound exists. Editable in both add and edit
-         mode is the whole point: an operator who turns on REALITY on an existing
-         inbound has to be able to turn vision on with it.
-
-         Only None and xtls-rprx-vision are offered. The bundled core
-         (third_party/Xray-core/infra/conf/vless.go) accepts exactly those two for
-         settings.flow, and unlike a bad per-client value, which the core would
-         reject on its own, a bad one here makes it refuse the WHOLE config. -->
-    <a-collapse v-if="inbound.canEnableTlsFlow()">
-      <a-collapse-panel header='{{ i18n "pages.inbounds.clientSettings" }}'>
-        <div class="bo-dim" :style="{ marginBottom: '10px' }">
-          {{ i18n "pages.inbounds.clientSettingsDesc" }}
-        </div>
-        <a-form :colon="false" :label-col="{ md: {span:8} }" :wrapper-col="{ md: {span:14} }">
-          <a-form-item>
-            <template slot="label">
-              <a-tooltip>
-                <template slot="title">
-                  <span>VLESS over TLS or REALITY on a TCP transport wants
-                    xtls-rprx-vision. Leave it on None for any other transport.</span>
-                </template>
-                Flow
-                <a-icon type="question-circle"></a-icon>
-              </a-tooltip>
-            </template>
-            <a-select v-model="inbound.settings.flow" :dropdown-class-name="themeSwitcher.currentTheme">
-              <a-select-option value="">{{ i18n "none" }}</a-select-option>
-              <a-select-option value="xtls-rprx-vision">xtls-rprx-vision</a-select-option>
-            </a-select>
-          </a-form-item>
-        </a-form>
-      </a-collapse-panel>
-    </a-collapse>
-    <a-divider v-if="inbound.canEnableTlsFlow()" :style="{ margin: '5px 0' }"></a-divider>
     <template v-if="inbound.canEnableVisionSeed()">
       <a-form :colon="false" :label-col="{ md: {span:8} }" :wrapper-col="{ md: {span:14} }">
         <a-form-item label="Vision Seed">
@@ -161,4 +121,4 @@
       </a-form>
       <a-divider :style="{ margin: '5px 0' }"></a-divider>
     </template>
-{{end}}
+    {{end}}

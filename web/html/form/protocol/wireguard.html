@@ -22,33 +22,6 @@
   <a-form-item label='No Kernel Tun'>
     <a-switch v-model="inbound.settings.noKernelTun"></a-switch>
   </a-form-item>
-  <!-- Accounts are added on the Clients page like every other protocol's, and the
-       server turns each one into a peer on the way to Xray. These two decide what
-       it hands them: the pool their tunnel addresses come out of (its first host is
-       this inbound's own address) and how many keypairs each account gets, since two
-       WireGuard devices cannot share one. -->
-  <a-form-item>
-    <template slot="label">
-      <a-tooltip>
-        <template slot="title">{{ i18n "pages.xray.wireguard.clientNetworkDesc" }}</template>
-        {{ i18n "pages.xray.wireguard.clientNetwork" }}
-      </a-tooltip>
-    </template>
-    <a-input v-model.trim="inbound.settings.clientNetwork" placeholder="10.10.0.0/24"></a-input>
-  </a-form-item>
-  <a-form-item>
-    <template slot="label">
-      <a-tooltip>
-        <template slot="title">{{ i18n "pages.xray.wireguard.devicesPerClientDesc" }}</template>
-        {{ i18n "pages.xray.wireguard.devicesPerClient" }}
-      </a-tooltip>
-    </template>
-    <a-input-number v-model.number="inbound.settings.userLimit" :min="1" :max="64"></a-input-number>
-  </a-form-item>
-  <a-alert type="info" show-icon :style="{ marginBottom: '12px' }"
-    message='{{ i18n "pages.xray.wireguard.noAccounting" }}'></a-alert>
-  <!-- Peers added BY HAND, kept for anything that is not an account: the generated
-       config carries these and the managed clients both. -->
   <a-form-item label="Peers">
     <a-button icon="plus" type="primary" size="small" @click="inbound.settings.addPeer()"></a-button>
   </a-form-item>

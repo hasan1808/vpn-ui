@@ -58,17 +58,11 @@
     // object reactive when the instance below is created, so a key added later would
     // never drive the subscription block's v-if.
     subId: '',
-    // Which endpoint the configs come from. This viewer serves BOTH WireGuard
-    // implementations: the kernel one (wg-c) and the Xray-native one, whose configs
-    // are the same shape and are rendered by the server in both cases. Declared here
-    // rather than only set in show(), for the reason stated above subId.
-    path: 'wgc-configs',
     devices: [],
-    show: function (dbInboundId, client, path) {
+    show: function (dbInboundId, client) {
       this.dbInboundId = dbInboundId;
       this.email = client && client.email ? client.email : '';
       this.subId = client && client.subId ? client.subId : '';
-      this.path = path || 'wgc-configs';
       this.title = 'WireGuard Config' + (this.email ? ' - ' + this.email : '');
       this.devices = [];
       this.loading = true;
@@ -114,7 +108,7 @@
         try {
           // Respect the global axios baseURL: do NOT prefix with base_path here.
           const msg = await HttpUtil.get(
-            '/panel/api/inbounds/' + wgcConfigModal.dbInboundId + '/' + wgcConfigModal.path,
+            '/panel/api/inbounds/' + wgcConfigModal.dbInboundId + '/wgc-configs',
             { email: wgcConfigModal.email }
           );
           wgcConfigModal.devices = (msg && msg.success && Array.isArray(msg.obj)) ? msg.obj : [];

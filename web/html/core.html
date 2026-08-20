@@ -1,8 +1,4 @@
 {{ template "page/head_start" .}}
-<link rel="stylesheet"
-  href="{{ .base_path }}assets/codemirror/codemirror.min.css?{{ .asset_ver }}">
-<link rel="stylesheet"
-  href="{{ .base_path }}assets/codemirror/xq.min.css?{{ .asset_ver }}">
 {{ template "page/head_end" .}}
 
 {{ template "page/body_start" .}}
@@ -160,21 +156,6 @@
                         :href="basePath + 'panel/xray'">
                         <a-icon type="edit"></a-icon>{{ i18n "pages.core.editConfig" }}
                       </a-button>
-                      <!-- A DISABLED antd button swallows its own mouse events, so a
-                           tooltip put directly on it never opens. The wrapping span is
-                           what the tooltip actually listens on, which is the only way
-                           the "this core has no config file" reason is ever readable. -->
-                      <a-tooltip v-else-if="!coreHasConfig(core.name)"
-                        title='{{ i18n "pages.core.configNoFile" }}'>
-                        <span :style="{ display: 'inline-block', cursor: 'not-allowed' }">
-                          <a-button size="small" disabled :style="{ pointerEvents: 'none' }">
-                            <a-icon type="edit"></a-icon>{{ i18n "pages.core.editConfig" }}
-                          </a-button>
-                        </span>
-                      </a-tooltip>
-                      <a-button size="small" v-else @click="openConfig(core.name)">
-                        <a-icon type="edit"></a-icon>{{ i18n "pages.core.editConfig" }}
-                      </a-button>
                     </a-space>
                   </div>
                 </a-card>
@@ -299,15 +280,6 @@
           <span class="picker-note" v-if="rowNote(c)">
             <a-icon type="info-circle"></a-icon>[[ rowNote(c) ]]
           </span>
-          <!-- What this core will find ALREADY on the host: a distro daemon's config
-               it overwrites, a unit it disables, an interface of the operator's that
-               shares its naming space. Shown before the operator commits, because
-               "the panel took over my xl2tpd" should be a decision rather than a
-               discovery. The text is the server's (CoreOption.conflicts), so there is
-               no translation key: it names concrete host paths either way. -->
-          <span class="picker-conflict" v-for="cf in (c.conflicts || [])" :key="cf.what">
-            <a-icon type="exclamation-circle"></a-icon>[[ cf.what ]]: [[ cf.detail ]]
-          </span>
         </span>
         <span class="picker-backend">[[ c.backend ]]</span>
       </label>
@@ -365,7 +337,7 @@
     <div class="term term--setup">
       <div class="term-bar">
         <a-icon type="code" class="term-bar-icon"></a-icon>
-        <span class="term-bar-title">pro-ui · [[ consoleLabel() ]]</span>
+        <span class="term-bar-title">vpn-ui · [[ consoleLabel() ]]</span>
         <span class="term-count" v-if="provisionResult.length">[[ okCount() ]]/[[ provisionResult.length ]]</span>
       </div>
       <div class="term-progress">
@@ -490,106 +462,9 @@
          trusted input. -->
     <div id="core-log-pane" class="core-logs log-container" v-html="logsHtml"></div>
   </a-modal>
-
-  <!-- Advanced config editor. Every rule for this markup is scoped under
-       `.core-page~div` in the style block below: an a-modal portals out of #app
-       and mounts as a SIBLING of it, so a plain `.core-page .cfg-x` descendant
-       rule would never match anything in here. -->
-  <a-modal v-model="cfgVisible" :footer="null" :maskClosable="false"
-    :class="themeSwitcher.currentTheme" :width="isMobile ? '95%' : (cfgEmpty ? '420px' : '92%')"
-    :title="cfgTitle" :after-close="disposeCfgEditor">
-    <a-spin :spinning="cfgLoading">
-      <!-- The only warning, and it carries every consequence at once: the file is
-           generated, a bad edit takes the core and its clients down, and saving
-           FREEZES the file. The freeze used to be explained by the mode selector;
-           with one editor and no modes, this alert is the only place it can be
-           said. None of it applies when there is nothing to edit, so it is
-           dropped along with the rest of the editor shell in that case. -->
-      <a-alert v-if="!cfgEmpty" type="error" show-icon
-        message='{{ i18n "pages.core.configDanger" }}'
-        description='{{ i18n "pages.core.configIntro" }}'
-        :style="{ marginBottom: '12px' }"></a-alert>
-
-      <!-- No inbound to generate a config from: a short note and a single
-           acknowledgement button, not the full editor sized for a file that
-           does not exist. -->
-      <template v-if="cfgEmpty">
-        <div class="cfg-empty">
-          {{ i18n "pages.core.configNoTargets" }}
-        </div>
-        <div class="cfg-empty-foot">
-          <a-button type="primary" @click="cfgVisible = false">{{ i18n "close" }}</a-button>
-        </div>
-      </template>
-
-      <div v-show="cfgTargets.length">
-        <!-- The picker stays because a core can write more than one file: OpenVPN
-             one per transport, l2tp a daemon config plus a pppd options file plus
-             its swanctl connection. -->
-        <a-row :gutter="[16, 12]" class="cfg-toolbar">
-          <a-col :xs="24" :md="12">
-            <div class="cfg-field-label">{{ i18n "pages.core.configFile" }}</div>
-            <a-select v-model="cfgIndex" :style="{ width: '100%' }"
-              @change="selectCfgTarget">
-              <a-select-option v-for="(t, i) in cfgTargets" :key="i" :value="i">
-                [[ cfgOptionLabel(t) ]]
-              </a-select-option>
-            </a-select>
-            <div class="cfg-path">
-              <span class="cfg-path-text">[[ cfgTarget.path ]]</span>
-              <!-- The one piece of state the text alone cannot show: whether this
-                   file is frozen at an override right now, or still following the
-                   inbound settings. -->
-              <a-tag v-if="cfgHasOverride" color="orange">{{ i18n "pages.core.configOverridden" }}</a-tag>
-            </div>
-          </a-col>
-        </a-row>
-
-        <div v-if="cfgHealth && !cfgHealth.ok" class="cfg-health">
-          <div class="cfg-health-head">
-            <a-icon type="close-circle" theme="filled"></a-icon>
-            <span>{{ i18n "pages.core.configHealthBad" }}</span>
-          </div>
-          <pre class="cfg-health-log" v-if="cfgHealth.logs">[[ cfgHealth.logs ]]</pre>
-        </div>
-
-        <!-- One pane, holding the whole file as it stands. There is no second
-             read-only pane to compare against because there is nothing to compare:
-             what is in here IS what gets written. -->
-        <div class="cfg-editor">
-          <textarea id="cfg-editor"></textarea>
-        </div>
-
-        <div class="cfg-foot">
-          <!-- No confirm on reset: it puts the panel's own config back, which is the
-               safe direction. Save keeps one, being the half that can take the core
-               down. -->
-          <a-button type="danger" ghost :disabled="cfgSaving" @click="resetConfig">
-            <a-icon type="undo"></a-icon>{{ i18n "pages.core.configReset" }}
-          </a-button>
-          <span class="cfg-foot-gap"></span>
-          <a-button :disabled="cfgSaving" @click="cfgVisible = false">{{ i18n "close" }}</a-button>
-          <a-popconfirm title="{{ i18n "pages.core.configSaveConfirm" }}" placement="topRight"
-            @confirm="saveConfig" ok-text="{{ i18n "confirm" }}" cancel-text="{{ i18n "cancel" }}">
-            <a-button type="primary" :loading="cfgSaving">
-              <a-icon type="save"></a-icon>{{ i18n "pages.core.configSave" }}
-            </a-button>
-          </a-popconfirm>
-        </div>
-      </div>
-    </a-spin>
-  </a-modal>
 {{template "page/shell_end" . }}
 
 {{template "page/body_scripts" .}}
-<!-- The config editor's syntax modes. javascript.js is not pulled in: the only
-     JSON config the panel writes is Xray's, and that one is edited on its own
-     page. properties covers the ini/conf/pppd/swanctl shapes, toml covers
-     mtproto's config.toml. -->
-<script
-  src="{{ .base_path }}assets/codemirror/codemirror.min.js?{{ .asset_ver }}"></script>
-<script src="{{ .base_path }}assets/codemirror/properties.js?{{ .asset_ver }}"></script>
-<script src="{{ .base_path }}assets/codemirror/toml.js?{{ .asset_ver }}"></script>
 {{template "component/aSidebar" .}}
 {{template "component/aThemeSwitch" .}}
 <script>
@@ -598,19 +473,16 @@
     mixins: [MediaQueryMixin],
     el: '#app',
     data: {
+      themeSwitcher,
+      pageTitle: '{{ i18n "menu.core"}}',
+      pageClass: '',
+      mobileMenuOpen: false,
+      sidebarHidden: window.__sidebarHidden || false,
       langOpen: false,
       currentLang: window.__langData.currentLang,
       supportedLangs: window.__langData.supportedLangs,
       currentLangName: window.__langData.currentLangName,
       setLang: window.__langData.setLang,
-      mobileMenuOpen: false,
-      sidebarHidden: window.__sidebarHidden || false,
-      themeSwitcher,
-      pageTitle: '{{ i18n "menu.core"}}',
-      // A real hook, not cosmetic: the config editor's CSS has to reach an
-      // a-modal that portals out of #app, and the only selector that can do that
-      // is a sibling one anchored on this class (see the style block).
-      pageClass: 'core-page',
       spinning: false,
       loaded: false,
       provisioned: false,
@@ -653,19 +525,6 @@
       logsTitle: '',
       logsContent: '',
       logsLive: false,
-      // --- advanced config editor ---------------------------------------
-      cfgVisible: false,
-      cfgLoading: false,
-      cfgSaving: false,
-      cfgCore: '',
-      cfgTargets: [],
-      cfgIndex: 0,
-      cfgText: '',
-      cfgHealth: null,
-      // The CodeMirror instance. Held here rather than rebuilt per render because
-      // the modal remounts its body and a leaked instance stacks a second editor
-      // on top of the first.
-      cfgCm: null,
     },
     methods: {
       toggleSidebar() {
@@ -747,138 +606,6 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-      },
-      // --- advanced config editor ----------------------------------------
-      // Which cores could ever have a file to edit. wg-c, AmneziaWG, SSH and
-      // RADIUS never do: the first two are programmed through kernel netlink and
-      // the last two run inside the panel binary, so there is no config text
-      // anywhere to show. GRE stays in: the tunnel itself is netlink, but its
-      // optional IPsec layer is a swanctl file like any other.
-      coreHasConfig(name) {
-        return ['wgc', 'awg', 'ssh', 'radius'].indexOf(name) < 0;
-      },
-      async openConfig(core) {
-        this.cfgCore = core;
-        this.cfgTargets = [];
-        this.cfgIndex = 0;
-        this.cfgText = '';
-        this.cfgHealth = null;
-        this.cfgVisible = true;
-        await this.loadCfgTargets();
-      },
-      async loadCfgTargets() {
-        this.cfgLoading = true;
-        const msg = await HttpUtil.get('/panel/core/config/' + this.cfgCore);
-        this.cfgLoading = false;
-        this.cfgTargets = (msg && msg.success && msg.obj && msg.obj.targets) || [];
-        if (this.cfgIndex >= this.cfgTargets.length) this.cfgIndex = 0;
-        this.applyCfgTarget();
-      },
-      // a-select hands the new value to @change, and reading this.cfgIndex here
-      // instead would race v-model's own write to it.
-      selectCfgTarget(index) {
-        this.cfgIndex = index;
-        this.applyCfgTarget();
-      },
-      // The editor is filled with the file AS IT STANDS: the override when there is
-      // one, the panel's own render when there is not. Starting from the real text
-      // is what lets the modal drop the second pane, because the operator is no
-      // longer writing a fragment against a file they cannot see.
-      applyCfgTarget() {
-        const t = this.cfgTarget;
-        this.cfgText = (t && t.current) || '';
-        this.$nextTick(() => this.mountCfgEditor());
-      },
-      cfgCmMode(format) {
-        // Outside Xray's JSON the panel writes exactly two syntaxes: mtproto's
-        // TOML, and key/value with # comments (ini, pppd options, openvpn,
-        // swanctl) which the vendored properties mode covers, [section] headers
-        // included.
-        return format === 'toml' ? 'text/x-toml' : 'text/x-properties';
-      },
-      cfgCmOptions(mode) {
-        return {
-          lineNumbers: true,
-          mode: mode,
-          theme: 'xq',
-          // No styleActiveLine here: that option needs addon/selection/active-line,
-          // which is not vendored, so CodeMirror silently ignores it. Left out
-          // rather than left in, so nobody reads it as a working setting.
-          lineWrapping: true,
-          indentUnit: 2,
-          tabSize: 2,
-          lineWiseCopyCut: false,
-        };
-      },
-      mountCfgEditor() {
-        if (!this.cfgTargets.length) return;
-        const el = document.getElementById('cfg-editor');
-        if (!el) return;
-        const mode = this.cfgCmMode(this.cfgTarget.format);
-        if (!this.cfgCm) {
-          this.cfgCm = CodeMirror.fromTextArea(el, this.cfgCmOptions(mode));
-          this.cfgCm.on('change', (editor) => { this.cfgText = editor.getValue(); });
-        }
-        this.cfgCm.setOption('mode', mode);
-        if (this.cfgCm.getValue() !== this.cfgText) this.cfgCm.setValue(this.cfgText);
-        // A CodeMirror built while the modal is still animating measures its
-        // gutters against a box that has no width yet and lays every line on top
-        // of the last. refresh() once the dialog has settled is the fix.
-        setTimeout(() => {
-          if (this.cfgCm) this.cfgCm.refresh();
-        }, 300);
-      },
-      // toTextArea() puts the original <textarea> back. Skipping it leaves the
-      // node CodeMirror replaced in the DOM, so the next open calls
-      // fromTextArea on something that is no longer a textarea and the editor
-      // simply never appears.
-      disposeCfgEditor() {
-        if (this.cfgCm) { this.cfgCm.toTextArea(); this.cfgCm = null; }
-        this.cfgHealth = null;
-      },
-      cfgOptionLabel(t) {
-        const owner = t.remark || (t.inbound ? '#' + t.inbound : '');
-        return owner ? owner + ' / ' + t.label : t.label;
-      },
-      async saveConfig() {
-        const t = this.cfgTarget;
-        if (!t || !t.file) return;
-        this.cfgSaving = true;
-        this.cfgHealth = null;
-        // Always `replace`: the editor holds the WHOLE file, so the whole file is
-        // what gets posted. append is still an API mode (see coreconfig.go), it just
-        // has no control here. The file is addressed by inbound + name, never by
-        // path: the server matches both against a catalog it builds itself, so no
-        // path from this page can steer the write.
-        const msg = await HttpUtil.post('/panel/core/config/' + this.cfgCore, {
-          inboundId: t.inbound || 0,
-          file: t.file,
-          mode: 'replace',
-          text: this.cfgText,
-        });
-        this.cfgSaving = false;
-        if (msg && msg.success && msg.obj) {
-          this.cfgHealth = msg.obj.health || null;
-          if (msg.obj.targets) this.cfgTargets = msg.obj.targets;
-          // On a revert the STORED override is back to what it was, but the
-          // operator's text stays in the editor: it is the thing they now have to
-          // fix, and refilling from the reverted store would silently throw it away.
-          if (!this.cfgHealth || !this.cfgHealth.reverted) this.applyCfgTarget();
-        }
-        await this.loadStatus(false);
-      },
-      // Clearing the text IS the reset: an empty override is stored as no override
-      // at all, so the next generation writes the panel's own render and the editor
-      // is refilled with it. With nothing stored there is nothing to apply, so the
-      // text is simply put back rather than restarting the core over a no-op.
-      async resetConfig() {
-        if (!this.cfgHasOverride) {
-          this.cfgHealth = null;
-          this.applyCfgTarget();
-          return;
-        }
-        this.cfgText = '';
-        await this.saveConfig();
       },
       // --- core picker (setup / add / uninstall) -------------------------
       async loadCatalog() {
@@ -1234,7 +961,7 @@
       },
       coreBackend(name) {
         // The actual software powering each core (shown in the Backend row).
-        return ({ xray: 'Xray-core', l2tp: 'xl2tpd', ipsec: 'strongSwan (charon)', pptp: 'pptpd', openvpn: 'OpenVPN', openconnect: 'ocserv', sstp: 'accel-ppp', ikev2: 'strongSwan (charon)', wgc: 'WireGuard (kernel)', awg: 'AmneziaWG (kernel)', gre: 'GRE (kernel)', mtproto: 'telemt', ssh: 'Built-in (pro-ui)', radius: 'Built-in (pro-ui)' })[name] || '-';
+        return ({ xray: 'Xray-core', l2tp: 'xl2tpd', ipsec: 'strongSwan (charon)', pptp: 'pptpd', openvpn: 'OpenVPN', openconnect: 'ocserv', sstp: 'accel-ppp', ikev2: 'strongSwan (charon)', wgc: 'WireGuard (kernel)', awg: 'AmneziaWG (kernel)', gre: 'GRE (kernel)', mtproto: 'telemt', ssh: 'Built-in (vpn-ui)', radius: 'Built-in (vpn-ui)' })[name] || '-';
       },
       coreIcon(name) {
         // A single lock icon represents every core (Xray + all VPN daemons).
@@ -1278,25 +1005,6 @@
       },
       pickedCount() {
         return Object.keys(this.picked).length;
-      },
-      // The file the editor is currently on. An object rather than null when the
-      // list is empty, so the template can read .path/.format without guarding
-      // every access.
-      cfgTarget() {
-        return this.cfgTargets[this.cfgIndex] || {};
-      },
-      cfgHasOverride() {
-        return !!(this.cfgTarget && this.cfgTarget.override);
-      },
-      // Settled on zero targets: not mid-fetch (openConfig clears cfgTargets
-      // before loading, so a loading state must not read as "confirmed empty")
-      // and nothing came back. Drives the small dialog: width, the danger
-      // alert, and the empty message all key off this one flag.
-      cfgEmpty() {
-        return !this.cfgLoading && !this.cfgTargets.length;
-      },
-      cfgTitle() {
-        return this.coreTitle(this.cfgCore) + ' - {{ i18n "pages.core.configTitle" }}';
       },
     },
     mounted() {
@@ -1985,18 +1693,6 @@
     margin-top: 2px;
   }
 
-  /* Warning-toned sibling of .picker-note: this one is about the operator's own
-     setup, not about the panel's, so it has to read differently at a glance. */
-  .picker-conflict {
-    font-size: 12px;
-    color: var(--warn);
-    display: flex;
-    align-items: flex-start;
-    gap: 5px;
-    margin-top: 2px;
-    line-height: 1.5;
-  }
-
   .picker-backend {
     font-size: 12px;
     opacity: 0.55;
@@ -2038,126 +1734,6 @@
     line-height: 1.7;
     opacity: 0.8;
     font-size: 13px;
-  }
-
-  /* --- advanced config editor -------------------------------------------
-     Every rule below is anchored on `.core-page~div`, NOT on `.core-page`.
-     A <style> block in this codebase is global, and an a-modal portals its
-     body out of #app to sit as a SIBLING of it, so a descendant selector off
-     the page class matches nothing inside the dialog. The sibling form is the
-     convention custom.css already uses for portaled content
-     (.index-page~div .log-container, .inbounds-page~div .ant-collapse). */
-  .core-page~div .cfg-field-label {
-    font-size: 12px;
-    opacity: 0.65;
-    margin-bottom: 4px;
-  }
-
-  /* The absolute path, so the operator can always see WHICH file this is
-     about; the picker only shows a short label. The dimming sits on the path
-     itself rather than the row, so the "overridden" tag beside it keeps its
-     own colour. */
-  .core-page~div .cfg-path {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 6px;
-  }
-
-  .core-page~div .cfg-path-text {
-    font-family: monospace;
-    font-size: 12px;
-    opacity: 0.6;
-    word-break: break-all;
-  }
-
-  .core-page~div .cfg-empty {
-    padding: 28px 12px;
-    text-align: center;
-    opacity: 0.65;
-  }
-
-  /* Kept out of .cfg-empty itself so the acknowledgement button stays at full
-     opacity instead of inheriting the dimmed text above it. */
-  .core-page~div .cfg-empty-foot {
-    text-align: center;
-    margin-top: 4px;
-  }
-
-  .core-page~div .cfg-editor {
-    margin-top: 14px;
-  }
-
-  /* CodeMirror sizes itself to its content by default, so the modal would grow
-     without bound on a long config. A fixed height with its own scrollbar keeps
-     the dialog the same shape whatever file is open. */
-  .core-page~div .cfg-editor .CodeMirror {
-    height: 52vh;
-    min-height: 280px;
-    border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
-    border-radius: 6px;
-    font-size: 13px;
-  }
-
-  /* The xq theme underlines cm-def, which is fine for a language where "def" is a
-     definition but wrong for these configs. The properties (ini/conf) mode returns
-     state.position for every character it does not recognise, and that position is
-     "def" from start-of-line until the "=", so the token covers the leading
-     indentation and the alignment spaces before the separator as well as the key.
-     Underlined whitespace draws a solid rule through the blank columns, which reads
-     as a row of underscores rather than as an underlined key.
-
-     Colour instead: the key is the most important token in a config file, so it
-     still has to stand out, and cm-property is what the TOML mode already gives a
-     key. Matching it means a key looks the same whether the file open in this one
-     editor is an ini or a toml. */
-  .core-page~div .cfg-editor .cm-s-xq span.cm-def {
-    text-decoration: none;
-    color: #008771;
-  }
-
-  .dark .core-page~div .cfg-editor .cm-s-xq span.cm-def {
-    color: #f6c177;
-  }
-
-  .core-page~div .cfg-health {
-    margin: 10px 0;
-    padding: 12px 14px;
-    border-radius: 8px;
-    border: 1px solid #ff4d4f;
-  }
-
-  .core-page~div .cfg-health-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 600;
-    color: #ff4d4f;
-  }
-
-  .core-page~div .cfg-health-log {
-    margin: 8px 0 0;
-    max-height: 180px;
-    overflow: auto;
-    font-size: 12px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  .core-page~div .cfg-foot {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    margin-top: 16px;
-  }
-
-  /* Pushes Close and Save to the far edge, keeping Reset at the other end so the
-     two are not adjacent. */
-  .core-page~div .cfg-foot-gap {
-    flex: 1 1 auto;
   }
 </style>
 {{ template "page/body_end" .}}
