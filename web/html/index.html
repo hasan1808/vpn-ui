@@ -1809,6 +1809,7 @@
       ifaceFilter: '',
       userStats: { total: 0, online: 0, depleted: 0, expiring: 0 },
       outboundsTraffic: [],
+      configuredOutboundTags: [],
       // Manage tile connectivity check (Google / Cloudflare / YouTube). `ping`
       // holds the last server answer; null until the first check lands.
       ping: null,
@@ -3380,16 +3381,32 @@
           }
         }, 2000);
       },
+      async loadOutboundConfig() {
+        try {
+          const msg = await HttpUtil.post('/panel/xray/');
+          if (!msg || !msg.success || !msg.obj) return;
+          const result = typeof msg.obj === 'string' ? JSON.parse(msg.obj) : msg.obj;
+          const cfg = typeof result.xraySetting === 'string' ? JSON.parse(result.xraySetting) : result.xraySetting;
+          const outs = cfg && Array.isArray(cfg.outbounds) ? cfg.outbounds : [];
+          this.configuredOutboundTags = outs.map((o) => (o && o.tag) || '').filter(Boolean);
+        } catch (e) { /* no perm or bad config: card falls back to traffic-only */ }
+      },
       visibleOutbounds() {
         const list = Array.isArray(this.outboundsTraffic) ? this.outboundsTraffic : [];
-        return list
-          .filter((o) => {
-            if (!o || !o.tag) return false;
-            const tag = String(o.tag).toLowerCase();
-            if (tag === 'direct' || tag === 'blocked') return false;
-            return (o.up || 0) > 0 || (o.down || 0) > 0 || (o.total || 0) > 0;
-          })
-          .sort((a, b) => (b.total || 0) - (a.total || 0));
+        const byTag = {};
+        list.forEach((o) => {
+          if (!o || !o.tag) return;
+          const tag = String(o.tag);
+          if (/^(direct|blocked)$/i.test(tag)) return;
+          byTag[tag.toLowerCase()] = { tag: tag, up: o.up || 0, down: o.down || 0, total: o.total || 0 };
+        });
+        (this.configuredOutboundTags || []).forEach((t) => {
+          const tag = String(t || '');
+          if (!tag || /^(direct|blocked)$/i.test(tag)) return;
+          const k = tag.toLowerCase();
+          if (!byTag[k]) byTag[k] = { tag: tag, up: 0, down: 0, total: 0 };
+        });
+        return Object.keys(byTag).map((k) => byTag[k]).sort((a, b) => (b.total || 0) - (a.total || 0));
       },
       fmtBytes(n) {
         const v = Number(n) || 0;
@@ -3461,6 +3478,7 @@
       this.fetchUserStats();
       this.fetchServerName();
       this.fetchPanelLocation();
+      this.loadOutboundConfig();
       if (this.canPing) this.checkInternet();
       this.fetchGeofileStatus();
       this.checkForUpdate(false);
