@@ -495,21 +495,38 @@
         const val = ip || "";
         if (!val) return;
         const done = () => this.$message.success('{{ i18n "copied" }}');
+        const fail = () => this.$message.error('{{ i18n "fail" }}');
         if (navigator.clipboard && window.isSecureContext) {
-          navigator.clipboard.writeText(val).then(done).catch(() => this.fallbackCopy(val, done));
+          navigator.clipboard.writeText(val).then(done).catch(() => this.fallbackCopy(val, done, fail));
         } else {
-          this.fallbackCopy(val, done);
+          this.fallbackCopy(val, done, fail);
         }
       },
-      fallbackCopy(text, done) {
+      fallbackCopy(text, done, fail) {
         const ta = document.createElement('textarea');
         ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.contentEditable = 'true';
         ta.style.position = 'fixed';
-        ta.style.opacity = '0';
+        ta.style.top = '0';
+        ta.style.left = '-9999px';
         document.body.appendChild(ta);
+        const selection = document.getSelection();
+        const saved = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
         ta.select();
-        try { document.execCommand('copy'); done(); } catch (e) {}
+        ta.setSelectionRange(0, text.length);
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
         document.body.removeChild(ta);
+        if (saved) {
+          selection.removeAllRanges();
+          selection.addRange(saved);
+        }
+        if (ok) {
+          done();
+        } else if (typeof fail === 'function') {
+          fail();
+        }
       },
     <article class="db-card db-card--full" aria-label='{{ i18n "pages.index.vpnServices" }}'>
       <div class="db-card-head">
