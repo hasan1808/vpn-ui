@@ -32,543 +32,464 @@
        pop in against a collapsed container. -->
   <div v-if="!loadingStates.fetched" :style="{ minHeight: 'calc(100vh - 160px)' }"></div>
 
-  <div class="bo-bento" v-else>
+    <div v-if="!loadingStates.fetched" :style="{ minHeight: 'calc(100vh - 160px)' }"></div>
 
-    <!-- ===== identity ===== -->
-    <article class="bo-tile bo-t-ident" aria-label='{{ i18n "pages.index.systemStatus" }}'>
-      <div class="bo-ident-top">
-        <!-- The mark is painted as a CSS mask rather than an <svg><use>, so the
-             brand colour lives in components.css (where dark mode can override
-             the few brands that vanish on a dark surface) and only the one
-             logo the machine actually needs is ever fetched. -->
-        <span class="bo-ident-logo bo-distro" :class="'bo-distro--' + distroKey"
-          :style="{ maskImage: distroMask, WebkitMaskImage: distroMask }"
-          role="img" :aria-label="status.osName || 'Linux'"></span>
-        <div class="bo-ident-name">
-          <div class="bo-ident-nameline">
-            <p class="bo-ident-os">[[ serverLabel ]]</p>
-            <!-- The rename relabels the panel for every admin and is offered
-                 nowhere but here, so it answers to the bit that lets this page act.
-                 It used to AND the panel-settings bit on top; that is gone because a
-                 reseller's derived mask carries no settings bit, so the AND made
-                 their AllowOverviewManage column inert. Without the bit the label is
-                 still shown, just not editable. -->
+  <div class="db-root" v-else>
+
+    <!-- ===== identity header ===== -->
+    <div class="db-ident">
+      <span class="db-ident-logo bo-distro" :class="'bo-distro--' + distroKey"
+        :style="{ maskImage: distroMask, WebkitMaskImage: distroMask }"
+        role="img" :aria-label="status.osName || 'Linux'"></span>
+      <div class="db-ident-name">
+        <div class="db-ident-nameline">
+          <p class="db-ident-os">[[ serverLabel ]]</p>
+          {{ if .perms.manageOverview }}
+          <button type="button" class="bo-ident-edit" @click="openRenameServer"
+            title='{{ i18n "edit" }}' aria-label='{{ i18n "edit" }}'>
+            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-pencil"></use></svg>
+          </button>
+          {{ end }}
+        </div>
+        <p class="db-ident-sub" v-if="status.osName">[[ status.osName ]] [[ status.osVersion ]]</p>
+      </div>
+    </div>
+
+    <!-- ============================== 3-column grid ============================== -->
+    <div class="db-grid">
+
+      <!-- ===== LEFT COLUMN ===== -->
+      <div class="db-col db-col--left">
+
+        <!-- Server Overview -->
+        <article class="db-card" aria-label='{{ i18n "pages.index.systemStatus" }}'>
+          <div class="db-card-head"><h3 class="db-card-title">SERVER OVERVIEW</h3></div>
+          <dl class="db-overview">
+            <div class="db-overview-row" v-if="panelLocationText">
+              <span class="db-ov-ico db-ov-ico--loc"><svg class="bo-icon bo-icon-14"><use href="#bo-i-globe"></use></svg></span>
+              <dt class="db-ov-key">{{ i18n "pages.index.panelLocation" }}</dt>
+              <dd class="db-ov-val" :class="{ 'db-muted': panelLocationFailed }">[[ panelLocationText ]]</dd>
+            </div>
+            <div class="db-overview-row">
+              <span class="db-ov-ico db-ov-ico--panel"><svg class="bo-icon bo-icon-14"><use href="#bo-i-shield"></use></svg></span>
+              <dt class="db-ov-key">{{ i18n "pages.index.panelUptime" }}</dt>
+              <dd class="db-ov-val num">[[ TimeFormatter.formatUptime(status.appUptime) ]]</dd>
+            </div>
+            <div class="db-overview-row">
+              <span class="db-ov-ico db-ov-ico--os"><svg class="bo-icon bo-icon-14"><use href="#bo-i-server"></use></svg></span>
+              <dt class="db-ov-key">{{ i18n "pages.index.serverUptime" }}</dt>
+              <dd class="db-ov-val num">[[ TimeFormatter.formatUptime(status.uptime) ]]</dd>
+            </div>
+            {{ if .perms.accessCoreSettings }}
+            <div class="db-overview-row">
+              <span class="db-ov-ico db-ov-ico--health"><svg class="bo-icon bo-icon-14"><use href="#bo-i-shield"></use></svg></span>
+              <dt class="db-ov-key">{{ i18n "pages.index.vpnServices" }}</dt>
+              <dd class="db-ov-val num" :class="allCoresHealthy ? 'db-ok' : 'db-warn'">[[ healthSummary ]]</dd>
+            </div>
+            {{ end }}
+            <div class="db-overview-row" v-if="status.cpuModel">
+              <span class="db-ov-ico db-ov-ico--cpu"><svg class="bo-icon bo-icon-14"><use href="#bo-i-cpu"></use></svg></span>
+              <dt class="db-ov-key">CPU</dt>
+              <dd class="db-ov-val">[[ status.cpuModel ]]</dd>
+            </div>
+            <div class="db-overview-row">
+              <span class="db-ov-ico db-ov-ico--cores"><svg class="bo-icon bo-icon-14"><use href="#bo-i-grid"></use></svg></span>
+              <dt class="db-ov-key">Cores</dt>
+              <dd class="db-ov-val num">[[ CPUFormatter.cpuCoreFormat(status.cpuCores) ]]<span v-if="status.cpuSpeedMhz"> at [[ CPUFormatter.cpuSpeedFormat(status.cpuSpeedMhz) ]]</span></dd>
+            </div>
+            <div class="db-overview-row" v-if="ramText">
+              <span class="db-ov-ico db-ov-ico--ram"><svg class="bo-icon bo-icon-14"><use href="#bo-i-ram"></use></svg></span>
+              <dt class="db-ov-key">RAM</dt>
+              <dd class="db-ov-val num">[[ ramText ]]</dd>
+            </div>
+            <div class="db-overview-row" v-if="status.kernel">
+              <span class="db-ov-ico db-ov-ico--kernel"><svg class="bo-icon bo-icon-14"><use href="#bo-i-zap"></use></svg></span>
+              <dt class="db-ov-key">Kernel</dt>
+              <dd class="db-ov-val num">[[ status.kernel ]]</dd>
+            </div>
+            <div class="db-overview-row">
+              <span class="db-ov-ico db-ov-ico--virt"><svg class="bo-icon bo-icon-14"><use href="#bo-i-box"></use></svg></span>
+              <dt class="db-ov-key">{{ i18n "pages.index.virtualized" }}</dt>
+              <dd class="db-ov-val">[[ virtText ]]</dd>
+            </div>
+          </dl>
+        </article>
+
+        <!-- Xray Service -->
+        <article class="db-card" aria-label='{{ i18n "pages.index.xrayStatus" }}'>
+          <div class="db-card-head">
+            <h3 class="db-card-title">XRAY SERVICE</h3>
+            <a-popover v-if="status.xray.state == 'error'" :overlay-class-name="themeSwitcher.currentTheme">
+              <span slot="title">
+                <a-row type="flex" align="middle" justify="space-between">
+                  <a-col><span>{{ i18n "pages.index.xrayErrorPopoverTitle" }}</span></a-col>
+                  <a-col><a-icon type="bars" class="cursor-pointer float-right" @click="openLogs()"></a-icon></a-col>
+                </a-row>
+              </span>
+              <template slot="content">
+                <span class="max-w-400" v-for="line in (status.xray.errorMsg || '').split('\n')">[[ line ]]</span>
+              </template>
+              <span class="db-pill db-pill--error"><span class="db-dot db-dot--error"></span>[[ status.xray.stateMsg ]]</span>
+            </a-popover>
+            <span v-else class="db-pill" :class="xrayPillClass" aria-live="polite">
+              <span class="db-dot" :class="xrayDotClass"></span>[[ status.xray.stateMsg ]]
+            </span>
+          </div>
+          <div class="db-kv-row">
+            <span class="db-kv-label">{{ i18n "pages.index.xrayStatus" }}</span>
+            <span class="db-kv-value num">[[ status.xray.version != 'Unknown' ? 'v' + status.xray.version : '-' ]]</span>
+          </div>
+          <div class="db-kv-row">
+            <span class="db-kv-label">Uptime</span>
+            <span class="db-kv-value num">[[ TimeFormatter.formatUptime(status.appStats.uptime) ]]</span>
+          </div>
+          <div class="db-card-actions">
             {{ if .perms.manageOverview }}
-            <button type="button" class="bo-ident-edit" @click="openRenameServer"
-              title='{{ i18n "edit" }}' aria-label='{{ i18n "edit" }}'>
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-pencil"></use></svg>
+            <button type="button" class="db-action-btn" @click="openCoreLogs('xray')">
+              <svg class="bo-icon bo-icon-14"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
+            </button>
+            <button type="button" class="db-action-btn db-action-btn--danger" @click="stopXrayService">
+              <svg class="bo-icon bo-icon-14"><use href="#bo-i-stop"></use></svg>{{ i18n "pages.index.stopXray" }}
+            </button>
+            <button type="button" class="db-action-btn" @click="restartXrayService">
+              <svg class="bo-icon bo-icon-14"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.restartXray" }}
+            </button>
+            <button type="button" class="db-action-btn" @click="openGeofiles()">
+              <svg class="bo-icon bo-icon-14"><use href="#bo-i-globe"></use></svg>{{ i18n "pages.index.geofiles" }}
             </button>
             {{ end }}
           </div>
-          <p class="bo-ident-sub" v-if="status.osName">[[ status.osName ]] [[ status.osVersion ]]</p>
-        </div>
-      </div>
+        </article>
 
-      <!-- One labelled line per fact. Each row's icon is tinted so the eye can
-           find a row by colour before reading it. -->
-      <dl class="bo-spec">
-        <!-- Order is deliberate: where this panel egresses and how long the two
-             things that can independently restart (the panel, the machine) have
-             been up, then service health, then the hardware facts that never
-             change while we run. -->
-        <div class="bo-spec-row" v-if="panelLocationText">
-          <span class="bo-spec-ico bo-spec-ico--loc"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-globe"></use></svg></span>
-          <dt class="bo-spec-key">{{ i18n "pages.index.panelLocation" }}</dt>
-          <dd class="bo-spec-val" :class="{ 'bo-muted': panelLocationFailed }">[[ panelLocationText ]]</dd>
-        </div>
-        <!-- Two uptimes, not one. A panel restarted an hour ago on a host up for
-             months is worth seeing, and the single "Uptime" row this replaced
-             showed only the host's, so a panel that had crashed and come back
-             looked identical to one that had never stopped. -->
-        <div class="bo-spec-row">
-          <span class="bo-spec-ico bo-spec-ico--panel"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-shield"></use></svg></span>
-          <dt class="bo-spec-key">{{ i18n "pages.index.panelUptime" }}</dt>
-          <dd class="bo-spec-val num">[[ TimeFormatter.formatUptime(status.appUptime) ]]</dd>
-        </div>
-        <div class="bo-spec-row">
-          <span class="bo-spec-ico bo-spec-ico--os"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-server"></use></svg></span>
-          <dt class="bo-spec-key">{{ i18n "pages.index.serverUptime" }}</dt>
-          <dd class="bo-spec-val num">[[ TimeFormatter.formatUptime(status.uptime) ]]</dd>
-        </div>
-        {{ if .perms.accessCoreSettings }}
-        <div class="bo-spec-row">
-          <span class="bo-spec-ico bo-spec-ico--health"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-shield"></use></svg></span>
-          <dt class="bo-spec-key">{{ i18n "pages.index.vpnServices" }}</dt>
-          <dd class="bo-spec-val num" :class="allCoresHealthy ? 'bo-ok' : 'bo-warn'">[[ healthSummary ]]</dd>
-        </div>
-        {{ end }}
-        <div class="bo-spec-row" v-if="status.cpuModel">
-          <span class="bo-spec-ico bo-spec-ico--cpu"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-cpu"></use></svg></span>
-          <dt class="bo-spec-key">CPU</dt>
-          <dd class="bo-spec-val">[[ status.cpuModel ]]</dd>
-        </div>
-        <div class="bo-spec-row">
-          <span class="bo-spec-ico bo-spec-ico--cores"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-grid"></use></svg></span>
-          <dt class="bo-spec-key">Cores</dt>
-          <dd class="bo-spec-val num">[[ CPUFormatter.cpuCoreFormat(status.cpuCores) ]]<span v-if="status.cpuSpeedMhz"> at [[ CPUFormatter.cpuSpeedFormat(status.cpuSpeedMhz) ]]</span></dd>
-        </div>
-        <!-- Fitted memory, not the live usage the tile below graphs. The DDR
-             generation and clock come from SMBIOS and are simply absent on most
-             hypervisors, so this row shrinks to a bare capacity rather than
-             disappearing. -->
-        <div class="bo-spec-row" v-if="ramText">
-          <span class="bo-spec-ico bo-spec-ico--ram"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-ram"></use></svg></span>
-          <dt class="bo-spec-key">RAM</dt>
-          <dd class="bo-spec-val num">[[ ramText ]]</dd>
-        </div>
-        <div class="bo-spec-row" v-if="status.kernel">
-          <span class="bo-spec-ico bo-spec-ico--kernel"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-zap"></use></svg></span>
-          <dt class="bo-spec-key">Kernel</dt>
-          <dd class="bo-spec-val num">[[ status.kernel ]]</dd>
-        </div>
-        <!-- Whether this machine is a guest, and of what. Detected once per
-             panel start (it cannot change while we run), so a host that
-             reports nothing is bare metal rather than still being probed. -->
-        <div class="bo-spec-row">
-          <span class="bo-spec-ico bo-spec-ico--virt"><svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-box"></use></svg></span>
-          <dt class="bo-spec-key">{{ i18n "pages.index.virtualized" }}</dt>
-          <dd class="bo-spec-val">[[ virtText ]]</dd>
-        </div>
-      </dl>
-    </article>
-
-    <!-- ===== throughput ===== -->
-    <article class="bo-tile bo-t-flow" aria-label='{{ i18n "pages.index.overallSpeed" }}'>
-      <div class="bo-tile-head">
-        <h3 class="bo-tile-title">{{ i18n "pages.index.overallSpeed" }}</h3>
-        <!-- Interface picker. "All" is the default and sums every non-loopback
-             NIC, which is what the aggregate netIO already reports. -->
-        <span class="bo-iface-pick">
-          <a-select size="small" v-model="ifaceFilter" :style="{ minWidth: '120px' }"
-            :dropdown-class-name="themeSwitcher.currentTheme" @change="onIfaceChange">
-            <a-select-option value="">{{ i18n "all" }}</a-select-option>
-            <a-select-option v-for="n in ifaceNames" :key="n" :value="n">[[ n ]]</a-select-option>
-          </a-select>
-        </span>
-      </div>
-      <div class="bo-flow-cols">
-        <div class="bo-flow-col bo-flow-col--up">
-          <div class="bo-flow-label">
-            <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-arrow-up"></use></svg>
-            {{ i18n "pages.index.upload" }}
-          </div>
-          <div class="bo-flow-value num" aria-live="polite">
-            [[ SizeFormatter.sizeFormat(ifaceRate('up')) ]]<span class="bo-unit">/s</span>
-          </div>
-          <!-- height matches .bo-flow-chart's 96px in components.css. The prop said
-               130 while the CSS forced the <svg> to 96, and preserveAspectRatio="none"
-               squashed the whole plot to 74% of its intended height, thinning the
-               stroke vertically along with it. -->
-          <div class="bo-flow-chart">
-            <sparkline :data="history.up" :vb-width="420" :height="96" :autoscale="true" :log-scale="true"
-              :max-points="HISTORY_POINTS" :fill-opacity="0.14" :stroke="chartColors.accent"
-              :show-grid="false" :padding-left="2" :padding-right="2"
-              :padding-top="6" :padding-bottom="6" />
-          </div>
-        </div>
-        <div class="bo-flow-col bo-flow-col--down">
-          <div class="bo-flow-label">
-            <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-arrow-down"></use></svg>
-            {{ i18n "pages.index.download" }}
-          </div>
-          <div class="bo-flow-value num" aria-live="polite">
-            [[ SizeFormatter.sizeFormat(ifaceRate('down')) ]]<span class="bo-unit">/s</span>
-          </div>
-          <div class="bo-flow-chart">
-            <sparkline :data="history.down" :vb-width="420" :height="96" :autoscale="true" :log-scale="true"
-              :max-points="HISTORY_POINTS" :fill-opacity="0.14" :stroke="chartColors.info"
-              :show-grid="false" :padding-left="2" :padding-right="2"
-              :padding-top="6" :padding-bottom="6" />
-          </div>
-        </div>
-      </div>
-      <div class="bo-divider"></div>
-      <div class="bo-flow-footer">
-        <div class="bo-mini-stat">
-          <span class="bo-mini-stat-label">{{ i18n "pages.index.sent" }}</span>
-          <span class="bo-mini-stat-value num">[[ SizeFormatter.sizeFormat(status.netTraffic.sent) ]]</span>
-        </div>
-        <div class="bo-mini-stat bo-mini-stat--end">
-          <span class="bo-mini-stat-label">{{ i18n "pages.index.received" }}</span>
-          <span class="bo-mini-stat-value num">[[ SizeFormatter.sizeFormat(status.netTraffic.recv) ]]</span>
-        </div>
-      </div>
-    </article>
-
-    <!-- ===== user status ===== -->
-    <article class="bo-tile bo-t-users" aria-label='{{ i18n "clients" }}'>
-      <div class="bo-tile-head"><h3 class="bo-tile-title">{{ i18n "clients" }}</h3></div>
-      <div class="bo-people">
-        <div class="bo-person bo-person--total">
-          <svg class="bo-person-ico" aria-hidden="true"><use href="#bo-i-user"></use></svg>
-          <span class="bo-person-val num">[[ userStats.total ]]</span>
-          <span class="bo-person-key">{{ i18n "pages.inbounds.totalUsers" }}</span>
-        </div>
-        <div class="bo-person bo-person--online">
-          <svg class="bo-person-ico" aria-hidden="true"><use href="#bo-i-user"></use></svg>
-          <span class="bo-person-val num">[[ userStats.online ]]</span>
-          <span class="bo-person-key">{{ i18n "online" }}</span>
-        </div>
-        <div class="bo-person bo-person--depleted">
-          <svg class="bo-person-ico" aria-hidden="true"><use href="#bo-i-user"></use></svg>
-          <span class="bo-person-val num">[[ userStats.depleted ]]</span>
-          <span class="bo-person-key">{{ i18n "depleted" }}</span>
-        </div>
-      </div>
-    </article>
-
-    <!-- ===== vitals ===== -->
-    <article class="bo-tile bo-t-vit" aria-label='{{ i18n "pages.index.systemStatus" }}'>
-      <div class="bo-tile-head"><h3 class="bo-tile-title">{{ i18n "pages.index.systemStatus" }}</h3></div>
-      <div class="bo-vit-list">
-
-        <div class="bo-vit-item" v-for="v in vitals" :key="v.key">
-          <div class="bo-vit-row">
-            <div class="bo-ring-wrap">
-              <svg viewBox="0 0 40 40" aria-hidden="true">
-                <circle class="bo-ring-track" cx="20" cy="20" r="16"></circle>
-                <circle class="bo-ring-progress" :class="ringClass(v.percent)" cx="20" cy="20" r="16"
-                  :style="{ strokeDashoffset: ringOffset(v.percent) }"></circle>
-              </svg>
-              <span class="bo-ring-icon">
-                <svg class="bo-icon" aria-hidden="true"><use :href="'#bo-i-' + v.icon"></use></svg>
-              </span>
+        <!-- Manage -->
+        {{ if .perms.manageOverview }}
+        <article class="db-card" aria-label='{{ i18n "menu.link" }}'>
+          <div class="db-card-head"><h3 class="db-card-title">MANAGE</h3></div>
+          <div class="db-manage-layout">
+            <div class="db-manage-actions">
+              <button type="button" class="db-manage-btn" @click="openAllLogs()">
+                <svg class="bo-icon bo-icon-14"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
+              </button>
+              <button type="button" class="db-manage-btn" @click="openConfig">
+                <svg class="bo-icon bo-icon-14"><use href="#bo-i-sliders"></use></svg>{{ i18n "pages.index.config" }}
+              </button>
+              <button type="button" class="db-manage-btn" @click="openBackup">
+                <svg class="bo-icon bo-icon-14"><use href="#bo-i-download"></use></svg>{{ i18n "pages.index.backup" }}
+              </button>
+              <button type="button" class="db-manage-btn" @click="openRestore">
+                <svg class="bo-icon bo-icon-14"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.restore" }}
+              </button>
             </div>
-            <div class="bo-vit-info">
-              <div class="bo-vit-top">
-                <span class="bo-vit-name">[[ v.label ]]</span>
-                <span class="bo-vit-pct num">[[ v.percent ]]%</span>
+            <div class="db-manage-ping">
+              <div class="db-ping-header">
+                <h4 class="db-ping-title">{{ i18n "pages.index.internet" }}</h4>
+                <button type="button" class="db-ping-btn" :disabled="pingChecking" @click="checkInternet()">
+                  <svg class="bo-icon bo-icon-12"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.ping" }}
+                </button>
               </div>
-              <p class="bo-vit-meta">[[ v.meta ]]</p>
+              <span v-if="ping && ping.overall" class="db-pill db-pill--sm" :class="'db-pill--' + ping.overall">
+                [[ pingOverallText ]]
+              </span>
+              <ul class="db-ping-list">
+                <li v-for="t in pingList" :key="t.name" class="db-ping-item">
+                  <span class="db-ping-dot" :class="'db-ping-dot--' + rowState(t)"></span>
+                  <span class="db-ping-name">[[ t.name ]]</span>
+                  <span v-if="t.status === 'ok'" class="db-ping-val num">[[ formatPing(t.rttMs) ]]</span>
+                  <span v-else-if="t.status === 'fail'" class="db-ping-val db-ping-val--fail">{{ i18n "pages.index.pingUnreachable" }}</span>
+                  <span v-else class="db-ping-val db-ping-val--pending">[[ pingText.loading ]]</span>
+                </li>
+              </ul>
             </div>
           </div>
-          <!-- The component's default paddings (32 left, 20 bottom) assume a
-               full-size chart with axes; at 24px tall they leave a negative
-               draw area, so they are zeroed out here.
-               `fit` because 20px of draw height cannot resolve a 0..100 axis:
-               against the fixed scale an idle machine drew a straight line. The
-               10-point floor keeps a genuinely flat series (disk, idle swap)
-               flat instead of magnifying its last decimal. -->
-          <div class="bo-vit-spark">
-            <sparkline :data="history[v.key]" :vb-width="240" :height="24"
-              :max-points="HISTORY_POINTS" :fill-opacity="0.14" :stroke="chartColors.accent"
-              :show-grid="false" :show-marker="false" :stroke-width="1.5"
-              :fit="!v.rate" :min-span="10" :autoscale="!!v.rate" :log-scale="!!v.rate"
-              :padding-left="0" :padding-right="0" :padding-top="2" :padding-bottom="2" />
+        </article>
+        {{ end }}
+
+      </div>
+
+      <!-- ===== CENTER COLUMN ===== -->
+      <div class="db-col db-col--center">
+
+        <!-- Bandwidth Overview -->
+        <article class="db-card" aria-label='{{ i18n "pages.index.overallSpeed" }}'>
+          <div class="db-card-head">
+            <h3 class="db-card-title">BANDWIDTH OVERVIEW</h3>
+            <span class="db-iface-pick">
+              <a-select size="small" v-model="ifaceFilter" :style="{ minWidth: '100px' }"
+                :dropdown-class-name="themeSwitcher.currentTheme" @change="onIfaceChange">
+                <a-select-option value="">{{ i18n "all" }}</a-select-option>
+                <a-select-option v-for="n in ifaceNames" :key="n" :value="n">[[ n ]]</a-select-option>
+              </a-select>
+            </span>
           </div>
-        </div>
+          <div class="db-bw-cols">
+            <div class="db-bw-col">
+              <div class="db-bw-label">
+                <svg class="bo-icon bo-icon-14" style="color:var(--ok)"><use href="#bo-i-arrow-up"></use></svg>
+                {{ i18n "pages.index.upload" }}
+              </div>
+              <div class="db-bw-value num">[[ SizeFormatter.sizeFormat(ifaceRate('up')) ]]<span class="db-bw-unit">/s</span></div>
+              <div class="db-bw-chart">
+                <sparkline :data="history.up" :vb-width="420" :height="80" :autoscale="true" :log-scale="true"
+                  :max-points="HISTORY_POINTS" :fill-opacity="0.14" :stroke="chartColors.accent"
+                  :show-grid="false" :padding-left="2" :padding-right="2"
+                  :padding-top="6" :padding-bottom="6" />
+              </div>
+            </div>
+            <div class="db-bw-col">
+              <div class="db-bw-label">
+                <svg class="bo-icon bo-icon-14" style="color:var(--info)"><use href="#bo-i-arrow-down"></use></svg>
+                {{ i18n "pages.index.download" }}
+              </div>
+              <div class="db-bw-value num">[[ SizeFormatter.sizeFormat(ifaceRate('down')) ]]<span class="db-bw-unit">/s</span></div>
+              <div class="db-bw-chart">
+                <sparkline :data="history.down" :vb-width="420" :height="80" :autoscale="true" :log-scale="true"
+                  :max-points="HISTORY_POINTS" :fill-opacity="0.14" :stroke="chartColors.info"
+                  :show-grid="false" :padding-left="2" :padding-right="2"
+                  :padding-top="6" :padding-bottom="6" />
+              </div>
+            </div>
+          </div>
+          <div class="db-bw-footer">
+            <div class="db-bw-stat">
+              <svg class="bo-icon bo-icon-14" style="color:var(--ok)"><use href="#bo-i-arrow-up"></use></svg>
+              <div><span class="db-bw-stat-label">SENT</span><span class="db-bw-stat-val num">[[ SizeFormatter.sizeFormat(status.netTraffic.sent) ]]</span></div>
+            </div>
+            <div class="db-bw-stat">
+              <svg class="bo-icon bo-icon-14" style="color:var(--info)"><use href="#bo-i-arrow-down"></use></svg>
+              <div><span class="db-bw-stat-label">RECEIVED</span><span class="db-bw-stat-val num">[[ SizeFormatter.sizeFormat(status.netTraffic.recv) ]]</span></div>
+            </div>
+          </div>
+        </article>
 
-      </div>
-      <div class="bo-divider"></div>
-      <div class="bo-tile-head bo-tile-head--sub"><h3 class="bo-tile-title">{{ i18n "pages.index.connectionCount" }}</h3></div>
-      <div class="bo-conn-body">
-        <div class="bo-conn-stat bo-conn-stat--tcp">
-          <span class="bo-conn-label">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-link"></use></svg>TCP
-          </span>
-          <span class="bo-conn-value num">[[ status.tcpCount ]]</span>
-        </div>
-        <div class="bo-conn-stat bo-conn-stat--udp">
-          <span class="bo-conn-label">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-link"></use></svg>UDP
-          </span>
-          <span class="bo-conn-value num">[[ status.udpCount ]]</span>
-        </div>
-      </div>
-      <div class="bo-conn-ratio">
-        <span class="bo-conn-ratio-seg bo-conn-ratio-seg--tcp" :style="{ width: connRatio.tcp }"></span>
-        <span class="bo-conn-ratio-seg bo-conn-ratio-seg--udp" :style="{ width: connRatio.udp }"></span>
-      </div>
+        <!-- Clients -->
+        <article class="db-card" aria-label='{{ i18n "clients" }}'>
+          <div class="db-card-head"><h3 class="db-card-title">CLIENTS</h3></div>
+          <div class="db-clients-grid">
+            <div class="db-client-box">
+              <svg class="db-client-ico" style="color:var(--text-3)"><use href="#bo-i-user"></use></svg>
+              <span class="db-client-val num">[[ userStats.total ]]</span>
+              <span class="db-client-label">Total Users</span>
+            </div>
+            <div class="db-client-box">
+              <svg class="db-client-ico" style="color:var(--ok)"><use href="#bo-i-user"></use></svg>
+              <span class="db-client-val num" style="color:var(--ok)">[[ userStats.online ]]</span>
+              <span class="db-client-label">Online</span>
+            </div>
+            <div class="db-client-box">
+              <svg class="db-client-ico" style="color:var(--error)"><use href="#bo-i-user"></use></svg>
+              <span class="db-client-val num" style="color:var(--error)">[[ userStats.depleted ]]</span>
+              <span class="db-client-label">Ended</span>
+            </div>
+          </div>
+        </article>
 
-      <div class="bo-divider"></div>
-      <div class="bo-tile-head">
-        <h3 class="bo-tile-title">{{ i18n "pages.index.ipAddresses" }}</h3>
-        <button type="button" class="bo-icon-btn bo-icon-btn--ghost" @click="showIp = !showIp"
-          :aria-label='`{{ i18n "pages.index.toggleIpVisibility" }}`' :aria-pressed="String(!showIp)">
-          <svg class="bo-icon bo-icon-16" aria-hidden="true">
-            <use :href="showIp ? '#bo-i-eye' : '#bo-i-eye-off'"></use>
-          </svg>
-        </button>
-      </div>
-      <div class="bo-ip-row">
-        <span class="bo-ip-label">IPv4</span>
-        <span class="bo-ip-value num">[[ showIp ? status.publicIP.ipv4 : maskIp(status.publicIP.ipv4) ]]</span>
-      </div>
-      <div class="bo-ip-row" v-for="(ip, i) in extraIpv4s()" :key="i">
-        <span class="bo-ip-label">IPv4 +[[ i + 1 ]]</span>
-        <span class="bo-ip-value num">[[ showIp ? ip : maskIp(ip) ]]</span>
-      </div>
-      <div class="bo-ip-row">
-        <span class="bo-ip-label">IPv6</span>
-        <span class="bo-ip-value num">[[ showIp ? status.publicIP.ipv6 : maskIp(status.publicIP.ipv6) ]]</span>
-      </div>
-    </article>
-
-    <!-- ===== VPN services =====
-         Core Settings only. The daemon states come from /panel/core/status,
-         which that permission gates, and every chip navigates to the Core page,
-         which it also gates. Rendered for anyone else the tile would be twelve
-         chips reading "unknown" that redirect on click. -->
-    {{ if .perms.accessCoreSettings }}
-    <article class="bo-tile bo-t-svc" aria-label='{{ i18n "pages.index.vpnServices" }}'>
-      <div class="bo-tile-head">
-        <h3 class="bo-tile-title">{{ i18n "pages.index.vpnServices" }}</h3>
-        <span class="bo-tile-meta">[[ vpnSummary ]]</span>
-      </div>
-      <div class="bo-svc-grid">
-        <button type="button" class="bo-svc-chip" v-for="c in vpnCoreStatuses()" :key="c.name"
-          :data-state="coreStateKey(c.state)"
-          :aria-label="coreLabel(c.name) + ': ' + coreStateText(c.state)"
-          @click="openCore(c.name)">
-          <span class="bo-svc-led"></span>
-          <span class="bo-svc-name">[[ coreLabel(c.name) ]]</span>
-          <span class="bo-svc-state">[[ coreStateText(c.state) ]]</span>
-        </button>
-      </div>
-    </article>
-    {{ end }}
-
-    <!-- ===== Xray ===== -->
-    <article class="bo-tile bo-t-xray" aria-label='{{ i18n "pages.index.xrayStatus" }}'>
-      <div class="bo-tile-head">
-        <h3 class="bo-tile-title">{{ i18n "pages.index.xrayStatus" }}</h3>
-        <a-popover v-if="status.xray.state == 'error'" :overlay-class-name="themeSwitcher.currentTheme">
-          <span slot="title">
-            <a-row type="flex" align="middle" justify="space-between">
-              <a-col><span>{{ i18n "pages.index.xrayErrorPopoverTitle" }}</span></a-col>
-              <a-col><a-icon type="bars" class="cursor-pointer float-right" @click="openLogs()"></a-icon></a-col>
-            </a-row>
-          </span>
-          <template slot="content">
-            <span class="max-w-400" v-for="line in (status.xray.errorMsg || '').split('\n')">[[ line ]]</span>
-          </template>
-          <span class="bo-status-pill bo-status-pill--error">
-            <span class="bo-dot bo-dot--error"></span>[[ status.xray.stateMsg ]]
-          </span>
-        </a-popover>
-        <span v-else class="bo-status-pill" :class="xrayPillClass" aria-live="polite">
-          <span class="bo-dot" :class="xrayDotClass"></span>[[ status.xray.stateMsg ]]
-        </span>
-      </div>
-      <div class="bo-kv-row">
-        <span class="bo-kv-label">{{ i18n "pages.index.xrayStatus" }}</span>
-        <span class="bo-kv-value num bo-kv-with-action">
-          [[ status.xray.version != 'Unknown' ? 'v' + status.xray.version : '-' ]]
-          <button type="button" class="bo-inline-btn" @click="openSelectV2rayVersion"
-            title='{{ i18n "pages.index.xraySwitch" }}' aria-label='{{ i18n "pages.index.xraySwitch" }}'>
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-info"></use></svg>
-          </button>
-        </span>
-      </div>
-      <div class="bo-kv-row">
-        <span class="bo-kv-label">{{ i18n "pages.index.operationHours" }}</span>
-        <span class="bo-kv-value num">[[ TimeFormatter.formatUptime(status.appStats.uptime) ]]</span>
-      </div>
-      <div class="bo-divider"></div>
-      <div class="bo-btn-row">
-        <!-- Xray's own output, the same source Core Settings reads. This tile's log
-             button used to open the ACCESS log instead, which the shipped template
-             disables ("access": "none"), so the one button on the Xray tile answered
-             with an empty modal on every default install. -->
-        {{ if .perms.manageOverview }}
-        <button type="button" class="bo-icon-btn" @click="openCoreLogs('xray')">
-          <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
-        </button>
-        {{ end }}
-        <!-- The access log is a different thing: per-connection rows with Direct /
-             Blocked filters. Gated on whether that file is actually being written,
-             not on ipLimitEnable, which is now an unconditional true. -->
-        {{ if .perms.manageOverview }}
-        <button type="button" class="bo-icon-btn" v-if="xrayAccessLogEnable" @click="openXrayLogs()">
-          <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-file"></use></svg>{{ i18n "pages.xray.accessLog" }}
-        </button>
-        {{ end }}
-        <!-- Stopping Xray drops every client on the panel and the geofiles dialog
-             rewrites what routing resolves against, so both answer to the bit that
-             says this overview may act. Without it the tile still reports Xray's
-             state; it just cannot change it. The Xray permission is no longer ANDed
-             on top: that made the controls unreachable for a reseller, whose derived
-             mask never carries a settings bit. Note the same two Xray actions are
-             also offered on the Xray settings page under the Xray bit alone, so this
-             gate scopes THIS page, not the capability. -->
-        {{ if .perms.manageOverview }}
-        <button type="button" class="bo-icon-btn bo-icon-btn--danger" @click="stopXrayService">
-          <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-stop"></use></svg>{{ i18n "pages.index.stopXray" }}
-        </button>
-        <button type="button" class="bo-icon-btn" @click="restartXrayService">
-          <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.restartXray" }}
-        </button>
-        <button type="button" class="bo-icon-btn" @click="openGeofiles()">
-          <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-globe"></use></svg>{{ i18n "pages.index.geofiles" }}
-        </button>
-        {{ end }}
-      </div>
-    </article>
-
-    <!-- ===== manage ===== -->
-    <!-- Every button here is escalation-class: the logs name other admins'
-         inbounds, clients and IPs; config.json carries every inbound's secrets;
-         backup and restore are the whole database, users table and bcrypt hashes
-         included. It used to answer only to the super admin role for exactly that
-         reason.
-
-         The operator chose otherwise on 2026-07-31, with the consequence stated:
-         manageOverview now opens this tile, so whoever holds that bit can take the
-         panel. It is a deliberate delegation, not an oversight. The server agrees
-         (requireOverviewManage on each route), so this gate hides what the caller
-         cannot do rather than being the only thing stopping them. -->
-    {{ if .perms.manageOverview }}
-    <article class="bo-tile bo-t-manage" aria-label='{{ i18n "menu.link" }}'>
-      <div class="bo-tile-head"><h3 class="bo-tile-title">{{ i18n "menu.link" }}</h3></div>
-      <!-- The Manage tile is split in two: the operator's actions on the left,
-           the server's outbound connectivity check on the right. -->
-      <div class="bo-manage-split">
-        <div class="bo-manage-actions">
-          <div class="bo-btn-row bo-btn-row--compact">
-            <button type="button" class="bo-icon-btn" @click="openAllLogs()">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
-            </button>
-            <button type="button" class="bo-icon-btn" @click="openConfig">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-sliders"></use></svg>{{ i18n "pages.index.config" }}
-            </button>
-            <button type="button" class="bo-icon-btn" @click="openBackup">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-download"></use></svg>{{ i18n "pages.index.backup" }}
-            </button>
-            <button type="button" class="bo-icon-btn" @click="openRestore">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.restore" }}
+        <!-- PRO-UI -->
+        <article class="db-card" aria-label="VPN-UI">
+          <div class="db-card-head">
+            <h3 class="db-card-title">PRO-UI</h3>
+            <button type="button" class="db-check-btn" :disabled="panelUpdate.checking" @click="checkForUpdate(true)">
+              <svg class="bo-icon bo-icon-12"><use href="#bo-i-refresh"></use></svg>
+              {{ i18n "pages.index.checkUpdate" }}
             </button>
           </div>
-        </div>
-        <div class="bo-manage-ping">
-          <div class="bo-ping-head">
-            <h4 class="bo-ping-title">{{ i18n "pages.index.internet" }}</h4>
-            <button type="button" class="bo-icon-btn bo-icon-btn--accent" :disabled="pingChecking" @click="checkInternet()">
-              <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>{{ i18n "pages.index.ping" }}
-            </button>
-          </div>
-          <span v-if="ping && ping.overall" class="bo-ping-overall" :class="'bo-ping-overall--' + ping.overall">
-            [[ pingOverallText ]]
-          </span>
-          <ul class="bo-ping-list">
-            <li v-for="t in pingList" :key="t.name" class="bo-ping-row" :title="t.ip || t.detail || ''">
-              <span class="bo-ping-dot" :class="'bo-ping-dot--' + rowState(t)"></span>
-              <span class="bo-ping-name">[[ t.name ]]</span>
-              <span v-if="t.status === 'ok'" class="bo-ping-value num">[[ formatPing(t.rttMs) ]]</span>
-              <span v-else-if="t.status === 'fail'" class="bo-ping-value bo-ping-value--fail">{{ i18n "pages.index.pingUnreachable" }}</span>
-              <span v-else class="bo-ping-value bo-ping-value--pending">[[ pingText.loading ]]</span>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </article>
-    {{ end }}
-
-    <!-- ===== VPN-UI panel + updater ===== -->
-    <article class="bo-tile bo-t-vpnui" aria-label="VPN-UI">
-      <div class="bo-tile-head">
-        <h3 class="bo-tile-title">VPN-UI</h3>
-        <button type="button" class="bo-icon-btn bo-icon-btn--accent"
-          :disabled="panelUpdate.checking" @click="checkForUpdate(true)">
-          <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
-          {{ i18n "pages.index.checkUpdate" }}
-        </button>
-      </div>
-      <div class="bo-vpnui-body">
-        <div>
-          <a rel="noopener" href="https://github.com/hasan1808/vpn-ui" target="_blank"
-            :style="{ color: 'inherit', textDecoration: 'none' }">
-            <div class="bo-vpnui-version num">v{{ .cur_ver }}</div>
-          </a>
-          <p v-if="panelUpdate.checked && !panelUpdate.available && !panelUpdate.checking"
-            class="bo-status-line bo-status-line--ok">
-            <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-check-circle"></use></svg>
-            {{ i18n "pages.index.upToDate" }}
-          </p>
-          <p v-else-if="panelUpdate.available" class="bo-status-line bo-status-line--warn">
-            <svg class="bo-icon bo-icon-16" aria-hidden="true"><use href="#bo-i-download"></use></svg>
-            {{ i18n "pages.index.updateAvailable" }} <span class="num">v[[ panelUpdate.latest ]]</span>
-          </p>
-          <a-tooltip v-if="panelUpdate.error" :title="panelUpdate.error">
-            <p class="bo-status-line" :style="{ color: 'var(--error)', cursor: 'help' }">
-              <a-icon type="warning"></a-icon>
-            </p>
-          </a-tooltip>
-
-          <div v-if="panelUpdate.updating" :style="{ marginTop: '12px' }">
-            <a-progress :percent="panelUpdate.percent"
-              :status="panelUpdate.phase === 'error' ? 'exception' : (panelUpdate.phase === 'restarting' ? 'success' : 'active')"
-              size="small"></a-progress>
-            <div :style="{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }">
-              <span :style="{ color: 'var(--info)', whiteSpace: 'nowrap', fontSize: '12.5px' }">
-                [[ panelUpdatePhaseText() ]]
-              </span>
-              <span v-if="panelUpdateSpeedText()" class="num"
-                :style="{ color: 'var(--text-3)', whiteSpace: 'nowrap', fontSize: '12.5px' }">
-                [[ panelUpdateSpeedText() ]]
-              </span>
-              <!-- Only the DOWNLOAD is abortable: once the binary swap starts
-                   there is nothing safe to undo, so the button retires itself
-                   rather than offering a cancel the server would refuse. -->
+          <div class="db-vpnui-body">
+            <div>
+              <a rel="noopener" href="https://github.com/hasan1808/vpn-ui" target="_blank"
+                :style="{ color: 'inherit', textDecoration: 'none' }">
+                <div class="db-vpnui-ver num">v{{ .cur_ver }}</div>
+              </a>
+              <p v-if="panelUpdate.checked && !panelUpdate.available && !panelUpdate.checking"
+                class="db-status-line db-status-line--ok">
+                <svg class="bo-icon bo-icon-14"><use href="#bo-i-check-circle"></use></svg>
+                {{ i18n "pages.index.upToDate" }}
+              </p>
+              <p v-else-if="panelUpdate.available" class="db-status-line db-status-line--warn">
+                <svg class="bo-icon bo-icon-14"><use href="#bo-i-download"></use></svg>
+                {{ i18n "pages.index.updateAvailable" }} <span class="num">v[[ panelUpdate.latest ]]</span>
+              </p>
+              <a-tooltip v-if="panelUpdate.error" :title="panelUpdate.error">
+                <p class="db-status-line" :style="{ color: 'var(--error)', cursor: 'help' }">
+                  <a-icon type="warning"></a-icon>
+                </p>
+              </a-tooltip>
+              <div v-if="panelUpdate.updating" :style="{ marginTop: '12px' }">
+                <a-progress :percent="panelUpdate.percent"
+                  :status="panelUpdate.phase === 'error' ? 'exception' : (panelUpdate.phase === 'restarting' ? 'success' : 'active')"
+                  size="small"></a-progress>
+                <div :style="{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }">
+                  <span :style="{ color: 'var(--info)', whiteSpace: 'nowrap', fontSize: '12.5px' }">
+                    [[ panelUpdatePhaseText() ]]
+                  </span>
+                  <span v-if="panelUpdateSpeedText()" class="num"
+                    :style="{ color: 'var(--text-3)', whiteSpace: 'nowrap', fontSize: '12.5px' }">
+                    [[ panelUpdateSpeedText() ]]
+                  </span>
+                  {{ if .perms.manageOverview }}
+                  <button type="button" class="db-action-btn db-action-btn--danger"
+                    v-if="panelUpdate.phase === 'downloading'"
+                    :disabled="panelUpdate.cancelling" @click="cancelPanelUpdate">
+                    [[ panelUpdate.cancelling ? '{{ i18n "pages.index.updateCancelling" }}' : '{{ i18n "pages.index.updateCancel" }}' ]]
+                  </button>
+                  {{ end }}
+                </div>
+              </div>
+            </div>
+            <div class="db-vpnui-actions">
               {{ if .perms.manageOverview }}
-              <button type="button" class="bo-icon-btn bo-icon-btn--danger bo-update-cancel"
-                v-if="panelUpdate.phase === 'downloading'"
-                :disabled="panelUpdate.cancelling" @click="cancelPanelUpdate">
-                <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-stop"></use></svg>
-                [[ panelUpdate.cancelling ? '{{ i18n "pages.index.updateCancelling" }}' : '{{ i18n "pages.index.updateCancel" }}' ]]
+              <button type="button" class="db-primary-btn"
+                v-if="panelUpdate.available && !panelUpdate.updating"
+                @click="openUpdateModal">{{ i18n "pages.index.updateNow" }}</button>
+              <button type="button" class="db-outline-btn"
+                v-if="!panelUpdate.updating" @click="manualModal.visible = true">
+                <svg class="bo-icon bo-icon-12"><use href="#bo-i-download"></use></svg>
+                {{ i18n "pages.index.manualUpdate" }}
+              </button>
+              <input type="file" ref="panelBinaryInput" :style="{ display: 'none' }"
+                @change="onPanelBinaryPicked">
+              <button type="button" class="db-outline-btn"
+                v-if="!panelUpdate.updating" :disabled="panelUpdate.checking" @click="reinstallPanel">
+                <svg class="bo-icon bo-icon-12"><use href="#bo-i-refresh"></use></svg>
+                {{ i18n "pages.index.reinstall" }}
+              </button>
+              <button type="button" class="db-outline-btn"
+                v-if="!panelUpdate.updating" :disabled="rebooting" @click="confirmReboot">
+                <svg class="bo-icon bo-icon-12"><use href="#bo-i-power"></use></svg>
+                {{ i18n "pages.index.rebootServer" }}
+              </button>
+              <button type="button" class="db-outline-btn"
+                v-if="!panelUpdate.updating" @click="openRestore">
+                <svg class="bo-icon bo-icon-12"><use href="#bo-i-refresh"></use></svg>
+                {{ i18n "pages.index.restore" }}
               </button>
               {{ end }}
             </div>
           </div>
-        </div>
+        </article>
 
-        <!-- The update is not armed from here any more: it opens the release
-             notes first, so the operator reads what is about to replace the
-             running binary before agreeing to it. -->
-        <div class="bo-btn-row">
-          {{ if .perms.manageOverview }}
-          <button type="button" class="bo-btn bo-btn--primary"
-            v-if="panelUpdate.available && !panelUpdate.updating"
-            @click="openUpdateModal">{{ i18n "pages.index.updateNow" }}</button>
-          {{ end }}
-          <!-- Manual update: a binary the operator names themselves. Offered whether
-               or not the release check found anything, because its whole point is the
-               box that cannot reach GitHub, where the check is exactly what fails.
-               The two sources are kept behind one button so the tile leads with the
-               ordinary path, and picking it opens a dialog rather than swapping in two
-               more buttons: which END does the transfer is not guessable from the
-               labels, and the sentence that says so does not fit on a tile button.
-               The file input is hidden and driven by that dialog so the tile keeps
-               its own styling. -->
-          {{ if .perms.manageOverview }}
-          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
-            v-if="!panelUpdate.updating" @click="manualModal.visible = true">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-download"></use></svg>
-            {{ i18n "pages.index.manualUpdate" }}
-          </button>
-          <input type="file" ref="panelBinaryInput" :style="{ display: 'none' }"
-            @change="onPanelBinaryPicked">
-          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
-            v-if="!panelUpdate.updating" :disabled="panelUpdate.checking" @click="reinstallPanel">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
-            {{ i18n "pages.index.reinstall" }}
-          </button>
-          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
-            v-if="!panelUpdate.updating" :disabled="rebooting" @click="confirmReboot">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-power"></use></svg>
-            {{ i18n "pages.index.rebootServer" }}
-          </button>
-          <button type="button" class="bo-btn bo-btn--ghost bo-btn--icon"
-            v-if="!panelUpdate.updating" @click="openRestore">
-            <svg class="bo-icon bo-icon-14" aria-hidden="true"><use href="#bo-i-refresh"></use></svg>
-            {{ i18n "pages.index.restore" }}
-          </button>
-          {{ end }}
-        </div>
+      </div>
+
+      <!-- ===== RIGHT COLUMN ===== -->
+      <div class="db-col db-col--right">
+
+        <!-- System Status -->
+        <article class="db-card" aria-label='{{ i18n "pages.index.systemStatus" }}'>
+          <div class="db-card-head"><h3 class="db-card-title">SYSTEM STATUS</h3></div>
+          <div class="db-sys-list">
+            <div class="db-sys-item" v-for="v in vitals" :key="v.key">
+              <div class="db-sys-ring">
+                <svg viewBox="0 0 40 40" aria-hidden="true">
+                  <circle class="db-ring-track" cx="20" cy="20" r="16"></circle>
+                  <circle class="db-ring-progress" :class="ringClass(v.percent)" cx="20" cy="20" r="16"
+                    :style="{ strokeDashoffset: ringOffset(v.percent) }"></circle>
+                </svg>
+                <span class="db-ring-ico">
+                  <svg class="bo-icon" aria-hidden="true"><use :href="'#bo-i-' + v.icon"></use></svg>
+                </span>
+              </div>
+              <div class="db-sys-info">
+                <div class="db-sys-top">
+                  <span class="db-sys-name">[[ v.label ]]</span>
+                  <span class="db-sys-pct num">[[ v.percent ]]%</span>
+                </div>
+                <p class="db-sys-meta">[[ v.meta ]]</p>
+              </div>
+              <div class="db-sys-spark">
+                <sparkline :data="history[v.key]" :vb-width="160" :height="28"
+                  :max-points="HISTORY_POINTS" :fill-opacity="0.14" :stroke="chartColors.accent"
+                  :show-grid="false" :show-marker="false" :stroke-width="1.5"
+                  :fit="!v.rate" :min-span="10" :autoscale="!!v.rate" :log-scale="!!v.rate"
+                  :padding-left="0" :padding-right="0" :padding-top="2" :padding-bottom="2" />
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- Connection Stats -->
+        <article class="db-card" aria-label='{{ i18n "pages.index.connectionCount" }}'>
+          <div class="db-card-head"><h3 class="db-card-title">CONNECTION STATS</h3></div>
+          <div class="db-conn-cols">
+            <div class="db-conn-col">
+              <svg class="bo-icon bo-icon-14" style="color:var(--ok)"><use href="#bo-i-link"></use></svg>
+              <div><span class="db-conn-proto">TCP</span><span class="db-conn-num num">[[ status.tcpCount ]]</span></div>
+            </div>
+            <div class="db-conn-col">
+              <svg class="bo-icon bo-icon-14" style="color:var(--info)"><use href="#bo-i-link"></use></svg>
+              <div><span class="db-conn-proto">UDP</span><span class="db-conn-num num">[[ status.udpCount ]]</span></div>
+            </div>
+          </div>
+          <div class="db-conn-bar">
+            <span class="db-conn-seg db-conn-seg--tcp" :style="{ width: connRatio.tcp }"></span>
+            <span class="db-conn-seg db-conn-seg--udp" :style="{ width: connRatio.udp }"></span>
+          </div>
+        </article>
+
+        <!-- IP Addresses -->
+        <article class="db-card" aria-label='{{ i18n "pages.index.ipAddresses" }}'>
+          <div class="db-card-head">
+            <h3 class="db-card-title">IP ADDRESSES</h3>
+            <button type="button" class="db-eye-btn" @click="showIp = !showIp"
+              :aria-label='`{{ i18n "pages.index.toggleIpVisibility" }}`' :aria-pressed="String(!showIp)">
+              <svg class="bo-icon bo-icon-14">
+                <use :href="showIp ? '#bo-i-eye' : '#bo-i-eye-off'"></use>
+              </svg>
+            </button>
+          </div>
+          <div class="db-ip-row">
+            <span class="db-ip-label">IPv4</span>
+            <span class="db-ip-val num">[[ showIp ? status.publicIP.ipv4 : maskIp(status.publicIP.ipv4) ]]</span>
+            <button type="button" class="db-ip-copy" @click="copyIP(status.publicIP.ipv4)">
+              <svg class="bo-icon bo-icon-12"><use href="#bo-i-copy"></use></svg>
+            </button>
+          </div>
+          <div class="db-ip-row" v-for="(ip, i) in extraIpv4s()" :key="i">
+            <span class="db-ip-label">IPv4 +[[ i + 1 ]]</span>
+            <span class="db-ip-val num">[[ showIp ? ip : maskIp(ip) ]]</span>
+            <button type="button" class="db-ip-copy" @click="copyIP(ip)">
+              <svg class="bo-icon bo-icon-12"><use href="#bo-i-copy"></use></svg>
+            </button>
+          </div>
+          <div class="db-ip-row">
+            <span class="db-ip-label">IPv6</span>
+            <span class="db-ip-val num">[[ showIp ? status.publicIP.ipv6 : maskIp(status.publicIP.ipv6) ]]</span>
+            <button type="button" class="db-ip-copy" @click="copyIP(status.publicIP.ipv6)">
+              <svg class="bo-icon bo-icon-12"><use href="#bo-i-copy"></use></svg>
+            </button>
+          </div>
+        </article>
+
+      </div>
+
+    </div>
+
+    <!-- ===== FULL WIDTH SECTIONS ===== -->
+
+    <!-- VPN Services -->
+    {{ if .perms.accessCoreSettings }}
+      copyIP(ip) {
+        const val = ip || "";
+        navigator.clipboard.writeText(val).then(() => {
+          this.$message.success("Copied");
+        }).catch(() => {});
+      },
+    <article class="db-card db-card--full" aria-label='{{ i18n "pages.index.vpnServices" }}'>
+      <div class="db-card-head">
+        <h3 class="db-card-title">VPN SERVICES</h3>
+        <span class="db-card-meta">[[ vpnSummary ]]</span>
+      </div>
+      <div class="db-svc-grid">
+        <button type="button" class="db-svc-chip" v-for="c in vpnCoreStatuses()" :key="c.name"
+          :data-state="coreStateKey(c.state)"
+          :aria-label="coreLabel(c.name) + ': ' + coreStateText(c.state)"
+          @click="openCore(c.name)">
+          <span class="db-svc-led"></span>
+          <span class="db-svc-name">[[ coreLabel(c.name) ]]</span>
+          <span class="db-svc-state">[[ coreStateText(c.state) ]]</span>
+        </button>
       </div>
     </article>
+    {{ end }}
 
-
-    <!-- ===== connections ===== -->
+  </div>
 
   </div>
 </a-spin>
