@@ -265,6 +265,29 @@
 "getDatabaseError" = "Произошла ошибка при получении базы данных"
 "getConfigError" = "Произошла ошибка при получении конфигурационного файла"
 
+"createBackup" = "Создать резервную копию"
+"createBackupError" = "Произошла ошибка при создании резервной копии."
+"createBackupSuccess" = "Резервная копия базы данных создана."
+"internet" = "Интернет"
+"internetOffline" = "Офлайн"
+"internetOnline" = "Онлайн"
+"internetPartial" = "Частично"
+"localBackups" = "Резервные копии на этой панели"
+"noLocalBackups" = "На этой панели нет резервных копий"
+"noLocalBackupsDesc" = "Создайте резервную копию, чтобы позже восстановить панель отсюда."
+"ping" = "Пинг"
+"pingChecking" = "Проверка…"
+"pingUnreachable" = "Недоступен"
+"rebootConfirmContent" = "Сервер будет перезагружен сейчас. Это отключит всех пользователей и временно остановит все службы."
+"rebootConfirmTitle" = "Перезагрузить сервер?"
+"rebootServer" = "Перезагрузить сервер"
+"rebooting" = "Перезагрузка..."
+"rebootingDesc" = "Сервер перезагружается. Эта страница автоматически перезагрузится, когда сервер снова будет онлайн."
+"reinstall" = "Переустановить"
+"restoreBackupConfirmTitle" = "Восстановить эту копию?"
+"restoreFromVpnUi" = "Восстановить из резервной копии vpn-ui"
+"restoreFromVpnUiDesc" = "Выберите файл резервной копии .db, созданный этой панелью, чтобы восстановить inbound'ы, клиентов и настройки. При импорте база данных мигрируется на текущую схему."
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -405,6 +428,8 @@
 
 "useManagedCert" = "Сертификат"
 
+"outboundTraffic" = "Исходящий трафик"
+
 [pages.client]
 "add" = "Добавить клиента"
 "edit" = "Редактировать клиента"
@@ -541,6 +566,19 @@
 "sharedUsage" = "общий"
 "sharedUsageHint" = "Xray считает трафик по аккаунту, а не по входящему подключению, поэтому это оставшийся расход аккаунта, общий для всех обслуживающих его входящих Xray."
 "onlineShared" = "В сети, на одном из Xray-входов этой учётной записи. Xray не сообщает, на каком именно."
+
+"active" = "Активен"
+"all" = "Все"
+"creator" = "Создатель"
+"disabled" = "Отключен"
+"downloadQr" = "Скачать QR-код"
+"expired" = "Истёк"
+"expiring" = "Истекает"
+"newest" = "Сначала новые"
+"noLinks" = "Нет доступных ссылок"
+"oldest" = "Сначала старые"
+"online" = "Онлайн"
+"traffic" = "Больше всего трафика"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Никогда"
@@ -728,6 +766,27 @@
 "information" = "Информация"
 "language" = "Язык интерфейса"
 "telegramBotLanguage" = "Язык Telegram-бота"
+
+"acmeAutoRenew" = "Автопродление"
+"acmeAutoRenewDesc" = "Автоматически продлевать сертификаты до истечения срока"
+"acmeCertDir" = "Каталог сертификатов"
+"acmeCertDirDesc" = "Каталог, в котором будут храниться сертификаты"
+"acmeCfToken" = "API-токен Cloudflare"
+"acmeCfTokenDesc" = "API-токен с правом Zone:DNS:Edit (для метода DNS-01)"
+"acmeDomain" = "Доменное имя"
+"acmeDomainDesc" = "Имя домена, для которого получить сертификат (напр. example.com)"
+"acmeEmail" = "Адрес email"
+"acmeEmailDesc" = "Email для регистрации в Let's Encrypt и уведомлений об истечении срока"
+"acmeIssue" = "Выпустить сертификат"
+"acmeIssueBtn" = "Выпустить сертификат"
+"acmeIssuing" = "Выпуск..."
+"acmeMethod" = "Метод проверки"
+"acmeMethodDesc" = "HTTP-01 требует порт 80; DNS-01 использует Cloudflare API для wildcard-сертификатов"
+"acmeResult" = "Результат"
+"autoSSL" = "Авто SSL (Let's Encrypt)"
+"autoSSLDesc" = "Автоматическое получение и продление SSL-сертификатов через Let's Encrypt"
+"publicIpOverride" = "Переопределить публичный IP"
+"publicIpOverrideDesc" = "Задайте вручную публичный IPv4 сервера, если автопределение возвращает неверный/примерный адрес. Оставьте пустым для автопределения."
 
 [pages.xray]
 "title" = "Настройки Xray"
@@ -1015,6 +1074,7 @@
 "nicknameDesc" = "Ваша собственная метка для этого сертификата. Она показывается рядом с именами, которые он покрывает, и никогда вместо них."
 "nicknameAdd" = "Добавить метку"
 "nicknameEdit" = "Изменить метку"
+
 [pages.settings.ssl.toasts]
 "status" = "Не удалось прочитать состояние сертификата."
 "consumers" = "Не удалось получить список служб, использующих этот сертификат."
@@ -1028,6 +1088,7 @@
 "autoAssigned" = "Новый сертификат уже используется."
 "autoRenew" = "Настройка автопродления обновлена."
 "nickname" = "Метка сохранена."
+
 [pages.settings.security]
 "admin" = "Учетные данные администратора"
 "twoFactor" = "Двухфакторная аутентификация"

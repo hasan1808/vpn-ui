@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "下载失败"
 "customGeoErrUpdateAllIncomplete" = "有一个或多个自定义 geo 源更新失败"
 
+"createBackup" = "创建备份"
+"createBackupError" = "创建备份时发生错误。"
+"createBackupSuccess" = "已创建数据库备份。"
+"internet" = "互联网"
+"internetOffline" = "离线"
+"internetOnline" = "在线"
+"internetPartial" = "部分通"
+"localBackups" = "存储在本面板的备份"
+"noLocalBackups" = "本面板暂无备份"
+"noLocalBackupsDesc" = "创建备份，以便日后从此处恢复面板。"
+"ping" = "Ping"
+"pingChecking" = "检测中…"
+"pingUnreachable" = "无法连接"
+"rebootConfirmContent" = "服务器即将重启。这将断开所有用户连接并暂时停止所有服务。"
+"rebootConfirmTitle" = "重启服务器？"
+"rebootServer" = "重启服务器"
+"rebooting" = "重启中..."
+"rebootingDesc" = "服务器正在重启。服务器恢复在线后，本页面将自动重新加载。"
+"reinstall" = "重新安装"
+"restoreBackupConfirmTitle" = "恢复此备份？"
+"restoreFromVpnUi" = "从 vpn-ui 备份恢复"
+"restoreFromVpnUiDesc" = "选择由此面板创建的 .db 备份文件，以恢复入站、客户端和设置。导入时数据库将迁移到当前架构。"
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -405,6 +428,8 @@
 
 "useManagedCert" = "证书"
 
+"outboundTraffic" = "出站流量"
+
 [pages.client]
 "add" = "添加客户端"
 "edit" = "编辑客户端"
@@ -541,6 +566,19 @@
 "sharedUsage" = "共享"
 "sharedUsageHint" = "Xray 按账号而非按入站统计流量，因此该数值是该账号的剩余用量，由服务该账号的所有 Xray 入站共享。"
 "onlineShared" = "在线，位于该账号的某个 Xray 入站上。Xray 不会报告具体是哪一个。"
+
+"active" = "活跃"
+"all" = "全部"
+"creator" = "创建者"
+"disabled" = "关闭"
+"downloadQr" = "下载二维码"
+"expired" = "已过期"
+"expiring" = "即将过期"
+"newest" = "最新"
+"noLinks" = "暂无分享链接"
+"oldest" = "最旧"
+"online" = "在线"
+"traffic" = "流量最多"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "从不"
@@ -728,6 +766,27 @@
 "information" = "信息"
 "language" = "语言"
 "telegramBotLanguage" = "Telegram 机器人语言"
+
+"acmeAutoRenew" = "自动续期"
+"acmeAutoRenewDesc" = "在到期前自动续期证书"
+"acmeCertDir" = "证书目录"
+"acmeCertDirDesc" = "证书的存储目录"
+"acmeCfToken" = "Cloudflare API 令牌"
+"acmeCfTokenDesc" = "具有 Zone:DNS:Edit 权限的 API 令牌（用于 DNS-01 方式）"
+"acmeDomain" = "域名"
+"acmeDomainDesc" = "用于获取证书的域名（例如 example.com）"
+"acmeEmail" = "电子邮件地址"
+"acmeEmailDesc" = "用于注册 Let's Encrypt 及到期通知的电子邮件"
+"acmeIssue" = "签发证书"
+"acmeIssueBtn" = "签发证书"
+"acmeIssuing" = "签发中..."
+"acmeMethod" = "验证方式"
+"acmeMethodDesc" = "HTTP-01 需要 80 端口；DNS-01 使用 Cloudflare API 签发泛域名证书"
+"acmeResult" = "结果"
+"autoSSL" = "自动 SSL (Let's Encrypt)"
+"autoSSLDesc" = "通过 Let's Encrypt 自动获取并续期 SSL 证书"
+"publicIpOverride" = "公网 IP 覆盖"
+"publicIpOverrideDesc" = "当自动检测返回错误/示例地址时，手动设置服务器的公网 IPv4。留空则使用自动检测。"
 
 [pages.xray]
 "title" = "Xray 配置"
@@ -1015,6 +1074,7 @@
 "nicknameDesc" = "你为这张证书自定的标签。它会显示在证书所覆盖的名称旁边，而不会取代它们。"
 "nicknameAdd" = "添加备注"
 "nicknameEdit" = "修改备注"
+
 [pages.settings.ssl.toasts]
 "status" = "无法读取证书状态。"
 "consumers" = "无法列出使用该证书的服务。"
@@ -1028,6 +1088,7 @@
 "autoAssigned" = "新证书已投入使用。"
 "autoRenew" = "自动续期设置已更新。"
 "nickname" = "备注已保存。"
+
 [pages.settings.security]
 "admin" = "管理员凭据"
 "twoFactor" = "双重验证"

@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "İndirme başarısız"
 "customGeoErrUpdateAllIncomplete" = "Bir veya daha fazla özel geo kaynağı güncellenemedi"
 
+"createBackup" = "Yedek Oluştur"
+"createBackupError" = "Yedek oluşturulurken bir hata oluştu."
+"createBackupSuccess" = "Veritabanı yedeği oluşturuldu."
+"internet" = "İnternet"
+"internetOffline" = "Çevrimdışı"
+"internetOnline" = "Çevrimiçi"
+"internetPartial" = "Kısmi"
+"localBackups" = "Bu panelde saklanan yedekler"
+"noLocalBackups" = "Bu panelde saklanan yedek yok"
+"noLocalBackupsDesc" = "Panoyu daha sonra buradan geri yükleyebilmek için bir yedek oluşturun."
+"ping" = "Ping"
+"pingChecking" = "Kontrol ediliyor…"
+"pingUnreachable" = "Erişilemiyor"
+"rebootConfirmContent" = "Sunucu şimdi yeniden başlatılacak. Bu işlem tüm kullanıcıların bağlantısını kesecek ve tüm hizmetleri geçici olarak durduracaktır."
+"rebootConfirmTitle" = "Sunucu yeniden başlatılsın mı?"
+"rebootServer" = "Sunucuyu Yeniden Başlat"
+"rebooting" = "Yeniden başlatılıyor..."
+"rebootingDesc" = "Sunucu yeniden başlatılıyor. Sunucu tekrar çevrimiçi olduğunda bu sayfa otomatik olarak yenilenecektir."
+"reinstall" = "Yeniden Kur"
+"restoreBackupConfirmTitle" = "Bu yedek geri yüklensin mi?"
+"restoreFromVpnUi" = "vpn-ui yedeğinden geri yükle"
+"restoreFromVpnUiDesc" = "Inbound'ları, istemcileri ve ayarları geri yüklemek için bu panelin oluşturduğu bir .db yedek dosyası seçin. İçe aktarımda veritabanı geçerli şemaya taşınır."
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -404,6 +427,8 @@
 "lastReset" = "Son Sıfırlama"
 
 "useManagedCert" = "Sertifika"
+"outboundTraffic" = "Giden Trafik"
+
 [pages.client]
 "add" = "Müşteri Ekle"
 "edit" = "Müşteriyi Düzenle"
@@ -540,6 +565,19 @@
 "sharedUsage" = "paylaşılan"
 "sharedUsageHint" = "Xray trafiği gelen bağlantı başına değil hesap başına sayar; bu nedenle bu değer hesabın kalan kullanımıdır ve ona hizmet eden tüm Xray gelen bağlantıları arasında paylaşılır."
 "onlineShared" = "Çevrimiçi, bu hesabın Xray gelen bağlantılarından birinde. Xray hangisi olduğunu bildirmez."
+
+"active" = "Aktif"
+"all" = "Tümü"
+"creator" = "Oluşturan"
+"disabled" = "Devre Dışı"
+"downloadQr" = "QR Kodu İndir"
+"expired" = "Süresi Dolmuş"
+"expiring" = "Süresi Doluyor"
+"newest" = "En Yeni"
+"noLinks" = "Paylaşım bağlantısı yok"
+"oldest" = "En Eski"
+"online" = "Çevrimiçi"
+"traffic" = "En Çok Trafik"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Asla"
@@ -727,6 +765,27 @@
 "information" = "Bilgi"
 "language" = "Dil"
 "telegramBotLanguage" = "Telegram Bot Dili"
+
+"acmeAutoRenew" = "Otomatik Yenileme"
+"acmeAutoRenewDesc" = "Sertifika süresi dolmadan otomatik yenile"
+"acmeCertDir" = "Sertifika Dizini"
+"acmeCertDirDesc" = "Sertifikaların saklanacağı dizin"
+"acmeCfToken" = "Cloudflare API Tokeni"
+"acmeCfTokenDesc" = "Zone:DNS:Edit izinli API tokeni (DNS-01 yöntemi için)"
+"acmeDomain" = "Alan Adı"
+"acmeDomainDesc" = "Sertifika alınacak alan adı (örn. example.com)"
+"acmeEmail" = "E-posta Adresi"
+"acmeEmailDesc" = "Let's Encrypt kaydı ve süre bitimi bildirimleri için e-posta"
+"acmeIssue" = "Sertifika Oluştur"
+"acmeIssueBtn" = "Sertifika Oluştur"
+"acmeIssuing" = "Oluşturuluyor..."
+"acmeMethod" = "Doğrulama Yöntemi"
+"acmeMethodDesc" = "HTTP-01 80 portunu gerektirir; DNS-01 wildcard sertifikalar için Cloudflare API kullanır"
+"acmeResult" = "Sonuç"
+"autoSSL" = "Otomatik SSL (Let's Encrypt)"
+"autoSSLDesc" = "Let's Encrypt üzerinden SSL sertifikalarını otomatik al ve yenile"
+"publicIpOverride" = "Genel IP'i Geçersiz Kıl"
+"publicIpOverrideDesc" = "Otomatik algılama yanlış/örnek bir adres döndürdüğünde sunucunun genel IPv4'ünü elle ayarlayın. Otomatik algılama için boş bırakın."
 
 [pages.xray]
 "title" = "Xray Yapılandırmaları"
@@ -1014,6 +1073,7 @@
 "nicknameDesc" = "Bu sertifika için kendi etiketiniz. Sertifikanın kapsadığı adların yanında gösterilir, asla onların yerine geçmez."
 "nicknameAdd" = "Takma ad ekle"
 "nicknameEdit" = "Takma adı değiştir"
+
 [pages.settings.ssl.toasts]
 "status" = "Sertifika durumu okunamadı."
 "consumers" = "Bu sertifikayı kullanan servisler listelenemedi."
@@ -1027,6 +1087,7 @@
 "autoAssigned" = "Yeni sertifika artık sunuluyor."
 "autoRenew" = "Otomatik yenileme güncellendi."
 "nickname" = "Takma ad kaydedildi."
+
 [pages.settings.security]
 "admin" = "Yönetici kimlik bilgileri"
 "twoFactor" = "İki adımlı doğrulama"

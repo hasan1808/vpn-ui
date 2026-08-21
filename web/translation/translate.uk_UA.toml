@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "Помилка завантаження"
 "customGeoErrUpdateAllIncomplete" = "Не вдалося оновити один або кілька користувацьких джерел"
 
+"createBackup" = "Створити резервну копію"
+"createBackupError" = "Під час створення резервної копії сталася помилка."
+"createBackupSuccess" = "Резервну копію бази даних створено."
+"internet" = "Інтернет"
+"internetOffline" = "Офлайн"
+"internetOnline" = "Онлайн"
+"internetPartial" = "Частковий"
+"localBackups" = "Резервні копії на цій панелі"
+"noLocalBackups" = "На цій панелі немає резервних копій"
+"noLocalBackupsDesc" = "Створіть резервну копію, щоб пізніше відновити панель звідси."
+"ping" = "Пінг"
+"pingChecking" = "Перевірка…"
+"pingUnreachable" = "Недоступний"
+"rebootConfirmContent" = "Сервер буде перезавантажено зараз. Це відключить усіх користувачів і тимчасово зупинить усі служби."
+"rebootConfirmTitle" = "Перезавантажити сервер?"
+"rebootServer" = "Перезавантажити сервер"
+"rebooting" = "Перезавантаження..."
+"rebootingDesc" = "Сервер перезавантажується. Ця сторінка автоматично перезавантажиться, коли сервер знову буде онлайн."
+"reinstall" = "Перевстановити"
+"restoreBackupConfirmTitle" = "Відновити цю резервну копію?"
+"restoreFromVpnUi" = "Відновити з резервної копії vpn-ui"
+"restoreFromVpnUiDesc" = "Виберіть файл резервної копії .db, створений цією панеллю, щоб відновити inbounds, клієнтів і налаштування. Під час імпорту база даних мігрує до поточної схеми."
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -404,6 +427,8 @@
 "lastReset" = "Останнє скидання"
 
 "useManagedCert" = "Сертифікат"
+"outboundTraffic" = "Вихідний трафік"
+
 [pages.client]
 "add" = "Додати клієнта"
 "edit" = "Редагувати клієнта"
@@ -540,6 +565,19 @@
 "sharedUsage" = "спільний"
 "sharedUsageHint" = "Xray рахує трафік за обліковим записом, а не за вхідним підключенням, тож це залишкове використання облікового запису, спільне для всіх вхідних Xray, які його обслуговують."
 "onlineShared" = "У мережі, на одному з Xray-входів цього облікового запису. Xray не повідомляє, на якому саме."
+
+"active" = "Активний"
+"all" = "Усі"
+"creator" = "Автор"
+"disabled" = "Вимкнено"
+"downloadQr" = "Завантажити QR-код"
+"expired" = "Прострочений"
+"expiring" = "Закінчується"
+"newest" = "Спочатку нові"
+"noLinks" = "Немає доступних посилань"
+"oldest" = "Спочатку старі"
+"online" = "Онлайн"
+"traffic" = "Найбільший трафік"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Ніколи"
@@ -727,6 +765,27 @@
 "information" = "Інформація"
 "language" = "Мова"
 "telegramBotLanguage" = "Мова Telegram-бота"
+
+"acmeAutoRenew" = "Автопродовження"
+"acmeAutoRenewDesc" = "Автоматично поновлювати сертифікати до закінчення терміну"
+"acmeCertDir" = "Каталог сертифікатів"
+"acmeCertDirDesc" = "Каталог, у якому зберігатимуться сертифікати"
+"acmeCfToken" = "API-токен Cloudflare"
+"acmeCfTokenDesc" = "API-токен із правом Zone:DNS:Edit (для методу DNS-01)"
+"acmeDomain" = "Доменне ім'я"
+"acmeDomainDesc" = "Доменне ім'я, для якого отримати сертифікат (напр. example.com)"
+"acmeEmail" = "Електронна пошта"
+"acmeEmailDesc" = "Email для реєстрації в Let's Encrypt та повідомлень про закінчення терміну"
+"acmeIssue" = "Видати сертифікат"
+"acmeIssueBtn" = "Видати сертифікат"
+"acmeIssuing" = "Видача..."
+"acmeMethod" = "Метод перевірки"
+"acmeMethodDesc" = "HTTP-01 потребує порт 80; DNS-01 використовує Cloudflare API для wildcard-сертифікатів"
+"acmeResult" = "Результат"
+"autoSSL" = "Авто SSL (Let's Encrypt)"
+"autoSSLDesc" = "Автоматичне отримання та поновлення SSL-сертифікатів через Let's Encrypt"
+"publicIpOverride" = "Замінити публічну IP-адресу"
+"publicIpOverrideDesc" = "Задайте вручну публічну IPv4 сервера, якщо автовизначення повертає неправильну/прикладну адресу. Залиште порожнім для автовизначення."
 
 [pages.xray]
 "title" = "Xray конфігурації"
@@ -1014,6 +1073,7 @@
 "nicknameDesc" = "Ваша власна мітка для цього сертифіката. Вона показується поряд з іменами, які покриває сертифікат, і ніколи замість них."
 "nicknameAdd" = "Додати мітку"
 "nicknameEdit" = "Змінити мітку"
+
 [pages.settings.ssl.toasts]
 "status" = "Не вдалося прочитати стан сертифіката."
 "consumers" = "Не вдалося отримати список служб, що використовують цей сертифікат."
@@ -1027,6 +1087,7 @@
 "autoAssigned" = "Новий сертифікат уже використовується."
 "autoRenew" = "Автопоновлення оновлено."
 "nickname" = "Мітку збережено."
+
 [pages.settings.security]
 "admin" = "Облікові дані адміністратора"
 "twoFactor" = "Двофакторна аутентифікація"

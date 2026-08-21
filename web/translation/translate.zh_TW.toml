@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "下載失敗"
 "customGeoErrUpdateAllIncomplete" = "有一個或多個自訂 geo 來源更新失敗"
 
+"createBackup" = "建立備份"
+"createBackupError" = "建立備份時發生錯誤。"
+"createBackupSuccess" = "已建立資料庫備份。"
+"internet" = "網際網路"
+"internetOffline" = "離線"
+"internetOnline" = "線上"
+"internetPartial" = "部分連通"
+"localBackups" = "儲存在本面板的備份"
+"noLocalBackups" = "本面板尚無備份"
+"noLocalBackupsDesc" = "建立備份，以便日後從這裡還原面板。"
+"ping" = "Ping"
+"pingChecking" = "檢查中…"
+"pingUnreachable" = "無法連線"
+"rebootConfirmContent" = "伺服器即將重新開機。這會中斷所有使用者連線並暫時停止所有服務。"
+"rebootConfirmTitle" = "重新啟動伺服器？"
+"rebootServer" = "重新啟動伺服器"
+"rebooting" = "重新開機中..."
+"rebootingDesc" = "伺服器正在重新開機。當伺服器恢復線上時，本頁面將自動重新載入。"
+"reinstall" = "重新安裝"
+"restoreBackupConfirmTitle" = "還原此備份？"
+"restoreFromVpnUi" = "從 vpn-ui 備份還原"
+"restoreFromVpnUiDesc" = "選擇由此面板建立的 .db 備份檔，以還原入站、用戶端與設定。匯入時資料庫將遷移至目前的架構。"
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -404,6 +427,8 @@
 "lastReset" = "上次重置"
 
 "useManagedCert" = "憑證"
+"outboundTraffic" = "出站流量"
+
 [pages.client]
 "add" = "新增客戶端"
 "edit" = "編輯客戶端"
@@ -540,6 +565,19 @@
 "sharedUsage" = "共享"
 "sharedUsageHint" = "Xray 按帳號而非按入站統計流量，因此該數值是該帳號的剩餘用量，由服務該帳號的所有 Xray 入站共享。"
 "onlineShared" = "線上，位於該帳號的某個 Xray 入站上。Xray 不會回報具體是哪一個。"
+
+"active" = "活躍"
+"all" = "全部"
+"creator" = "建立者"
+"disabled" = "關閉"
+"downloadQr" = "下載 QR Code"
+"expired" = "已過期"
+"expiring" = "即將過期"
+"newest" = "最新"
+"noLinks" = "沒有可用的分享連結"
+"oldest" = "最舊"
+"online" = "線上"
+"traffic" = "流量最多"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "從不"
@@ -727,6 +765,27 @@
 "information" = "資訊"
 "language" = "語言"
 "telegramBotLanguage" = "Telegram 機器人語言"
+
+"acmeAutoRenew" = "自動續期"
+"acmeAutoRenewDesc" = "於到期前自動續期憑證"
+"acmeCertDir" = "憑證目錄"
+"acmeCertDirDesc" = "憑證的儲存目錄"
+"acmeCfToken" = "Cloudflare API 權杖"
+"acmeCfTokenDesc" = "具有 Zone:DNS:Edit 權限的 API 權杖（用於 DNS-01 方式）"
+"acmeDomain" = "域名"
+"acmeDomainDesc" = "用於取得憑證的域名（例如 example.com）"
+"acmeEmail" = "電子郵件地址"
+"acmeEmailDesc" = "用於註冊 Let's Encrypt 及到期通知的電子郵件"
+"acmeIssue" = "簽發憑證"
+"acmeIssueBtn" = "簽發憑證"
+"acmeIssuing" = "簽發中..."
+"acmeMethod" = "驗證方式"
+"acmeMethodDesc" = "HTTP-01 需要 80 連接埠；DNS-01 使用 Cloudflare API 簽發萬用字元憑證"
+"acmeResult" = "結果"
+"autoSSL" = "自動 SSL (Let's Encrypt)"
+"autoSSLDesc" = "透過 Let's Encrypt 自動取得並續期 SSL 憑證"
+"publicIpOverride" = "公網 IP 覆寫"
+"publicIpOverrideDesc" = "當自動偵測回傳錯誤/範例位址時，手動設定伺服器的公網 IPv4。留空則使用自動偵測。"
 
 [pages.xray]
 "title" = "Xray 配置"
@@ -1014,6 +1073,7 @@
 "nicknameDesc" = "你為這張憑證自訂的標籤。它會顯示在憑證涵蓋的名稱旁邊，絕不會取代那些名稱。"
 "nicknameAdd" = "新增暱稱"
 "nicknameEdit" = "修改暱稱"
+
 [pages.settings.ssl.toasts]
 "status" = "無法讀取憑證狀態。"
 "consumers" = "無法列出使用此憑證的服務。"
@@ -1027,6 +1087,7 @@
 "autoAssigned" = "新憑證已開始提供。"
 "autoRenew" = "自動續期設定已更新。"
 "nickname" = "暱稱已儲存。"
+
 [pages.settings.security]
 "admin" = "管理員憑證"
 "twoFactor" = "雙重驗證"

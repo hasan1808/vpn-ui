@@ -208,35 +208,6 @@ var knownMissing = keySet(
 	// set of inbounds (component/bulkOpsModal).
 	"pages.inbounds.opAddInbounds", "pages.inbounds.opRemoveInbounds",
 	"pages.inbounds.bulkMembershipDesc", "pages.inbounds.bulkMembershipNoInbound",
-
-	// Restored-design keys: translated in en_US and fa_IR only; every other locale
-	// falls back to English via web/locale.I18n until someone translates them.
-	"pages.clients.active", "pages.clients.all", "pages.clients.creator",
-	"pages.clients.disabled", "pages.clients.downloadQr", "pages.clients.expired",
-	"pages.clients.expiring", "pages.clients.newest", "pages.clients.noLinks",
-	"pages.clients.oldest", "pages.clients.online", "pages.clients.traffic",
-	"pages.inbounds.outboundTraffic",
-	"pages.index.createBackup", "pages.index.createBackupError",
-	"pages.index.createBackupSuccess",
-	"pages.index.internet", "pages.index.internetOffline",
-	"pages.index.internetOnline", "pages.index.internetPartial",
-	"pages.index.localBackups", "pages.index.noLocalBackups",
-	"pages.index.noLocalBackupsDesc",
-	"pages.index.ping", "pages.index.pingChecking", "pages.index.pingUnreachable",
-	"pages.index.rebootConfirmContent", "pages.index.rebootConfirmTitle",
-	"pages.index.rebootServer", "pages.index.rebooting", "pages.index.rebootingDesc",
-	"pages.index.reinstall", "pages.index.restoreBackupConfirmTitle",
-	"pages.index.restoreFromVpnUi", "pages.index.restoreFromVpnUiDesc",
-	"pages.settings.acmeAutoRenew", "pages.settings.acmeAutoRenewDesc",
-	"pages.settings.acmeCertDir", "pages.settings.acmeCertDirDesc",
-	"pages.settings.acmeCfToken", "pages.settings.acmeCfTokenDesc",
-	"pages.settings.acmeDomain", "pages.settings.acmeDomainDesc",
-	"pages.settings.acmeEmail", "pages.settings.acmeEmailDesc",
-	"pages.settings.acmeIssue", "pages.settings.acmeIssueBtn",
-	"pages.settings.acmeIssuing", "pages.settings.acmeMethod",
-	"pages.settings.acmeMethodDesc", "pages.settings.acmeResult",
-	"pages.settings.autoSSL", "pages.settings.autoSSLDesc",
-	"pages.settings.publicIpOverride", "pages.settings.publicIpOverrideDesc",
 )
 
 // flattenKeys collapses nested TOML tables into dotted keys (e.g. "pages.core.title").

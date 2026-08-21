@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "Falha no download"
 "customGeoErrUpdateAllIncomplete" = "Falha ao atualizar uma ou mais fontes geo personalizadas"
 
+"createBackup" = "Criar backup"
+"createBackupError" = "Ocorreu um erro ao criar o backup."
+"createBackupSuccess" = "Um backup do banco de dados foi criado."
+"internet" = "Internet"
+"internetOffline" = "Offline"
+"internetOnline" = "Online"
+"internetPartial" = "Parcial"
+"localBackups" = "Backups armazenados neste painel"
+"noLocalBackups" = "Nenhum backup armazenado neste painel"
+"noLocalBackupsDesc" = "Crie um backup para poder restaurar o painel daqui mais tarde."
+"ping" = "Ping"
+"pingChecking" = "Verificando…"
+"pingUnreachable" = "Inacessível"
+"rebootConfirmContent" = "O servidor será reiniciado agora. Isso desconectará todos os usuários e interromperá temporariamente todos os serviços."
+"rebootConfirmTitle" = "Reiniciar o servidor?"
+"rebootServer" = "Reiniciar Servidor"
+"rebooting" = "Reiniciando..."
+"rebootingDesc" = "O servidor está reiniciando. Esta página será recarregada automaticamente quando o servidor voltar ao ar."
+"reinstall" = "Reinstalar"
+"restoreBackupConfirmTitle" = "Restaurar este backup?"
+"restoreFromVpnUi" = "Restaurar de um backup do vpn-ui"
+"restoreFromVpnUiDesc" = "Selecione um arquivo de backup .db criado por este painel para restaurar inbounds, clientes e configurações. O banco de dados é migrado para o esquema atual na importação."
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -404,6 +427,8 @@
 "lastReset" = "Último Reset"
 
 "useManagedCert" = "Certificado"
+"outboundTraffic" = "Tráfego de Saída"
+
 [pages.client]
 "add" = "Adicionar Cliente"
 "edit" = "Editar Cliente"
@@ -540,6 +565,19 @@
 "sharedUsage" = "compartilhado"
 "sharedUsageHint" = "O Xray conta o tráfego por conta e não por entrada, portanto este valor é o uso restante da conta, compartilhado entre todas as entradas Xray que a atendem."
 "onlineShared" = "Online, em uma das entradas Xray desta conta. O Xray não informa qual delas."
+
+"active" = "Ativo"
+"all" = "Todos"
+"creator" = "Criador"
+"disabled" = "Desativado"
+"downloadQr" = "Baixar QR Code"
+"expired" = "Expirado"
+"expiring" = "Expirando"
+"newest" = "Mais recente"
+"noLinks" = "Nenhum link de compartilhamento disponível"
+"oldest" = "Mais antigo"
+"online" = "Online"
+"traffic" = "Maior Tráfego"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Nunca"
@@ -727,6 +765,27 @@
 "information" = "Informação"
 "language" = "Idioma"
 "telegramBotLanguage" = "Idioma do Bot do Telegram"
+
+"acmeAutoRenew" = "Renovação Automática"
+"acmeAutoRenewDesc" = "Renovar certificados automaticamente antes do vencimento"
+"acmeCertDir" = "Diretório de Certificados"
+"acmeCertDirDesc" = "Diretório onde os certificados serão armazenados"
+"acmeCfToken" = "Token de API da Cloudflare"
+"acmeCfTokenDesc" = "Token de API com permissão Zone:DNS:Edit (para o método DNS-01)"
+"acmeDomain" = "Nome de Domínio"
+"acmeDomainDesc" = "O nome de domínio para obter o certificado (ex.: example.com)"
+"acmeEmail" = "Endereço de Email"
+"acmeEmailDesc" = "Email para registro no Let's Encrypt e notificações de vencimento"
+"acmeIssue" = "Emitir Certificado"
+"acmeIssueBtn" = "Emitir Certificado"
+"acmeIssuing" = "Emitindo..."
+"acmeMethod" = "Método de Desafio"
+"acmeMethodDesc" = "HTTP-01 requer a porta 80; DNS-01 usa a API da Cloudflare para certificados wildcard"
+"acmeResult" = "Resultado"
+"autoSSL" = "SSL Automático (Let's Encrypt)"
+"autoSSLDesc" = "Obter e renovar certificados SSL automaticamente via Let's Encrypt"
+"publicIpOverride" = "Sobrescrever IP Público"
+"publicIpOverrideDesc" = "Defina manualmente o IPv4 público do servidor quando a detecção automática retornar um endereço errado/de exemplo. Deixe vazio para usar a detecção automática."
 
 [pages.xray]
 "title" = "Configurações Xray"
@@ -1014,6 +1073,7 @@
 "nicknameDesc" = "Seu próprio rótulo para este certificado. Ele aparece ao lado dos nomes que o certificado cobre, nunca no lugar deles."
 "nicknameAdd" = "Adicionar um apelido"
 "nicknameEdit" = "Alterar o apelido"
+
 [pages.settings.ssl.toasts]
 "status" = "Não foi possível ler o estado do certificado."
 "consumers" = "Não foi possível listar os serviços que usam este certificado."
@@ -1027,6 +1087,7 @@
 "autoAssigned" = "O novo certificado já está sendo servido."
 "autoRenew" = "Renovação automática atualizada."
 "nickname" = "O apelido foi salvo."
+
 [pages.settings.security]
 "admin" = "Credenciais de administrador"
 "twoFactor" = "Autenticação de dois fatores"

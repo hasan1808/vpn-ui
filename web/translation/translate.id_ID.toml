@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "Unduh gagal"
 "customGeoErrUpdateAllIncomplete" = "Satu atau lebih sumber geo kustom gagal diperbarui"
 
+"createBackup" = "Buat cadangan"
+"createBackupError" = "Terjadi kesalahan saat membuat cadangan."
+"createBackupSuccess" = "Cadangan basis data telah dibuat."
+"internet" = "Internet"
+"internetOffline" = "Offline"
+"internetOnline" = "Online"
+"internetPartial" = "Sebagian"
+"localBackups" = "Cadangan yang tersimpan di panel ini"
+"noLocalBackups" = "Tidak ada cadangan yang tersimpan di panel ini"
+"noLocalBackupsDesc" = "Buat cadangan agar Anda dapat memulihkan panel dari sini nanti."
+"ping" = "Ping"
+"pingChecking" = "Memeriksa…"
+"pingUnreachable" = "Tidak dapat dijangkau"
+"rebootConfirmContent" = "Server akan segera dimulai ulang. Ini akan memutuskan semua pengguna dan menghentikan semua layanan untuk sementara."
+"rebootConfirmTitle" = "Restart server?"
+"rebootServer" = "Restart Server"
+"rebooting" = "Sedang memulai ulang..."
+"rebootingDesc" = "Server sedang memulai ulang. Halaman ini akan dimuat ulang secara otomatis saat server kembali online."
+"reinstall" = "Instal ulang"
+"restoreBackupConfirmTitle" = "Pulihkan cadangan ini?"
+"restoreFromVpnUi" = "Pulihkan dari cadangan vpn-ui"
+"restoreFromVpnUiDesc" = "Pilih file cadangan .db yang dibuat oleh panel ini untuk memulihkan inbound, klien, dan pengaturan. Basis data dimigrasikan ke skema saat ini saat diimpor."
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -404,6 +427,8 @@
 "lastReset" = "Reset Terakhir"
 
 "useManagedCert" = "Sertifikat"
+"outboundTraffic" = "Trafik Keluar"
+
 [pages.client]
 "add" = "Tambah Klien"
 "edit" = "Edit Klien"
@@ -540,6 +565,19 @@
 "sharedUsage" = "bersama"
 "sharedUsageHint" = "Xray menghitung trafik per akun, bukan per inbound, sehingga angka ini adalah sisa pemakaian akun yang dibagi di antara semua inbound Xray yang melayaninya."
 "onlineShared" = "Online, pada salah satu inbound Xray akun ini. Xray tidak melaporkan yang mana."
+
+"active" = "Aktif"
+"all" = "Semua"
+"creator" = "Pembuat"
+"disabled" = "Nonaktif"
+"downloadQr" = "Unduh Kode QR"
+"expired" = "Kedaluwarsa"
+"expiring" = "Segera kedaluwarsa"
+"newest" = "Terbaru"
+"noLinks" = "Tidak ada tautan berbagi yang tersedia"
+"oldest" = "Tertua"
+"online" = "Online"
+"traffic" = "Trafik Terbanyak"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Tidak Pernah"
@@ -727,6 +765,27 @@
 "information" = "Informasi"
 "language" = "Bahasa"
 "telegramBotLanguage" = "Bahasa Bot Telegram"
+
+"acmeAutoRenew" = "Perpanjangan Otomatis"
+"acmeAutoRenewDesc" = "Perpanjarkan sertifikat secara otomatis sebelum kedaluwarsa"
+"acmeCertDir" = "Direktori Sertifikat"
+"acmeCertDirDesc" = "Direktori tempat sertifikat akan disimpan"
+"acmeCfToken" = "Token API Cloudflare"
+"acmeCfTokenDesc" = "Token API dengan izin Zone:DNS:Edit (untuk metode DNS-01)"
+"acmeDomain" = "Nama Domain"
+"acmeDomainDesc" = "Nama domain untuk mendapatkan sertifikat (mis. example.com)"
+"acmeEmail" = "Alamat Email"
+"acmeEmailDesc" = "Email untuk pendaftaran Let's Encrypt dan notifikasi kedaluwarsa"
+"acmeIssue" = "Terbitkan Sertifikat"
+"acmeIssueBtn" = "Terbitkan Sertifikat"
+"acmeIssuing" = "Sedang menerbitkan..."
+"acmeMethod" = "Metode Challenge"
+"acmeMethodDesc" = "HTTP-01 memerlukan port 80; DNS-01 menggunakan Cloudflare API untuk sertifikat wildcard"
+"acmeResult" = "Hasil"
+"autoSSL" = "Auto SSL (Let's Encrypt)"
+"autoSSLDesc" = "Dapatkan dan perpanjang sertifikat SSL secara otomatis melalui Let's Encrypt"
+"publicIpOverride" = "Timpa IP Publik"
+"publicIpOverrideDesc" = "Atur IPv4 publik server secara manual ketika deteksi otomatis mengembalikan alamat yang salah/contoh. Biarkan kosong untuk menggunakan deteksi otomatis."
 
 [pages.xray]
 "title" = "Konfigurasi Xray"
@@ -1014,6 +1073,7 @@
 "nicknameDesc" = "Label Anda sendiri untuk sertifikat ini. Ditampilkan di samping nama-nama yang dicakup sertifikat, tidak pernah menggantikannya."
 "nicknameAdd" = "Tambahkan julukan"
 "nicknameEdit" = "Ubah julukan"
+
 [pages.settings.ssl.toasts]
 "status" = "Status sertifikat tidak dapat dibaca."
 "consumers" = "Layanan yang memakai sertifikat ini tidak dapat didaftar."
@@ -1027,6 +1087,7 @@
 "autoAssigned" = "Sertifikat baru sudah disajikan."
 "autoRenew" = "Perpanjang otomatis diperbarui."
 "nickname" = "Julukan telah disimpan."
+
 [pages.settings.security]
 "admin" = "Kredensial admin"
 "twoFactor" = "Autentikasi dua faktor"

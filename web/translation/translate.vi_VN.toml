@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "Tải xuống thất bại"
 "customGeoErrUpdateAllIncomplete" = "Một hoặc nhiều nguồn geo tùy chỉnh không cập nhật được"
 
+"createBackup" = "Tạo bản sao lưu"
+"createBackupError" = "Đã xảy ra lỗi khi tạo bản sao lưu."
+"createBackupSuccess" = "Đã tạo bản sao lưu cơ sở dữ liệu."
+"internet" = "Internet"
+"internetOffline" = "Ngoại tuyến"
+"internetOnline" = "Trực tuyến"
+"internetPartial" = "Một phần"
+"localBackups" = "Bản sao lưu được lưu trên bảng điều khiển này"
+"noLocalBackups" = "Chưa có bản sao lưu nào trên bảng điều khiển này"
+"noLocalBackupsDesc" = "Hãy tạo bản sao lưu để sau này có thể khôi phục bảng điều khiển từ đây."
+"ping" = "Ping"
+"pingChecking" = "Đang kiểm tra…"
+"pingUnreachable" = "Không thể truy cập"
+"rebootConfirmContent" = "Máy chủ sẽ khởi động lại ngay bây giờ. Thao tác này sẽ ngắt kết nối tất cả người dùng và tạm dừng tất cả dịch vụ."
+"rebootConfirmTitle" = "Khởi động lại máy chủ?"
+"rebootServer" = "Khởi động lại máy chủ"
+"rebooting" = "Đang khởi động lại..."
+"rebootingDesc" = "Máy chủ đang khởi động lại. Trang này sẽ tự động tải lại khi máy chủ trực tuyến trở lại."
+"reinstall" = "Cài đặt lại"
+"restoreBackupConfirmTitle" = "Khôi phục bản sao lưu này?"
+"restoreFromVpnUi" = "Khôi phục từ bản sao lưu vpn-ui"
+"restoreFromVpnUiDesc" = "Chọn tệp sao lưu .db do bảng điều khiển này tạo để khôi phục inbound, client và cài đặt. Cơ sở dữ liệu sẽ được di chuyển sang lược đồ hiện tại khi nhập."
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -405,6 +428,8 @@
 
 "useManagedCert" = "Chứng chỉ"
 
+"outboundTraffic" = "Lưu lượng đi ra"
+
 [pages.client]
 "add" = "Thêm người dùng"
 "edit" = "Chỉnh sửa người dùng"
@@ -541,6 +566,19 @@
 "sharedUsage" = "dùng chung"
 "sharedUsageHint" = "Xray tính lưu lượng theo tài khoản chứ không theo inbound, nên con số này là phần dùng còn lại của tài khoản, dùng chung cho mọi inbound Xray phục vụ nó."
 "onlineShared" = "Trực tuyến, trên một trong các inbound Xray của tài khoản này. Xray không cho biết là inbound nào."
+
+"active" = "Hoạt động"
+"all" = "Tất cả"
+"creator" = "Người tạo"
+"disabled" = "Đã tắt"
+"downloadQr" = "Tải mã QR"
+"expired" = "Đã hết hạn"
+"expiring" = "Sắp hết hạn"
+"newest" = "Mới nhất"
+"noLinks" = "Không có liên kết chia sẻ"
+"oldest" = "Cũ nhất"
+"online" = "Trực tuyến"
+"traffic" = "Nhiều lưu lượng nhất"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Không bao giờ"
@@ -728,6 +766,27 @@
 "information" = "Thông tin"
 "language" = "Ngôn ngữ"
 "telegramBotLanguage" = "Ngôn ngữ của Bot Telegram"
+
+"acmeAutoRenew" = "Tự động gia hạn"
+"acmeAutoRenewDesc" = "Tự động gia hạn chứng chỉ trước khi hết hạn"
+"acmeCertDir" = "Thư mục chứng chỉ"
+"acmeCertDirDesc" = "Thư mục nơi các chứng chỉ sẽ được lưu"
+"acmeCfToken" = "Token API Cloudflare"
+"acmeCfTokenDesc" = "Token API có quyền Zone:DNS:Edit (cho phương thức DNS-01)"
+"acmeDomain" = "Tên miền"
+"acmeDomainDesc" = "Tên miền cần lấy chứng chỉ (vd: example.com)"
+"acmeEmail" = "Địa chỉ Email"
+"acmeEmailDesc" = "Email để đăng ký Let's Encrypt và thông báo hết hạn"
+"acmeIssue" = "Cấp chứng chỉ"
+"acmeIssueBtn" = "Cấp chứng chỉ"
+"acmeIssuing" = "Đang cấp..."
+"acmeMethod" = "Phương thức xác thực"
+"acmeMethodDesc" = "HTTP-01 yêu cầu cổng 80; DNS-01 dùng Cloudflare API cho chứng chỉ wildcard"
+"acmeResult" = "Kết quả"
+"autoSSL" = "Auto SSL (Let's Encrypt)"
+"autoSSLDesc" = "Tự động lấy và gia hạn chứng chỉ SSL qua Let's Encrypt"
+"publicIpOverride" = "Ghi đè IP công khai"
+"publicIpOverrideDesc" = "Tự đặt IPv4 công khai của máy chủ khi tự động phát hiện trả về địa chỉ sai/mẫu. Để trống để dùng tự động phát hiện."
 
 [pages.xray]
 "title" = "Cài đặt Xray"
@@ -1015,6 +1074,7 @@
 "nicknameDesc" = "Nhãn riêng của bạn cho chứng chỉ này. Nó hiển thị bên cạnh các tên mà chứng chỉ bao gồm, chứ không bao giờ thay cho chúng."
 "nicknameAdd" = "Thêm biệt danh"
 "nicknameEdit" = "Đổi biệt danh"
+
 [pages.settings.ssl.toasts]
 "status" = "Không đọc được trạng thái chứng chỉ."
 "consumers" = "Không liệt kê được các dịch vụ dùng chứng chỉ này."
@@ -1028,6 +1088,7 @@
 "autoAssigned" = "Chứng chỉ mới đã được đưa vào phục vụ."
 "autoRenew" = "Đã cập nhật tự động gia hạn."
 "nickname" = "Đã lưu biệt danh."
+
 [pages.settings.security]
 "admin" = "Thông tin đăng nhập quản trị viên"
 "twoFactor" = "Xác thực hai yếu tố"

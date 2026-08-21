@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "ダウンロードに失敗しました"
 "customGeoErrUpdateAllIncomplete" = "カスタム geo ソースの 1 件以上を更新できませんでした"
 
+"createBackup" = "バックアップを作成"
+"createBackupError" = "バックアップの作成中にエラーが発生しました。"
+"createBackupSuccess" = "データベースのバックアップを作成しました。"
+"internet" = "インターネット"
+"internetOffline" = "オフライン"
+"internetOnline" = "オンライン"
+"internetPartial" = "部分的"
+"localBackups" = "このパネルに保存されたバックアップ"
+"noLocalBackups" = "このパネルに保存されたバックアップはありません"
+"noLocalBackupsDesc" = "後でここからパネルを復元できるよう、バックアップを作成してください。"
+"ping" = "Ping"
+"pingChecking" = "確認中…"
+"pingUnreachable" = "到達不能"
+"rebootConfirmContent" = "サーバーを今すぐ再起動します。すべてのユーザーが切断され、全サービスが一時的に停止します。"
+"rebootConfirmTitle" = "サーバーを再起動しますか？"
+"rebootServer" = "サーバーを再起動"
+"rebooting" = "再起動中..."
+"rebootingDesc" = "サーバーは再起動中です。サーバーがオンラインに戻ると、このページは自動的に再読み込みされます。"
+"reinstall" = "再インストール"
+"restoreBackupConfirmTitle" = "このバックアップを復元しますか？"
+"restoreFromVpnUi" = "vpn-uiバックアップから復元"
+"restoreFromVpnUiDesc" = "このパネルが作成した.dbバックアップファイルを選択して、インバウンド・クライアント・設定を復元します。インポート時にデータベースは現在のスキーマへ移行されます。"
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -404,6 +427,8 @@
 "lastReset" = "最後のリセット"
 
 "useManagedCert" = "証明書"
+"outboundTraffic" = "送信トラフィック"
+
 [pages.client]
 "add" = "クライアント追加"
 "edit" = "クライアント編集"
@@ -540,6 +565,19 @@
 "sharedUsage" = "共有"
 "sharedUsageHint" = "Xray はインバウンド単位ではなくアカウント単位でトラフィックを計測するため、この数値はアカウントの残り使用量であり、そのアカウントを提供するすべての Xray インバウンドで共有されます。"
 "onlineShared" = "オンライン。このアカウントのいずれかの Xray インバウンドですが、Xray はどれかを報告しません。"
+
+"active" = "有効"
+"all" = "すべて"
+"creator" = "作成者"
+"disabled" = "無効"
+"downloadQr" = "QRコードをダウンロード"
+"expired" = "期限切れ"
+"expiring" = "まもなく期限切れ"
+"newest" = "新しい順"
+"noLinks" = "利用可能な共有リンクがありません"
+"oldest" = "古い順"
+"online" = "オンライン"
+"traffic" = "最もトラフィックが多い"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "なし"
@@ -727,6 +765,27 @@
 "information" = "情報"
 "language" = "言語"
 "telegramBotLanguage" = "Telegram Botの言語"
+
+"acmeAutoRenew" = "自動更新"
+"acmeAutoRenewDesc" = "有効期限が切れる前に証明書を自動更新します"
+"acmeCertDir" = "証明書ディレクトリ"
+"acmeCertDirDesc" = "証明書を保存するディレクトリ"
+"acmeCfToken" = "Cloudflare APIトークン"
+"acmeCfTokenDesc" = "Zone:DNS:Edit権限を持つAPIトークン（DNS-01方式用）"
+"acmeDomain" = "ドメイン名"
+"acmeDomainDesc" = "証明書を取得するドメイン名（例: example.com）"
+"acmeEmail" = "メールアドレス"
+"acmeEmailDesc" = "Let's Encryptの登録と期限通知用のメールアドレス"
+"acmeIssue" = "証明書を発行"
+"acmeIssueBtn" = "証明書を発行"
+"acmeIssuing" = "発行中..."
+"acmeMethod" = "チャレンジ方式"
+"acmeMethodDesc" = "HTTP-01にはポート80が必要です。DNS-01はワイルドカード証明書にCloudflare APIを使用します"
+"acmeResult" = "結果"
+"autoSSL" = "自動SSL（Let's Encrypt）"
+"autoSSLDesc" = "Let's Encrypt経由でSSL証明書を自動取得・自動更新します"
+"publicIpOverride" = "公開IPの上書き"
+"publicIpOverrideDesc" = "自動検出が誤ったアドレスを返す場合、サーバーの公開IPv4を手動で設定します。自動検出を使う場合は空のままにしてください。"
 
 [pages.xray]
 "title" = "Xray 設定"
@@ -1014,6 +1073,7 @@
 "nicknameDesc" = "この証明書に付ける自分用の名前です。証明書が対象とする名前の横に表示されるだけで、それらの代わりになることはありません。"
 "nicknameAdd" = "ニックネームを追加"
 "nicknameEdit" = "ニックネームを変更"
+
 [pages.settings.ssl.toasts]
 "status" = "証明書の状態を読み取れませんでした。"
 "consumers" = "この証明書を使っているサービスを一覧できませんでした。"
@@ -1027,6 +1087,7 @@
 "autoAssigned" = "新しい証明書の提供を開始しました。"
 "autoRenew" = "自動更新の設定を変更しました。"
 "nickname" = "ニックネームを保存しました。"
+
 [pages.settings.security]
 "admin" = "管理者の資格情報"
 "twoFactor" = "二段階認証"

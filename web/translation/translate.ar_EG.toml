@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "فشل التنزيل"
 "customGeoErrUpdateAllIncomplete" = "تعذر تحديث مصدر واحد أو أكثر من مصادر geo المخصصة"
 
+"createBackup" = "إنشاء نسخة احتياطية"
+"createBackupError" = "حدث خطأ أثناء إنشاء النسخة الاحتياطية."
+"createBackupSuccess" = "تم إنشاء نسخة احتياطية من قاعدة البيانات."
+"internet" = "الإنترنت"
+"internetOffline" = "أوفلاين"
+"internetOnline" = "أونلاين"
+"internetPartial" = "جزئي"
+"localBackups" = "النسخ الاحتياطية المحفوظة على اللوحة"
+"noLocalBackups" = "لا توجد نسخ احتياطية محفوظة على اللوحة"
+"noLocalBackupsDesc" = "أنشئ نسخة احتياطية لتتمكن من استعادة اللوحة من هنا لاحقا."
+"ping" = "بينج"
+"pingChecking" = "جارٍ الفحص…"
+"pingUnreachable" = "غير قابل للوصول"
+"rebootConfirmContent" = "سيتم إعادة تشغيل السيرفر الآن. سيؤدي ذلك إلى قطع اتصال جميع المستخدمين وإيقاف جميع الخدمات مؤقتا."
+"rebootConfirmTitle" = "إعادة تشغيل السيرفر؟"
+"rebootServer" = "إعادة تشغيل السيرفر"
+"rebooting" = "جارٍ إعادة التشغيل..."
+"rebootingDesc" = "السيرفر يعيد التشغيل الآن. ستتم إعادة تحميل هذه الصفحة تلقائيا بمجرد عودة السيرفر للأونلاين."
+"reinstall" = "إعادة التثبيت"
+"restoreBackupConfirmTitle" = "استعادة هذه النسخة الاحتياطية؟"
+"restoreFromVpnUi" = "استعادة من نسخة vpn-ui احتياطية"
+"restoreFromVpnUiDesc" = "اختر ملف نسخة احتياطية بصيغة .db أنشأته هذه اللوحة لاستعادة الإنباندات والمستخدمين والإعدادات. تتم ترقية قاعدة البيانات إلى المخطط الحالي عند الاستيراد."
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -405,6 +428,8 @@
 
 "useManagedCert" = "الشهادة"
 
+"outboundTraffic" = "الترافيك الصادر"
+
 [pages.client]
 "add" = "أضف عميل"
 "edit" = "تعديل عميل"
@@ -541,6 +566,19 @@
 "sharedUsage" = "مشترك"
 "sharedUsageHint" = "يحسب Xray حركة البيانات لكل حساب وليس لكل وارد، لذا يمثل هذا الرقم الاستهلاك المتبقي للحساب مشتركًا بين كل الواردات من نوع Xray التي تخدمه."
 "onlineShared" = "متصل، على أحد مداخل Xray لهذا الحساب. لا يحدد Xray أيها."
+
+"active" = "نشط"
+"all" = "الكل"
+"creator" = "المنشئ"
+"disabled" = "معطل"
+"downloadQr" = "تنزيل رمز QR"
+"expired" = "منتهية الصلاحية"
+"expiring" = "على وشك الانتهاء"
+"newest" = "الأحدث"
+"noLinks" = "لا توجد روابط مشاركة متاحة"
+"oldest" = "الأقدم"
+"online" = "أونلاين"
+"traffic" = "الأكثر ترافيكا"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "أبداً"
@@ -728,6 +766,27 @@
 "information" = "المعلومات"
 "language" = "اللغة"
 "telegramBotLanguage" = "لغة بوت Telegram"
+
+"acmeAutoRenew" = "التجديد التلقائي"
+"acmeAutoRenewDesc" = "تجديد الشهادات تلقائيا قبل انتهاء صلاحيتها"
+"acmeCertDir" = "مجلد الشهادات"
+"acmeCertDirDesc" = "المجلد الذي ستخزن فيه الشهادات"
+"acmeCfToken" = "توكن Cloudflare API"
+"acmeCfTokenDesc" = "توكن API بصلاحية Zone:DNS:Edit (لطريقة DNS-01)"
+"acmeDomain" = "اسم الدومين"
+"acmeDomainDesc" = "اسم الدومين الذي تريد الحصول على شهادة له (مثل example.com)"
+"acmeEmail" = "الإيميل"
+"acmeEmailDesc" = "الإيميل لتسجيل Let's Encrypt وإشعارات انتهاء الصلاحية"
+"acmeIssue" = "إصدار شهادة"
+"acmeIssueBtn" = "إصدار شهادة"
+"acmeIssuing" = "جارٍ الإصدار..."
+"acmeMethod" = "طريقة التحقق"
+"acmeMethodDesc" = "يتطلب HTTP-01 البورت 80؛ يستخدم DNS-01 واجهة Cloudflare API لشهادات wildcard"
+"acmeResult" = "النتيجة"
+"autoSSL" = "SSL تلقائي (Let's Encrypt)"
+"autoSSLDesc" = "الحصول على شهادات SSL وتجديدها تلقائيا عبر Let's Encrypt"
+"publicIpOverride" = "تجاوز الـ IP العام"
+"publicIpOverrideDesc" = "حدد عنوان IPv4 العام للسيرفر يدويا عندما يرجع الاكتشاف التلقائي عنوانا خاطئا/تجريبيا. اتركه فارغا لاستخدام الاكتشاف التلقائي."
 
 [pages.xray]
 "title" = "إعدادات Xray"
@@ -1015,6 +1074,7 @@
 "nicknameDesc" = "تسميتك الخاصة لهذه الشهادة. تظهر بجانب الأسماء التي تغطيها الشهادة، ولا تحل محلها أبداً."
 "nicknameAdd" = "أضف لقباً"
 "nicknameEdit" = "غيّر اللقب"
+
 [pages.settings.ssl.toasts]
 "status" = "تعذّرت قراءة حالة الشهادة."
 "consumers" = "تعذّر سرد الخدمات التي تستخدم هذه الشهادة."
@@ -1028,6 +1088,7 @@
 "autoAssigned" = "الشهادة الجديدة قيد التقديم الآن."
 "autoRenew" = "تم تحديث التجديد التلقائي."
 "nickname" = "تم حفظ اللقب."
+
 [pages.settings.security]
 "admin" = "بيانات الأدمن"
 "twoFactor" = "المصادقة الثنائية"

@@ -265,6 +265,29 @@
 "customGeoErrDownload" = "Error de descarga"
 "customGeoErrUpdateAllIncomplete" = "No se pudieron actualizar una o más fuentes geo personalizadas"
 
+"createBackup" = "Crear copia de seguridad"
+"createBackupError" = "Ocurrió un error al crear la copia de seguridad."
+"createBackupSuccess" = "Se ha creado una copia de seguridad de la base de datos."
+"internet" = "Internet"
+"internetOffline" = "Fuera de línea"
+"internetOnline" = "En línea"
+"internetPartial" = "Parcial"
+"localBackups" = "Copias de seguridad almacenadas en este panel"
+"noLocalBackups" = "No hay copias de seguridad almacenadas en este panel"
+"noLocalBackupsDesc" = "Crea una copia de seguridad para poder restaurar el panel desde aquí más adelante."
+"ping" = "Ping"
+"pingChecking" = "Comprobando…"
+"pingUnreachable" = "Inaccesible"
+"rebootConfirmContent" = "El servidor se reiniciará ahora. Esto desconectará a todos los usuarios y detendrá temporalmente todos los servicios."
+"rebootConfirmTitle" = "¿Reiniciar el servidor?"
+"rebootServer" = "Reiniciar servidor"
+"rebooting" = "Reiniciando..."
+"rebootingDesc" = "El servidor se está reiniciando. Esta página se recargará automáticamente cuando el servidor vuelva a estar en línea."
+"reinstall" = "Reinstalar"
+"restoreBackupConfirmTitle" = "¿Restaurar esta copia de seguridad?"
+"restoreFromVpnUi" = "Restaurar desde una copia de seguridad de vpn-ui"
+"restoreFromVpnUiDesc" = "Selecciona un archivo de copia de seguridad .db creado por este panel para restaurar inbounds, clientes y ajustes. La base de datos se migra al esquema actual al importarla."
+
 [pages.inbounds]
 "inboundMembership" = "Inbounds"
 "inboundMembershipDesc" = "The inbounds this one account is served on. It keeps the same email, the same traffic allowance and the same expiry on every one of them. Unticking an inbound removes the account from it. The inbound this form was opened from stays ticked."
@@ -405,6 +428,8 @@
 
 "useManagedCert" = "Certificado"
 
+"outboundTraffic" = "Tráfico saliente"
+
 [pages.client]
 "add" = "Agregar Cliente"
 "edit" = "Editar Cliente"
@@ -541,6 +566,19 @@
 "sharedUsage" = "compartido"
 "sharedUsageHint" = "Xray cuenta el tráfico por cuenta y no por entrada, así que esta cifra es el uso restante de la cuenta, compartido entre todas las entradas Xray que la sirven."
 "onlineShared" = "En línea, en una de las entradas Xray de esta cuenta. Xray no indica en cuál."
+
+"active" = "Activo"
+"all" = "Todos"
+"creator" = "Creador"
+"disabled" = "Deshabilitado"
+"downloadQr" = "Descargar código QR"
+"expired" = "Caducado"
+"expiring" = "Por caducar"
+"newest" = "Más reciente"
+"noLinks" = "No hay enlaces para compartir disponibles"
+"oldest" = "Más antiguo"
+"online" = "En línea"
+"traffic" = "Más tráfico"
 
 [pages.inbounds.periodicTrafficReset]
 "never" = "Nunca"
@@ -728,6 +766,27 @@
 "information" = "Información"
 "language" = "Idioma"
 "telegramBotLanguage" = "Idioma del Bot de Telegram"
+
+"acmeAutoRenew" = "Renovación automática"
+"acmeAutoRenewDesc" = "Renovar automáticamente los certificados antes de que caduquen"
+"acmeCertDir" = "Directorio de certificados"
+"acmeCertDirDesc" = "Directorio donde se almacenarán los certificados"
+"acmeCfToken" = "Token de API de Cloudflare"
+"acmeCfTokenDesc" = "Token de API con permiso Zone:DNS:Edit (para el método DNS-01)"
+"acmeDomain" = "Nombre de dominio"
+"acmeDomainDesc" = "El nombre de dominio para el que obtener un certificado (p. ej. example.com)"
+"acmeEmail" = "Correo electrónico"
+"acmeEmailDesc" = "Correo electrónico para el registro en Let's Encrypt y notificaciones de caducidad"
+"acmeIssue" = "Emitir certificado"
+"acmeIssueBtn" = "Emitir certificado"
+"acmeIssuing" = "Emitiendo..."
+"acmeMethod" = "Método de desafío"
+"acmeMethodDesc" = "HTTP-01 requiere el puerto 80; DNS-01 usa la API de Cloudflare para certificados wildcard"
+"acmeResult" = "Resultado"
+"autoSSL" = "SSL automático (Let's Encrypt)"
+"autoSSLDesc" = "Obtener y renovar automáticamente certificados SSL mediante Let's Encrypt"
+"publicIpOverride" = "Anular IP pública"
+"publicIpOverrideDesc" = "Establece manualmente la IPv4 pública del servidor cuando la detección automática devuelve una dirección errónea o de ejemplo. Déjalo vacío para usar la detección automática."
 
 [pages.xray]
 "title" = "Xray Configuración"
@@ -1015,6 +1074,7 @@
 "nicknameDesc" = "Tu propia etiqueta para este certificado. Se muestra junto a los nombres que cubre el certificado, nunca en su lugar."
 "nicknameAdd" = "Añadir un alias"
 "nicknameEdit" = "Cambiar el alias"
+
 [pages.settings.ssl.toasts]
 "status" = "No se ha podido leer el estado del certificado."
 "consumers" = "No se han podido listar los servicios que usan este certificado."
@@ -1028,6 +1088,7 @@
 "autoAssigned" = "El nuevo certificado ya se está sirviendo."
 "autoRenew" = "Renovación automática actualizada."
 "nickname" = "El alias se ha guardado."
+
 [pages.settings.security]
 "admin" = "Credenciales de administrador"
 "twoFactor" = "Autenticación de dos factores"
