@@ -42,7 +42,21 @@ hr()   { printf '%s%s%s\n' "$D" "$(printf '%.0s-' {1..60})" "$R"; }
 
 # The panel binary this menu drives. VPNUI_BIN overrides it for a non-default
 # install; deploy.sh exports it so the menu follows deploy.sh's own DEST.
-BIN="${VPNUI_BIN:-/opt/PRO-UI/PRO-UI-amd64}"
+#
+# No single default holds for every box: deploy.sh lays the binary down at
+# /opt/PRO-UI/PRO-UI-amd64, while hand-deployed hosts (and every release of this
+# fork before the rename) have long used /opt/vpn-ui/vpn-ui-amd64. Rather than let
+# one canonical path win and break the other population, the unset case probes the
+# known locations in order and keeps the first executable it finds, so `vpn-ui`
+# works everywhere without an exported override.
+BIN="${VPNUI_BIN:-}"
+if [[ -z "$BIN" ]]; then
+    for _cand in /opt/PRO-UI/PRO-UI-amd64 /opt/vpn-ui/vpn-ui-amd64; do
+        if [[ -x "$_cand" ]]; then BIN="$_cand"; break; fi
+    done
+    unset _cand
+fi
+BIN="${BIN:-/opt/PRO-UI/PRO-UI-amd64}"
 # Every value below is preserved when already set, because deploy.sh sources this
 # file with its own: sourcing must add the shared function, never quietly redefine
 # the caller's configuration.
@@ -953,7 +967,7 @@ usage: ${0##*/}            open the management menu
        ${0##*/} --help     this message
 
 environment:
-  VPNUI_BIN         path to the panel binary (default: /opt/PRO-UI/PRO-UI-amd64)
+  VPNUI_BIN         path to the panel binary (default: probes /opt/PRO-UI/PRO-UI-amd64, then /opt/vpn-ui/vpn-ui-amd64)
   SSL_METHOD        how to answer the ACME challenge, skipping the question:
                     'cloudflare' (DNS-01, needs a token, allows a wildcard),
                     'manual' (standalone HTTP-01, needs :80 and a live A record) or
