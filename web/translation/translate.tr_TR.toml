@@ -149,6 +149,7 @@
 "serverOverview" = "Sunucuya Genel Bakış"
 "xrayService" = "Xray Hizmeti"
 "bandwidthOverview" = "Bant Genişliğine Genel Bakış"
+"outboundsTraffic" = "Giden Trafiği"
 "title" = "Genel Bakış"
 "cpu" = "İşlemci"
 "logicalProcessors" = "Mantıksal işlemciler"

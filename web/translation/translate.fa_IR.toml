@@ -149,6 +149,7 @@
 "serverOverview" = "نمای کلی سرور"
 "xrayService" = "سرویس Xray"
 "bandwidthOverview" = "نمای کلی پهنای باند"
+"outboundsTraffic" = "ترافیک خروجی‌ها"
 "title" = "نمای کلی"
 "cpu" = "پردازنده"
 "logicalProcessors" = "پردازنده‌های منطقی"

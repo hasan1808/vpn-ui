@@ -149,6 +149,7 @@
 "serverOverview" = "Огляд сервера"
 "xrayService" = "Служба Xray"
 "bandwidthOverview" = "Огляд пропускної здатності"
+"outboundsTraffic" = "Трафік вихідних"
 "title" = "Огляд"
 "cpu" = "ЦП"
 "logicalProcessors" = "Логічні процесори"

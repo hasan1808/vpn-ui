@@ -149,6 +149,7 @@
 "serverOverview" = "Visão geral do servidor"
 "xrayService" = "Serviço Xray"
 "bandwidthOverview" = "Visão geral da largura de banda"
+"outboundsTraffic" = "Tráfego de Saídas"
 "title" = "Visão Geral"
 "cpu" = "CPU"
 "logicalProcessors" = "Processadores lógicos"

@@ -149,6 +149,7 @@
 "serverOverview" = "نظرة عامة على الخادم"
 "xrayService" = "خدمة Xray"
 "bandwidthOverview" = "نظرة عامة على النطاق الترددي"
+"outboundsTraffic" = "حركة المنفذ الخارجية"
 "title" = "نظرة عامة"
 "cpu" = "المعالج"
 "logicalProcessors" = "المعالجات المنطقية"

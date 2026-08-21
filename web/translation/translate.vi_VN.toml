@@ -149,6 +149,7 @@
 "serverOverview" = "Tổng quan máy chủ"
 "xrayService" = "Dịch vụ Xray"
 "bandwidthOverview" = "Tổng quan băng thông"
+"outboundsTraffic" = "Lưu lượng Outbound"
 "title" = "Trạng thái hệ thống"
 "cpu" = "CPU"
 "logicalProcessors" = "Bộ xử lý logic"

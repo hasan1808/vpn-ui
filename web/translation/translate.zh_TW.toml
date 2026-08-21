@@ -149,6 +149,7 @@
 "serverOverview" = "伺服器總覽"
 "xrayService" = "Xray 服務"
 "bandwidthOverview" = "頻寬總覽"
+"outboundsTraffic" = "出站流量"
 "title" = "系統狀態"
 "cpu" = "CPU"
 "logicalProcessors" = "邏輯處理器"

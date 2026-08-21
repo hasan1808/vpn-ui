@@ -149,6 +149,7 @@
 "serverOverview" = "Ringkasan Server"
 "xrayService" = "Layanan Xray"
 "bandwidthOverview" = "Ringkasan Bandwidth"
+"outboundsTraffic" = "Lalu Lintas Outbound"
 "title" = "Ikhtisar"
 "cpu" = "CPU"
 "logicalProcessors" = "Prosesor logis"

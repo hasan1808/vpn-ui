@@ -430,3 +430,18 @@
 .db-svc-chip[data-state="off"] { opacity:.6; }
 .db-svc-chip[data-state="off"] .db-svc-led { background:var(--off); }
 .db-svc-chip[data-state="off"] .db-svc-state { color:var(--off); }
+
+/* ---- Outbounds Traffic ---- */
+.db-ob-grid { display:flex; flex-direction:column; gap:8px; }
+.db-ob-row { display:grid; grid-template-columns:14px minmax(120px,1fr) auto auto auto; align-items:center; gap:16px; padding:10px 14px; background:var(--card-2,rgba(255,255,255,.03)); border:1px solid var(--border,rgba(255,255,255,.06)); border-radius:12px; }
+.db-ob-led { width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px rgba(60,180,120,.15); }
+.db-ob-tag { font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; direction:ltr; text-align:left; }
+.db-ob-dir { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-2,#9aa4b2); min-width:90px; justify-content:flex-end; }
+.db-ob-dir .bo-icon { color:var(--ok); }
+.db-ob-dir:last-of-type .bo-icon { color:var(--info); }
+.db-ob-total { font-size:13px; font-weight:700; color:var(--text-1,#e8ecf1); min-width:80px; text-align:right; }
+@media (max-width:768px) {
+  .db-ob-row { grid-template-columns:14px 1fr auto; gap:8px; }
+  .db-ob-dir { display:none; }
+  .db-ob-total { min-width:auto; }
+}

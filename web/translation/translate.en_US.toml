@@ -239,6 +239,7 @@
 "serverOverview" = "Server Overview"
 "xrayService" = "Xray Service"
 "bandwidthOverview" = "Bandwidth Overview"
+"outboundsTraffic" = "Outbounds Traffic"
 "title" = "Overview"
 "checkUpdate" = "Check for Update"
 "upToDate" = "Up to date"

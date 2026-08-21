@@ -489,6 +489,23 @@
 
     <!-- ===== FULL WIDTH SECTIONS ===== -->
 
+    <!-- Outbounds Traffic -->
+    <article class="db-card db-card--full db-ob-card" v-if="visibleOutbounds().length" aria-label='{{ i18n "pages.index.outboundsTraffic" }}'>
+      <div class="db-card-head">
+        <h3 class="db-card-title">{{ i18n "pages.index.outboundsTraffic" }}</h3>
+        <span class="db-card-meta">[[ visibleOutbounds().length ]]</span>
+      </div>
+      <div class="db-ob-grid">
+        <div class="db-ob-row" v-for="o in visibleOutbounds()" :key="o.tag">
+          <span class="db-ob-led"></span>
+          <span class="db-ob-tag">[[ o.tag ]]</span>
+          <span class="db-ob-dir"><svg class="bo-icon bo-icon-12"><use href="#bo-i-arrow-up"></use></svg><span class="num">[[ fmtBytes(o.up) ]]</span></span>
+          <span class="db-ob-dir"><svg class="bo-icon bo-icon-12"><use href="#bo-i-arrow-down"></use></svg><span class="num">[[ fmtBytes(o.down) ]]</span></span>
+          <span class="db-ob-total num">[[ fmtBytes(o.total) ]]</span>
+        </div>
+      </div>
+    </article>
+
     <!-- VPN Services -->
     {{ if .perms.accessCoreSettings }}
     <article class="db-card db-card--full" aria-label='{{ i18n "pages.index.vpnServices" }}'>
@@ -1791,6 +1808,7 @@
       // '' means every interface, which is what the aggregate netIO already is.
       ifaceFilter: '',
       userStats: { total: 0, online: 0, depleted: 0, expiring: 0 },
+      outboundsTraffic: [],
       // Manage tile connectivity check (Google / Cloudflare / YouTube). `ping`
       // holds the last server answer; null until the first check lands.
       ping: null,
@@ -3362,6 +3380,29 @@
           }
         }, 2000);
       },
+      visibleOutbounds() {
+        const list = Array.isArray(this.outboundsTraffic) ? this.outboundsTraffic : [];
+        return list
+          .filter((o) => {
+            if (!o || !o.tag) return false;
+            const tag = String(o.tag).toLowerCase();
+            if (tag === 'direct' || tag === 'blocked') return false;
+            return (o.up || 0) > 0 || (o.down || 0) > 0 || (o.total || 0) > 0;
+          })
+          .sort((a, b) => (b.total || 0) - (a.total || 0));
+      },
+      fmtBytes(n) {
+        const v = Number(n) || 0;
+        if (v <= 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let i = 0;
+        let x = v;
+        while (x >= 1024 && i < units.length - 1) {
+          x /= 1024;
+          i++;
+        }
+        return `${x.toFixed(x >= 100 || i === 0 ? 0 : 2)} ${units[i]}`;
+      },
       copyIP(ip) {
         const val = ip || "";
         if (!val) return;
@@ -3453,6 +3494,12 @@
                 this.status.xray.stateMsg = '{{ i18n "pages.index.xrayStatusError" }}';
                 break;
             }
+          }
+        });
+
+        window.wsClient.on('outbounds', (payload) => {
+          if (Array.isArray(payload)) {
+            this.outboundsTraffic = payload;
           }
         });
 

@@ -149,6 +149,7 @@
 "serverOverview" = "サーバー概要"
 "xrayService" = "Xrayサービス"
 "bandwidthOverview" = "帯域幅の概要"
+"outboundsTraffic" = "アウトバウンド通信"
 "title" = "システムステータス"
 "cpu" = "CPU"
 "logicalProcessors" = "論理プロセッサ"
