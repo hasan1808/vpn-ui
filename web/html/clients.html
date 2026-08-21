@@ -95,22 +95,33 @@
                     @change="onSearchChange"></a-input-search>
                 </div>
 
-                <!-- Status filter buttons -->
-                <div :style="{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '10px' }">
-                  <a-button size="small" :type="statusFilter === '' ? 'primary' : 'default'"
-                    @click="filterByStatus('')">{{ i18n "pages.clients.all" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'active' ? 'primary' : 'default'"
-                    @click="filterByStatus('active')">&#10003; {{ i18n "pages.clients.active" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'online' ? 'primary' : 'default'"
-                    @click="filterByStatus('online')">&#128246; {{ i18n "pages.clients.online" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'expiring' ? 'primary' : 'default'"
-                    @click="filterByStatus('expiring')">&#9200; {{ i18n "pages.clients.expiring" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'expired' ? 'primary' : 'default'"
-                    @click="filterByStatus('expired')">&#10007; {{ i18n "pages.clients.expired" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'disabled' ? 'primary' : 'default'"
-                    @click="filterByStatus('disabled')">&#9208; {{ i18n "pages.clients.disabled" }}</a-button>
+                <!-- Filter row: three selects, one question each. The status
+                     dropdown replaced six buttons that did the same job in more
+                     space; the inbound picker narrows the table server-side
+                     (the list endpoint takes ?inbound=), so it filters the WHOLE
+                     list and not just the fifty rows on this page. -->
+                <div class="cl-filter-row">
+                  <a-select v-model="statusFilter" :style="{ minWidth: '140px' }"
+                    :dropdown-class-name="themeSwitcher.currentTheme"
+                    @change="val => filterByStatus(val)">
+                    <a-select-option value="">{{ i18n "pages.clients.all" }}</a-select-option>
+                    <a-select-option value="active">&#10003; {{ i18n "pages.clients.active" }}</a-select-option>
+                    <a-select-option value="online">&#128246; {{ i18n "pages.clients.online" }}</a-select-option>
+                    <a-select-option value="expiring">&#9200; {{ i18n "pages.clients.expiring" }}</a-select-option>
+                    <a-select-option value="expired">&#10007; {{ i18n "pages.clients.expired" }}</a-select-option>
+                    <a-select-option value="disabled">&#9208; {{ i18n "pages.clients.disabled" }}</a-select-option>
+                  </a-select>
 
-                  <a-select v-model="sortBy" size="small" :style="{ minWidth: '150px', marginInlineStart: '8px' }"
+                  <a-select v-model="inboundFilter" :style="{ minWidth: '170px' }"
+                    :dropdown-class-name="themeSwitcher.currentTheme"
+                    @change="onInboundFilter">
+                    <a-select-option value="">{{ i18n "pages.clients.all" }}</a-select-option>
+                    <a-select-option v-for="inb in assignable" :key="inb.inboundId" :value="inb.inboundId">
+                      [[ inb.remark ]] ([[ inb.protocol ]])
+                    </a-select-option>
+                  </a-select>
+
+                  <a-select v-model="sortBy" :style="{ minWidth: '150px' }"
                     @change="onSortChange" :dropdown-class-name="themeSwitcher.currentTheme">
                     <a-select-option value="email">&#128269; {{ i18n "pages.clients.email" }}</a-select-option>
                     <a-select-option value="newest">&#128315; {{ i18n "pages.clients.newest" }}</a-select-option>
@@ -435,6 +446,7 @@
       search: '',
       searchTimer: null,
       statusFilter: '',
+      inboundFilter: '',
       sortBy: localStorage.getItem('clientsSortBy') || 'email',
       selectedEmails: [],
       expandedRowKeys: [],
@@ -699,7 +711,7 @@
       },
 
       async loadClients() {
-        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}&sort=${encodeURIComponent(this.sortBy || 'email')}`;
+        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}&inbound=${encodeURIComponent(this.inboundFilter || '')}&sort=${encodeURIComponent(this.sortBy || 'email')}`;
         const msg = await HttpUtil.get('/panel/api/clients/list' + q);
         if (!msg || !msg.success) return;
         this.clients = (msg.obj && msg.obj.rows) || [];
@@ -709,6 +721,11 @@
       },
       filterByStatus(status) {
         this.statusFilter = status;
+        this.pagination.current = 1;
+        this.loadClients();
+      },
+      onInboundFilter(val) {
+        this.inboundFilter = val;
         this.pagination.current = 1;
         this.loadClients();
       },

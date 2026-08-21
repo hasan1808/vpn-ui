@@ -40,7 +40,7 @@ func noInboundAccount(t *testing.T, svc *AccountService, email string) *model.Ac
 // listedEmails is what the Clients page would show a super admin.
 func listedEmails(t *testing.T, svc *AccountService) []string {
 	t.Helper()
-	result, err := svc.ListAccounts(&model.User{Id: 1, IsSuperAdmin: true}, 1, 100, "", "")
+	result, err := svc.ListAccounts(&model.User{Id: 1, IsSuperAdmin: true}, 1, 100, "", "", "", 0)
 	if err != nil {
 		t.Fatalf("ListAccounts: %v", err)
 	}

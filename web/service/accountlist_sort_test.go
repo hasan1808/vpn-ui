@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 )
 
 // The Clients table is paged by the SERVER, so its order is decided here and the
@@ -46,7 +47,7 @@ func sortFixture() ([]AccountRow, map[int]int64, map[string]bool) {
 // order the database handed it over in. It falls back to newest, and says so,
 // because the menu ticks its item from the echoed value.
 func TestSortAccountRowsFallsBackToNewest(t *testing.T) {
-	for _, key := range []string{"", "not-a-sort", "email", "quota"} {
+	for _, key := range []string{"", "not-a-sort", "quota"} {
 		rows, createdAt, online := sortFixture()
 		got := sortAccountRows(rows, createdAt, online, key)
 		if got != AccountSortNewest {
@@ -55,6 +56,41 @@ func TestSortAccountRowsFallsBackToNewest(t *testing.T) {
 		if names(rows)[0] != "dave" {
 			t.Errorf("key %q did not apply the newest ordering: %v", key, names(rows))
 		}
+	}
+}
+
+// The three orderings the filter row added. Email is plain alphabetical on the
+// case-insensitive key; expiring puts the soonest running clock first and every
+// clockless account after; traffic answers "who is eating the line".
+func TestSortAccountRowsByEmailExpiringTraffic(t *testing.T) {
+	rows, createdAt, online := sortFixture()
+	sortAccountRows(rows, createdAt, online, AccountSortEmail)
+	if got := names(rows); !equal(got, []string{"alice", "bob", "carol", "dave"}) {
+		t.Errorf("email order: %v", got)
+	}
+
+	now := time.Now().UnixMilli()
+	rows = []AccountRow{
+		{Id: 1, Email: "soon", ExpiryTime: now + 86400000},
+		{Id: 2, Email: "later", ExpiryTime: now + 30*86400000},
+		{Id: 3, Email: "never"},
+		{Id: 4, Email: "past", ExpiryTime: now - 1000},
+	}
+	createdAt = map[int]int64{1: 1, 2: 2, 3: 3, 4: 4}
+	sortAccountRows(rows, createdAt, online, AccountSortExpiring)
+	if got := names(rows); !equal(got, []string{"soon", "later", "never", "past"}) {
+		t.Errorf("expiring first, clockless last: %v", got)
+	}
+
+	rows = []AccountRow{
+		{Id: 1, Email: "quiet", Up: 10, Down: 5},
+		{Id: 2, Email: "busy", Up: 900, Down: 100},
+		{Id: 3, Email: "idle"},
+	}
+	createdAt = map[int]int64{1: 1, 2: 2, 3: 3}
+	sortAccountRows(rows, createdAt, online, AccountSortTraffic)
+	if got := names(rows); !equal(got, []string{"busy", "quiet", "idle"}) {
+		t.Errorf("busiest first: %v", got)
 	}
 }
 

@@ -1573,9 +1573,23 @@
         return host + ':' + dbInbound.port;
       },
       copyEndpoint(endpoint) {
-        navigator.clipboard.writeText(endpoint).then(() => {
-          this.$message.success('Copied');
-        }).catch(() => {});
+        if (!endpoint) return;
+        const done = () => this.$message.success('{{ i18n "copied" }}');
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(endpoint).then(done).catch(() => this.fallbackCopy(endpoint, done));
+        } else {
+          this.fallbackCopy(endpoint, done);
+        }
+      },
+      fallbackCopy(text, done) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
       },
       resetAllTraffic() {
         this.$confirm({

@@ -100,10 +100,25 @@
   padding:4px 10px; border-radius:20px;
   background:var(--off-weak); color:var(--off);
 }
-.db-pill--ok, .db-pill--running { background:rgba(0,135,113,.12); color:var(--ok); }
-.db-pill--error { background:rgba(207,60,60,.12); color:var(--error); }
+.db-pill--ok, .db-pill--running, .db-pill--online { background:rgba(0,135,113,.12); color:var(--ok); }
+.db-pill--error, .db-pill--offline { background:rgba(207,60,60,.12); color:var(--error); }
 .db-pill--warn, .db-pill--partial { background:rgba(243,123,36,.12); color:var(--warn); }
 .db-pill--sm { font-size:10px; padding:3px 8px; }
+
+/* Mini identity header inside Server Overview card */
+.db-ident-mini {
+  display:flex; align-items:center; gap:8px; min-width:0;
+}
+.db-ident-logo { width:30px !important; height:30px !important; flex:0 0 auto; }
+.db-ident-texts { display:flex; flex-direction:column; align-items:flex-end; min-width:0; }
+.db-ident-name {
+  font-size:13.5px; font-weight:700; color:var(--text);
+  max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.db-ident-sub {
+  font-size:10.5px; color:var(--text-3);
+  max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
 
 .db-dot { width:7px; height:7px; border-radius:50%; flex:0 0 auto; background:var(--off); }
 .db-dot--ok { background:var(--ok); }
@@ -366,6 +381,15 @@
   transition:color var(--dur-fast) var(--ease);
 }
 .db-eye-btn:hover, .db-ip-copy:hover { color:var(--accent); }
+
+/* ================================================================== *
+ * Clients page filter row
+ * ================================================================== */
+.cl-filter-row {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 10px; margin-top: 12px;
+}
+.cl-filter-row .ant-select { min-width: 140px; }
 
 /* ================================================================== *
  * VPN Services

@@ -53,11 +53,16 @@ func (a *ClientsController) initRouter(g *gin.RouterGroup) {
 // "newest" there, so there is nothing for this handler to reject. There is no
 // direction parameter on purpose - each ordering the page offers already says which
 // way it runs. The result echoes back the ordering that was actually applied.
+//
+// status and inbound narrow the list the same way, and are likewise the service's
+// to interpret: an unknown status filters nothing rather than erroring, and an
+// inbound id that parses to 0 means "every inbound".
 func (a *ClientsController) list(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	size, _ := strconv.Atoi(c.Query("size"))
+	inboundId, _ := strconv.Atoi(c.Query("inbound"))
 	result, err := accountService.ListAccounts(session.GetLoginUser(c), page, size,
-		c.Query("search"), c.Query("sort"))
+		c.Query("search"), c.Query("sort"), c.Query("status"), inboundId)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return

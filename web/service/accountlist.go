@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/hasan1808/pro-ui/database"
 	"github.com/hasan1808/pro-ui/database/model"
@@ -141,6 +142,22 @@ const (
 	AccountSortOnline   = "online"
 	AccountSortEnabled  = "enable"
 	AccountSortDisabled = "disable"
+	AccountSortEmail    = "email"
+	AccountSortExpiring = "expiring"
+	AccountSortTraffic  = "traffic"
+)
+
+// The account status filters the Clients page offers. Each names ONE question an
+// operator asks of the list, and they are evaluated against the SAME row state
+// the browser's status lamp renders (expired/depleted outrank the enable bit,
+// because the panel auto-disables such accounts and reading the raw bit would
+// file them under "disabled" where nobody looks for them).
+const (
+	AccountStatusActive   = "active"
+	AccountStatusOnline   = "online"
+	AccountStatusExpiring = "expiring"
+	AccountStatusExpired  = "expired"
+	AccountStatusDisabled = "disabled"
 )
 
 // ListAccounts returns the accounts the caller may see, filtered and paged.
@@ -155,7 +172,13 @@ const (
 //     other sellers' customers too;
 //   - an ordinary admin sees accounts with at least one membership on an inbound
 //     they hold, which is exactly what the Inbounds page already shows them.
-func (s *AccountService) ListAccounts(user *model.User, page, size int, search, sortKey string) (*AccountListResult, error) {
+//
+// statusKey narrows the list to one account state ("" = every state) and
+// inboundId to accounts served on that one inbound (0 = every inbound). Both are
+// evaluated server-side, before paging, for the same reason the sort is: the page
+// holds one slice of the list, so filtering fifty rows out of two hundred in the
+// browser would paginate lies.
+func (s *AccountService) ListAccounts(user *model.User, page, size int, search, sortKey, statusKey string, inboundId int) (*AccountListResult, error) {
 	if user == nil {
 		// No identity, no rows. Never an unscoped list.
 		return &AccountListResult{Rows: []AccountRow{}, Sort: AccountSortNewest}, nil
@@ -203,6 +226,18 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search, 
 		return nil, err
 	}
 
+	// The online set comes from the running core's in-memory session list. It is
+	// fetched only when something actually needs it - the "online" ordering or the
+	// "online" status filter - because it is cheap but not free, and on a box
+	// where Xray never started it is simply empty rather than an error.
+	onlineSet := map[string]bool{}
+	if sortKey == AccountSortOnline || statusKey == AccountStatusOnline {
+		var inboundService InboundService
+		for _, email := range inboundService.GetOnlineClients() {
+			onlineSet[accountKey(email)] = true
+		}
+	}
+
 	needle := strings.ToLower(strings.TrimSpace(search))
 	rows := make([]AccountRow, 0, len(accounts))
 	// When each account was created, for the newest/oldest orderings. Kept beside
@@ -210,6 +245,7 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search, 
 	// it: the table has no created column, and a field the browser never reads is a
 	// field that goes stale without anyone noticing.
 	createdAt := make(map[int]int64, len(accounts))
+	now := time.Now().UnixMilli()
 	for i := range accounts {
 		account := &accounts[i]
 		key := accountKey(account.Email)
@@ -219,6 +255,18 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search, 
 		}
 		if needle != "" && !accountMatches(account, mine, needle) {
 			continue
+		}
+		if inboundId > 0 {
+			serving := false
+			for _, m := range mine {
+				if m.InboundId == inboundId {
+					serving = true
+					break
+				}
+			}
+			if !serving {
+				continue
+			}
 		}
 		row := AccountRow{
 			Id: account.Id, Email: account.Email, Enable: account.Enable,
@@ -254,6 +302,14 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search, 
 			row.TotalGB = t.Total
 			row.ExpiryTime = t.ExpiryTime
 		}
+		// The status filter reads the same derived state the browser's lamp does,
+		// in the same priority order, so a filter and a row colour can never
+		// disagree about one account. A status key the page does not offer filters
+		// nothing out rather than erroring - it is a view preference, not input to
+		// validate loudly.
+		if statusKey != "" && !accountHasStatus(row, onlineSet, statusKey, now) {
+			continue
+		}
 		createdAt[account.Id] = account.CreatedAt
 		rows = append(rows, row)
 	}
@@ -261,18 +317,7 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search, 
 	// Ordered BEFORE paging, which is the whole reason this is server-side. The
 	// page only ever holds one slice of the list, so sorting in the browser would
 	// order fifty rows out of two hundred and call it a sort.
-	// The online set is fetched only when it is the ordering being asked for. It
-	// reads the running core's in-memory session list, which is cheap but not free
-	// of meaning: on a box where Xray never started it is empty, and every account
-	// then sorts as offline rather than the call failing.
-	online := map[string]bool{}
-	if sortKey == AccountSortOnline {
-		var inboundService InboundService
-		for _, email := range inboundService.GetOnlineClients() {
-			online[accountKey(email)] = true
-		}
-	}
-	sortKey = sortAccountRows(rows, createdAt, online, sortKey)
+	sortKey = sortAccountRows(rows, createdAt, onlineSet, sortKey)
 
 	total := len(rows)
 	start := (page - 1) * size
@@ -307,14 +352,15 @@ func (s *AccountService) ListAccounts(user *model.User, page, size int, search, 
 func sortAccountRows(rows []AccountRow, createdAt map[int]int64, online map[string]bool, sortKey string) string {
 	switch sortKey {
 	case AccountSortNewest, AccountSortOldest, AccountSortOnline,
-		AccountSortEnabled, AccountSortDisabled:
+		AccountSortEnabled, AccountSortDisabled,
+		AccountSortEmail, AccountSortExpiring, AccountSortTraffic:
 	default:
 		sortKey = AccountSortNewest
 	}
 
 	// Each case returns "is a before b" outright. Written as a full comparison per
 	// ordering rather than a shared key function plus a direction flag, because these
-	// are five different questions and only two of them are about the same value.
+	// are different questions and only some of them are about the same value.
 	less := func(a, b *AccountRow) bool {
 		switch sortKey {
 		case AccountSortOldest:
@@ -344,6 +390,29 @@ func sortAccountRows(rows []AccountRow, createdAt map[int]int64, online map[stri
 				return b.Enable
 			}
 			return accountKey(a.Email) < accountKey(b.Email)
+		case AccountSortEmail:
+			return accountKey(a.Email) < accountKey(b.Email)
+		case AccountSortExpiring:
+			// The soonest deadline first, so what needs attention this week sits at
+			// the top. Accounts with no clock (0 or a delayed start) sort after every
+			// running one, among themselves by email.
+			ae, be := expiringRank(a), expiringRank(b)
+			if ae != be {
+				return ae < be
+			}
+			if ae == 1 {
+				if a.ExpiryTime != b.ExpiryTime {
+					return a.ExpiryTime < b.ExpiryTime
+				}
+			}
+			return accountKey(a.Email) < accountKey(b.Email)
+		case AccountSortTraffic:
+			at := a.Up + a.Down
+			bt := b.Up + b.Down
+			if at != bt {
+				return at > bt
+			}
+			return accountKey(a.Email) < accountKey(b.Email)
 		default: // AccountSortNewest
 			if createdAt[a.Id] != createdAt[b.Id] {
 				return createdAt[a.Id] > createdAt[b.Id]
@@ -354,6 +423,43 @@ func sortAccountRows(rows []AccountRow, createdAt map[int]int64, online map[stri
 
 	sort.SliceStable(rows, func(i, j int) bool { return less(&rows[i], &rows[j]) })
 	return sortKey
+}
+
+// expiringRank buckets an account for the "expiring" ordering: 1 = a clock that is
+// actually running (a positive deadline in the future), 2 = everything else (no
+// expiry, an expired deadline, or a delayed start whose clock has not started).
+func expiringRank(r *AccountRow) int {
+	if r.ExpiryTime > time.Now().UnixMilli() {
+		return 1
+	}
+	return 2
+}
+
+// accountHasStatus answers whether one row belongs under the named status filter,
+// using the same priority order as clients.html's status lamp: frozen aside,
+// expired and depleted outrank the enable bit, because the panel auto-disables
+// such accounts itself and reading the raw bit would file them under "disabled".
+// Unknown keys match nothing, which shows up as an empty list rather than an error.
+func accountHasStatus(row AccountRow, online map[string]bool, statusKey string, nowMs int64) bool {
+	expired := row.ExpiryTime > 0 && row.ExpiryTime < nowMs
+	depleted := row.TotalGB > 0 && row.Up+row.Down >= row.TotalGB
+	left := row.ExpiryTime - nowMs
+	expiring := row.ExpiryTime > 0 && left > 0 && left <= 7*86400000
+
+	switch statusKey {
+	case AccountStatusActive:
+		return row.Enable && !expired && !depleted
+	case AccountStatusOnline:
+		return online[accountKey(row.Email)]
+	case AccountStatusExpiring:
+		return expiring && !expired && !depleted
+	case AccountStatusExpired:
+		return expired
+	case AccountStatusDisabled:
+		return !row.Enable && !expired && !depleted
+	default:
+		return false
+	}
 }
 
 // membershipViews maps every account id to the inbounds serving it, named.

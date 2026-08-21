@@ -62,8 +62,25 @@
       <div class="db-col db-col--left">
 
         <!-- Server Overview -->
-        <article class="db-card" aria-label='{{ i18n "pages.index.systemStatus" }}'>
-          <div class="db-card-head"><h3 class="db-card-title">SERVER OVERVIEW</h3></div>
+        <article class="db-card" aria-label='{{ i18n "pages.index.serverOverview" }}'>
+          <div class="db-card-head">
+            <h3 class="db-card-title">{{ i18n "pages.index.serverOverview" }}</h3>
+            <span class="db-ident-mini">
+              <span class="bo-ident-logo bo-distro db-ident-logo" :class="'bo-distro--' + distroKey"
+                :style="{ maskImage: distroMask, WebkitMaskImage: distroMask }"
+                role="img" :aria-label="status.osName || 'Linux'"></span>
+              <span class="db-ident-texts">
+                <span class="db-ident-name">[[ serverLabel ]]</span>
+                <span class="db-ident-sub" v-if="status.osName">[[ status.osName ]] [[ status.osVersion ]]</span>
+              </span>
+              {{ if .perms.manageOverview }}
+              <button type="button" class="db-ip-copy" @click="openRenameServer"
+                :title='{{ i18n "edit" }}' :aria-label='{{ i18n "edit" }}'>
+                <svg class="bo-icon bo-icon-12"><use href="#bo-i-pencil"></use></svg>
+              </button>
+              {{ end }}
+            </span>
+          </div>
           <dl class="db-overview">
             <div class="db-overview-row" v-if="panelLocationText">
               <span class="db-ov-ico db-ov-ico--loc"><svg class="bo-icon bo-icon-14"><use href="#bo-i-globe"></use></svg></span>
@@ -118,7 +135,7 @@
         <!-- Xray Service -->
         <article class="db-card" aria-label='{{ i18n "pages.index.xrayStatus" }}'>
           <div class="db-card-head">
-            <h3 class="db-card-title">XRAY SERVICE</h3>
+            <h3 class="db-card-title">{{ i18n "pages.index.xrayService" }}</h3>
             <a-popover v-if="status.xray.state == 'error'" :overlay-class-name="themeSwitcher.currentTheme">
               <span slot="title">
                 <a-row type="flex" align="middle" justify="space-between">
@@ -137,16 +154,25 @@
           </div>
           <div class="db-kv-row">
             <span class="db-kv-label">{{ i18n "pages.index.xrayStatus" }}</span>
-            <span class="db-kv-value num">[[ status.xray.version != 'Unknown' ? 'v' + status.xray.version : '-' ]]</span>
+            <span class="db-kv-value num bo-kv-with-action">
+              [[ status.xray.version != 'Unknown' ? 'v' + status.xray.version : '-' ]]
+              <button type="button" class="bo-inline-btn" @click="openSelectV2rayVersion"
+                :title='{{ i18n "pages.index.xraySwitch" }}' :aria-label='{{ i18n "pages.index.xraySwitch" }}'>
+                <svg class="bo-icon bo-icon-14"><use href="#bo-i-info"></use></svg>
+              </button>
+            </span>
           </div>
           <div class="db-kv-row">
-            <span class="db-kv-label">Uptime</span>
+            <span class="db-kv-label">{{ i18n "pages.index.operationHours" }}</span>
             <span class="db-kv-value num">[[ TimeFormatter.formatUptime(status.appStats.uptime) ]]</span>
           </div>
           <div class="db-card-actions">
             {{ if .perms.manageOverview }}
             <button type="button" class="db-action-btn" @click="openCoreLogs('xray')">
               <svg class="bo-icon bo-icon-14"><use href="#bo-i-file"></use></svg>{{ i18n "pages.index.logs" }}
+            </button>
+            <button type="button" class="db-action-btn" v-if="xrayAccessLogEnable" @click="openXrayLogs()">
+              <svg class="bo-icon bo-icon-14"><use href="#bo-i-file"></use></svg>{{ i18n "pages.xray.accessLog" }}
             </button>
             <button type="button" class="db-action-btn db-action-btn--danger" @click="stopXrayService">
               <svg class="bo-icon bo-icon-14"><use href="#bo-i-stop"></use></svg>{{ i18n "pages.index.stopXray" }}
@@ -164,7 +190,7 @@
         <!-- Manage -->
         {{ if .perms.manageOverview }}
         <article class="db-card" aria-label='{{ i18n "menu.link" }}'>
-          <div class="db-card-head"><h3 class="db-card-title">MANAGE</h3></div>
+          <div class="db-card-head"><h3 class="db-card-title">{{ i18n "menu.link" }}</h3></div>
           <div class="db-manage-layout">
             <div class="db-manage-actions">
               <button type="button" class="db-manage-btn" @click="openAllLogs()">
@@ -212,7 +238,7 @@
         <!-- Bandwidth Overview -->
         <article class="db-card" aria-label='{{ i18n "pages.index.overallSpeed" }}'>
           <div class="db-card-head">
-            <h3 class="db-card-title">BANDWIDTH OVERVIEW</h3>
+            <h3 class="db-card-title">{{ i18n "pages.index.bandwidthOverview" }}</h3>
             <span class="db-iface-pick">
               <a-select size="small" v-model="ifaceFilter" :style="{ minWidth: '100px' }"
                 :dropdown-class-name="themeSwitcher.currentTheme" @change="onIfaceChange">
@@ -252,33 +278,33 @@
           <div class="db-bw-footer">
             <div class="db-bw-stat">
               <svg class="bo-icon bo-icon-14" style="color:var(--ok)"><use href="#bo-i-arrow-up"></use></svg>
-              <div><span class="db-bw-stat-label">SENT</span><span class="db-bw-stat-val num">[[ SizeFormatter.sizeFormat(status.netTraffic.sent) ]]</span></div>
+              <div><span class="db-bw-stat-label">{{ i18n "pages.index.sent" }}</span><span class="db-bw-stat-val num">[[ SizeFormatter.sizeFormat(status.netTraffic.sent) ]]</span></div>
             </div>
             <div class="db-bw-stat">
               <svg class="bo-icon bo-icon-14" style="color:var(--info)"><use href="#bo-i-arrow-down"></use></svg>
-              <div><span class="db-bw-stat-label">RECEIVED</span><span class="db-bw-stat-val num">[[ SizeFormatter.sizeFormat(status.netTraffic.recv) ]]</span></div>
+              <div><span class="db-bw-stat-label">{{ i18n "pages.index.received" }}</span><span class="db-bw-stat-val num">[[ SizeFormatter.sizeFormat(status.netTraffic.recv) ]]</span></div>
             </div>
           </div>
         </article>
 
         <!-- Clients -->
         <article class="db-card" aria-label='{{ i18n "clients" }}'>
-          <div class="db-card-head"><h3 class="db-card-title">CLIENTS</h3></div>
+          <div class="db-card-head"><h3 class="db-card-title">{{ i18n "clients" }}</h3></div>
           <div class="db-clients-grid">
             <div class="db-client-box">
               <svg class="db-client-ico" style="color:var(--text-3)"><use href="#bo-i-user"></use></svg>
               <span class="db-client-val num">[[ userStats.total ]]</span>
-              <span class="db-client-label">Total Users</span>
+              <span class="db-client-label">{{ i18n "pages.inbounds.totalUsers" }}</span>
             </div>
             <div class="db-client-box">
               <svg class="db-client-ico" style="color:var(--ok)"><use href="#bo-i-user"></use></svg>
               <span class="db-client-val num" style="color:var(--ok)">[[ userStats.online ]]</span>
-              <span class="db-client-label">Online</span>
+              <span class="db-client-label">{{ i18n "online" }}</span>
             </div>
             <div class="db-client-box">
               <svg class="db-client-ico" style="color:var(--error)"><use href="#bo-i-user"></use></svg>
               <span class="db-client-val num" style="color:var(--error)">[[ userStats.depleted ]]</span>
-              <span class="db-client-label">Ended</span>
+              <span class="db-client-label">{{ i18n "depleted" }}</span>
             </div>
           </div>
         </article>
@@ -373,7 +399,7 @@
 
         <!-- System Status -->
         <article class="db-card" aria-label='{{ i18n "pages.index.systemStatus" }}'>
-          <div class="db-card-head"><h3 class="db-card-title">SYSTEM STATUS</h3></div>
+          <div class="db-card-head"><h3 class="db-card-title">{{ i18n "pages.index.systemStatus" }}</h3></div>
           <div class="db-sys-list">
             <div class="db-sys-item" v-for="v in vitals" :key="v.key">
               <div class="db-sys-ring">
@@ -406,7 +432,7 @@
 
         <!-- Connection Stats -->
         <article class="db-card" aria-label='{{ i18n "pages.index.connectionCount" }}'>
-          <div class="db-card-head"><h3 class="db-card-title">CONNECTION STATS</h3></div>
+          <div class="db-card-head"><h3 class="db-card-title">{{ i18n "pages.index.connectionCount" }}</h3></div>
           <div class="db-conn-cols">
             <div class="db-conn-col">
               <svg class="bo-icon bo-icon-14" style="color:var(--ok)"><use href="#bo-i-link"></use></svg>
@@ -426,7 +452,7 @@
         <!-- IP Addresses -->
         <article class="db-card" aria-label='{{ i18n "pages.index.ipAddresses" }}'>
           <div class="db-card-head">
-            <h3 class="db-card-title">IP ADDRESSES</h3>
+            <h3 class="db-card-title">{{ i18n "pages.index.ipAddresses" }}</h3>
             <button type="button" class="db-eye-btn" @click="showIp = !showIp"
               :aria-label='`{{ i18n "pages.index.toggleIpVisibility" }}`' :aria-pressed="String(!showIp)">
               <svg class="bo-icon bo-icon-14">
@@ -467,9 +493,23 @@
     {{ if .perms.accessCoreSettings }}
       copyIP(ip) {
         const val = ip || "";
-        navigator.clipboard.writeText(val).then(() => {
-          this.$message.success("Copied");
-        }).catch(() => {});
+        if (!val) return;
+        const done = () => this.$message.success('{{ i18n "copied" }}');
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(val).then(done).catch(() => this.fallbackCopy(val, done));
+        } else {
+          this.fallbackCopy(val, done);
+        }
+      },
+      fallbackCopy(text, done) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) {}
+        document.body.removeChild(ta);
       },
     <article class="db-card db-card--full" aria-label='{{ i18n "pages.index.vpnServices" }}'>
       <div class="db-card-head">
@@ -2020,16 +2060,16 @@
       },
       xrayPillClass() {
         return {
-          green: 'bo-status-pill--ok',
-          orange: 'bo-status-pill--warn',
-          red: 'bo-status-pill--error',
+          green: 'db-pill--ok',
+          orange: 'db-pill--warn',
+          red: 'db-pill--error',
         }[this.status.xray.color] || '';
       },
       xrayDotClass() {
         return {
-          green: 'bo-dot--ok',
-          orange: 'bo-dot--warn',
-          red: 'bo-dot--error',
+          green: 'db-dot--ok',
+          orange: 'db-dot--warn',
+          red: 'db-dot--error',
         }[this.status.xray.color] || '';
       },
       // The sparkline paints `stroke` as an SVG presentation attribute, where
