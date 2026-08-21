@@ -75,7 +75,7 @@
               </span>
               {{ if .perms.manageOverview }}
               <button type="button" class="db-ip-copy" @click="openRenameServer"
-                :title='{{ i18n "edit" }}' :aria-label='{{ i18n "edit" }}'>
+                title='{{ i18n "edit" }}' aria-label='{{ i18n "edit" }}'>
                 <svg class="bo-icon bo-icon-12"><use href="#bo-i-pencil"></use></svg>
               </button>
               {{ end }}
@@ -157,7 +157,7 @@
             <span class="db-kv-value num bo-kv-with-action">
               [[ status.xray.version != 'Unknown' ? 'v' + status.xray.version : '-' ]]
               <button type="button" class="bo-inline-btn" @click="openSelectV2rayVersion"
-                :title='{{ i18n "pages.index.xraySwitch" }}' :aria-label='{{ i18n "pages.index.xraySwitch" }}'>
+                title='{{ i18n "pages.index.xraySwitch" }}' aria-label='{{ i18n "pages.index.xraySwitch" }}'>
                 <svg class="bo-icon bo-icon-14"><use href="#bo-i-info"></use></svg>
               </button>
             </span>
