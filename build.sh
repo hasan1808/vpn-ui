@@ -132,9 +132,9 @@ else
 fi
 if (( bundle_stale )); then
     if [[ "${SKIP_BACKEND:-0}" == "1" ]]; then
-        warn "SKIP_BACKEND=1 — skipping VPN daemon bundle (daemons will use system packages)"
+        warn "SKIP_BACKEND=1 — skipping VPN daemon bundle. The bundled cores (OpenVPN, L2TP, PPTP, OpenConnect, MTProto, SSTP, IKEv2) will have NOTHING to extract, so their setup reports a failure unless the host already has matching packages (the panel can read those for status but cannot install them)."
     elif ! command -v docker >/dev/null 2>&1; then
-        warn "Docker not found — skipping VPN daemon bundle (daemons will use system packages)"
+        warn "Docker not found — skipping VPN daemon bundle. The bundled cores will have NOTHING to extract; their setup will report a failure unless the host already has matching packages."
     else
         step "VPN daemon bundle"
         bash build/backend/build.sh "$ARCH"

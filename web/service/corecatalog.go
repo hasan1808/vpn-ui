@@ -304,6 +304,29 @@ func daemonsFor(names []string) []string {
 	return dedupe(out)
 }
 
+// coresForDaemons maps bundled daemon names back to the cores that own them, so
+// an error about missing daemons can name the protocols the operator actually
+// picked rather than the raw binaries. Cores with no daemons are never listed.
+func coresForDaemons(names []string) []string {
+	want := map[string]bool{}
+	for _, n := range names {
+		want[n] = true
+	}
+	var out []string
+	for _, c := range coreCatalog {
+		if c.builtin {
+			continue
+		}
+		for _, d := range c.daemons {
+			if want[d] {
+				out = append(out, c.name)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // needsFeature reports whether any of the given cores requires a feature. This
 // is the whole of the shared-requirement logic: ask it about the cores being
 // installed to decide whether to run a step, and about the cores that REMAIN to

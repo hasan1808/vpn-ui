@@ -1016,7 +1016,20 @@
         const exit = this.exitInfo(index);
         return exit ? GeoUtil.countryName(exit.countryCode) : '';
       },
-      async testOutbound(index) {
+      // Tests every configured outbound once, silently, right after the page
+      // loads so the delay/exit columns are filled by the time the operator
+      // reaches the Outbounds tab. Sequential on purpose: one probe at a time
+      // keeps the core's dialer calm and the results deterministic.
+      async autoTestOutbounds() {
+        const outs = this.templateSettings && this.templateSettings.outbounds;
+        if (!Array.isArray(outs)) return;
+        for (let i = 0; i < outs.length; i++) {
+          const o = outs[i];
+          if (!o || o.protocol === 'blackhole' || o.tag === 'blocked') continue;
+          await this.testOutbound(i, true);
+        }
+      },
+      async testOutbound(index, silent) {
         const outbound = this.templateSettings.outbounds[index];
         if (!outbound) {
           Vue.prototype.$message.error('{{ i18n "pages.xray.outbound.testError" }}');
@@ -1055,12 +1068,12 @@
           if (msg.success && msg.obj) {
             const result = msg.obj;
             this.$set(this.outboundTestStates[index], 'result', result);
-            
+
             if (result.success) {
-              Vue.prototype.$message.success(
+              if (!silent) Vue.prototype.$message.success(
                 `{{ i18n "pages.xray.outbound.testSuccess" }}: ${result.delay}ms (${result.statusCode})`
               );
-            } else {
+            } else if (!silent) {
               Vue.prototype.$message.error(
                 `{{ i18n "pages.xray.outbound.testFailed" }}: ${result.error || 'Unknown error'}`
               );
@@ -1070,7 +1083,7 @@
               success: false,
               error: msg.msg || '{{ i18n "pages.xray.outbound.testError" }}'
             });
-            Vue.prototype.$message.error(msg.msg || '{{ i18n "pages.xray.outbound.testError" }}');
+            if (!silent) Vue.prototype.$message.error(msg.msg || '{{ i18n "pages.xray.outbound.testError" }}');
           }
         } catch (error) {
           this.$set(this.outboundTestStates[index], 'testing', false);
@@ -1078,7 +1091,7 @@
             success: false,
             error: error.message || '{{ i18n "pages.xray.outbound.testError" }}'
           });
-          Vue.prototype.$message.error('{{ i18n "pages.xray.outbound.testError" }}: ' + error.message);
+          if (!silent) Vue.prototype.$message.error('{{ i18n "pages.xray.outbound.testError" }}: ' + error.message);
         }
       },
       addReverse() {
@@ -1506,6 +1519,9 @@
       await this.loadCustomGeoAliases();
       await this.getXrayResult();
       await this.getOutboundsTraffic();
+      // Fire-and-forget: fills the delay/exit columns without blocking mount
+      // or spamming toasts; results are ready whenever the tab is opened.
+      this.autoTestOutbounds();
 
       if (window.wsClient) {
           window.wsClient.connect();

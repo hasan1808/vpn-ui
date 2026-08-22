@@ -396,7 +396,7 @@ if [[ "$BUILD_FROM_SOURCE" == "1" ]]; then
             apt-get install -y -qq ca-certificates curl gnupg >/dev/null 2>&1
             install -m 0755 -d /etc/apt/keyrings
             if ! curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/tmp/docker_gpg_err; then
-                warn "Docker GPG key failed — will build without Docker (daemons from system packages)"
+                warn "Docker GPG key failed — will build without Docker (bundled cores will fail setup unless host packages exist)"
             else
                 chmod a+r /etc/apt/keyrings/docker.gpg
                 UBUNTU_CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")"
@@ -417,7 +417,7 @@ if [[ "$BUILD_FROM_SOURCE" == "1" ]]; then
     if command -v docker >/dev/null 2>&1; then
         act "Docker version: $(docker --version 2>/dev/null | head -1)"
     else
-        warn "Docker not available — backend daemon bundle will be skipped"
+        warn "Docker not available — backend daemon bundle will be skipped (bundled cores will fail setup unless host packages exist)"
     fi
     GO_VER="$(go version 2>/dev/null | grep -oE 'go[0-9]+\.[0-9]+' | head -1)"
     act "Go version: ${GO_VER:-unknown}"
@@ -461,7 +461,7 @@ if [[ "$BUILD_FROM_SOURCE" == "1" ]]; then
     # build/core/build.sh writes: a bumped submodule misses and rebuilds itself.
     export SKIP_CORE=0
     export SKIP_SUBMODULES=0
-    export SKIP_BACKEND="${SKIP_BACKEND:-1}"
+    export SKIP_BACKEND="${SKIP_BACKEND:-0}"
     CORE_CACHE="$DEST_DIR/.core-cache/corebundle/core"
     CACHE_ARCH="$(go env GOARCH 2>/dev/null || echo amd64)"
     xray_commit="$(git -C "$BUILD_DIR/src/third_party/Xray-core" rev-parse HEAD 2>/dev/null || true)"
@@ -476,7 +476,7 @@ if [[ "$BUILD_FROM_SOURCE" == "1" ]]; then
         act "no cached Xray core for ${xray_commit:0:12} — it will be compiled"
     fi
     if [[ "$SKIP_BACKEND" == "1" ]]; then
-        act "skipping backend daemon bundle (set SKIP_BACKEND=0 to include)"
+        act "skipping backend daemon bundle (SKIP_BACKEND=1) — bundled cores (OpenVPN, L2TP, PPTP, OpenConnect, MTProto, SSTP, IKEv2) will report a failed setup unless host packages exist"
     fi
     (cd "$BUILD_DIR/src" && GOGC=100 GOMAXPROCS="$NPROC" bash build.sh) \
         || die "build failed."
