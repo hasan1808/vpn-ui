@@ -1006,6 +1006,14 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 		projected = unionInboundIds(projected, touched)
 	}
 
+	// The BULK path syncs with createdBy=0 (one request, many clients and no
+	// single creator-aware sync), so the creator is backfilled here for every
+	// account this write touched. A no-op for the single-add path: those rows
+	// were stamped through ApplyMemberships and created_by is already set.
+	if caller != nil {
+		accountService.StampCreatedBy(postedClientEmails(data), caller.Id)
+	}
+
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientAddSuccess"), nil)
 
 	a.reconcileForInbounds(unionInboundIds(membershipIds, projected), needRestart)
