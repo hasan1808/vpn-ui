@@ -95,22 +95,33 @@
                     @change="onSearchChange"></a-input-search>
                 </div>
 
-                <!-- Status filter buttons -->
-                <div :style="{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '10px' }">
-                  <a-button size="small" :type="statusFilter === '' ? 'primary' : 'default'"
-                    @click="filterByStatus('')">{{ i18n "pages.clients.all" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'active' ? 'primary' : 'default'"
-                    @click="filterByStatus('active')">&#10003; {{ i18n "pages.clients.active" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'online' ? 'primary' : 'default'"
-                    @click="filterByStatus('online')">&#128246; {{ i18n "pages.clients.online" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'expiring' ? 'primary' : 'default'"
-                    @click="filterByStatus('expiring')">&#9200; {{ i18n "pages.clients.expiring" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'expired' ? 'primary' : 'default'"
-                    @click="filterByStatus('expired')">&#10007; {{ i18n "pages.clients.expired" }}</a-button>
-                  <a-button size="small" :type="statusFilter === 'disabled' ? 'primary' : 'default'"
-                    @click="filterByStatus('disabled')">&#9208; {{ i18n "pages.clients.disabled" }}</a-button>
+                <!-- Filter row: three selects, one question each. The status
+                     dropdown replaced six buttons that did the same job in more
+                     space; the inbound picker narrows the table server-side
+                     (the list endpoint takes ?inbound=), so it filters the WHOLE
+                     list and not just the fifty rows on this page. -->
+                <div class="cl-filter-row">
+                  <a-select v-model="statusFilter" :style="{ minWidth: '140px' }"
+                    :dropdown-class-name="themeSwitcher.currentTheme"
+                    @change="val => filterByStatus(val)">
+                    <a-select-option value="">{{ i18n "pages.clients.all" }}</a-select-option>
+                    <a-select-option value="active">&#10003; {{ i18n "pages.clients.active" }}</a-select-option>
+                    <a-select-option value="online">&#128246; {{ i18n "pages.clients.online" }}</a-select-option>
+                    <a-select-option value="expiring">&#9200; {{ i18n "pages.clients.expiring" }}</a-select-option>
+                    <a-select-option value="expired">&#10007; {{ i18n "pages.clients.expired" }}</a-select-option>
+                    <a-select-option value="disabled">&#9208; {{ i18n "pages.clients.disabled" }}</a-select-option>
+                  </a-select>
 
-                  <a-select v-model="sortBy" size="small" :style="{ minWidth: '150px', marginInlineStart: '8px' }"
+                  <a-select v-model="inboundFilter" :style="{ minWidth: '170px' }"
+                    :dropdown-class-name="themeSwitcher.currentTheme"
+                    @change="onInboundFilter">
+                    <a-select-option value="">{{ i18n "pages.clients.all" }}</a-select-option>
+                    <a-select-option v-for="inb in assignable" :key="inb.inboundId" :value="inb.inboundId">
+                      [[ inb.remark ]] ([[ inb.protocol ]])
+                    </a-select-option>
+                  </a-select>
+
+                  <a-select v-model="sortBy" :style="{ minWidth: '150px' }"
                     @change="onSortChange" :dropdown-class-name="themeSwitcher.currentTheme">
                     <a-select-option value="email">&#128269; {{ i18n "pages.clients.email" }}</a-select-option>
                     <a-select-option value="newest">&#128315; {{ i18n "pages.clients.newest" }}</a-select-option>
@@ -134,6 +145,12 @@
                         @click="exportSelectedTxt()">{{ i18n "pages.inbounds.exportTxt" }}</a-button>
                       <a-button size="small" icon="file-pdf"
                         @click="exportSelectedPdf()">{{ i18n "pages.inbounds.exportPdf" }}</a-button>
+                      <a-button size="small" icon="stop"
+                        @click="bulkDisableSelected()">{{ i18n "pages.inbounds.opDisable" }}</a-button>
+                      <a-button size="small" icon="delete"
+                        @click="bulkDeleteSelected()">
+                        <span :style="{ color: 'var(--error)' }">{{ i18n "pages.inbounds.opDelete" }}</span>
+                      </a-button>
                       <a-button size="small" icon="close"
                         @click="clearSelection()">{{ i18n "pages.inbounds.clearSelection" }}</a-button>
                     </a-space>
@@ -435,6 +452,7 @@
       search: '',
       searchTimer: null,
       statusFilter: '',
+      inboundFilter: '',
       sortBy: localStorage.getItem('clientsSortBy') || 'email',
       selectedEmails: [],
       expandedRowKeys: [],
@@ -699,7 +717,7 @@
       },
 
       async loadClients() {
-        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}&sort=${encodeURIComponent(this.sortBy || 'email')}`;
+        const q = `?page=${this.pagination.current}&size=${this.pagination.pageSize}&search=${encodeURIComponent(this.search || '')}&status=${encodeURIComponent(this.statusFilter || '')}&inbound=${encodeURIComponent(this.inboundFilter || '')}&sort=${encodeURIComponent(this.sortBy || 'email')}`;
         const msg = await HttpUtil.get('/panel/api/clients/list' + q);
         if (!msg || !msg.success) return;
         this.clients = (msg.obj && msg.obj.rows) || [];
@@ -709,6 +727,11 @@
       },
       filterByStatus(status) {
         this.statusFilter = status;
+        this.pagination.current = 1;
+        this.loadClients();
+      },
+      onInboundFilter(val) {
+        this.inboundFilter = val;
         this.pagination.current = 1;
         this.loadClients();
       },
@@ -819,6 +842,59 @@
         this.selectedEmails = [];
         this.selClients = [];
         this.selInbounds = [];
+      },
+
+      // --- selection shortcuts ----------------------------------------------
+      // Disable straight from the bar, no modal walk-through: the same
+      // bulkUpdateClients funnel and batching the modal run uses. The server
+      // reports accounts already in the wanted state as skipped, so re-running
+      // a finished batch costs nothing.
+      async bulkDisableSelected() {
+        const targets = this.resolveSelectedTargets();
+        if (!targets.length) return;
+        const ok = await new Promise((resolve) => {
+          this.$confirm({
+            title: '{{ i18n "pages.inbounds.opDisable" }}',
+            content: '{{ i18n "pages.inbounds.bulkDisableConfirm" }}'.replace('%COUNT%', targets.length),
+            okText: '{{ i18n "confirm" }}',
+            cancelText: '{{ i18n "cancel" }}',
+            class: themeSwitcher.currentTheme,
+            onOk: () => resolve(true),
+            onCancel: () => resolve(false),
+          });
+        });
+        if (!ok) return;
+        this.loading();
+        try {
+          const base = {
+            op: 'disable', days: 0, amountBytes: 0,
+            skipFirstUse: false, skipUnlimited: false, skipDisabled: false,
+          };
+          let applied = 0, skipped = 0;
+          const BATCH = 20;
+          for (let i = 0; i < targets.length; i += BATCH) {
+            const msg = await HttpUtil.post('/panel/api/inbounds/bulkUpdateClients',
+              { data: JSON.stringify(Object.assign({}, base, { targets: targets.slice(i, i + BATCH) })) });
+            if (!msg || !msg.success) return;
+            applied += (msg.obj && msg.obj.applied) || 0;
+            skipped += (msg.obj && msg.obj.skipped) || 0;
+          }
+          await this.refreshResellerBalance();
+          this.clearSelection();
+          await this.getDBInbounds();
+          this.$message.success('{{ i18n "pages.inbounds.bulkDone" }} {{ i18n "pages.inbounds.bulkAffected" }}: ' + applied + ' {{ i18n "pages.inbounds.bulkSkipped" }}: ' + skipped);
+        } finally {
+          this.loading(false);
+        }
+      },
+      // Delete reuses the mixin's runBulkDelete. On this page selInbounds is
+      // always empty, so its confirm reads as "delete %CLIENTS% account(s)"
+      // with zero inbounds - which is exactly the ask - and it already handles
+      // the batching, the balance refresh and the post-delete reload.
+      bulkDeleteSelected() {
+        if (!this.selectedCount()) return;
+        this.bulkOps.op = 'delete';
+        return this.runBulkDelete();
       },
 
       onTableChange(pag) {
