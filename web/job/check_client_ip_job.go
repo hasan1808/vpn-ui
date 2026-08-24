@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/database"
@@ -67,6 +68,13 @@ func (j *CheckClientIpJob) Run() {
 	if !j.accessLogAvailable() {
 		return
 	}
+
+	// Attribution feed: the `[inboundTag -> email]` tail of each accepted line
+	// is the ONLY per-inbound signal Xray-native protocols expose, and the
+	// traffic job needs it to say which protocol an account really connected
+	// through. Unlike the IP scrape below this is not gated on limitIp, because
+	// every panel with duplicated accounts across protocols wants it.
+	j.captureOnlineTags()
 
 	// Gated on some client somewhere having a cap because that is exactly when the panel
 	// renders the IP log (the modal's row is gated on limitIp > 0). With no cap set
@@ -131,6 +139,45 @@ func (j *CheckClientIpJob) hasLimitIp() bool {
 	}
 
 	return false
+}
+
+// tagEmailRegex captures the `[inboundTag -> email]` tail Xray appends to
+// every accepted-connection line. The tag is the inbound the connection
+// actually entered through, which stats counters cannot say.
+var tagEmailRegex = regexp.MustCompile(`\[([^\[\]]+) -> ([^\[\]]+)\]\s*$`)
+
+func (j *CheckClientIpJob) captureOnlineTags() {
+	timestampRegex := regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})`)
+
+	accessLogPath, _ := xray.GetAccessLogPath()
+	file, err := os.Open(accessLogPath)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	now := time.Now().Unix()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		matches := tagEmailRegex.FindStringSubmatch(line)
+		if len(matches) < 3 {
+			continue
+		}
+		tag, email := strings.TrimSpace(matches[1]), strings.TrimSpace(matches[2])
+		if tag == "" || email == "" {
+			continue
+		}
+
+		var ts int64 = now
+		if tMatches := timestampRegex.FindStringSubmatch(line); len(tMatches) >= 2 {
+			if t, perr := time.Parse("2006/01/02 15:04:05", tMatches[1]); perr == nil {
+				ts = t.Unix()
+			}
+		}
+		xray.NoteOnlineSource(email, tag, ts)
+	}
 }
 
 func (j *CheckClientIpJob) processLogFile() {

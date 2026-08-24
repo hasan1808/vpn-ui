@@ -1668,12 +1668,37 @@ func (a *InboundController) delDepletedClients(c *gin.Context) {
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.delDepletedClientsSuccess"), nil)
 }
 
-// onlines retrieves the list of currently online clients.
+// onlines retrieves the clients online this tick, WITH the inbound each was
+// actually observed on. The flat email list this used to return lit up every
+// inbound sharing an account, which is exactly wrong when one account is
+// provisioned on several protocols and connects through one of them.
 func (a *InboundController) onlines(c *gin.Context) {
-	// Both this and lastOnline return a panel-wide list of client emails, which is
-	// per-admin data. Scoping only the websocket broadcast would have been
-	// cosmetic: the same two datasets are one unfiltered POST away.
-	jsonObj(c, a.scopeEmails(c, a.inboundService.GetOnlineClients()), nil)
+	marks := a.inboundService.GetOnlineMarks()
+
+	// Same per-admin scoping as before (see scopeEmails), just applied to the
+	// mark's email so the pairing survives filtering.
+	emails := make([]string, 0, len(marks))
+	for _, m := range marks {
+		emails = append(emails, m.Email)
+	}
+	allowed := scopeSet(a.scopeEmails(c, emails))
+	out := make([]xray.OnlineMark, 0, len(marks))
+	for _, m := range marks {
+		if allowed[strings.ToLower(m.Email)] {
+			out = append(out, m)
+		}
+	}
+	jsonObj(c, out, nil)
+}
+
+// scopeSet lowercases a scoped email list into a lookup set; OwnedEmails keys
+// are lowercase while ClientEmailAccess keys keep their original case.
+func scopeSet(emails []string) map[string]bool {
+	set := make(map[string]bool, len(emails))
+	for _, email := range emails {
+		set[strings.ToLower(email)] = true
+	}
+	return set
 }
 
 // lastOnline retrieves the last online timestamps for clients.

@@ -5,6 +5,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -3011,11 +3012,28 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 		// Empty onlineUsers
 		if p != nil {
 			p.SetOnlineClients(make([]string, 0))
+			p.SetOnlineMarks(make([]xray.OnlineMark, 0))
 		}
 		return nil
 	}
 
 	onlineClients := make([]string, 0)
+
+	// Inbound attribution per email. The VPN daemons and the relays stamp the
+	// inbound a record came from; Xray-native counters cannot, so those fall
+	// through to access-log hints and then to the home inbound (see below).
+	srcInboundByEmail := make(map[string][]int)
+	for _, t := range traffics {
+		if t.InboundId > 0 && t.Email != "" && !slices.Contains(srcInboundByEmail[t.Email], t.InboundId) {
+			srcInboundByEmail[t.Email] = append(srcInboundByEmail[t.Email], t.InboundId)
+		}
+	}
+
+	type movedRow struct {
+		email  string
+		homeId int
+	}
+	movedRows := make([]movedRow, 0, 8)
 
 	emails := make([]string, 0, len(traffics))
 	for _, traffic := range traffics {
@@ -3148,7 +3166,44 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 		// client carrying two records in one tick is not listed twice.
 		if moved > 0 {
 			onlineClients = append(onlineClients, dbClientTraffics[dbTraffic_index].Email)
+			movedRows = append(movedRows, movedRow{
+				email:  dbClientTraffics[dbTraffic_index].Email,
+				homeId: dbClientTraffics[dbTraffic_index].InboundId,
+			})
 			dbClientTraffics[dbTraffic_index].LastOnline = time.Now().UnixMilli()
+		}
+	}
+
+	// Per-inbound online marks. A panel-wide email list lights up EVERY inbound
+	// sharing an account the moment one of them moves a byte; these marks carry
+	// which inbound the bytes really came through, best signal first: a stamped
+	// source inbound (VPN daemons, relays), then fresh access-log observations
+	// (the only per-inbound signal Xray-native protocols expose), then the home
+	// inbound as a stand-in that degrades to the old behaviour instead of
+	// inventing a worse answer.
+	nowSec := time.Now().Unix()
+	var tagToId map[string]int
+	for _, row := range movedRows {
+		if len(srcInboundByEmail[row.email]) == 0 && len(xray.RecentOnlineSources(row.email, nowSec, xray.OnlineSourceTTL)) > 0 {
+			tagToId = s.inboundTagIdMap(tx)
+			break
+		}
+	}
+	onlineMarks := make([]xray.OnlineMark, 0, len(movedRows))
+	for _, row := range movedRows {
+		ids := srcInboundByEmail[row.email]
+		if len(ids) == 0 {
+			for _, tag := range xray.RecentOnlineSources(row.email, nowSec, xray.OnlineSourceTTL) {
+				if id, ok := tagToId[tag]; ok && !slices.Contains(ids, id) {
+					ids = append(ids, id)
+				}
+			}
+		}
+		if len(ids) == 0 {
+			ids = []int{row.homeId}
+		}
+		for _, id := range ids {
+			onlineMarks = append(onlineMarks, xray.OnlineMark{InboundId: id, Email: row.email})
 		}
 	}
 
@@ -3157,6 +3212,7 @@ func (s *InboundService) addClientTraffic(tx *gorm.DB, traffics []*xray.ClientTr
 	// and an unguarded call there takes the whole traffic job down.
 	if p != nil {
 		p.SetOnlineClients(onlineClients)
+		p.SetOnlineMarks(xray.DedupMarks(onlineMarks))
 	}
 
 	err = tx.Save(dbClientTraffics).Error
@@ -4952,6 +5008,41 @@ func (s *InboundService) GetOnlineClients() []string {
 		return []string{}
 	}
 	return p.GetOnlineClients()
+}
+
+// GetOnlineMarks returns this tick's online observations with their inbound
+// attribution. Empty, never nil-panicking, when no core is running.
+func (s *InboundService) GetOnlineMarks() []xray.OnlineMark {
+	if p == nil {
+		return []xray.OnlineMark{}
+	}
+	marks := p.GetOnlineMarks()
+	if marks == nil {
+		return []xray.OnlineMark{}
+	}
+	return marks
+}
+
+// inboundTagIdMap maps running-config inbound tags to database ids, so an
+// access-log observation ("[vless-ws -> user]") can be turned into the row id
+// the panel keys everything else by. Tags are unique across the config, so the
+// map loses nothing.
+func (s *InboundService) inboundTagIdMap(tx *gorm.DB) map[string]int {
+	rows := []struct {
+		Id  int
+		Tag string
+	}{}
+	if err := tx.Model(&model.Inbound{}).Select("id, tag").Scan(&rows).Error; err != nil {
+		logger.Warning("inbound tag map load failed:", err)
+		return nil
+	}
+	m := make(map[string]int, len(rows))
+	for _, r := range rows {
+		if r.Tag != "" {
+			m[r.Tag] = r.Id
+		}
+	}
+	return m
 }
 
 func (s *InboundService) GetClientsLastOnline() (map[string]int64, error) {

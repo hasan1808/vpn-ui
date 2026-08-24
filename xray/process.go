@@ -150,6 +150,7 @@ type process struct {
 	apiPort int
 
 	onlineClients []string
+	onlineMarks   []OnlineMark
 
 	config     *Config
 	configPath string // if set, use this path instead of GetConfigPath() and remove on Stop
@@ -235,6 +236,21 @@ func (p *Process) GetOnlineClients() []string {
 // SetOnlineClients sets the list of online clients for the Xray process.
 func (p *Process) SetOnlineClients(users []string) {
 	p.onlineClients = users
+}
+
+// GetOnlineMarks returns the online observations that carry an inbound
+// attribution. Nil-safe like GetAPIPort: half the callers in web/service do
+// not check the process global first.
+func (p *Process) GetOnlineMarks() []OnlineMark {
+	if p == nil {
+		return nil
+	}
+	return p.onlineMarks
+}
+
+// SetOnlineMarks replaces the per-inbound online marks for this tick.
+func (p *Process) SetOnlineMarks(marks []OnlineMark) {
+	p.onlineMarks = marks
 }
 
 // GetUptime returns the uptime of the Xray process in seconds.

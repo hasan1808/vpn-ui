@@ -842,8 +842,9 @@
       defaultCert: '',
       defaultKey: '',
       clientCount: [],
-      onlineClients: [],
-      lastOnlineMap: {},
+        onlineClients: [],
+        onlineMarks: [],
+        lastOnlineMap: {},
       isRefreshEnabled: localStorage.getItem("isRefreshEnabled") === "true" ? true : false,
       refreshing: false,
       refreshInterval: Number(localStorage.getItem("refreshInterval")) || 5000,
@@ -947,7 +948,22 @@
         if (!msg.success) {
           return;
         }
-        this.onlineClients = msg.obj != null ? msg.obj : [];
+        this.applyOnlineData(Array.isArray(msg.obj) ? msg.obj : []);
+      },
+      // /onlines now returns [{email, inboundId}]: the inbound each connection
+      // was actually observed on. The flat email list is still derived from it
+      // for the panel-wide pill and popovers.
+      applyOnlineData(marks) {
+        this.onlineMarks = marks;
+        const seen = new Set();
+        const emails = [];
+        for (const m of marks) {
+          if (m && !seen.has(m.email)) {
+            seen.add(m.email);
+            emails.push(m.email);
+          }
+        }
+        this.onlineClients = emails;
       },
       async getLastOnlineMap() {
         const msg = await HttpUtil.post('/panel/api/inbounds/lastOnline');
@@ -1025,7 +1041,7 @@
               }
               if (client.enable) {
                 active.push(client.email);
-                if (this.isClientOnline(client.email)) online.push(client.email);
+                if (this.isClientOnline(client.email, dbInbound.id)) online.push(client.email);
               } else {
                 deactive.push(client.email);
               }
@@ -1801,20 +1817,27 @@
           // because clientTraffics contains delta/incremental values, not total accumulated values.
           // Total traffic is updated via the 'inbounds' WebSocket event (or 'invalidate' fallback for large panels).
           
-          // Update online clients list in real-time
-          if (payload && Array.isArray(payload.onlineClients)) {
-            const nextOnlineClients = payload.onlineClients;
-            let onlineChanged = this.onlineClients.length !== nextOnlineClients.length;
+          // Update online clients in real-time. Marks (email+inbound) are the
+          // accurate source; the flat list is a legacy fallback.
+          if (payload && Array.isArray(payload.onlineMarks)) {
+            const prevEmails = this.onlineClients.slice();
+            const prevMarks = this.onlineMarks;
+            this.applyOnlineData(payload.onlineMarks);
+            let onlineChanged = prevEmails.length !== this.onlineClients.length;
             if (!onlineChanged) {
-              const prevSet = new Set(this.onlineClients);
-              for (const email of nextOnlineClients) {
+              const prevSet = new Set(prevEmails);
+              for (const email of this.onlineClients) {
                 if (!prevSet.has(email)) {
                   onlineChanged = true;
                   break;
                 }
               }
             }
-            this.onlineClients = nextOnlineClients;
+            // A mark can change per-inbound state without changing the email
+            // set: same account, different protocol.
+            if (!onlineChanged) {
+              onlineChanged = JSON.stringify(prevMarks) !== JSON.stringify(this.onlineMarks);
+            }
             if (onlineChanged) {
               // Recalculate client counts to update online status
               // Use $set for Vue 2 reactivity — direct array index assignment is not reactive

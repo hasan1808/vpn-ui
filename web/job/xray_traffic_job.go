@@ -308,6 +308,7 @@ func (j *XrayTrafficJob) Run() {
 
 	// Update online clients list and map
 	onlineClients := j.inboundService.GetOnlineClients()
+	onlineMarks := j.inboundService.GetOnlineMarks()
 	lastOnlineMap, err := j.inboundService.GetClientsLastOnline()
 	if err != nil {
 		logger.Warning("get clients last online failed:", err)
@@ -317,7 +318,7 @@ func (j *XrayTrafficJob) Run() {
 	// Traffic names clients, so it is per-admin data and cannot go out panel-wide:
 	// broadcasting it whole put every admin's client emails and usage in every other
 	// admin's browser. Each connected admin gets only their own slice.
-	j.broadcastTrafficScoped(traffics, clientTraffics, onlineClients, lastOnlineMap)
+	j.broadcastTrafficScoped(traffics, clientTraffics, onlineClients, onlineMarks, lastOnlineMap)
 
 	// Inbounds are per-admin, so this job cannot push a payload: it has no single
 	// correct audience. It used to broadcast GetAllInbounds() to every browser every
@@ -367,6 +368,7 @@ func (j *XrayTrafficJob) broadcastTrafficScoped(
 	traffics []*xray.Traffic,
 	clientTraffics []*xray.ClientTraffic,
 	onlineClients []string,
+	onlineMarks []xray.OnlineMark,
 	lastOnlineMap map[string]int64,
 ) {
 	hub := websocket.GetHub()
@@ -402,6 +404,7 @@ func (j *XrayTrafficJob) broadcastTrafficScoped(
 				"traffics":       traffics,
 				"clientTraffics": clientTraffics,
 				"onlineClients":  onlineClients,
+				"onlineMarks":    onlineMarks,
 				"lastOnlineMap":  lastOnlineMap,
 			})
 			continue
@@ -418,6 +421,12 @@ func (j *XrayTrafficJob) broadcastTrafficScoped(
 				myOnline = append(myOnline, email)
 			}
 		}
+		myMarks := make([]xray.OnlineMark, 0, len(onlineMarks))
+		for _, m := range onlineMarks {
+			if access[m.Email][userId] {
+				myMarks = append(myMarks, m)
+			}
+		}
 		myLastOnline := make(map[string]int64, len(lastOnlineMap))
 		for email, t := range lastOnlineMap {
 			if access[email][userId] {
@@ -430,6 +439,7 @@ func (j *XrayTrafficJob) broadcastTrafficScoped(
 		websocket.BroadcastTrafficToUser(userId, map[string]any{
 			"clientTraffics": mine,
 			"onlineClients":  myOnline,
+			"onlineMarks":    myMarks,
 			"lastOnlineMap":  myLastOnline,
 		})
 	}

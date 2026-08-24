@@ -463,6 +463,7 @@
       isRefreshEnabled: localStorage.getItem("isRefreshEnabled") === "true",
       refreshInterval: Number(localStorage.getItem("refreshInterval")) || 5000,
       onlineClients: [],
+      onlineMarks: [],
       lastOnlineMap: {},
       expireDiff: 0,
       trafficDiff: 0,
@@ -672,7 +673,13 @@
           HttpUtil.post('/panel/api/inbounds/onlines'),
           HttpUtil.post('/panel/api/inbounds/lastOnline'),
         ]);
-        if (onlines && onlines.success) this.onlineClients = onlines.obj || [];
+        // /onlines returns [{email, inboundId}]; this page lists accounts, so
+        // only the emails feed its online lamp. Marks stay available for any
+        // per-protocol rendering added later.
+        if (onlines && onlines.success) {
+          this.onlineMarks = Array.isArray(onlines.obj) ? onlines.obj : [];
+          this.onlineClients = this.onlineMarks.map(m => m.email);
+        }
         if (last && last.success) this.lastOnlineMap = last.obj || {};
       },
       async refreshResellerBalance() {

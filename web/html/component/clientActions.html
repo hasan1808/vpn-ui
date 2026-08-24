@@ -754,7 +754,13 @@
         const expired = hasExpiry && expiryTime <= now;
         return expired || exhausted;
       },
-      isClientOnline(email) {
+      isClientOnline(email, inboundId) {
+        // With an inboundId and per-inbound marks available, answer exactly:
+        // was THIS inbound the one observed carrying traffic? Without them
+        // (older data, account-level views) fall back to the email set.
+        if (inboundId != null && Array.isArray(this.onlineMarks) && this.onlineMarks.length) {
+          return this.onlineMarks.some(m => m.email === email && m.inboundId === inboundId);
+        }
         return this.onlineClients.includes(email);
       },
       getLastOnline(email) {
