@@ -595,21 +595,25 @@
                     </section>
 
                     <!-- ===================== CREDENTIALS ===================== -->
+                    <!-- Rendered only for credential-backed accounts (user/pass).
+                         UUID-only protocols have no Password and hide the panel. -->
+                    {{ if .password }}
                     <section class="sub-panel sub-creds">
-                        <h3 class="sub-panel-title">{{ i18n "subscription.username" }}</h3>
+                        <h3 class="sub-panel-title">{{ i18n "subscription.credentials" }}</h3>
                         <div class="sub-cred-row">
                             <span class="sub-cred-key">{{ i18n "subscription.username" }}</span>
-                            <span class="sub-cred-val">{{ .Email }}</span>
+                            <span class="sub-cred-val">{{ .email }}</span>
                         </div>
                         <div class="sub-cred-row">
                             <span class="sub-cred-key">{{ i18n "subscription.password" }}</span>
-                            <span class="sub-cred-val" v-if="showPassword">{{ .Password }}</span>
+                            <span class="sub-cred-val" v-if="showPassword">{{ .password }}</span>
                             <span class="sub-cred-val masked" v-else>••••••••••</span>
                             <a-button :type="'text'" @click="showPassword = !showPassword" class="sub-cred-toggle">
                                 <a-icon :type="showPassword ? 'eye' : 'eye-off'" :style="{ verticalAlign: 'middle' }"></a-icon>
                             </a-button>
                         </div>
                     </section>
+                    {{ end }}
 
                 </div>
             </a-col>

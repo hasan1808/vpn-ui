@@ -90,6 +90,9 @@
 "inactive" = "غیرفعال"
 "unlimited" = "نامحدود"
 "noExpiry" = "بدون انقضا"
+"username"     = "نام کاربری"
+"password"     = "رمز عبور"
+"credentials"  = "اطلاعات ورود"
 
 [menu]
 "navigation" = "ناوبری اصلی"

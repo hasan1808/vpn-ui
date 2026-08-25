@@ -90,6 +90,9 @@
 "inactive" = "Không hoạt động"
 "unlimited" = "Không giới hạn"
 "noExpiry" = "Không hết hạn"
+"username"     = "Tên đăng nhập"
+"password"     = "Mật khẩu"
+"credentials"  = "Thông tin đăng nhập"
 
 [menu]
 "navigation" = "Điều hướng chính"

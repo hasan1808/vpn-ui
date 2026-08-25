@@ -90,6 +90,9 @@
 "inactive" = "無効"
 "unlimited" = "無制限"
 "noExpiry" = "期限なし"
+"username"     = "ユーザー名"
+"password"     = "パスワード"
+"credentials"  = "ログイン情報"
 
 [menu]
 "navigation" = "メインナビゲーション"

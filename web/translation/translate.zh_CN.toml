@@ -90,6 +90,9 @@
 "inactive" = "停用"
 "unlimited" = "无限制"
 "noExpiry" = "无到期"
+"username"     = "用户名"
+"password"     = "密码"
+"credentials"  = "登录信息"
 
 [menu]
 "navigation" = "主导航"

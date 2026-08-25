@@ -90,6 +90,9 @@
 "inactive" = "Неактивна"
 "unlimited" = "Неограниченно"
 "noExpiry" = "Бессрочно"
+"username"     = "Имя пользователя"
+"password"     = "Пароль"
+"credentials"  = "Данные для входа"
 
 [menu]
 "navigation" = "Основная навигация"

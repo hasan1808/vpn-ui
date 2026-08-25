@@ -90,6 +90,9 @@
 "inactive" = "Inactivo"
 "unlimited" = "Ilimitado"
 "noExpiry" = "Sin caducidad"
+"username"     = "Nombre de usuario"
+"password"     = "Contraseña"
+"credentials"  = "Credenciales de acceso"
 
 [menu]
 "navigation" = "Navegación principal"

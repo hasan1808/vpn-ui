@@ -90,6 +90,9 @@
 "inactive" = "Nonaktif"
 "unlimited" = "Tanpa batas"
 "noExpiry" = "Tanpa kedaluwarsa"
+"username"     = "Nama pengguna"
+"password"     = "Kata sandi"
+"credentials"  = "Kredensial masuk"
 
 [menu]
 "navigation" = "Navigasi utama"

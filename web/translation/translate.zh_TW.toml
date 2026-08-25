@@ -90,6 +90,9 @@
 "inactive" = "停用"
 "unlimited" = "無限制"
 "noExpiry" = "無到期"
+"username"     = "使用者名稱"
+"password"     = "密碼"
+"credentials"  = "登入資訊"
 
 [menu]
 "navigation" = "主導覽"

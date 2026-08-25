@@ -90,6 +90,9 @@
 "inactive" = "Pasif"
 "unlimited" = "Sınırsız"
 "noExpiry" = "Süresiz"
+"username"     = "Kullanıcı adı"
+"password"     = "Şifre"
+"credentials"  = "Giriş bilgileri"
 
 [menu]
 "navigation" = "Ana gezinme"
