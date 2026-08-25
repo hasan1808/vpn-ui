@@ -3,10 +3,13 @@ package sub
 import (
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
+
+	"github.com/mhsanaei/3x-ui/v2/web/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,6 +33,7 @@ type SUBController struct {
 	subService      *SubService
 	subJsonService  *SubJsonService
 	subClashService *SubClashService
+	accountService  service.AccountService
 }
 
 // NewSUBController creates a new subscription controller with the given configuration.
@@ -88,6 +92,7 @@ func (a *SUBController) initRouter(g *gin.RouterGroup) {
 	// .conf). Under the raw sub path so it inherits the same host, port and base path,
 	// and so the subId stays the only credential involved.
 	gLink.GET(":subid/configs/:key", a.subConfig)
+	a.registerPasswordRoute(gLink)
 	if a.jsonEnabled {
 		gJson := g.Group(a.subJsonPath)
 		gJson.GET(":subid", a.subJsons)
@@ -98,9 +103,51 @@ func (a *SUBController) initRouter(g *gin.RouterGroup) {
 	}
 }
 
+// isCardLine reports whether one raw subscription line is one of genConnectionCard's
+// trojan-shaped connection cards (its fragment is "Label user=… pass=…" style key=value
+// pairs) rather than an importable proxy URI.
+func isCardLine(line string) bool {
+	i := strings.Index(line, "#")
+	if i < 0 {
+		return false
+	}
+	frag := line[i+1:]
+	if u, err := url.QueryUnescape(frag); err == nil {
+		frag = u
+	}
+	for _, k := range []string{"user=", "pass=", "secret=", "psk="} {
+		if strings.Contains(frag, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// dropCardLines removes the connection-card entries from the raw link list. On the
+// HTML page those facts are shown readably by the Connection Info card instead, and
+// a fake trojan:// URI next to them only confuses. Only the browser view is filtered:
+// subscription clients keep receiving the full raw form.
+func dropCardLines(links []string) []string {
+	out := make([]string, 0, len(links))
+	for _, link := range links {
+		lines := strings.Split(link, "\n")
+		kept := make([]string, 0, len(lines))
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || isCardLine(line) {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		if len(kept) > 0 {
+			out = append(out, strings.Join(kept, "\n"))
+		}
+	}
+	return out
+}
+
 // subs handles HTTP requests for subscription links, returning either HTML page or base64-encoded subscription data.
-func (a *SUBController) subs(c *gin.Context) {
-	subId := c.Param("subid")
+func (a *SUBController) subs(c *gin.Context) {	subId := c.Param("subid")
 	scheme, host, hostWithPort, hostHeader := a.subService.ResolveRequest(c)
 	subs, lastOnline, traffic, err := a.subService.GetSubs(subId, host)
 	// An empty link list is NOT an error: an account whose only inbounds are wg-c/awg
@@ -144,6 +191,12 @@ func (a *SUBController) subs(c *gin.Context) {
 			// config files as downloads. Rendered only for the browser view, since a
 			// subscription client has no use for them.
 			page.Configs = a.subService.ConfigLinks(subId, host, scheme, hostWithPort, a.subPath)
+			// Credential-based memberships (OpenVPN/Cisco/MTProto/...) surface as
+			// readable address/port rows instead of fake trojan:// URIs.
+			endpoints := a.subService.ConnectionEndpoints(subId, host)
+			if len(endpoints) > 0 {
+				page.Result = dropCardLines(page.Result)
+			}
 			c.HTML(200, "subpage.html", gin.H{
 				"title":        "subscription.title",
 				"cur_ver":      config.GetVersion(),
@@ -168,6 +221,7 @@ func (a *SUBController) subs(c *gin.Context) {
 				"configs":      page.Configs,
 				"email":        page.Email,
 				"password":     page.Password,
+				"endpoints":    endpoints,
 			})
 			return
 		}

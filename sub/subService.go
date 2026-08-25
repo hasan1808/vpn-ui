@@ -556,6 +556,113 @@ func (s *SubService) genConnectionCard(inbound *model.Inbound, email string) str
 	return u.String()
 }
 
+// ConnEndpoint is the human-readable connection info for one credential-based
+// membership: what a subscriber on OpenVPN/Cisco/MTProto-style protocols actually
+// dials, rendered as rows on the subscriber page instead of (or next to) a URI
+// their app cannot import.
+type ConnEndpoint struct {
+	Protocol string
+	Server   string
+	Port     int
+	Fields   [][2]string
+}
+
+// endpointProtocols are the memberships whose subscribers connect by dialing an
+// address/port with credentials rather than importing a proxy URI. Everything here
+// also produces a trojan-shaped "connection card" entry in the raw subscription
+// (see genConnectionCard); this renders the same facts readably on the page.
+var endpointProtocols = map[model.Protocol]bool{
+	model.OPENVPN:     true,
+	model.L2TP:        true,
+	model.PPTP:        true,
+	model.OPENCONNECT: true,
+	model.SSTP:        true,
+	model.IKEV2:       true,
+	model.MTPROTO:     true,
+	model.SSH:         true,
+}
+
+// ConnectionEndpoints mirrors genConnectionCard's extraction (same server rule,
+// same per-protocol credential fields) but returns structured rows for the HTML
+// subscriber page. Nil when the account holds no credential-based membership.
+func (s *SubService) ConnectionEndpoints(subId, host string) []ConnEndpoint {
+	s = s.forResponse()
+	s.address = host
+	inbounds, err := s.getInboundsBySubId(subId)
+	if err != nil {
+		return nil
+	}
+	var out []ConnEndpoint
+	for _, inbound := range inbounds {
+		if !endpointProtocols[inbound.Protocol] {
+			continue
+		}
+		clients, err := s.inboundService.GetClients(inbound)
+		if err != nil || clients == nil {
+			continue
+		}
+		email := ""
+		cIdx := -1
+		for i, c := range clients {
+			if c.Enable && c.SubID == subId {
+				email = c.Email
+				cIdx = i
+				break
+			}
+		}
+		if cIdx < 0 {
+			continue
+		}
+		client := clients[cIdx]
+
+		server := s.address
+		if l := strings.TrimSpace(inbound.Listen); l != "" && l != "0.0.0.0" {
+			server = l
+		}
+
+		ep := ConnEndpoint{
+			Protocol: protocolLabel(inbound.Protocol),
+			Server:   server,
+			Port:     inbound.Port,
+		}
+		switch inbound.Protocol {
+		case model.MTPROTO:
+			if client.Secret != "" {
+				ep.Fields = append(ep.Fields, [2]string{"secret", client.Secret})
+			}
+		case model.SSH:
+			ep.Fields = append(ep.Fields, [2]string{"user", client.ID})
+			if client.Password != "" {
+				ep.Fields = append(ep.Fields, [2]string{"pass", client.Password})
+			}
+		default:
+			ep.Fields = append(ep.Fields, [2]string{"user", email})
+			if client.Password != "" {
+				ep.Fields = append(ep.Fields, [2]string{"pass", client.Password})
+			}
+		}
+
+		var settings map[string]any
+		_ = json.Unmarshal([]byte(inbound.Settings), &settings)
+		switch inbound.Protocol {
+		case model.L2TP:
+			if en, _ := settings["ipsecEnable"].(bool); en {
+				if psk, _ := settings["ipsecPsk"].(string); strings.TrimSpace(psk) != "" {
+					ep.Fields = append(ep.Fields, [2]string{"psk", strings.TrimSpace(psk)})
+				}
+			}
+		case model.IKEV2:
+			if mode, _ := settings["authMode"].(string); mode == "psk" {
+				if psk, _ := settings["psk"].(string); strings.TrimSpace(psk) != "" {
+					ep.Fields = append(ep.Fields, [2]string{"psk", strings.TrimSpace(psk)})
+				}
+			}
+		}
+		out = append(out, ep)
+	}
+	return out
+}
+
 // genWireguardLink emits an importable wireguard:// link per device x endpoint for a wg-c
 // or awg account, in the same shape the panel already hands out for native WireGuard
 // inbounds (Inbound.getWireguardLink in web/assets/js/model/inbound.js): the client

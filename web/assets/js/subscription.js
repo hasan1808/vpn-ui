@@ -21,6 +21,8 @@
     uploadByte: parseInt(el.getAttribute('data-uploadbyte') || '0', 10) || 0,
     totalByte: parseInt(el.getAttribute('data-totalbyte') || '0', 10) || 0,
     datepicker: el.getAttribute('data-datepicker') || 'gregorian',
+    email: el.getAttribute('data-email') || '',
+    password: el.getAttribute('data-password') || '',
   };
 
   // Normalize lastOnline to milliseconds if it looks like seconds
@@ -48,14 +50,6 @@
 
   function open(url) {
     window.location.href = url;
-  }
-
-  function drawQR(value) {
-    try {
-      new QRious({ element: document.getElementById('qrcode'), value, size: 220 });
-    } catch (e) {
-      console.warn(e);
-    }
   }
 
   // Try to extract a human label (email/ps) from different link types
@@ -116,7 +110,24 @@ data: {
     lang: '',
     viewportWidth: (typeof window !== 'undefined' ? window.innerWidth : 1024),
     showPassword: false,
-},
+    pwModal: {
+      open: false,
+      busy: false,
+      current: '',
+      next: '',
+      confirm: '',
+    },
+    // Server-rendered localized strings for the password dialog's messages.
+    t: {
+      pwChanged: '{{ i18n "subscription.pwChanged" }}',
+      pwWrongCurrent: '{{ i18n "subscription.pwWrongCurrent" }}',
+      pwTooShort: '{{ i18n "subscription.pwTooShort" }}',
+      pwMismatch: '{{ i18n "subscription.pwMismatch" }}',
+      pwMissing: '{{ i18n "subscription.pwMissing" }}',
+      pwRateLimited: '{{ i18n "subscription.pwRateLimited" }}',
+      pwFailed: '{{ i18n "subscription.pwFailed" }}',
+    },
+  },
     async mounted() {
       this.lang = LanguageManager.getLanguage();
       const tpl = document.getElementById('subscription-data');
@@ -124,17 +135,6 @@ data: {
       const sc = tpl ? tpl.getAttribute('data-subclash-url') : '';
       if (sj) this.app.subJsonUrl = sj;
       if (sc) this.app.subClashUrl = sc;
-      drawQR(this.app.subUrl);
-      try {
-        const elJson = document.getElementById('qrcode-subjson');
-        if (elJson && this.app.subJsonUrl) {
-          new QRious({ element: elJson, value: this.app.subJsonUrl, size: 220 });
-        }
-        const elClash = document.getElementById('qrcode-subclash');
-        if (elClash && this.app.subClashUrl) {
-          new QRious({ element: elClash, value: this.app.subClashUrl, size: 220 });
-        }
-      } catch (e) { /* ignore */ }
       this._onResize = () => { this.viewportWidth = window.innerWidth; };
       window.addEventListener('resize', this._onResize);
     },
@@ -192,8 +192,63 @@ data: {
       copy,
       open,
       linkName,
-      i18nLabel(key) {
-        return '{{ i18n "' + key + '" }}';
+      openPwModal() {
+        this.pwModal.open = true;
+        this.pwModal.current = '';
+        this.pwModal.next = '';
+        this.pwModal.confirm = '';
+        this.pwModal.busy = false;
+      },
+      closePwModal() {
+        if (this.pwModal.busy) return;
+        this.pwModal.open = false;
+      },
+      pwError(code) {
+        const map = {
+          wrong: this.t.pwWrongCurrent,
+          weak: this.t.pwTooShort,
+          notfound: this.t.pwWrongCurrent,
+          rate: this.t.pwRateLimited,
+        };
+        return map[code] || this.t.pwFailed;
+      },
+      submitPassword() {
+        const f = this.pwModal;
+        if (f.busy) return;
+        if (!f.current || !f.next || !f.confirm) {
+          Vue.prototype.$message.error(this.t.pwMissing);
+          return;
+        }
+        if (f.next.length < 6) {
+          Vue.prototype.$message.error(this.t.pwTooShort);
+          return;
+        }
+        if (f.next !== f.confirm) {
+          Vue.prototype.$message.error(this.t.pwMismatch);
+          return;
+        }
+        f.busy = true;
+        const url = window.location.pathname.replace(/\/+$/, '') + '/password';
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ current: f.current, new: f.next }),
+        })
+          .then(r => r.json())
+          .then(res => {
+            f.busy = false;
+            if (res.success) {
+              this.app.password = f.next;
+              f.open = false;
+              Vue.prototype.$message.success(this.t.pwChanged);
+            } else {
+              Vue.prototype.$message.error(this.pwError(res.code));
+            }
+          })
+          .catch(() => {
+            f.busy = false;
+            Vue.prototype.$message.error(this.t.pwFailed);
+          });
       },
     },
   });

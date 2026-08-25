@@ -2310,6 +2310,21 @@ func (a *InboundController) syncInboundAccounts(inboundId int) {
 	}
 }
 
+// BareInboundController returns an InboundController with the default
+// zero-value services and NO routes registered. Non-panel surfaces living in
+// this process — the subscription server — use it to run exactly the same
+// post-write reconciliation a panel client edit gets.
+func BareInboundController() *InboundController {
+	return &InboundController{}
+}
+
+// ReconcileClientChange regenerates every subsystem the given inbounds feed and
+// restarts what needs restarting. Exported form of reconcileForInbounds for
+// callers outside the panel HTTP surface; see BareInboundController.
+func (a *InboundController) ReconcileClientChange(inboundIds []int, needRestart bool) {
+	a.reconcileForInbounds(inboundIds, needRestart)
+}
+
 // applyClientMemberships puts an account on exactly the given inbounds and
 // re-projects, so settings.clients on every one of them agrees with the account.
 //

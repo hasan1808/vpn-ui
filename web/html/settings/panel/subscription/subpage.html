@@ -4,26 +4,7 @@
 <script src="{{ .base_path }}assets/vue/vue.min.js?{{ .cur_ver }}"></script>
 <script src="{{ .base_path }}assets/ant-design-vue/antd.min.js"></script>
 <script src="{{ .base_path }}assets/js/util/index.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .cur_ver }}"></script>
 <style>
-    /* ---- QR boxes (kept from the previous layout) ---- */
-    .subscription-page tr-qr-box.qr-box {
-        display: inline-flex;
-        flex-direction: column;
-        align-items: center;
-        width: 220px;
-    }
-
-    .subscription-page tr-qr-box.qr-box .qr-tag {
-        width: 100%;
-        justify-content: center;
-    }
-
-    .subscription-page tr-qr-box.qr-box .qr-bg,
-    .subscription-page tr-qr-box.qr-box .qr-bg-sub {
-        margin-inline: auto;
-    }
-
     /* Config-file downloads. Secondary to the Android/iOS buttons (which stay the one
        accent-filled action on the page), so these are a neutral surface with the accent
        kept for the icon and hover. Tokens carry the theme, so there is no dark/light pair
@@ -258,14 +239,6 @@
         margin: 0 0 var(--sp-4);
     }
 
-    /* ---------- QR ---------- */
-    .subscription-page .sub-qr-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--sp-4);
-        justify-content: center;
-    }
-
     /* ---------- Stats mosaic ---------- */
     .subscription-page .sub-stats {
         display: grid;
@@ -344,23 +317,42 @@
     }
 
     /* ---------- Credentials ---------- */
-    .subscription-page .sub-creds {
-        display: flex;
-        flex-direction: column;
+    .subscription-page .sub-cred-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: var(--sp-3);
     }
 
-    .subscription-page .sub-cred-row {
+    @media (max-width: 560px) {
+        .subscription-page .sub-cred-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .subscription-page .sub-cred-tile {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: var(--sp-3) var(--sp-4);
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--sp-3);
-        flex-wrap: wrap;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
     }
 
     .subscription-page .sub-cred-key {
-        font-size: var(--fs-sm);
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
         color: var(--text-3);
+        font-weight: 700;
+    }
+
+    .subscription-page .sub-cred-line {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
     }
 
     .subscription-page .sub-cred-val {
@@ -369,18 +361,120 @@
         color: var(--text);
         font-weight: 600;
         word-break: break-all;
+        flex: 1 1 auto;
+        min-width: 0;
     }
 
     .subscription-page .sub-cred-val.masked {
         letter-spacing: .18em;
     }
 
-    .subscription-page .sub-cred-toggle {
+    .subscription-page .sub-cred-btn {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        border: 1px solid transparent;
+        background: transparent;
         color: var(--text-3);
+        cursor: pointer;
+        padding: 0;
+        transition: color var(--dur-fast) var(--ease),
+            background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
     }
 
-    .subscription-page .sub-cred-toggle:hover {
-        color: var(--accent);
+    .subscription-page .sub-cred-btn:hover,
+    .subscription-page .sub-cred-btn:focus-visible {
+        color: var(--accent-strong);
+        background: var(--accent-weak);
+        border-color: var(--accent);
+        outline: none;
+    }
+
+    /* Edit affordance in the credentials card header, and the change-password
+       dialog's stacked label/input pairs. */
+    .subscription-page .sub-creds .sub-panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--sp-2);
+    }
+
+    .subscription-page .sub-pw-form {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .subscription-page .sub-pw-label {
+        font-size: 12px;
+        color: var(--text-3);
+        font-weight: 600;
+        margin-top: 8px;
+    }
+
+    /* ---------- Connection info ---------- */
+    .subscription-page .sub-conn-list {
+        display: flex;
+        flex-direction: column;
+        gap: var(--sp-2);
+        width: 100%;
+    }
+
+    .subscription-page .sub-conn {
+        background: var(--bg-elev, rgba(255, 255, 255, .03));
+        border: 1px solid var(--border-color, rgba(255, 255, 255, .08));
+        border-radius: var(--radius-md, 10px);
+        padding: 12px 14px;
+    }
+
+    .subscription-page .sub-conn-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text-1);
+        margin-bottom: 6px;
+    }
+
+    .subscription-page .sub-conn-head::before {
+        content: '';
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        flex-shrink: 0;
+    }
+
+    .subscription-page .sub-conn-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: var(--sp-2);
+        padding: 5px 0;
+        border-bottom: 1px dashed var(--border-color, rgba(255, 255, 255, .06));
+        font-size: 12.5px;
+    }
+
+    .subscription-page .sub-conn-row:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    .subscription-page .sub-conn-key {
+        color: var(--text-3);
+        flex-shrink: 0;
+    }
+
+    .subscription-page .sub-conn-val {
+        color: var(--text-1);
+        word-break: break-all;
+        text-align: end;
+        direction: ltr;
     }
 </style>
 {{ template "page/head_end" .}}
@@ -452,46 +546,6 @@
                         </div>
                     </section>
 
-                    <!-- ===================== QR ===================== -->
-                    <section class="sub-panel">
-                        <h3 class="sub-panel-title">{{ i18n "qrCode" }}</h3>
-                        <div class="sub-qr-grid">
-                            <tr-qr-box class="qr-box">
-                                <a-tag color="purple" class="qr-tag">
-                                    <span>{{ i18n "pages.settings.subSettings"}}</span>
-                                </a-tag>
-                                <tr-qr-bg class="qr-bg-sub">
-                                    <tr-qr-bg-inner class="qr-bg-sub-inner">
-                                        <canvas id="qrcode" class="qr-cv" title='{{ i18n "copy" }}'
-                                            @click="copy(app.subUrl)"></canvas>
-                                    </tr-qr-bg-inner>
-                                </tr-qr-bg>
-                            </tr-qr-box>
-                            <tr-qr-box class="qr-box" v-if="app.subJsonUrl">
-                                <a-tag color="purple" class="qr-tag">
-                                    <span>{{ i18n "pages.settings.subSettings"}} Json</span>
-                                </a-tag>
-                                <tr-qr-bg class="qr-bg-sub">
-                                    <tr-qr-bg-inner class="qr-bg-sub-inner">
-                                        <canvas id="qrcode-subjson" class="qr-cv" title='{{ i18n "copy" }}'
-                                            @click="copy(app.subJsonUrl)"></canvas>
-                                    </tr-qr-bg-inner>
-                                </tr-qr-bg>
-                            </tr-qr-box>
-                            <tr-qr-box class="qr-box" v-if="app.subClashUrl">
-                                <a-tag color="purple" class="qr-tag">
-                                    <span>Clash / Mihomo</span>
-                                </a-tag>
-                                <tr-qr-bg class="qr-bg-sub">
-                                    <tr-qr-bg-inner class="qr-bg-sub-inner">
-                                        <canvas id="qrcode-subclash" class="qr-cv" title='{{ i18n "copy" }}'
-                                            @click="copy(app.subClashUrl)"></canvas>
-                                    </tr-qr-bg-inner>
-                                </tr-qr-bg>
-                            </tr-qr-box>
-                        </div>
-                    </section>
-
                     <!-- ===================== STATS ===================== -->
                     <section class="sub-panel">
                         <div class="sub-stats">
@@ -522,7 +576,100 @@
                         </div>
                     </section>
 
+                    <!-- ===================== CREDENTIALS ===================== -->
+                    <!-- Rendered only for credential-backed accounts (user/pass).
+                         UUID-only protocols have no Password and hide the panel.
+                         Sits under the traffic card; the edit button opens the
+                         subscriber's own password-change dialog. -->
+                    {{ if .password }}
+                    <section class="sub-panel sub-creds">
+                        <h3 class="sub-panel-title">{{ i18n "subscription.credentials" }}
+                            <button type="button" class="sub-cred-btn sub-cred-edit"
+                                :title="'{{ i18n "subscription.changePassword" }}'"
+                                @click="openPwModal">
+                                <a-icon type="edit"></a-icon>
+                            </button>
+                        </h3>
+                        <div class="sub-cred-grid">
+                            <div class="sub-cred-tile">
+                                <span class="sub-cred-key">{{ i18n "subscription.username" }}</span>
+                                <div class="sub-cred-line">
+                                    <span class="sub-cred-val">[[ app.email ]]</span>
+                                    <button type="button" class="sub-cred-btn" :title="'{{ i18n "copy" }}'"
+                                        @click="copy(app.email)">
+                                        <a-icon type="copy"></a-icon>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="sub-cred-tile">
+                                <span class="sub-cred-key">{{ i18n "subscription.password" }}</span>
+                                <div class="sub-cred-line">
+                                    <span class="sub-cred-val masked" v-if="!showPassword">••••••••••</span>
+                                    <span class="sub-cred-val" v-else>[[ app.password ]]</span>
+                                    <button type="button" class="sub-cred-btn"
+                                        @click="showPassword = !showPassword">
+                                        <a-icon :type="showPassword ? 'eye' : 'eye-invisible'"></a-icon>
+                                    </button>
+                                    <button type="button" class="sub-cred-btn" :title="'{{ i18n "copy" }}'"
+                                        @click="copy(app.password)">
+                                        <a-icon type="copy"></a-icon>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <a-modal :visible="pwModal.open" :title="'{{ i18n "subscription.changePassword" }}'"
+                            :footer="null" @cancel="closePwModal" :width="360">
+                            <div class="sub-pw-form">
+                                <label class="sub-pw-label">{{ i18n "subscription.currentPassword" }}</label>
+                                <a-input-password v-model="pwModal.current" size="large"></a-input-password>
+                                <label class="sub-pw-label">{{ i18n "subscription.newPassword" }}</label>
+                                <a-input-password v-model="pwModal.next" size="large"></a-input-password>
+                                <label class="sub-pw-label">{{ i18n "subscription.confirmNewPassword" }}</label>
+                                <a-input-password v-model="pwModal.confirm" size="large"
+                                    @keyup.enter="submitPassword"></a-input-password>
+                                <a-button type="primary" size="large" block :loading="pwModal.busy"
+                                    style="margin-top: 4px;" @click="submitPassword">
+                                    {{ i18n "pages.settings.save" }}
+                                </a-button>
+                            </div>
+                        </a-modal>
+                    </section>
+                    {{ end }}
+
+                    <!-- ===================== CONNECTION INFO ===================== -->
+                    <!-- Credential-based protocols (OpenVPN/Cisco/MTProto/...) cannot be
+                         imported from a URI; their subscribers dial an address/port with
+                         credentials, so those facts are shown as readable rows here. -->
+                    {{ if .endpoints }}
+                    <section class="sub-panel">
+                        <h3 class="sub-panel-title">{{ i18n "subscription.connectionInfo" }}</h3>
+                        <div class="sub-conn-list">
+                            {{ range .endpoints }}
+                            <div class="sub-conn">
+                                <div class="sub-conn-head">{{ .Protocol }}</div>
+                                <div class="sub-conn-row">
+                                    <span class="sub-conn-key">{{ i18n "subscription.address" }}</span>
+                                    <span class="sub-conn-val">{{ .Server }}</span>
+                                </div>
+                                <div class="sub-conn-row">
+                                    <span class="sub-conn-key">{{ i18n "subscription.port" }}</span>
+                                    <span class="sub-conn-val">{{ .Port }}</span>
+                                </div>
+                                {{ range .Fields }}
+                                <div class="sub-conn-row">
+                                    <span class="sub-conn-key">{{ index . 0 }}</span>
+                                    <span class="sub-conn-val">{{ index . 1 }}</span>
+                                </div>
+                                {{ end }}
+                            </div>
+                            {{ end }}
+                        </div>
+                    </section>
+                    {{ end }}
+
                     <!-- ===================== INDIVIDUAL LINKS ===================== -->
+                    {{ if .result }}
                     <section class="sub-panel" v-if="links.length">
                         <h3 class="sub-panel-title">{{ i18n "subscription.individualLinks" }}</h3>
                         <a-space direction="vertical" :size="12" style="width:100%">
@@ -532,6 +679,7 @@
                             </div>
                         </a-space>
                     </section>
+                    {{ end }}
 
                     <!-- ===================== CONFIG FILES ===================== -->
                     {{ if .configs }}
@@ -594,27 +742,6 @@
                         </div>
                     </section>
 
-                    <!-- ===================== CREDENTIALS ===================== -->
-                    <!-- Rendered only for credential-backed accounts (user/pass).
-                         UUID-only protocols have no Password and hide the panel. -->
-                    {{ if .password }}
-                    <section class="sub-panel sub-creds">
-                        <h3 class="sub-panel-title">{{ i18n "subscription.credentials" }}</h3>
-                        <div class="sub-cred-row">
-                            <span class="sub-cred-key">{{ i18n "subscription.username" }}</span>
-                            <span class="sub-cred-val">{{ .email }}</span>
-                        </div>
-                        <div class="sub-cred-row">
-                            <span class="sub-cred-key">{{ i18n "subscription.password" }}</span>
-                            <span class="sub-cred-val" v-if="showPassword">{{ .password }}</span>
-                            <span class="sub-cred-val masked" v-else>••••••••••</span>
-                            <a-button :type="'text'" @click="showPassword = !showPassword" class="sub-cred-toggle">
-                                <a-icon :type="showPassword ? 'eye' : 'eye-off'" :style="{ verticalAlign: 'middle' }"></a-icon>
-                            </a-button>
-                        </div>
-                    </section>
-                    {{ end }}
-
                 </div>
             </a-col>
         </a-row>
@@ -622,11 +749,11 @@
 </a-layout>
 
 <!-- Bootstrap data for external JS -->
-<template id="subscription-data" data-sid="{{ .sId }}" data-sub-url="{{ .subUrl }}" data-subjson-url="{{ .subJsonUrl }}" data-subclash-url="{{ .subClashUrl }}"
-    data-download="{{ .download }}" data-upload="{{ .upload }}" data-used="{{ .used }}" data-total="{{ .total }}"
-    data-remained="{{ .remained }}" data-expire="{{ .expire }}" data-lastonline="{{ .lastOnline }}"
-    data-downloadbyte="{{ .downloadByte }}" data-uploadbyte="{{ .uploadByte }}" data-totalbyte="{{ .totalByte }}"
-    data-datepicker="{{ .datepicker }}"></template>
+                        <template id="subscription-data" data-sid="{{ .sId }}" data-sub-url="{{ .subUrl }}" data-subjson-url="{{ .subJsonUrl }}" data-subclash-url="{{ .subClashUrl }}"
+                            data-download="{{ .download }}" data-upload="{{ .upload }}" data-used="{{ .used }}" data-total="{{ .total }}"
+                            data-remained="{{ .remained }}" data-expire="{{ .expire }}" data-lastonline="{{ .lastOnline }}"
+                            data-downloadbyte="{{ .downloadByte }}" data-uploadbyte="{{ .uploadByte }}" data-totalbyte="{{ .totalByte }}"
+                            data-datepicker="{{ .datepicker }}" data-email="{{ .email }}" data-password="{{ .password }}"></template>
 <textarea id="subscription-links" style="display:none">{{ range .result }}{{ . }}
 {{ end }}</textarea>
 
