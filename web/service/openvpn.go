@@ -570,7 +570,7 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 	}
 	mtu := settings.Mtu
 	if mtu == 0 {
-		mtu = 1500
+		mtu = 1400
 	}
 
 	tunDev := fmt.Sprintf("tun-ovpn-%d-%s", id, proto[:1])
@@ -621,6 +621,11 @@ func (s *OpenVpnService) buildServerConfig(inbound *model.Inbound, settings *ope
 	// route, bypassing Xray entirely (mirrors the L2TP/PPTP noipv6 fix).
 	b.WriteString("push \"block-ipv6\"\n")
 	b.WriteString(fmt.Sprintf("tun-mtu %d\n", mtu))
+	if mtu > 100 {
+		mssfix := mtu - 40
+		b.WriteString(fmt.Sprintf("mssfix %d\n", mssfix))
+	}
+	b.WriteString("tcp-nodelay\n")
 	caPath, certPath, keyPath, tcPath := s.certPaths(inbound, settings)
 	b.WriteString(fmt.Sprintf("ca %s\n", caPath))
 	b.WriteString(fmt.Sprintf("cert %s\n", certPath))
