@@ -192,8 +192,19 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 				"1.1.1.1",
 				"8.8.4.4",
 			},
+			"queryStrategy": "UseIPv4",
 		})
 		xrayConfig.DNSConfig = defaultDNS
+	} else {
+		var dnsCfg map[string]any
+		if err := json.Unmarshal(xrayConfig.DNSConfig, &dnsCfg); err == nil {
+			if _, ok := dnsCfg["queryStrategy"]; !ok {
+				dnsCfg["queryStrategy"] = "UseIPv4"
+				if data, err := json.Marshal(dnsCfg); err == nil {
+					xrayConfig.DNSConfig = data
+				}
+			}
+		}
 	}
 
 	// The socks outbound fronting each SSH tunnel is synthesized here rather than
