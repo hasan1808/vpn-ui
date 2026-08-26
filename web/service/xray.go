@@ -361,7 +361,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 					"reasonOnly":          false,
 					"unknownTraffic":      false,
 				})
-				inboundConfig.Sniffing = json_util.RawMessage(defaultSniffing)
+				inboundConfig.Sniffing = defaultSniffing
 			}
 		}
 
