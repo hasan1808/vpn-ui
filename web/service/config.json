@@ -18,19 +18,7 @@
     "servers": [
       "8.8.8.8",
       "1.1.1.1",
-      {
-        "address": "8.8.8.8",
-        "domains": [
-          "geosite:geolocation-!ir"
-        ]
-      },
-      {
-        "address": "8.8.4.4",
-        "domains": [
-          "geosite:ir"
-        ],
-        "fallback": true
-      }
+      "8.8.4.4"
     ]
   },
   "inbounds": [

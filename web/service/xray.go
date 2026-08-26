@@ -13,6 +13,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/mhsanaei/3x-ui/v2/util/json_util"
 	"github.com/mhsanaei/3x-ui/v2/xray"
 
 	"go.uber.org/atomic"
@@ -190,15 +191,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 			"servers": []any{
 				"8.8.8.8",
 				"1.1.1.1",
-				map[string]any{
-					"address": "8.8.8.8",
-					"domains": []string{"geosite:geolocation-!ir"},
-				},
-				map[string]any{
-					"address":  "8.8.4.4",
-					"domains":  []string{"geosite:ir"},
-					"fallback": true,
-				},
+				"8.8.4.4",
 			},
 		})
 		xrayConfig.DNSConfig = defaultDNS
@@ -361,7 +354,7 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 					"reasonOnly":          false,
 					"unknownTraffic":      false,
 				})
-				inboundConfig.Sniffing = defaultSniffing
+				inboundConfig.Sniffing = json_util.RawMessage(defaultSniffing)
 			}
 		}
 
