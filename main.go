@@ -169,6 +169,78 @@ func warnUnsupportedDistro() {
 	fmt.Fprintln(os.Stderr, rule+"\n")
 }
 
+// vpnDaemonPort maps inbound protocol names to the UDP/TCP port the daemon
+// should be listening on once provisioning is complete. Used by logDaemonHealth
+// to report which VPN services are actually reachable after startup.
+var vpnDaemonPort = map[string]struct{ port int; proto string }{
+	"l2tp":        {1701, "udp"},
+	"openconnect": {8200, "tcp"},
+	"mtproto":     {8300, "tcp"},
+	"openvpn":     {1194, "udp"},
+	"pptp":        {1723, "tcp"},
+	"sstp":        {443, "tcp"},
+	"ikev2":       {500, "udp"},
+}
+
+// logDaemonHealth queries the DB for enabled VPN inbounds and checks whether
+// each daemon's expected port is actually listening. The result is written to
+// the panel journal (logger.Warning) so administrators can spot a broken
+// setup without having to open the panel UI.
+func logDaemonHealth() {
+	if !backend.Available() {
+		return
+	}
+	db := database.GetDB()
+	if db == nil {
+		return
+	}
+	type inbound struct {
+		ID       uint
+		Protocol string
+		Port     int
+	}
+	var inbounds []inbound
+	db.Raw("SELECT id, protocol, port FROM inbounds WHERE enable = ?", true).Scan(&inbounds)
+	if len(inbounds) == 0 {
+		return
+	}
+
+	var ok []string
+	var problems []string
+	for _, ib := range inbounds {
+		info, known := vpnDaemonPort[ib.Protocol]
+		if !known {
+			continue
+		}
+		addr := fmt.Sprintf("127.0.0.1:%d", info.port)
+		proto := info.proto
+		if proto == "udp" {
+			conn, err := net.DialTimeout("udp", addr, 2*time.Second)
+			if err == nil {
+				conn.Close()
+				ok = append(ok, fmt.Sprintf("%s(:%d)", ib.Protocol, info.port))
+			} else {
+				problems = append(problems, fmt.Sprintf("%s(:%d/%s): %v", ib.Protocol, info.port, proto, err))
+			}
+		} else {
+			conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+			if err == nil {
+				conn.Close()
+				ok = append(ok, fmt.Sprintf("%s(:%d)", ib.Protocol, info.port))
+			} else {
+				problems = append(problems, fmt.Sprintf("%s(:%d/%s): %v", ib.Protocol, info.port, proto, err))
+			}
+		}
+	}
+	if len(ok) > 0 {
+		logger.Info("VPN daemons listening:", strings.Join(ok, ", "))
+	}
+	if len(problems) > 0 {
+		logger.Warning("VPN daemons NOT listening:", strings.Join(problems, "; "),
+			"— VPN clients will get zero throughput. Run the panel setup wizard or check: journalctl -u vpn-ui")
+	}
+}
+
 func runWebServer() {
 	requireRoot()
 	fmt.Println(ansiVpnUI())
@@ -291,6 +363,16 @@ func runWebServer() {
 	if err != nil {
 		log.Fatalf("Error starting sub server: %v", err)
 	}
+
+	// Log a VPN daemon health summary ~3 s after startup so the journal always
+	// carries a clear snapshot of what is (and is not) running. This catches the
+	// most common misconfiguration: the operator configures L2TP/OpenConnect/etc.
+	// in the panel but never ran provisioning (or it failed silently), so the
+	// daemon ports never open and VPN clients see zero throughput.
+	go func() {
+		time.Sleep(3 * time.Second)
+		logDaemonHealth()
+	}()
 
 	sigCh := make(chan os.Signal, 1)
 	// Trap shutdown signals
