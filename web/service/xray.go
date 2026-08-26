@@ -185,6 +185,25 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		return nil, err
 	}
 
+	if len(xrayConfig.DNSConfig) == 0 || string(xrayConfig.DNSConfig) == "null" || string(xrayConfig.DNSConfig) == "{}" || string(xrayConfig.DNSConfig) == "" {
+		defaultDNS, _ := json.Marshal(map[string]any{
+			"servers": []any{
+				"8.8.8.8",
+				"1.1.1.1",
+				map[string]any{
+					"address": "8.8.8.8",
+					"domains": []string{"geosite:geolocation-!ir"},
+				},
+				map[string]any{
+					"address":  "8.8.4.4",
+					"domains":  []string{"geosite:ir"},
+					"fallback": true,
+				},
+			},
+		})
+		xrayConfig.DNSConfig = defaultDNS
+	}
+
 	// The socks outbound fronting each SSH tunnel is synthesized here rather than
 	// stored in the template, so the tunnel and the outbound that points at it can
 	// never disagree. They used to be written from two different places at two
@@ -326,6 +345,26 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		}
 
 		inboundConfig := inbound.GenXrayInboundConfig()
+
+		if len(inbound.Sniffing) == 0 || string(inbound.Sniffing) == "null" || string(inbound.Sniffing) == "" {
+			proto := string(inbound.Protocol)
+			if proto == "vless" || proto == "vmess" || proto == "trojan" || proto == "shadowsocks" {
+				defaultSniffing, _ := json.Marshal(map[string]any{
+					"enabled":             true,
+					"destOverride":        []string{"http", "tls"},
+					"metadataOnly":        false,
+					"routeOnly":           false,
+					"domainsExcluded":     []string{},
+					"domainsIncluded":     []string{},
+					"ipsExcluded":         []string{},
+					"ipsIncluded":         []string{},
+					"reasonOnly":          false,
+					"unknownTraffic":      false,
+				})
+				inboundConfig.Sniffing = json_util.RawMessage(defaultSniffing)
+			}
+		}
+
 		xrayConfig.InboundConfigs = append(xrayConfig.InboundConfigs, *inboundConfig)
 	}
 
@@ -463,6 +502,41 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	// IP, so a per-CLIENT rule has nothing to match on. Its routing is per-INBOUND,
 	// via the socks inbound's tag above.
 	s.translateVpnRoutingRules(xrayConfig)
+
+	if len(xrayConfig.RouterConfig) > 0 {
+		var routing map[string]any
+		if err := json.Unmarshal(xrayConfig.RouterConfig, &routing); err == nil {
+			if ds, ok := routing["domainStrategy"].(string); ok && ds == "AsIs" {
+				routing["domainStrategy"] = "IPIfNonMatch"
+				if data, err := json.Marshal(routing); err == nil {
+					xrayConfig.RouterConfig = data
+				}
+			}
+		}
+	}
+
+	if len(xrayConfig.OutboundConfigs) > 0 {
+		var outbounds []map[string]any
+		if err := json.Unmarshal(xrayConfig.OutboundConfigs, &outbounds); err == nil {
+			modified := false
+			for i, ob := range outbounds {
+				if ob["tag"] == "direct" {
+					if settings, ok := ob["settings"].(map[string]any); ok {
+						if ds, ok := settings["domainStrategy"].(string); ok && ds == "AsIs" {
+							settings["domainStrategy"] = "UseIP"
+							outbounds[i] = ob
+							modified = true
+						}
+					}
+				}
+			}
+			if modified {
+				if data, err := json.Marshal(outbounds); err == nil {
+					xrayConfig.OutboundConfigs = data
+				}
+			}
+		}
+	}
 
 	return xrayConfig, nil
 }
